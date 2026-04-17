@@ -1,0 +1,5 @@
+# Claude Code 個人設定（per-user，勿 commit）
+.claude/
+
+# macOS
+.DS_Store
