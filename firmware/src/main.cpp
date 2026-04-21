@@ -90,16 +90,29 @@ static const uint8_t BTN_COUNT = 8;
 /** 按鈕 GPIO 腳位（INPUT_PULLUP，按下接 GND） */
 static const uint8_t BTN_PINS[BTN_COUNT] = { 4, 5, 6, 7, 15, 16, 17, 18 };
 
-/** 按鈕對應事件名稱（顯示用，OLED 中字最多約 10 字元） */
-static const char* BTN_LABELS[BTN_COUNT] = {
-    "Epi",        // BTN1 Epinephrine
-    "Atropine",   // BTN2 Atropine
-    "CPR Start",  // BTN3 CPR 開始
-    "CPR End",    // BTN4 CPR 結束
-    "Shock",      // BTN5 電擊
-    "Intubate",   // BTN6 插管
-    "Arrive",     // BTN7 到院
-    "Record",     // BTN8 錄音
+/**
+ * 藥物按鈕數量（BTN1~4 為藥物計時，BTN5~8 為系統功能）
+ */
+static const uint8_t MED_BTN_COUNT = 4;
+static const uint8_t SYS_BTN_COUNT = 4;
+static const uint8_t MED_GROUP_COUNT = 2;
+
+/**
+ * 藥物群組標籤（2 組 × 4 顆按鈕，透過選單切換）
+ * Group 0（預設）：心肺復甦常用藥
+ * Group 1：其他急救藥物
+ */
+static const char* MED_LABELS[MED_GROUP_COUNT][MED_BTN_COUNT] = {
+    { "Epi", "Amio", "Atropine", "Adenosine" },   // Group 0
+    { "Naloxone", "Nitro", "D50", "Morphine"  },   // Group 1
+};
+
+/** 系統按鈕標籤（BTN5~8，選單導航與電源） */
+static const char* SYS_LABELS[SYS_BTN_COUNT] = {
+    "Menu",   // BTN5 進入選單/確認（待做）
+    "Next",   // BTN6 選單選下一個
+    "Prev",   // BTN7 選單選上一個
+    "Power",  // BTN8 開關機（待做）
 };
 
 /** 按鈕 debounce 時間（ms，救護現場防誤觸） */
@@ -118,9 +131,10 @@ static const uint16_t MAX_EVENTS = 30;
  * Phase 3 升級 DS3231 RTC 後改讀硬體時鐘
  */
 struct EmsEvent {
-    uint8_t  event_type;   // 0~7 對應按鈕索引
-    uint64_t timestamp;    // epoch ms（絕對時間）
-    uint32_t elapsed_ms;   // 從 session 啟動起的毫秒數
+    uint8_t  event_type;      // 0~7 對應按鈕索引
+    uint64_t timestamp;       // epoch ms（絕對時間）
+    uint32_t elapsed_ms;      // 從 session 啟動起的毫秒數（按下時）
+    uint32_t elapsed_end_ms;  // 計時被中斷或結束時的 session elapsed ms（0 = 仍在計時）
 };
 
 /** 計時模式 */
@@ -141,19 +155,31 @@ struct EventConfig {
 };
 
 /**
- * 每個 event_type 的計時配置（索引對應 BTN 順序）
- * Phase 2 驗證用預設：Epi/Atropine 倒數 3 分鐘，其餘正數計時
- * 後續要改倒數時長或新增倒數事件，直接改這張表即可
+ * 藥物計時配置（2 組 × 4 顆按鈕）
+ * Epi/Atropine 按 ACLS 規範倒數 5 分鐘，每 60 秒提醒
+ * 其餘藥物正數計時（記錄給藥後經過時間）
  */
-static const EventConfig EVENT_CFG[BTN_COUNT] = {
-    { TIMER_DOWN, 180, 60 },  // BTN1 Epi：倒數 3 分鐘，每 60 秒嗶
-    { TIMER_DOWN, 180, 60 },  // BTN2 Atropine：倒數 3 分鐘，每 60 秒嗶
-    { TIMER_UP,   0,   0  },  // BTN3 CPR Start：正數
-    { TIMER_UP,   0,   0  },  // BTN4 CPR End：正數
-    { TIMER_UP,   0,   0  },  // BTN5 Shock：正數
-    { TIMER_UP,   0,   0  },  // BTN6 Intubate：正數
-    { TIMER_UP,   0,   0  },  // BTN7 Arrive：正數
-    { TIMER_UP,   0,   0  },  // BTN8 Record：正數
+static const EventConfig MED_CFG[MED_GROUP_COUNT][MED_BTN_COUNT] = {
+    {   // Group 0
+        { TIMER_DOWN, 300, 60 },  // Epi：ACLS 每 3~5 分鐘，倒數 5 分鐘
+        { TIMER_UP,   0,   0  },  // Amio：正數計時
+        { TIMER_DOWN, 300, 60 },  // Atropine：每 3~5 分鐘，倒數 5 分鐘
+        { TIMER_UP,   0,   0  },  // Adenosine：正數計時
+    },
+    {   // Group 1
+        { TIMER_UP, 0, 0 },  // Naloxone
+        { TIMER_UP, 0, 0 },  // Nitro
+        { TIMER_UP, 0, 0 },  // D50
+        { TIMER_UP, 0, 0 },  // Morphine
+    },
+};
+
+/** 系統按鈕計時配置（BTN5~8，觸發不啟動計時） */
+static const EventConfig SYS_CFG[SYS_BTN_COUNT] = {
+    { TIMER_UP, 0, 0 },  // Menu
+    { TIMER_UP, 0, 0 },  // Next
+    { TIMER_UP, 0, 0 },  // Prev
+    { TIMER_UP, 0, 0 },  // Power
 };
 
 /** OLED 重繪節流間隔（ms，避免過度重繪造成 I2C 壅塞） */
@@ -221,6 +247,9 @@ static uint32_t currentEventStartMs = 0;     // 當前事件的 millis() 起點
 static uint16_t lastIntervalElapsed = 0;     // 上次觸發區間提醒時的秒數
 static bool     countdownExpired    = false; // 倒數是否已結束（防止重複蜂鳴）
 
+/** 目前正在計時的 events[] 索引（-1 = 無），用於記錄中斷/結束時間點 */
+static int16_t activeEventRecordIdx = -1;
+
 /** OLED 重繪節流 */
 static uint32_t lastDisplayUpdateMs = 0;
 
@@ -243,6 +272,9 @@ static BLECharacteristic* bleRxChar       = nullptr;
 static bool               bleConnected    = false;  // 當前是否有 central 連線
 static bool               bleWasConnected = false;  // 上一輪狀態，用於偵測斷線後重啟廣播
 
+/** 當前藥物群組（0 = Group 0，1 = Group 1，透過選單切換） */
+static uint8_t currentMedGroup = 0;
+
 /**
  * BLE RX 命令 pending 佇列（single slot）
  *
@@ -259,7 +291,31 @@ static volatile bool pendingCmdReady = false;
 // 函式宣告
 // ============================================================
 
+/**
+ * 取得按鈕對應的顯示標籤
+ * BTN 0~3 依 currentMedGroup 查藥物表，BTN 4~7 查系統按鈕表
+ * @param eventType 按鈕索引（0-based）
+ */
+inline const char* getButtonLabel(uint8_t eventType) {
+    if (eventType < MED_BTN_COUNT) {
+        return MED_LABELS[currentMedGroup][eventType];
+    }
+    return SYS_LABELS[eventType - MED_BTN_COUNT];
+}
+
+/**
+ * 取得按鈕對應的計時配置
+ * @param eventType 按鈕索引（0-based）
+ */
+inline const EventConfig& getEventConfig(uint8_t eventType) {
+    if (eventType < MED_BTN_COUNT) {
+        return MED_CFG[currentMedGroup][eventType];
+    }
+    return SYS_CFG[eventType - MED_BTN_COUNT];
+}
+
 void handleButtons();
+void handleSysButton(uint8_t sysIdx);
 void recordEvent(uint8_t eventType);
 void startEvent(uint8_t eventType);
 void updateTimer();
@@ -475,17 +531,29 @@ void handleButtons() {
             // STEP 01.02.01: debounce 檢查
             uint32_t now = millis();
             if (now - lastPressMs[i] >= DEBOUNCE_MS) {
-                // STEP 01.02.01.01: 記錄時間戳並觸發事件
                 lastPressMs[i] = now;
-                recordEvent(i);
-                startEvent(i);
 
-                Serial.print("[BTN");
-                Serial.print(i + 1);
-                Serial.print("] ");
-                Serial.print(BTN_LABELS[i]);
-                Serial.print(" recorded, total=");
-                Serial.println(eventCount);
+                if (i < MED_BTN_COUNT) {
+                    // STEP 01.02.01.01: 藥物按鈕 → 先封存前一計時器的中斷時間點
+                    if (activeEventRecordIdx >= 0) {
+                        events[activeEventRecordIdx].elapsed_end_ms =
+                            sessionStarted ? (now - sessionStartMs) : 0;
+                        Serial.print("[TIMER] interrupted at ");
+                        Serial.print(events[activeEventRecordIdx].elapsed_end_ms);
+                        Serial.println("ms");
+                    }
+                    recordEvent(i);
+                    startEvent(i);
+                    Serial.print("[BTN");
+                    Serial.print(i + 1);
+                    Serial.print("] ");
+                    Serial.print(getButtonLabel(i));
+                    Serial.print(" recorded, total=");
+                    Serial.println(eventCount);
+                } else {
+                    // STEP 01.02.01.02: 系統按鈕 → 不記錄事件，進入系統處理
+                    handleSysButton(i - MED_BTN_COUNT);
+                }
             }
         }
 
@@ -498,6 +566,32 @@ void handleButtons() {
  * 記錄一筆事件到 events 陣列
  * @param eventType 事件類型（對應按鈕索引 0~7）
  */
+
+/**
+ * 處理系統按鈕（BTN5~8）動作
+ * Menu/Power 待實作；Next/Prev 目前為 stub，選單上線後填入
+ * @param sysIdx 0=Menu 1=Next 2=Prev 3=Power
+ */
+void handleSysButton(uint8_t sysIdx) {
+    // STEP 01: 依系統按鈕分派動作
+    switch (sysIdx) {
+        case 0:  // Menu / Confirm — 待實作
+            Serial.println("[SYS] Menu - not implemented");
+            break;
+        case 1:  // Next — 待實作
+            Serial.println("[SYS] Next - not implemented");
+            break;
+        case 2:  // Prev — 待實作
+            Serial.println("[SYS] Prev - not implemented");
+            break;
+        case 3:  // Power — 待實作
+            Serial.println("[SYS] Power - not implemented");
+            break;
+        default:
+            break;
+    }
+}
+
 void recordEvent(uint8_t eventType) {
     // STEP 01: 首次事件 → 鎖定 session 起算點
     if (!sessionStarted) {
@@ -519,13 +613,15 @@ void recordEvent(uint8_t eventType) {
     uint64_t ts = sessionEpochOffset + (uint64_t)now;
 
     // STEP 05: 寫入陣列
-    events[eventCount].event_type = eventType;
-    events[eventCount].timestamp  = ts;
-    events[eventCount].elapsed_ms = elapsed;
+    events[eventCount].event_type     = eventType;
+    events[eventCount].timestamp      = ts;
+    events[eventCount].elapsed_ms     = elapsed;
+    events[eventCount].elapsed_end_ms = 0;  // 0 = 計時中，中斷/結束時填入
+    activeEventRecordIdx = (int16_t)eventCount;
     eventCount++;
 
-    // STEP 06: 已連線 App 則即時 Notify 推送新事件
-    sendEvent(eventCount - 1);
+    // STEP 06: 即時 Notify 推送（暫時停用，待確認 Phase 3 是否需要）
+    // sendEvent(eventCount - 1);
 }
 
 /**
@@ -556,7 +652,7 @@ void updateTimer() {
     }
 
     // STEP 02: 取得當前事件配置
-    const EventConfig& cfg = EVENT_CFG[currentEventIdx];
+    const EventConfig& cfg = getEventConfig(currentEventIdx);
 
     // STEP 03: 正數模式沒有提醒邏輯，直接回傳
     if (cfg.mode != TIMER_DOWN) {
@@ -570,9 +666,12 @@ void updateTimer() {
     // STEP 05: 倒數結束 → 嗶 3 聲（僅觸發一次）
     if (!countdownExpired && elapsedSec >= cfg.duration_s) {
         countdownExpired = true;
+        if (activeEventRecordIdx >= 0) {
+            events[activeEventRecordIdx].elapsed_end_ms = millis() - sessionStartMs;
+        }
         triggerBeep(EXPIRE_BEEP_PULSES, EXPIRE_BEEP_ON_MS, EXPIRE_BEEP_OFF_MS);
         Serial.print("[TIMER] ");
-        Serial.print(BTN_LABELS[currentEventIdx]);
+        Serial.print(getButtonLabel(currentEventIdx));
         Serial.println(" countdown expired");
         return;
     }
@@ -613,7 +712,7 @@ uint32_t getCurrentRemainingMs() {
     if (currentEventIdx < 0) {
         return 0;
     }
-    const EventConfig& cfg = EVENT_CFG[currentEventIdx];
+    const EventConfig& cfg = getEventConfig(currentEventIdx);
     if (cfg.mode != TIMER_DOWN) {
         return 0;
     }
@@ -723,7 +822,7 @@ void drawTimerScreen() {
     // STEP 02: 頂部左：當前事件名稱
     display.setTextSize(1);
     display.setCursor(0, 0);
-    display.print(BTN_LABELS[currentEventIdx]);
+    display.print(getButtonLabel(currentEventIdx));
 
     // STEP 03: 頂部右：已記錄事件數（靠右對齊）
     char countStr[12];
@@ -735,7 +834,7 @@ void drawTimerScreen() {
     display.print(countStr);
 
     // STEP 04: 決定顯示時間（正數：elapsed；倒數：remaining；倒數結束：0 + 閃爍）
-    const EventConfig& cfg = EVENT_CFG[currentEventIdx];
+    const EventConfig& cfg = getEventConfig(currentEventIdx);
     uint32_t displayMs;
     bool isCountdown = (cfg.mode == TIMER_DOWN);
     bool expired = false;
@@ -900,9 +999,10 @@ void sendEvent(uint16_t idx) {
     doc["t"]     = "evt";
     doc["idx"]   = idx;
     doc["type"]  = e.event_type;
-    doc["label"] = BTN_LABELS[e.event_type];
+    doc["label"] = getButtonLabel(e.event_type);
     doc["ts"]    = e.timestamp;
     doc["el"]    = e.elapsed_ms;
+    doc["end"]   = e.elapsed_end_ms;  // 0 = 計時中，>0 = 中斷/結束時的 session elapsed ms
     sendJson(doc);
 }
 
@@ -927,7 +1027,7 @@ void sendDump() {
         doc["t"]     = "dump_item";
         doc["idx"]   = i;
         doc["type"]  = e.event_type;
-        doc["label"] = BTN_LABELS[e.event_type];
+        doc["label"] = getButtonLabel(e.event_type);
         doc["ts"]    = e.timestamp;
         doc["el"]    = e.elapsed_ms;
         sendJson(doc);
