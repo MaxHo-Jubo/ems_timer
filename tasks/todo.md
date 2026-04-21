@@ -42,14 +42,22 @@
 - [x] EmsEvent 新增 `elapsed_end_ms`：記錄計時中斷或倒數自然結束的時間點
 - [x] 反覆點擊或切換按鈕皆自動封存前一筆計時結束時間
 - [x] BLE dump/evt JSON 新增 `end` 欄位
-- [ ] BTN5 Menu 功能實作（進入選單 / 確認）
-- [ ] BTN6 Next / BTN7 Prev 選單導航實作
-- [ ] BTN8 Power 開關機實作
+- [x] BTN5 Menu 功能實作（開啟選單 / 確認切換群組；同時中斷進行中的藥物計時）
+- [x] BTN6 Next / BTN7 Prev 選單導航實作（游標循環移動 + 重置 5s 超時）
+- [x] OLED 選單畫面（drawMenuScreen：群組列表反白游標 + 5s 無操作自動關閉）
+- [ ] BTN8 Power 開關機實作（暫停：換單行程按鍵後加長按偵測再啟用 deep sleep）
 
 ## 待上機驗證
 
 - [x] **Phase 2 可行性測試通過**（2026-04-21）：§1~4、§7~8、§10、§A~C 全通過
   - §5 倒數計時、§6 事件切換、§9 容量上限、§11~12 待補測（換單行程按鍵後）
+
+### Phase 2.x — BTN5~8 選單系統（2026-04-21）
+- [x] MenuState 狀態機（MENU_NONE / MENU_OPEN）
+- [x] BTN5 開選單 / 確認，BTN6/7 導航，OLED 反白顯示
+- [x] 5 秒無操作自動關閉
+- [x] 開機 lastBtnState 修正（toggle switch 不誤觸）
+- [x] BTN5 開選單時中斷進行中的藥物計時
 
 ## 後續階段
 
