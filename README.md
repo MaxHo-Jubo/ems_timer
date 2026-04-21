@@ -1,55 +1,72 @@
 # EMS Timer — 救護計時器
 
-給救護人員使用的手持計時裝置。按下按鈕記錄事件（注射、CPR、電擊等）的時間戳與經過時長，事後透過藍牙傳輸至手機 App 檢視與保存。
+給救護人員使用的手持計時裝置。按下按鈕記錄藥物給藥事件的時間戳與計時區間，事後透過藍牙傳輸至手機 App 檢視與保存。
 
 ## 功能特色
 
-- 8 顆實體按鈕，對應不同救護事件
-- OLED 螢幕即時顯示事件紀錄與倒數計時
-- 蜂鳴器提醒（倒數結束 / 區間提醒）
-- 麥克風錄音，口述備註存入 SD 卡
-- BLE 藍牙連線手機 App，傳輸與檢視歷史紀錄
+- **4 顆藥物計時按鈕**（BTN1~4）：支援兩組藥物群組切換，倒數計時 + 區間嗶聲提醒
+- **4 顆系統功能按鈕**（BTN5~8）：選單導航、開關機（開發中）
+- OLED 螢幕即時顯示當前事件與 mm:ss 計時
+- 蜂鳴器提醒（倒數結束 3 聲 / 每分鐘區間嗶聲）
+- BLE 藍牙（Nordic UART Service）：事後連線 App，`dump` 取完整事件紀錄
+- 計時中斷記錄：切換藥物時自動封存前一筆計時結束時間點
 
 ## 硬體架構
 
-| 元件 | 型號 | 介面 |
-|------|------|------|
-| 主控板 | ESP32-WROOM-32 DevKit | — |
-| 螢幕 | SSD1306 OLED 0.96" | I2C |
-| 按鈕 | 觸覺按鈕 × 8 | GPIO INPUT_PULLUP |
-| 蜂鳴器 | 被動式蜂鳴器 | PWM |
-| 麥克風 | INMP441 數位麥克風 | I2S |
-| 儲存 | MicroSD 卡模組 | SPI |
+| 元件 | 型號 / 規格 | 介面 |
+|------|------------|------|
+| 主控板 | ESP32-S3-DevKitC-1 | — |
+| 螢幕 | SSD1306 OLED 0.96" | I2C（SDA/SCL = GPIO 42/41） |
+| 按鈕 | 開關式按鈕 × 8（未來換單行程） | GPIO INPUT_PULLUP |
+| 蜂鳴器 | 主動式蜂鳴器 | GPIO 14 |
+| 麥克風 | INMP441 數位麥克風 | I2S（SCK/WS/SD = 40/39/38）|
+| 儲存 | MicroSD 卡模組 | SPI（CS/MOSI/CLK/MISO = 10/11/12/13，待啟用）|
 
-## 文件索引
+## 按鈕配置
 
-### 專案文件
+| 按鈕 | GPIO | Group 0（預設） | Group 1 | 計時模式 |
+|------|------|----------------|---------|---------|
+| BTN1 | 4 | Epi（腎上腺素） | Naloxone | 倒數 5 分鐘 |
+| BTN2 | 5 | Amio（胺碘酮） | Nitro | 正數 |
+| BTN3 | 6 | Atropine（阿托品） | D50 | 倒數 5 分鐘 |
+| BTN4 | 7 | Adenosine（腺苷） | Morphine | 正數 |
+| BTN5 | 15 | Menu（待實作） | — | — |
+| BTN6 | 16 | Next（待實作） | — | — |
+| BTN7 | 17 | Prev（待實作） | — | — |
+| BTN8 | 18 | Power（待實作） | — | — |
 
-| 文件 | 說明 |
-|------|------|
-| [CLAUDE.md](CLAUDE.md) | 專案需求規格、資料模型、開發階段定義 |
-| [design-philosophy.md](design-philosophy.md) | 視覺設計哲學（Technical Cartography） |
+## BLE 通訊協定
 
-### 概念設計圖
+服務：Nordic UART Service（NUS）
 
-| 圖片 | 說明 |
-|------|------|
-| [ems_timer_schematic.png](ems_timer_schematic.png) | 電路配置示意圖 — GPIO 接線、元件連接關係 |
-| [ems_timer_exterior.png](ems_timer_exterior.png) | 外觀概念圖 — 產品俯視圖、側面圖、尺寸標註 |
+| 命令（App → 裝置） | 說明 |
+|-------------------|------|
+| `{"cmd":"sync","ts":<epoch_ms>}` | 時間同步 |
+| `{"cmd":"dump"}` | 批次取得所有事件紀錄 |
+| `{"cmd":"clear"}` | 清空事件陣列 |
 
-### 工具腳本
-
-| 腳本 | 說明 |
-|------|------|
-| [generate_diagram.py](generate_diagram.py) | 電路配置示意圖產生器（Python + Pillow） |
-| [generate_exterior.py](generate_exterior.py) | 外觀概念圖產生器（Python + Pillow） |
+事件欄位：`event_type` / `label` / `ts`（epoch ms）/ `el`（session 起算 ms）/ `end`（結束/中斷 ms，0=計時中）
 
 ## 開發階段
 
-- [ ] **Phase 1** — 硬體原型：ESP32 + 按鈕 + 螢幕基本功能
-- [ ] **Phase 2** — BLE 通訊：裝置與手機配對、數據傳輸
-- [ ] **Phase 3** — 手機 App：接收數據、顯示時間軸、歷史紀錄
-- [ ] **Phase 4** — 整合測試與優化
+- [x] **Phase 1**（2026-04-17）— 硬體原型：ESP32-S3 + 8 按鈕 + OLED + 蜂鳴器驗收通過
+- [x] **Phase 2**（2026-04-21）— 計時邏輯 + BLE NUS 可行性測試通過
+  - Phase 2A：EmsEvent 資料結構、倒數 state machine、OLED 計時顯示
+  - Phase 2B：BLE NUS sync/dump/clear 命令實測通過
+  - Phase 2C：藥物分組架構、系統按鈕分離、計時中斷記錄
+- [ ] **Phase 2.x** — BTN5~8 選單與系統功能實作
+- [ ] **Phase 1.5** — INMP441 麥克風重試（換新模組後啟用）
+- [ ] **Phase 3** — 手機 App + DS3231 RTC 升級
+- [ ] **Phase 4** — 整合測試、電源方案、外殼設計
+
+## 文件索引
+
+| 文件 | 說明 |
+|------|------|
+| [CLAUDE.md](CLAUDE.md) | 專案需求規格、資料模型、開發決策 |
+| [tasks/todo.md](tasks/todo.md) | 詳細開發進度與待辦清單 |
+| [tasks/phase2-acceptance.md](tasks/phase2-acceptance.md) | Phase 2 驗收清單 |
+| [design-philosophy.md](design-philosophy.md) | 視覺設計哲學（Technical Cartography） |
 
 ## 概念設計預覽
 

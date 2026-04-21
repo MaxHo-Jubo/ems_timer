@@ -23,22 +23,33 @@
 - [x] OLED 計時顯示（頂部事件名+計數 / 中間大字 mm:ss / 底部模式）
 - [x] 編譯通過：RAM 5.9% / Flash 9.2%
 
-### Phase 2B — BLE NUS 通訊（2026-04-18 編譯通過）
+### Phase 2B — BLE NUS 通訊（2026-04-18 編譯通過，2026-04-21 實機驗收）
 - [x] ArduinoJson 依賴
 - [x] BLE NUS service（TX Notify + RX Write，MTU 升至 517）
 - [x] 連線 hello 訊息（含 session_id）
 - [x] `sync` 命令：App 下發 epoch ms 做軟體對時
 - [x] `dump` 命令：批次回傳 events[] 陣列（dump_start / dump_item × N / dump_end）
 - [x] `clear` 命令：清空事件
-- [x] 按鈕按下即時 Notify 推送新事件
 - [x] 連線/斷線自動管理 advertising 重啟
-- [x] 編譯通過：RAM 14.0% / Flash 28.9%
+- [x] 修正：`ARDUINO_USB_CDC_ON_BOOT=1`（native USB CDC Serial）
+- [x] 修正：hello delay 100ms → 3000ms（給 App 足夠時間訂閱 Notify）
+- [x] 即時 evt Notify 暫時停用（Phase 3 再確認是否保留）
+
+### Phase 2C — 按鈕重構與事件資料強化（2026-04-21）
+- [x] BTN1~4 改為藥物計時器（Group 0: Epi/Amio/Atropine/Adenosine；Group 1: Naloxone/Nitro/D50/Morphine）
+- [x] BTN5~8 改為系統功能（Menu/Next/Prev/Power），不觸發事件記錄
+- [x] `getButtonLabel()` / `getEventConfig()` 統一查詢介面，支援群組切換
+- [x] EmsEvent 新增 `elapsed_end_ms`：記錄計時中斷或倒數自然結束的時間點
+- [x] 反覆點擊或切換按鈕皆自動封存前一筆計時結束時間
+- [x] BLE dump/evt JSON 新增 `end` 欄位
+- [ ] BTN5 Menu 功能實作（進入選單 / 確認）
+- [ ] BTN6 Next / BTN7 Prev 選單導航實作
+- [ ] BTN8 Power 開關機實作
 
 ## 待上機驗證
 
 - [x] **Phase 2 可行性測試通過**（2026-04-21）：§1~4、§7~8、§10、§A~C 全通過
   - §5 倒數計時、§6 事件切換、§9 容量上限、§11~12 待補測（換單行程按鍵後）
-  - 修正：`ARDUINO_USB_CDC_ON_BOOT=1`（native USB Serial）、hello delay 改 3000ms
 
 ## 後續階段
 
