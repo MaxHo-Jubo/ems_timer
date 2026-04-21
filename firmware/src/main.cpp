@@ -343,6 +343,7 @@ class EmsRxCallbacks : public BLECharacteristicCallbacks {
 void setup() {
     // STEP 01: 初始化序列埠
     Serial.begin(115200);
+    delay(5000); // 等 USB CDC 重枚舉後 Serial Monitor 重連
     Serial.println("[EMS Timer] Phase 2 boot");
 
     // STEP 02: 初始化蜂鳴器 GPIO
@@ -1019,8 +1020,8 @@ void updateBleAdvertising() {
     // STEP 01: 偵測「剛連線」邊緣事件 → 送 hello
     if (bleConnected && !bleWasConnected) {
         bleWasConnected = true;
-        // 給 App 一點時間完成 service discovery + CCCD 訂閱再送 hello
-        delay(100);
+        // 給 App 足夠時間完成 service discovery + CCCD 訂閱再送 hello
+        delay(3000);
         sendHello();
         return;
     }

@@ -36,9 +36,9 @@
 
 ## 待上機驗證
 
-- [ ] **Phase 2 整合驗收**：驗收清單見 `tasks/phase2-acceptance.md`（可行性測試為主，完整驗收延後到換單行程按鍵）
-  - nRF Connect 手機 App 當測試工具
-  - 12 大項 + 3 項異常處理 + 4 項換鍵後補測
+- [x] **Phase 2 可行性測試通過**（2026-04-21）：§1~4、§7~8、§10、§A~C 全通過
+  - §5 倒數計時、§6 事件切換、§9 容量上限、§11~12 待補測（換單行程按鍵後）
+  - 修正：`ARDUINO_USB_CDC_ON_BOOT=1`（native USB Serial）、hello delay 改 3000ms
 
 ## 後續階段
 
@@ -56,12 +56,18 @@
   - [ ] 接收 Notify 即時更新時間軸
   - [ ] SQLite 本地歷史儲存
   - [ ] App 分發策略（TestFlight / 自架 APK 等，細節留存於舊版 todo）
+  - [ ] **按鈕設定編輯**：App 可編輯各按鈕的計時配置（label / mode / duration / interval），透過 BLE `config` 命令推送至 ESP32
+    - ESP32 端用 `Preferences`（NVS）持久化，重開機不遺失
+    - 不需要 OTA，純資料層操作
 
 ### Phase 4 — 整合測試與優化
 - [ ] 電源方案選型（實測耗電後決定 18650 / LiPo / 乾電池）
 - [ ] 外殼設計
 - [ ] 長時間穩定性測試（連續 > 2 小時出勤情境）
 - [ ] 最終驗收
+- [ ] **OTA 韌體更新**：WiFi STA 模式（ESP32 從 server 拉 `.bin`，手機 App 觸發）
+  - `.bin` 初期放 GitHub Releases
+  - 使用場景：非出勤時段，於辦公室/家中連 WiFi 更新
 
 ## 設計決策參考
 
