@@ -54,10 +54,10 @@
   - Phase 2A：EmsEvent 資料結構、倒數 state machine、OLED 計時顯示
   - Phase 2B：BLE NUS sync/dump/clear 命令實測通過
   - Phase 2C：藥物分組架構、系統按鈕分離、計時中斷記錄
-- [x] **Phase 2.x**（2026-04-21）— BTN5~8 選單系統實作
-  - BTN5 Menu：開啟/確認藥物群組切換；同時中斷進行中計時
-  - BTN6/7 Next/Prev：選單游標導航（5s 無操作自動關閉）
-  - BTN8 Power：待長按偵測機制（換單行程按鍵後啟用）
+- [ ] **Phase 2.x** — BTN5~8 選單與系統功能實作（部分完成）
+  - [x] BTN5 Menu：開啟/確認藥物群組切換；同時中斷進行中計時
+  - [x] BTN6/7 Next/Prev：選單游標導航（5s 無操作自動關閉）
+  - [ ] BTN8 Power：待換單行程按鍵後加長按偵測再啟用 deep sleep
 - [ ] **Phase 1.5** — INMP441 麥克風重試（換新模組後啟用）
 - [ ] **Phase 3** — 手機 App + DS3231 RTC 升級
 - [ ] **Phase 4** — 整合測試、電源方案、外殼設計
