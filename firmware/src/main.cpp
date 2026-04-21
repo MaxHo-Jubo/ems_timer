@@ -431,8 +431,8 @@ void setup() {
         // STEP 03.01: 設定腳位模式
         pinMode(BTN_PINS[i], INPUT_PULLUP);
 
-        // STEP 03.02: 初始化按鈕狀態快取
-        lastBtnState[i] = HIGH;
+        // STEP 03.02: 讀取實際腳位狀態作為初始值（toggle switch 開機可能已接低）
+        lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
 
     // STEP 04: 初始化 I2C bus
