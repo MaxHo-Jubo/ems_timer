@@ -104,8 +104,8 @@ static const uint8_t MED_GROUP_COUNT = 2;
  * Group 1：其他急救藥物
  */
 static const char* MED_LABELS[MED_GROUP_COUNT][MED_BTN_COUNT] = {
-    { "Epi", "Amio", "Atropine", "Adenosine" },   // Group 0
-    { "Naloxone", "Nitro", "D50", "Morphine"  },   // Group 1
+    { "Epi", "Amio", "D50", "TXA"       },  // Group 0：心肺復甦 + 止血常用
+    { "Atropine", "Adenosine", "Naloxone", "Nitro" },  // Group 1：其他急救藥物
 };
 
 /** 系統按鈕標籤（BTN5~8，選單導航與電源） */
@@ -170,14 +170,14 @@ static const EventConfig MED_CFG[MED_GROUP_COUNT][MED_BTN_COUNT] = {
     {   // Group 0
         { TIMER_DOWN, 300, 60 },  // Epi：ACLS 每 3~5 分鐘，倒數 5 分鐘
         { TIMER_UP,   0,   0  },  // Amio：正數計時
-        { TIMER_DOWN, 300, 60 },  // Atropine：每 3~5 分鐘，倒數 5 分鐘
-        { TIMER_UP,   0,   0  },  // Adenosine：正數計時
+        { TIMER_UP,   0,   0  },  // D50：正數計時
+        { TIMER_UP,   0,   0  },  // TXA：正數計時
     },
     {   // Group 1
-        { TIMER_UP, 0, 0 },  // Naloxone
-        { TIMER_UP, 0, 0 },  // Nitro
-        { TIMER_UP, 0, 0 },  // D50
-        { TIMER_UP, 0, 0 },  // Morphine
+        { TIMER_DOWN, 300, 60 },  // Atropine：每 3~5 分鐘，倒數 5 分鐘
+        { TIMER_UP,   0,   0  },  // Adenosine：正數計時
+        { TIMER_UP,   0,   0  },  // Naloxone：正數計時
+        { TIMER_UP,   0,   0  },  // Nitro：正數計時
     },
 };
 
