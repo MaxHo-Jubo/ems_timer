@@ -30,9 +30,9 @@
 | BTN2 | 5 | Amio（胺碘酮） | Nitro | 正數 |
 | BTN3 | 6 | Atropine（阿托品） | D50 | 倒數 5 分鐘 |
 | BTN4 | 7 | Adenosine（腺苷） | Morphine | 正數 |
-| BTN5 | 15 | Menu（待實作） | — | — |
-| BTN6 | 16 | Next（待實作） | — | — |
-| BTN7 | 17 | Prev（待實作） | — | — |
+| BTN5 | 15 | Menu（開啟選單 / 確認群組切換） | — | — |
+| BTN6 | 16 | Next（選單游標向下） | — | — |
+| BTN7 | 17 | Prev（選單游標向上） | — | — |
 | BTN8 | 18 | Power（待實作） | — | — |
 
 ## BLE 通訊協定
