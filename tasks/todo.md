@@ -75,7 +75,15 @@
   - [ ] 接收 Notify 即時更新時間軸
   - [ ] SQLite 本地歷史儲存
   - [ ] App 分發策略（TestFlight / 自架 APK 等，細節留存於舊版 todo）
-  - [ ] **按鈕設定編輯**：App 可編輯各按鈕的計時配置（label / mode / duration / interval），透過 BLE `config` 命令推送至 ESP32
+  - [ ] **按鈕設定編輯**：App 可編輯 BTN1~4 兩組群組的計時配置，透過 BLE `config` 命令推送至 ESP32
+    - 可設定項目：
+      - `label`：藥物名稱（自訂顯示文字）
+      - `mode`：計時模式（`up` 正數 / `down` 倒數）
+      - `duration`：倒數總時長（秒，`up` 模式忽略）
+      - 蜂鳴器觸發條件（可複選）：
+        - `beep_on_expire`：計時結束時嗶聲
+        - `beep_interval`：固定區間提醒（每 N 秒嗶一聲）
+        - `beep_at`：指定時間點提醒（倒數剩 N 秒時嗶）
     - ESP32 端用 `Preferences`（NVS）持久化，重開機不遺失
     - 不需要 OTA，純資料層操作
 
