@@ -636,11 +636,9 @@ void handleSysButton(uint8_t sysIdx) {
             }
             break;
 
-        case 3:  // BTN8 Power — 嗶兩聲後進入 deep sleep（按 Reset 喚醒）
-            Serial.println("[SYS] Power - entering deep sleep");
-            triggerBeep(2, 200, 200);
-            delay(900);  // 等蜂鳴完畢（2 × (200+200) = 800ms，留 100ms 緩衝）
-            esp_deep_sleep_start();
+        case 3:  // BTN8 Power — 待實作（長按偵測機制確認後再啟用 deep sleep）
+            // esp_deep_sleep_start() 暫時停用，toggle switch 會誤觸
+            Serial.println("[SYS] Power - not implemented");
             break;
 
         default:
