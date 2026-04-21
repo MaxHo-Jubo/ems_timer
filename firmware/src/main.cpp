@@ -603,7 +603,16 @@ void handleSysButton(uint8_t sysIdx) {
     switch (sysIdx) {
         case 0:  // BTN5 Menu / Confirm
             if (menuState == MENU_NONE) {
-                // STEP 01.01: 開啟選單，游標定位到目前群組
+                // STEP 01.01: 若有進行中的藥物計時，先封存中斷時間點
+                if (activeEventRecordIdx >= 0 && sessionStarted) {
+                    uint32_t now = millis();
+                    events[activeEventRecordIdx].elapsed_end_ms = now - sessionStartMs;
+                    Serial.print("[TIMER] interrupted by Menu at ");
+                    Serial.print(events[activeEventRecordIdx].elapsed_end_ms);
+                    Serial.println("ms");
+                }
+
+                // STEP 01.02: 開啟選單，游標定位到目前群組
                 menuState  = MENU_OPEN;
                 menuCursor = currentMedGroup;
                 menuOpenMs = millis();
