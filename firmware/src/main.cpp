@@ -32,6 +32,9 @@
 #include <LittleFS.h>
 #include <esp_sleep.h>
 
+// 純邏輯函式（抽出至 lib/ems_logic 供 native 測試覆蓋）
+#include "ems_time.h"
+
 /** Phase 1.5：INMP441 麥克風，換新模組後改 1 */
 #define ENABLE_MIC_MONITOR 0
 
@@ -916,15 +919,14 @@ void recordEvent(uint8_t eventType, uint8_t source, const char* extra) {
  * @return elapsed ms；尚未開始任務時回傳 0
  */
 uint32_t getTaskElapsedMs() {
-    if (taskStartMs == 0) {
-        return 0;
-    }
-    // STEP 01: 暫停中：回傳暫停前的累計時間
-    if (deviceState == STATE_PAUSE) {
-        return (pauseStartMs - taskStartMs) - totalPausedMs;
-    }
-    // STEP 02: 執行中：即時計算
-    return (millis() - taskStartMs) - totalPausedMs;
+    // Thin wrapper：委派給 lib/ems_logic/ems_time.h 的純函式（便於 native 測試覆蓋）
+    return ems::computeTaskElapsedMs(
+        millis(),
+        taskStartMs,
+        pauseStartMs,
+        totalPausedMs,
+        (uint8_t)deviceState
+    );
 }
 
 // ============================================================
