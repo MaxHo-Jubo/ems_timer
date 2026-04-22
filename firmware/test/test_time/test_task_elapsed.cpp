@@ -63,21 +63,23 @@ static void test_end_state_same_formula_as_running() {
         computeTaskElapsedMs(6000, 1000, 0, 0, STATE_END));
 }
 
-/** 多段暫停累積驗證：模擬 t=0 起跑、10s PAUSE→20s RESUME→25s PAUSE→30s RESUME→35s PAUSE */
+/** 多段暫停累積驗證：task 從 t=1 起跑（避開 taskStartMs=0 的 early return）
+ *  情境：跑 10s → 暫停 5s → 跑 10s → 暫停 3s → 跑 5s → 暫停 */
 static void test_multiple_pause_segments() {
-    // 情境：task=0 開始
-    // t=10s PAUSE (pauseStart=10s, totalPaused=0) → elapsed=10
+    // 第一次 PAUSE：task=1, pauseStart=10001 (跑了 10000ms), totalPaused=0
+    //   預期 elapsed = 10001 - 1 - 0 = 10000
     TEST_ASSERT_EQUAL_UINT32(10000,
-        computeTaskElapsedMs(99999, 0 + 1, 10000, 0, STATE_PAUSE));
+        computeTaskElapsedMs(99999, 1, 10001, 0, STATE_PAUSE));
 
-    // 但 taskStart=0 代表未開始 → 強制用 taskStart=1 測試
-    // 第二段 PAUSE：pauseStart=25s, totalPaused=10s（第一段 10s），task=1 → elapsed=25-1-10=14
-    TEST_ASSERT_EQUAL_UINT32(14,
-        computeTaskElapsedMs(99999, 1, 25, 10, STATE_PAUSE));
+    // 第二次 PAUSE：task=1, pauseStart=25001 (前跑 10s + 暫停 5s + 再跑 10s), totalPaused=5000
+    //   預期 elapsed = 25001 - 1 - 5000 = 20000（累計兩段運行時間 10+10）
+    TEST_ASSERT_EQUAL_UINT32(20000,
+        computeTaskElapsedMs(99999, 1, 25001, 5000, STATE_PAUSE));
 
-    // 第三段 PAUSE：pauseStart=35s, totalPaused=15（前兩段 10+5），task=1 → elapsed=35-1-15=19
-    TEST_ASSERT_EQUAL_UINT32(19,
-        computeTaskElapsedMs(99999, 1, 35, 15, STATE_PAUSE));
+    // 第三次 PAUSE：task=1, pauseStart=33001 (再暫停 3s + 跑 5s), totalPaused=8000 (5000+3000)
+    //   預期 elapsed = 33001 - 1 - 8000 = 25000（累計運行 10+10+5）
+    TEST_ASSERT_EQUAL_UINT32(25000,
+        computeTaskElapsedMs(99999, 1, 33001, 8000, STATE_PAUSE));
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
