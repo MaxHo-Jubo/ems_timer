@@ -201,6 +201,9 @@ static const uint32_t FLASH_PERIOD_MS = 500;
 /** OLED 整螢幕反色閃爍時長（ms，取代震動作為強提醒視覺回饋） */
 static const uint16_t OLED_INVERT_FLASH_MS = 200;
 
+/** END 狀態顯示時長：任務結束畫面停留多久後自動回 IDLE（ms） */
+static const uint32_t END_DISPLAY_MS = 2000;
+
 /** OLED 節流更新間隔（ms） */
 static const uint32_t DISPLAY_UPDATE_INTERVAL_MS = 250;
 
@@ -281,8 +284,10 @@ static uint16_t beepOnMs            = 0;
 static uint16_t beepOffMs           = 0;
 
 // --- OLED 整螢幕反色閃爍 SM（取代震動的強提醒視覺效果） ---
-static bool     oledInverted       = false;  // 目前是否處於反色狀態
-static uint32_t oledInvertEndMs    = 0;      // 反色結束時間點（0 = 未啟用）
+// 使用 start + duration 而非 end time 避免 millis() 接近 UINT32_MAX 時的 overflow
+static bool     oledInverted        = false;  // 目前是否處於反色狀態
+static uint32_t oledInvertStartMs   = 0;      // 反色起點（每次觸發更新）
+static uint16_t oledInvertDurationMs = 0;     // 反色持續時長（ms）
 
 // --- OLED 節流 ---
 static uint32_t lastDisplayUpdateMs = 0;
@@ -320,6 +325,7 @@ void handleButtons();
 void checkLongPresses();
 void onShortPress(uint8_t btnIdx);
 void onLongPress(uint8_t btnIdx);
+void switchMode(int8_t delta);
 void transitionState(DeviceState newState);
 void recordEvent(uint8_t eventType, uint8_t source, const char* extra = "");
 uint32_t getTaskElapsedMs();
@@ -507,7 +513,7 @@ void loop() {
     if (deviceState == STATE_END) {
         if (endEnteredMs == 0) {
             endEnteredMs = millis();
-        } else if (millis() - endEnteredMs >= 2000) {
+        } else if (millis() - endEnteredMs >= END_DISPLAY_MS) {
             // STEP 06.01: 清除所有按鍵持續狀態（btnLongFired=true 等放開重置）
             for (uint8_t i = 0; i < BTN_COUNT; i++) {
                 btnPressStartMs[i] = 0;
@@ -605,17 +611,18 @@ void handleButtons() {
  * 主迴圈每次呼叫，確認是否有按鈕持續按住超過長按門檻
  */
 void checkLongPresses() {
-    // STEP 00: END 狀態期間忽略所有長按觸發（等待使用者放開 + 自動回 IDLE）
+    // STEP 01: END 狀態期間忽略所有長按觸發（等待使用者放開 + 自動回 IDLE）
     if (deviceState == STATE_END) {
         return;
     }
     uint32_t now = millis();
+    // STEP 02: 逐顆按鍵檢查是否到長按門檻
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
-        // STEP 01: 已觸發或尚未按下 → 跳過
+        // STEP 02.01: 已觸發或尚未按下 → 跳過
         if (btnPressStartMs[i] == 0 || btnLongFired[i]) {
             continue;
         }
-        // STEP 02: 到達長按門檻 → 觸發一次
+        // STEP 02.02: 到達長按門檻 → 觸發一次
         if (now - btnPressStartMs[i] >= LONG_PRESS_MIN_MS) {
             btnLongFired[i] = true;
             Serial.printf("[BTN %u] LONG fired (held=%ums)\n",
@@ -628,6 +635,34 @@ void checkLongPresses() {
 // ============================================================
 // 按鍵語意（2A + 2B + 2D）
 // ============================================================
+
+/**
+ * 切換操作模式 helper（消除 BTN_UP / BTN_DOWN 邏輯重複）
+ * 含 MED countdown 進出場管理：切離 MED 清倒數狀態，切入 MED + RUNNING 重啟倒數
+ * @param delta 方向：-1 = UP（反向循環），+1 = DOWN（正向循環）
+ */
+void switchMode(int8_t delta) {
+    // STEP 01: 保存舊模式、計算新模式（+ MODE_COUNT 避免負數取模）
+    OperationMode oldMode = currentMode;
+    currentMode = (OperationMode)(((int)currentMode + MODE_COUNT + delta) % MODE_COUNT);
+
+    // STEP 02: 回饋
+    Serial.print("[MODE] → ");
+    Serial.println(MODE_LABELS[currentMode]);
+    triggerBeep(SHORT_BEEP_PULSES, 60, 0);
+
+    // STEP 03: 切離 MED → 清除倒數狀態
+    if (oldMode == MODE_MED && currentMode != MODE_MED) {
+        medCountdownStartMs       = 0;
+        medReminderActive         = false;
+        medOneMinWarningTriggered = false;
+    }
+    // STEP 04: 切入 MED 且任務進行中 → 重啟倒數
+    if (currentMode == MODE_MED && oldMode != MODE_MED &&
+        deviceState == STATE_RUNNING) {
+        startMedCountdown();
+    }
+}
 
 /**
  * 短按事件處理（< 1500ms，放開時觸發）
@@ -683,22 +718,8 @@ void onShortPress(uint8_t btnIdx) {
                 drugMenuCursor = (drugMenuCursor + DRUG_COUNT - 1) % DRUG_COUNT;
                 drugMenuOpenMs = millis();  // 重置超時
             } else if (deviceState == STATE_IDLE || deviceState == STATE_RUNNING) {
-                // STEP 02.02: 模式上一項
-                OperationMode oldMode = currentMode;
-                currentMode = (OperationMode)((currentMode + MODE_COUNT - 1) % MODE_COUNT);
-                Serial.print("[MODE] → ");
-                Serial.println(MODE_LABELS[currentMode]);
-                triggerBeep(SHORT_BEEP_PULSES, 60, 0);
-                // STEP 02.03: 切離 MED → 清除倒數；切入 MED + RUNNING → 重啟倒數
-                if (oldMode == MODE_MED && currentMode != MODE_MED) {
-                    medCountdownStartMs       = 0;
-                    medReminderActive         = false;
-                    medOneMinWarningTriggered = false;
-                }
-                if (currentMode == MODE_MED && oldMode != MODE_MED &&
-                    deviceState == STATE_RUNNING) {
-                    startMedCountdown();
-                }
+                // STEP 02.02: 模式切換 -1（MED → SET → CUST → VENT → MED 反向）
+                switchMode(-1);
             }
             break;
 
@@ -709,22 +730,8 @@ void onShortPress(uint8_t btnIdx) {
                 drugMenuCursor = (drugMenuCursor + 1) % DRUG_COUNT;
                 drugMenuOpenMs = millis();
             } else if (deviceState == STATE_IDLE || deviceState == STATE_RUNNING) {
-                // STEP 03.02: 模式下一項
-                OperationMode oldMode = currentMode;
-                currentMode = (OperationMode)((currentMode + 1) % MODE_COUNT);
-                Serial.print("[MODE] → ");
-                Serial.println(MODE_LABELS[currentMode]);
-                triggerBeep(SHORT_BEEP_PULSES, 60, 0);
-                // STEP 03.03: 切離 MED → 清除倒數；切入 MED + RUNNING → 重啟倒數
-                if (oldMode == MODE_MED && currentMode != MODE_MED) {
-                    medCountdownStartMs       = 0;
-                    medReminderActive         = false;
-                    medOneMinWarningTriggered = false;
-                }
-                if (currentMode == MODE_MED && oldMode != MODE_MED &&
-                    deviceState == STATE_RUNNING) {
-                    startMedCountdown();
-                }
+                // STEP 03.02: 模式切換 +1（MED → VENT → CUST → SET → MED 正向）
+                switchMode(+1);
             }
             break;
 
@@ -1037,7 +1044,8 @@ void updateBeepMachine() {
 /**
  * 觸發 OLED 整螢幕反色閃爍一次
  * 非阻塞：反色指令透過 I2C 立即送出，到期由 updateOledFlashMachine() 還原
- * 重複呼叫會延長反色時長至最新的結束時間
+ * 重複呼叫會從呼叫當下重新計時 durationMs（覆蓋先前起點），適合連續提醒場景
+ * 使用 elapsed 比較避免 millis() 接近 UINT32_MAX 時 end-time 加法 overflow
  * @param durationMs 反色持續時長（ms）
  */
 void triggerOledFlash(uint16_t durationMs) {
@@ -1046,12 +1054,14 @@ void triggerOledFlash(uint16_t durationMs) {
         display.invertDisplay(true);
         oledInverted = true;
     }
-    // STEP 02: 設定/延長結束時間點
-    oledInvertEndMs = millis() + durationMs;
+    // STEP 02: 記錄起點與時長（每次觸發重新計時）
+    oledInvertStartMs    = millis();
+    oledInvertDurationMs = durationMs;
 }
 
 /**
  * 每個 loop cycle 檢查反色是否到期，到期則恢復正常顯示
+ * elapsed = millis() - oledInvertStartMs 對 UINT32_MAX 自動 wrap，免 overflow
  */
 void updateOledFlashMachine() {
     // STEP 01: 未反色 → 跳過
@@ -1059,7 +1069,7 @@ void updateOledFlashMachine() {
         return;
     }
     // STEP 02: 到期 → 恢復正常顯示
-    if (millis() >= oledInvertEndMs) {
+    if ((uint32_t)(millis() - oledInvertStartMs) >= oledInvertDurationMs) {
         display.invertDisplay(false);
         oledInverted = false;
     }
