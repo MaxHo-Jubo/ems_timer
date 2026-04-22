@@ -221,6 +221,66 @@
 
 當前為有段式 toggle（按到底鎖定，沒按到底回彈），連續長按測試不便。待換 tactile momentary 後重跑：P0-6/7、P1-4/5、P2-7/8、P3-3/5/6/7、P4-2/3/5/6/8、P5-4。
 
-### 後續修改（未 commit）
+### 後續修改（已 commit）
 
-- `firmware/src/main.cpp`：OLED 反色閃爍（非阻塞 SM）+ 按鍵 debug log + END 邊界修 + P5-6 修
+本 session 的 commit（push 完成）：
+- `95d7511` fix: END 邊界誤觸 + 切模式 MED 倒數 bug
+- `b09ed2c` refactor: 套用 PR review 5 項 MINOR/INFO
+- `eed7fb1` feat: Phase 1 單元測試框架（computeTaskElapsedMs）
+- `38ea2cb` test: 修正 computeTaskElapsedMs 多段暫停測試預期值
+- `12fa47b` docs: Source of Truth 架構 + gap-analysis 對齊 Phase 2A~2E+3A
+- `4fcfb36` feat: Phase 2 單元測試 Step A — MedCountdownDecision
+
+---
+
+# Phase 2 單元測試進度（2026-04-22）
+
+依 `tasks/unit-test-plan.md` 分 3 phase；對齊 PM 規格 `docs/pm-dev-spec.md §4.2` 要求。
+
+## Phase 1 — 低成本抽離 ✅ 完成
+
+- [x] **computeTaskElapsedMs**（`lib/ems_logic/ems_time`）— 9/9 tests 綠
+  - 注意：`elapsed_ms` 是韌體擴充欄位，**不在 PM 規格條款中**（見 `docs/gap-analysis.md` §A）
+  - 已加 Source-of-Truth 註解於 `ems_time.h` 與 `test_task_elapsed.cpp`
+
+## Phase 2 — 中度重構（進行中）
+
+### MedCountdownDecision — Step A ✅ 完成（commit `4fcfb36`）
+
+- [x] 新增 `lib/ems_logic/ems_countdown.h/cpp` — `decideMedCountdownAction()` 純函式
+- [x] 新增 `test/test_countdown/test_med_countdown.cpp` — 12 tests 全綠
+- [x] 對應 PM 規格 §4.2「4 分鐘給藥高提醒 ±50ms」
+
+### MedCountdownDecision — Step B ⏳ 待處理（下次實機驗證時做）
+
+- [ ] 修改 `main.cpp` 的 `updateMedCountdown()` 為 thin wrapper
+  - 呼叫 `ems::decideMedCountdownAction()` 取得 action
+  - 依 `fireWarn1Min` / `fireReminderStart` / `fireReminderRepeat` 三旗標執行 side effect：
+    - `triggerBeep(MIN1_BEEP_PULSES, MIN1_BEEP_ON_MS, MIN1_BEEP_OFF_MS)` + `Serial.println("[MED] 1-min warning")`
+    - `recordEvent(EVT_MEDICATION, SRC_SYSTEM, "reminder")` + `triggerBeep(EXPIRE_*)` + `triggerOledFlash` + `Serial.println("[MED] 240s expired...")`
+    - `triggerBeep(EXPIRE_*)` + `triggerOledFlash` + `Serial.println("[MED] reminder repeat")`
+  - 呼叫後 set 狀態：`medOneMinWarningTriggered=true` / `medReminderActive=true`, `lastReminderBeepMs=now` / `lastReminderBeepMs=now`
+- [ ] **實機驗證**：跑一次完整 MED 4 分鐘倒數流程（P2-2~P2-6），確認無 regression
+  - 剩 60 秒時 2 短嗶
+  - 歸零時 3 嗶 + OLED 反色 + `GIVE MED!` 閃爍
+  - 30 秒後重複提醒
+  - 短按 BTN0 確認給藥，倒數重置
+
+### 其他 Phase 2 候選（尚未排期）
+
+- [ ] `computePauseCorrection`（抽自 `transitionState` PAUSE→RUNNING 的補正數學）
+- [ ] `recordEvent` 欄位組裝（MAX_EVENTS 上限、event_id 遞增、extra_data 截斷）
+- [ ] `cycleMode` / `nextCursor` / `prevCursor`（低難度純取模，可順便補）
+
+## Phase 3 — 高風險（未排期）
+
+- [ ] `ButtonFsm` 抽成 class（debounce + 長短按分類）
+- [ ] `transitionState` 純化（side effect 外移）
+- [ ] `VentMetronome` 6 秒節拍器（PM §4.2 要求，韌體尚未實作，待 PM 確認定位）
+
+## 環境與工具現況
+
+- PlatformIO `[env:native]` 已設（`platform=native`, `test_framework=unity`, `build_src_filter=-<*>`）
+- Unity 2.6.1 已自動下載
+- 測試目錄結構：`firmware/test/test_time/` + `firmware/test/test_countdown/`
+- 執行：`pio test -e native -d firmware`（跑全部）或 `-f test_time` / `-f test_countdown`（指定）
