@@ -127,3 +127,100 @@
 - 主控：ESP32-S3-DevKitC-1（從早期 ESP32 WROOM-32 仿製板升級）
 - 按鈕：目前為開關式（toggle），未來改單行程（tactile momentary）
 - 共地：所有按鈕 GND 接同一軌
+
+---
+
+# Phase 2A~2E+3A 實機煙霧測試清單（2026-04-22）
+
+基於 `firmware/src/main.cpp` 實際程式碼（commit `ee5b3d7` + OLED 反色閃爍 + 按鍵 debug log）。
+
+**索引**：BTN 0=PRIMARY(GPIO4)、1=UP(GPIO5)、2=DOWN(GPIO6)、3=POWER(GPIO7)、4=RECORD(GPIO15)
+**模式循環**：MED → VENT → CUST → SET → MED
+**狀態碼**：0=IDLE、1=RUNNING、2=PAUSE、3=END
+**關鍵常數**：SHORT<1500ms、LONG>=2000ms、1500~2000ms=GRAY、MED 倒數 240s、剩 60s 警示、到時每 30s 重複、END 停 2s 自動回 IDLE、選單 8s timeout
+
+## P0 開機與基本輸入
+
+- [x] **P0-1 上電** → OLED 顯示 IDLE 畫面；Serial BOOT + /sessions 掃描
+- [x] **P0-2 BTN0 快按放** → SHORT log，IDLE 下 noop
+- [x] **P0-3 BTN0 按 1.7 秒放** → GRAY ignored，狀態不變
+- [x] **P0-4 BTN0 按 2.5 秒放** → LONG fired → IDLE→RUNNING，MED countdown 啟動
+- [x] **P0-5 BTN1/BTN2 短按** → 模式循環 MED↔SET↔CUST↔VENT（P5-6 測試中驗證）
+- [ ] **P0-6 BTN3 短/長按** — 待 tactile 按鍵
+- [ ] **P0-7 BTN4 短/長按** — 待 tactile 按鍵
+
+## P1 狀態機四態轉換
+
+- [x] **P1-1 RUNNING → PAUSE**：BTN0 單次長按通過
+- [x] **P1-2 PAUSE 短按繼續**：驗證通過
+- [x] **P1-3 PAUSE 長按結束**：單次長按 PAUSE→END→自動回 IDLE 通過（修復 END 鎖死 bug 後）
+- [ ] **P1-4 暫停時間補正** — 待 tactile 按鍵（需連續長按串流）
+- [ ] **P1-5 BTN1/BTN2 在 PAUSE 下無反應** — 待 tactile 按鍵
+
+## P2 模式切換與 MED 倒數
+
+- [x] **P2-1 模式循環**：MED↔SET↔CUST↔VENT 四擋循環通過
+- [x] **P2-2 MED 倒數啟動**：`[MED] 240s countdown start/reset` 通過
+- [x] **P2-3 剩 60 秒警示**：Serial + 2 短嗶（聽覺確認通過）
+- [x] **P2-4 倒數歸零**：3 嗶 + OLED 整螢幕反色 200ms + `GIVE MED!` 閃爍（全部確認通過）
+- [x] **P2-5 每 30 秒重複**：log + 3 嗶 + 反色通過
+- [x] **P2-6 BTN0 短按確認給藥**：extra="epi" + countdown 重置 + 1 短嗶通過
+- [ ] **P2-7 VENT 短按** — 快測項，待 tactile 或下次
+- [ ] **P2-8 CUST 短按** — 同上
+
+## P3 藥物選單（Phase 2E）
+
+- [x] **P3-1 BTN0 短按開選單**：log + 游標在 Amiodarone 通過
+- [x] **P3-2 BTN2 游標**：部分驗證（Atropine 被記錄）
+- [ ] **P3-3 BTN1 游標反向循環** — 待補測
+- [x] **P3-4 BTN0 短按確認**：`[DRUG] recorded: Atropine` + EVT 通過
+- [ ] **P3-5 選單 8 秒 timeout** — 待補測
+- [ ] **P3-6 上/下鍵重置 timeout** — 待補測
+- [ ] **P3-7 選單開啟時進 PAUSE** — 待 tactile 按鍵
+
+## P4 事件紀錄 + LittleFS（Phase 3A）
+
+- [x] **P4-1 任務存檔**：`[FS] saved: /sessions/15.json` 通過
+- [ ] **P4-2 重開機掃描** — 待補測（簡單，1 分鐘）
+- [ ] **P4-3 JSON 結構** — 需要 BLE dump 或 LittleFS uploader
+- [x] **P4-4 event_id 連續遞增**：log 觀察 id=1,2,3,4... 通過
+- [ ] **P4-5 source 分類** — 需要看 JSON
+- [ ] **P4-6 mode 欄位** — 需要看 JSON
+- [x] **P4-7 extra_data**：Atropine、epi 均正確寫入
+- [ ] **P4-8 容量 > 100 筆** — 待補測（需大量按鍵，等 tactile）
+
+## P5 邊界與穩定性
+
+- [x] **P5-1 Debounce**：多次 `debounce reject` 正常運作
+- [x] **P5-2 灰色地帶**：多次 `GRAY (ignored)` 通過
+- [x] **P5-3 長按半途放開**：GRAY 不觸發 LONG 通過
+- [ ] **P5-4 雙鍵同時** — 待 tactile
+- [x] **P5-5 長任務 > 5 分鐘**：實測跑 > 500 秒 mm:ss 顯示正確
+- [x] **P5-6 倒數中切模式**（修復後）：切離 MED 清 countdown、切回 MED 重啟通過
+- [x] **P5-7 PAUSE 中 MED 倒數順延**：補正邏輯通過（240023ms 到時）
+- [x] **P5-8 END 期間按鍵**（修復後）：2 秒自動切 IDLE 不被鎖死
+
+## Review
+
+### 2026-04-22 測試通過項
+
+- **P0-1~P0-5**（P0-6/7 待 tactile）
+- **P1-1~P1-3**（P1-4/5 待 tactile）
+- **P2-1~P2-6**（P2-7/8 待補測）
+- **P3-1, P3-2, P3-4**（其他待補測或 tactile）
+- **P4-1, P4-4, P4-7**（P4-2/3/5/6/8 待補測）
+- **P5-1, P5-2, P5-3, P5-5, P5-6, P5-7, P5-8**（P5-4 待 tactile）
+
+### Session 中修復的 bug
+
+1. **END 跨狀態邊界誤觸**：PAUSE 長按觸發 PAUSE→END 後，若使用者繼續按或快速再按，2 秒後 END→IDLE 自動切換時會被當成 IDLE 的長按觸發 IDLE→RUNNING。修法：END 2 秒到自動切 IDLE 時清除所有按鍵 `btnPressStartMs` 並設 `btnLongFired=true`，使用者放開時以 `RELEASE (long already fired)` 重置。
+2. **END 鎖死**：前一版修法要求「所有按鍵放開」才切 IDLE，toggle 下使用者持續操作無 2 秒空窗則永遠切不出 END。改回 2 秒直接切 + 清按鍵狀態。
+3. **P5-6 切模式 countdown 不重置**：MED 倒數中切其他模式後切回 MED，會繼續用舊 `medCountdownStartMs`（切離的時間被算進倒數）。修法：切離 MED 時清 `medCountdownStartMs=0, medReminderActive=false, medOneMinWarningTriggered=false`；切入 MED + RUNNING 時呼叫 `startMedCountdown()`。
+
+### 按鈕硬體註記
+
+當前為有段式 toggle（按到底鎖定，沒按到底回彈），連續長按測試不便。待換 tactile momentary 後重跑：P0-6/7、P1-4/5、P2-7/8、P3-3/5/6/7、P4-2/3/5/6/8、P5-4。
+
+### 後續修改（未 commit）
+
+- `firmware/src/main.cpp`：OLED 反色閃爍（非阻塞 SM）+ 按鍵 debug log + END 邊界修 + P5-6 修
