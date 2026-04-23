@@ -10,10 +10,12 @@
 
 本專案文件分層，越上層越權威；底層文件不得與上層衝突。
 
+**兩份 PM 規格文件採職責邊界分離（2026-04-23 整合，方案 B）**：`pm-flow-spec.md` 管使用者可感知的行為；`pm-dev-spec.md` 管工程實作常數與型別。當兩份在同一主題上有衝突時，以各節標註的 **SoT** 為準。
+
 | 優先 | 層級 | 文件 | 說明 |
 |:---:|------|------|------|
-| 1 | 業務 / 行為規格 | [`docs/pm-flow-spec.md`](docs/pm-flow-spec.md) | PM 工程版流程文件 — 任務生命週期、按鍵語意、節律提醒、資料流程 |
-| 1 | 業務 / 行為規格 | [`docs/pm-dev-spec.md`](docs/pm-dev-spec.md) | PM 工程開發規格（Firmware / App / Backend 三層） |
+| 1a | 行為規格 | [`docs/pm-flow-spec.md`](docs/pm-flow-spec.md) | 產品行為規格 — 啟動流程、狀態轉換、按鍵互動（含秒數 / 精度）、硬體模組清單（**SoT**：§7 硬體模組） |
+| 1b | 工程實作規格 | [`docs/pm-dev-spec.md`](docs/pm-dev-spec.md) | 工程實作規格 — timing 常數、C struct、GATT Service、SQL schema、REST API、FreeRTOS Task 分工（**SoT**：§3 狀態機 timing、§4.2 節律精度、§4.3 按鍵常數、§4.5 event_t、§4.6 GATT）|
 | 2 | 差距分析 | [`docs/gap-analysis.md`](docs/gap-analysis.md) | PM 規格 vs 當前韌體實作的差距盤點 |
 | 2 | 執行計畫 | [`docs/incremental-impl-plan.md`](docs/incremental-impl-plan.md) | 對齊 PM 規格的增量實作計畫 |
 | 3 | AI 協作規則 | [`CLAUDE.md`](CLAUDE.md) | Phase 設計決策、資料模型、開發約定 |
@@ -113,8 +115,8 @@
 
 | 層級 | 文件 | 說明 |
 |------|------|------|
-| 1 | [docs/pm-flow-spec.md](docs/pm-flow-spec.md) | PM 工程版流程（權威） |
-| 1 | [docs/pm-dev-spec.md](docs/pm-dev-spec.md) | PM 工程開發規格（權威） |
+| 1a | [docs/pm-flow-spec.md](docs/pm-flow-spec.md) | PM 行為規格（流程 / 互動 / 硬體模組） |
+| 1b | [docs/pm-dev-spec.md](docs/pm-dev-spec.md) | PM 工程實作規格（常數 / 型別 / API / schema） |
 | 2 | [docs/gap-analysis.md](docs/gap-analysis.md) | PM 規格 vs 現況差距 |
 | 2 | [docs/incremental-impl-plan.md](docs/incremental-impl-plan.md) | 增量實作計畫 |
 | 3 | [CLAUDE.md](CLAUDE.md) | 專案規則 / Phase 設計決策 |

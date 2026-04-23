@@ -1,4 +1,35 @@
-# EMS DoseSync 工程開發規格（拆分版）
+# EMS DoseSync 工程實作規格
+
+版本：v1.1
+日期：2026/04/23
+
+---
+
+## 📘 本文件定位
+
+**本文件管什麼：**
+- 工程實作細節：MCU 型號、RTOS、Task 分工、C struct 型別與 bytes
+- **timing 常數**（`SHORT_PRESS_MAX_MS = 1500`、`LONG_PRESS_MIN_MS = 2000`、`VERY_LONG_PRESS_MIN_MS = 5000` 等）
+- **精度實作**：節律 ±50ms 的實作方式（RTOS timer / 計時補正）
+- BLE GATT Service / Characteristic / UUID 規格
+- App 功能模組、SQL schema、REST API 端點
+- Phase 開發順序、系統整合架構
+
+**本文件不管什麼：**
+- 使用者可感知的行為描述（啟動流程、狀態轉換、按鍵互動）→ 詳見 `pm-flow-spec.md`
+- 硬體模組清單（電源 / 輸入 / 輸出 / 通訊 / 儲存 / 音訊 / 介面）→ 詳見 `pm-flow-spec.md §7`
+- 主副機 BLE 配對流程 → 詳見 `pm-flow-spec.md §4`
+
+當兩份文件在同一主題上有衝突時，以 **Source of Truth 標註的那一份為準**（每節標示 SoT 歸屬）。
+
+### 版本紀錄
+
+**v1.1（2026-04-23）**：文件整合 — 方案 B（職責邊界分離）
+- 新增頂部「文件定位」聲明
+- §3 狀態機、§4.2 節律引擎、§4.3 按鍵事件、§4.5 event_t、§4.6 BLE Service 明確標示 SoT
+- §4.3 按鍵表加入 timing 常數值（對應韌體 `main.cpp` 宣告）
+
+**v1.0（2026-04-22 及之前）**：PM 初版工程開發規格（拆分版）
 
 ---
 
@@ -14,6 +45,8 @@
 
 - ESP32-S3
 - RTOS：FreeRTOS（建議）
+
+> 硬體模組清單（電源 / 輸入 / 輸出 / 通訊 / 儲存 / 音訊 / 介面）詳見 `pm-flow-spec.md §7`（SoT）。本文件不重複列表，僅在需要實作細節時引用。
 
 ---
 
@@ -32,19 +65,29 @@
 
 ---
 
-### 3. 狀態機設計
+### 3. 狀態機設計（**SoT**：timing 常數與轉換規則的權威來源）
 
 ```
 IDLE
-  ↓（長按）
-RUNNING
-  ↓（短按）
-PAUSE
-  ↓（短按）
-RUNNING
-  ↓（長按）
-END → IDLE
+  ↓（長按 ≥ 2s）
+RUNNING ─────────────┐
+  ↓（長按 ≥ 2s）      │（超長按 ≥ 5s）
+PAUSE ───────────────┤
+  ↑（長按 ≥ 2s）      ↓
+  └── RUNNING         END → IDLE（END_DISPLAY_MS = 2000ms 後自動返回）
 ```
+
+**Timing 常數**（對應 `firmware/src/main.cpp`）：
+- `SHORT_PRESS_MAX_MS = 1500`
+- `LONG_PRESS_MIN_MS = 2000`
+- `VERY_LONG_PRESS_MIN_MS = 5000`
+- 1500~1999ms 為**灰色地帶**（既非短按也非長按），直接忽略
+- 長按採 **fire-on-release** 模式（放開才結算 action），避免 5s 超長按觸發前誤轉狀態
+
+> 2026-04-23 PM 確認：
+> - **長按（≥ 2s）**：IDLE↔RUNNING↔PAUSE 之間循環切換（與 `pm-flow-spec.md §3` 一致）
+> - **超長按（≥ 5s）**：RUNNING 或 PAUSE 直接結束任務（→ END → IDLE）
+> - 兩段式長按設計避免救護現場誤觸結束正在進行中的任務
 
 ---
 
@@ -56,25 +99,56 @@ END → IDLE
 - 計時器（毫秒級）
 - 任務狀態保存
 
-#### 4.2 節律提醒引擎
+#### 4.2 節律提醒引擎（**SoT**：精度規格與實作常數的權威來源）
 
-- 6秒節拍（CPR節律）
-- 4分鐘高提醒（給藥）
+- **6 秒節拍（CPR 節律）— 僅通氣模式啟用**（PM 2026-04-23 確認）
+- **4 分鐘高提醒（給藥）— 僅給藥模式啟用**
 
-**需求：**
+**精度需求：**
 
-- 誤差 < ±50ms
-- 可切換模式（通氣 / 給藥）
+- 節拍/倒數誤差 < ±50ms
+- 可切換模式（通氣 / 給藥），模式切換時節拍器停止並重置
 
-#### 4.3 按鍵事件處理
+**實作常數**（對應 `firmware/lib/ems_logic/ems_countdown.h`）：
+- `DEFAULT_MED_COUNTDOWN_MS = 240000`（4 分鐘）
+- `DEFAULT_MED_WARN_1MIN_MS = 60000`（剩 1 分鐘中途警示）
+- `DEFAULT_MED_REMINDER_REPEAT_MS = 30000`（到時後每 30 秒重複提醒）
+- VENT 6 秒節拍常數：Phase 2 抽 `VentMetronome` 模組時補齊（見 `docs/gap-analysis.md` Phase 2 待辦）
+
+**實作方式**：純函式 `decideMedCountdownAction()` 決定本 cycle 要觸發的行為，主迴圈執行 side effect（beep / OLED flash / event record）。單元測試見 `firmware/test/test_countdown/test_med_countdown.cpp`。
+
+#### 4.3 按鍵事件處理（**SoT**：timing 常數與判定流程的權威來源）
+
+**Timing 常數**（對應 `firmware/src/main.cpp`）：
+
+| 常數 | 值 | 用途 |
+|------|-----|------|
+| `DEBOUNCE_MS` | 80 | 下降緣 debounce |
+| `SHORT_PRESS_MAX_MS` | 1500 | 短按上限 |
+| `LONG_PRESS_MIN_MS` | 2000 | 長按下限（fire-on-release） |
+| `VERY_LONG_PRESS_MIN_MS` | 5000 | 超長按下限（fire-on-hold，即刻觸發） |
+
+**按鍵行為對照表**：
 
 | 按鍵 | 行為 |
 |------|------|
-| 主鍵短按 | 記錄事件 |
-| 主鍵長按 | 開始/結束 |
-| 上下鍵 | 切模式 |
-| 電源鍵 | 開關機 |
-| 靜音鍵 | 音效控制 |
+| 主鍵短按（< 1500ms） | 記錄事件（依模式：給藥 / 通氣 / 自訂） |
+| 主鍵灰色地帶（1500~1999ms） | 忽略（避免短/長按混淆） |
+| 主鍵長按（2000ms ≤ t < 5000ms） | 狀態循環：IDLE→RUNNING→PAUSE→RUNNING→PAUSE→…（放開時結算） |
+| 主鍵超長按（≥ 5000ms） | 結束任務：RUNNING 或 PAUSE 直接進入 END（即刻觸發） |
+| 上下鍵短按 | 切模式（給藥 / 通氣 / 自訂 / 設定，共 4 種） |
+| 電源鍵 | 短按螢幕亮滅 / 長按開關機 |
+| 錄音鍵長按（≥ 2000ms） | INMP441 錄音啟停，錄音檔存 SD 卡（Phase 1.5 到貨後啟用） |
+
+**實作模式**：
+- 長按採 **fire-on-release**：使用者放開時才根據累計 held 時間分派 short / long / gray
+- 超長按採 **fire-on-hold**：達 5000ms 當下立即 fire，放開時 noop
+- 目的：避免使用者按到 3 秒放棄（實際按超過 2s）時誤觸發 PAUSE，再按 5s 又觸發 END 的雙重事件
+
+> 2026-04-23 PM 確認：
+> - 只提供**錄音鍵**，**無靜音鍵**（原規格靜音鍵條款移除）
+> - **模式 4 種**：給藥 / 通氣 / 自訂 / 設定（對齊 PM 流程圖）
+> - **錄音鍵採長按觸發**（對齊 PM 流程圖），短按目前保留
 
 #### 4.4 資料記錄系統
 
@@ -89,34 +163,41 @@ END → IDLE
 - Wear leveling
 - Fail-safe（斷電保護）
 
-#### 4.5 資料結構（C Struct）
+#### 4.5 資料結構（**SoT**：C struct 欄位、型別、bytes 的權威來源）
 
 ```c
 typedef struct {
     uint32_t event_id;
     uint64_t timestamp;
+    uint32_t elapsed_ms;    // 自任務起點扣除所有暫停後的毫秒數（2026-04-23 PM 採方案 A 正式納入）
     uint8_t  event_type;
     uint8_t  source;
-    uint8_t  device_id;
+    uint8_t  device_id;     // 單機階段固定 0；Phase 3 主副機時區分 0x01 主機 / 0x02 副機
     uint8_t  mode;
     char     extra_data[32];
     uint8_t  sync_flag;
 } event_t;
 ```
 
-#### 4.6 BLE 通訊
+> `elapsed_ms` 為 BLE NUS `dump` 協定承諾的欄位，App 依此繪製時間軸。韌體實作見 `firmware/lib/ems_logic/ems_time.h` `computeTaskElapsedMs()`。
+
+#### 4.6 BLE 通訊（**SoT**：GATT Service 定義的權威來源）
+
+> 主副機**配對與同步流程**（掃描 / 連線 / 心跳）詳見 `pm-flow-spec.md §4`。本節只定義 GATT Service 技術規格。
 
 **Role**
 
 - 主機：Central
 - 副機：Peripheral
 
-**Service 設計**
+**GATT Service 列表**
 
 - Device Info Service
 - Sync Service
 - Command Service
 - Event Upload Service
+
+（Characteristic UUID 與 payload schema 於 Phase 3 主副機實作時補齊。）
 
 #### 4.7 低功耗設計
 
@@ -132,9 +213,9 @@ typedef struct {
 
 ---
 
-## 二、App（行動端規格）
+## 二、App（行動端規格，**SoT**）
 
-> 目標：資料接收、分析、呈現、匯出
+> 目標：資料接收、分析、呈現、匯出。`pm-flow-spec.md §6` 只寫 App 資料流程概觀，實作規格以本節為準。
 
 ---
 
