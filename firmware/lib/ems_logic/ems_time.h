@@ -1,11 +1,11 @@
 // EMS Timer — 純邏輯函式（Time / Pause correction）
 // 不依賴 Arduino.h；可在 native 測試環境直接編譯
 //
-// ⚠️ Source-of-Truth 註記（2026-04-22）
-// 本檔案計算的 elapsed_ms 是韌體擴充欄位，**不在 PM 規格
-// docs/pm-dev-spec.md §4.5 event_t 的原始定義中**，屬於「BLE 協定承諾的欄位」。
-// App 端（EMS DoseSync）依賴此欄位顯示任務時間軸。
-// 詳見 docs/gap-analysis.md 的 elapsed_ms 差異條目。
+// Source-of-Truth 對齊狀態（2026-04-23 更新）
+// elapsed_ms 欄位已於 2026-04-23 由 PM 正式採方案 A 納入 docs/pm-dev-spec.md §4.5
+// event_t 定義中（uint32_t elapsed_ms）。本模組為該欄位的計算權威實作。
+// App 端（EMS DoseSync）依賴此欄位顯示任務時間軸；韌體 / BLE dump / LittleFS
+// 持久化皆以本函式計算結果為準。
 #pragma once
 #include <cstdint>
 

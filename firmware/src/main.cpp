@@ -103,8 +103,11 @@ static const uint16_t DEBOUNCE_MS = 80;
 /** 短按上限：< 1500ms = 短按 */
 static const uint16_t SHORT_PRESS_MAX_MS = 1500;
 
-/** 長按下限：≥ 2000ms = 長按（在持續按住期間觸發，不等放開） */
+/** 長按下限：2000ms ≤ t < 5000ms = 長按（放開時才結算，避免 5s 超長按觸發前誤轉狀態） */
 static const uint16_t LONG_PRESS_MIN_MS  = 2000;
+
+/** 超長按下限：≥ 5000ms = 超長按（持續按住期間立即 fire，RUNNING/PAUSE → END） */
+static const uint16_t VERY_LONG_PRESS_MIN_MS = 5000;
 
 // ============================================================
 // 狀態機（2B）
@@ -246,9 +249,10 @@ Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET_PIN);
 
 // --- 按鈕狀態 ---
 static uint8_t  lastBtnState[BTN_COUNT];
-static uint32_t lastPressMs[BTN_COUNT]     = { 0 };  // 用於 debounce 的上次有效按下時間
-static uint32_t btnPressStartMs[BTN_COUNT] = { 0 };  // 0 = 未按；> 0 = 按下時刻
-static bool     btnLongFired[BTN_COUNT]    = { false };  // 本次按下是否已觸發長按
+static uint32_t lastPressMs[BTN_COUNT]        = { 0 };  // 用於 debounce 的上次有效按下時間
+static uint32_t btnPressStartMs[BTN_COUNT]    = { 0 };  // 0 = 未按；> 0 = 按下時刻
+static bool     btnLongFired[BTN_COUNT]       = { false };  // 本次按下是否已觸發長按（fire-on-release）
+static bool     btnVeryLongFired[BTN_COUNT]   = { false };  // 本次按下是否已觸發超長按（達 5s 即刻 fire，END 觸發用）
 
 // --- 裝置狀態機 ---
 static DeviceState   deviceState = STATE_IDLE;
@@ -328,6 +332,7 @@ void handleButtons();
 void checkLongPresses();
 void onShortPress(uint8_t btnIdx);
 void onLongPress(uint8_t btnIdx);
+void onVeryLongPress(uint8_t btnIdx);
 void switchMode(int8_t delta);
 void transitionState(DeviceState newState);
 void recordEvent(uint8_t eventType, uint8_t source, const char* extra = "");
@@ -510,17 +515,18 @@ void loop() {
     }
 
     // STEP 06: END 狀態滿 2 秒後自動回 IDLE
-    //   切換瞬間清除所有按鍵的持續按住狀態，避免 END→IDLE 邊界被誤觸長按
-    //   即使使用者還按著 toggle，btnLongFired 會擋住新長按 fire，等放開後重置
+    //   切換瞬間清除所有按鍵 btnPressStartMs，讓 release 時邏輯跳過（btnPressStartMs==0）
+    //   使用者仍按著 toggle 不會因下降緣重入（lastBtnState 仍為 LOW）
     static uint32_t endEnteredMs = 0;
     if (deviceState == STATE_END) {
         if (endEnteredMs == 0) {
             endEnteredMs = millis();
         } else if (millis() - endEnteredMs >= END_DISPLAY_MS) {
-            // STEP 06.01: 清除所有按鍵持續狀態（btnLongFired=true 等放開重置）
+            // STEP 06.01: 清除所有按鍵持續狀態，避免 END→IDLE 邊界被當下放開誤觸發任何按鍵事件
             for (uint8_t i = 0; i < BTN_COUNT; i++) {
-                btnPressStartMs[i] = 0;
-                btnLongFired[i]    = true;
+                btnPressStartMs[i]  = 0;
+                btnLongFired[i]     = false;
+                btnVeryLongFired[i] = false;
             }
             endEnteredMs = 0;
             transitionState(STATE_IDLE);
@@ -560,7 +566,13 @@ void loop() {
 // ============================================================
 
 /**
- * 輪詢 5 顆按鈕：偵測下降緣（記錄起點）和上升緣（判斷短按）
+ * 輪詢 5 顆按鈕：偵測下降緣（記錄起點）和上升緣（放開結算）
+ *
+ * 按鍵分派（fire-on-release 模式，2026-04-23 PM 兩段式長按決議）：
+ *   - held < 1500ms                → onShortPress（短按）
+ *   - 1500ms ≤ held < 2000ms        → GRAY 灰色地帶，忽略
+ *   - 2000ms ≤ held < 5000ms        → onLongPress（長按，放開才 fire，避免 5s 前中間轉狀態）
+ *   - held ≥ 5000ms                → onVeryLongPress 已於 checkLongPresses 即時 fire，放開 noop
  */
 void handleButtons() {
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
@@ -570,9 +582,10 @@ void handleButtons() {
         // STEP 01: 下降緣（HIGH → LOW，按下）— debounce 過濾
         if (lastBtnState[i] == HIGH && currentState == LOW) {
             if (now - lastPressMs[i] >= DEBOUNCE_MS) {
-                lastPressMs[i]     = now;
-                btnPressStartMs[i] = now;   // 記錄按下時刻
-                btnLongFired[i]    = false;
+                lastPressMs[i]       = now;
+                btnPressStartMs[i]   = now;   // 記錄按下時刻
+                btnLongFired[i]      = false;
+                btnVeryLongFired[i]  = false;
                 Serial.printf("[BTN %u] PRESS @ %ums\n", i, now);
             } else {
                 Serial.printf("[BTN %u] debounce reject (%ums since last)\n",
@@ -580,30 +593,36 @@ void handleButtons() {
             }
         }
 
-        // STEP 02: 上升緣（LOW → HIGH，放開）— 判斷是否為短按
+        // STEP 02: 上升緣（LOW → HIGH，放開）— 結算 short / long / gray
         if (lastBtnState[i] == LOW && currentState == HIGH) {
-            if (btnPressStartMs[i] > 0 && !btnLongFired[i]) {
+            if (btnPressStartMs[i] > 0) {
                 uint32_t held = now - btnPressStartMs[i];
-                if (held < SHORT_PRESS_MAX_MS) {
-                    // END 狀態忽略短按語意，但仍印 log 方便 debug
-                    if (deviceState == STATE_END) {
-                        Serial.printf("[BTN %u] RELEASE held=%ums -> SHORT (END ignored)\n",
-                                      i, held);
-                    } else {
-                        Serial.printf("[BTN %u] RELEASE held=%ums -> SHORT\n", i, held);
-                        onShortPress(i);
-                    }
+                if (btnVeryLongFired[i]) {
+                    // STEP 02.01: 5s 超長按已於 checkLongPresses 觸發過 END，放開 noop
+                    Serial.printf("[BTN %u] RELEASE held=%ums (very-long already fired)\n",
+                                  i, held);
+                } else if (deviceState == STATE_END) {
+                    // STEP 02.02: END 期間不處理任何按鍵語意（仍印 log 便於 debug）
+                    Serial.printf("[BTN %u] RELEASE held=%ums (END ignored)\n", i, held);
+                } else if (held < SHORT_PRESS_MAX_MS) {
+                    // STEP 02.03: 短按
+                    Serial.printf("[BTN %u] RELEASE held=%ums -> SHORT\n", i, held);
+                    onShortPress(i);
+                } else if (held >= LONG_PRESS_MIN_MS && held < VERY_LONG_PRESS_MIN_MS) {
+                    // STEP 02.04: 長按（2s-5s）放開時結算
+                    btnLongFired[i] = true;
+                    Serial.printf("[BTN %u] RELEASE held=%ums -> LONG\n", i, held);
+                    onLongPress(i);
                 } else {
-                    // 1500ms ~ 2000ms 灰色地帶：忽略
+                    // STEP 02.05: 1500-2000ms 灰色地帶 → 忽略
                     Serial.printf("[BTN %u] RELEASE held=%ums -> GRAY (ignored)\n",
                                   i, held);
                 }
-            } else if (btnLongFired[i]) {
-                Serial.printf("[BTN %u] RELEASE (long already fired)\n", i);
             }
-            // STEP 02.01: 重置按下狀態
-            btnPressStartMs[i] = 0;
-            btnLongFired[i]    = false;
+            // STEP 02.06: 重置按下狀態
+            btnPressStartMs[i]  = 0;
+            btnLongFired[i]     = false;
+            btnVeryLongFired[i] = false;
         }
 
         lastBtnState[i] = currentState;
@@ -611,26 +630,29 @@ void handleButtons() {
 }
 
 /**
- * 主迴圈每次呼叫，確認是否有按鈕持續按住超過長按門檻
+ * 主迴圈每次呼叫，偵測持續按住 5s 以上 → 立即觸發超長按（RUNNING/PAUSE → END）
+ *
+ * 長按（2s-5s）改為 fire-on-release 模式，此函式只負責 5s 超長按的即時 fire，
+ * 確保使用者按到 5s 時立刻結束任務，不用等放開。
  */
 void checkLongPresses() {
-    // STEP 01: END 狀態期間忽略所有長按觸發（等待使用者放開 + 自動回 IDLE）
+    // STEP 01: END 狀態期間忽略所有超長按觸發（等待使用者放開 + 自動回 IDLE）
     if (deviceState == STATE_END) {
         return;
     }
     uint32_t now = millis();
-    // STEP 02: 逐顆按鍵檢查是否到長按門檻
+    // STEP 02: 逐顆按鍵檢查是否到超長按門檻
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
         // STEP 02.01: 已觸發或尚未按下 → 跳過
-        if (btnPressStartMs[i] == 0 || btnLongFired[i]) {
+        if (btnPressStartMs[i] == 0 || btnVeryLongFired[i]) {
             continue;
         }
-        // STEP 02.02: 到達長按門檻 → 觸發一次
-        if (now - btnPressStartMs[i] >= LONG_PRESS_MIN_MS) {
-            btnLongFired[i] = true;
-            Serial.printf("[BTN %u] LONG fired (held=%ums)\n",
+        // STEP 02.02: 到達超長按門檻（5s）→ 立即觸發一次
+        if (now - btnPressStartMs[i] >= VERY_LONG_PRESS_MIN_MS) {
+            btnVeryLongFired[i] = true;
+            Serial.printf("[BTN %u] VERY_LONG fired (held=%ums)\n",
                           i, (uint32_t)(now - btnPressStartMs[i]));
-            onLongPress(i);
+            onVeryLongPress(i);
         }
     }
 }
@@ -707,11 +729,9 @@ void onShortPress(uint8_t btnIdx) {
                     recordEvent(EVT_CUSTOM, SRC_BUTTON);
                     triggerBeep(SHORT_BEEP_PULSES, SHORT_BEEP_ON_MS, 0);
                 }
-            } else if (deviceState == STATE_PAUSE) {
-                // STEP 01.06: 暫停中短按 → 繼續任務
-                transitionState(STATE_RUNNING);
             }
-            // IDLE / END 狀態短按 noop
+            // STEP 01.06: PAUSE / IDLE / END 狀態下主鍵短按 noop
+            //   PAUSE→RUNNING 改由長按 ≥ 2s 觸發（2026-04-23 PM 決議）
             break;
 
         case BTN_UP:
@@ -754,19 +774,23 @@ void onShortPress(uint8_t btnIdx) {
 }
 
 /**
- * 長按事件處理（≥ 2000ms，持續按住時觸發）
+ * 長按事件處理（2s ≤ held < 5s，放開時才 fire — 避免 5s 超長按觸發前誤轉狀態）
+ *
+ * 2026-04-23 PM 決議：長按 2s 用於 IDLE↔RUNNING↔PAUSE 循環，不含 END。
+ * PAUSE→END 改由超長按 5s（見 onVeryLongPress）觸發。
+ *
  * @param btnIdx 按鈕索引
  */
 void onLongPress(uint8_t btnIdx) {
     switch (btnIdx) {
         case BTN_PRIMARY:
-            // STEP 01: 主鍵長按 → 任務狀態轉換
+            // STEP 01: 主鍵長按 → IDLE↔RUNNING↔PAUSE 狀態循環
             if (deviceState == STATE_IDLE) {
                 transitionState(STATE_RUNNING);
             } else if (deviceState == STATE_RUNNING) {
                 transitionState(STATE_PAUSE);
             } else if (deviceState == STATE_PAUSE) {
-                transitionState(STATE_END);
+                transitionState(STATE_RUNNING);
             }
             break;
 
@@ -777,11 +801,35 @@ void onLongPress(uint8_t btnIdx) {
             break;
 
         case BTN_RECORD:
-            // STEP 03: 錄音鍵長按 → 開始/停止錄音（noop 佔位）
+            // STEP 03: 錄音鍵長按 → 開始/停止錄音（INMP441 + SD 卡，Phase 1.5 模組到貨後啟用）
             Serial.println("[RECORD] long press - record toggle (noop)");
             break;
 
         default:
+            break;
+    }
+}
+
+/**
+ * 超長按事件處理（held ≥ 5000ms，持續按住期間立即 fire，不等放開）
+ *
+ * 2026-04-23 PM 決議：超長按 5s 直接結束任務（RUNNING 或 PAUSE → END → IDLE），
+ * 兩段式長按設計避免救護現場意外中斷進行中的任務。
+ *
+ * @param btnIdx 按鈕索引
+ */
+void onVeryLongPress(uint8_t btnIdx) {
+    switch (btnIdx) {
+        case BTN_PRIMARY:
+            // STEP 01: 主鍵超長按 → 結束任務（RUNNING 或 PAUSE → END）
+            if (deviceState == STATE_RUNNING || deviceState == STATE_PAUSE) {
+                transitionState(STATE_END);
+            }
+            // STEP 02: IDLE / END 狀態下超長按 noop（避免誤觸）
+            break;
+
+        default:
+            // 其他按鍵目前無超長按行為
             break;
     }
 }

@@ -1,12 +1,10 @@
 // Unit test: computeTaskElapsedMs
 // 執行：pio test -e native -f test_time
 //
-// ⚠️ Source-of-Truth 說明（2026-04-22）
-// 本測試驗證的 elapsed_ms 欄位**不在 PM 規格 (docs/pm-dev-spec.md §4.5 event_t) 中**。
-// elapsed_ms 是韌體為了 BLE dump / LittleFS 儲存便利而擴充的欄位，屬於
-// 「BLE 協定承諾的欄位」，App 端（EMS DoseSync）依賴這個欄位顯示任務時間軸。
-// 即日起若 PM 規格正式納入 elapsed_ms，本註解可移除；若 PM 決議不納入，
-// 此測試仍保留（韌體內部正確性檢核），但需於 docs/gap-analysis.md 記錄差異。
+// Source-of-Truth（2026-04-23 更新）
+// 本測試驗證的 elapsed_ms 欄位已於 2026-04-23 由 PM 採方案 A 正式納入
+// docs/pm-dev-spec.md §4.5 event_t 定義（uint32_t elapsed_ms）。
+// 計時精度對應 PM §4.2「誤差 < ±50ms」的節律提醒要求。
 #include <unity.h>
 #include "ems_time.h"
 
