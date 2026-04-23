@@ -3,10 +3,14 @@
 //
 // 對應 PM 規格：
 //   pm-dev-spec.md §4.2 節律提醒引擎 — 6 秒 CPR 節拍 ±50ms（僅通氣模式啟用）
+//                                     每 6 秒觸發蜂鳴 + 震動 + LED 提示
 //   pm-flow-spec.md §2 節律提醒循環
 //
-// 設計：抽出「何時該 BEEP」的純邏輯，主迴圈 updateVentMetronome() 只負責
-//       guard（模式/狀態）+ side effect（triggerBeep / 更新 lastTickMs）
+// 設計：抽出「何時該 fire」的純邏輯，主迴圈 updateVentMetronome() 只負責
+//       guard（模式/狀態）+ side effect（triggerBeep + triggerVibration +
+//       triggerLedIndicator + 更新 lastTickMs）
+//       fireBeep 旗標為 tick 觸發訊號，呼叫方須同時觸發蜂鳴、震動、LED 三種
+//       輸出（pm-flow-spec v1.4 §2）。
 #pragma once
 #include <cstdint>
 
@@ -16,11 +20,18 @@ namespace ems {
 constexpr uint32_t DEFAULT_VENT_TICK_MS = 6000UL;
 
 /**
- * 節拍決策輸出：告訴呼叫方本 cycle 是否要觸發 BEEP
- * 呼叫方在 fireBeep 為 true 時：(1) triggerBeep (2) 將 lastTickMs 更新為 now
+ * 節拍決策輸出：告訴呼叫方本 cycle 是否要觸發節拍
+ *
+ * 呼叫方在 fireBeep 為 true 時，依 PM 規格 pm-flow-spec v1.4 §2 須執行：
+ *   (1) triggerBeep（蜂鳴）
+ *   (2) triggerVibration（震動）
+ *   (3) triggerLedIndicator（LED 提示）
+ *   (4) 將 lastTickMs 更新為 now
+ *
+ * 旗標名稱保留 `fireBeep` 以維持既有測試相容性，語意上為「fire tick」。
  */
 struct VentTickAction {
-    bool fireBeep;  // 本 cycle 需觸發 BEEP（短嗶 + 可選震動）
+    bool fireBeep;  // 本 cycle 需觸發節拍（蜂鳴 + 震動 + LED 提示）
 };
 
 /**

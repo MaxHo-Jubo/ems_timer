@@ -35,6 +35,7 @@
 // 純邏輯函式（抽出至 lib/ems_logic 供 native 測試覆蓋）
 #include "ems_time.h"
 #include "ems_vent.h"
+#include "ems_countdown.h"
 
 /** Phase 1.5：INMP441 麥克風，換新模組後改 1 */
 #define ENABLE_MIC_MONITOR 0
@@ -199,8 +200,14 @@ static const uint16_t DUMP_ITEM_INTERVAL_MS = 10;
 /** 給藥模式倒數時長（ms） */
 static const uint32_t MED_COUNTDOWN_MS = 240UL * 1000;
 
-/** 倒數到時後，提醒重複間隔（ms） */
-static const uint32_t MED_REMINDER_REPEAT_MS = 30UL * 1000;
+/**
+ * ALARMING 階段連續發報的 pulse 間隔（ms）
+ *
+ * PM 規格（pm-flow-spec v1.4 §2）：ALARMING 階段「連續發報直到按主鍵解除」，
+ * 取代原每 30 秒週期提醒。1500ms 對應 3-pulse 序列（200ms on + 200ms off × 3
+ * = 1.4s + 0.1s 間隙），使用者感知連續。
+ */
+static const uint32_t MED_ALARM_PULSE_MS = 1500;
 
 /** OLED 閃爍週期（ms） */
 static const uint32_t FLASH_PERIOD_MS = 500;
@@ -1002,7 +1009,15 @@ void startMedCountdown() {
 }
 
 /**
- * 每個 loop 呼叫：處理倒數到時與重複提醒
+ * 每個 loop 呼叫：處理給藥倒數三階段（COUNTING / WARNING / ALARMING）
+ *
+ * 決策委派給純函式 ems::decideMedCountdownAction()（ems_countdown.h，
+ * 單元測試覆蓋 20+ 個 case）；本函式僅負責 guard + side effect
+ * （triggerBeep / triggerOledFlash / triggerVibration / recordEvent）。
+ *
+ * 對應 PM 規格：
+ *   pm-dev-spec.md §4.2 — 三階段倒數、ALARMING 連續發報（取代每 30s 週期）
+ *   pm-flow-spec.md §2  — 給藥倒數提醒流程（OHCA）
  */
 void updateMedCountdown() {
     // STEP 01: 只在 RUNNING + MED 模式 + 已啟動倒數時有效
@@ -1012,26 +1027,27 @@ void updateMedCountdown() {
         return;
     }
 
-    uint32_t now     = millis();
-    uint32_t elapsed = now - medCountdownStartMs;
+    // STEP 02: 純函式決策（階段 + 三旗標）
+    uint32_t now = millis();
+    ems::MedCountdownAction action = ems::decideMedCountdownAction(
+        now,
+        medCountdownStartMs,
+        medReminderActive,
+        medOneMinWarningTriggered,
+        lastReminderBeepMs,
+        MED_COUNTDOWN_MS,
+        MED_1MIN_WARNING_MS,
+        MED_ALARM_PULSE_MS);
 
-    // STEP 02: 剩餘 1 分鐘中途警示（僅觸發一次）
-    if (!medReminderActive && !medOneMinWarningTriggered && elapsed > 0) {
-        uint32_t remaining = (elapsed >= MED_COUNTDOWN_MS) ? 0 : (MED_COUNTDOWN_MS - elapsed);
-        if (remaining <= MED_1MIN_WARNING_MS) {
-            medOneMinWarningTriggered = true;
-            triggerBeep(MIN1_BEEP_PULSES, MIN1_BEEP_ON_MS, MIN1_BEEP_OFF_MS);
-            Serial.println("[MED] 1-min warning");
-        }
+    // STEP 03: WARNING 進入警示（一次性，1 分鐘前觸發）
+    if (action.fireWarn1Min) {
+        medOneMinWarningTriggered = true;
+        triggerBeep(MIN1_BEEP_PULSES, MIN1_BEEP_ON_MS, MIN1_BEEP_OFF_MS);
+        Serial.println("[MED] WARNING phase: 1-min remaining");
     }
 
-    // STEP 03: 倒數進行中且尚未到時 → 無動作
-    if (elapsed < MED_COUNTDOWN_MS && !medReminderActive) {
-        return;
-    }
-
-    // STEP 04: 首次到時 → 觸發強提醒
-    if (!medReminderActive && elapsed >= MED_COUNTDOWN_MS) {
+    // STEP 04: 首次到時 → 進入 ALARMING 階段
+    if (action.fireReminderStart) {
         medReminderActive  = true;
         lastReminderBeepMs = now;
         recordEvent(EVT_MEDICATION, SRC_SYSTEM, "reminder");
@@ -1040,32 +1056,35 @@ void updateMedCountdown() {
 #if ENABLE_VIBRATION
         triggerVibration();
 #endif
-        Serial.println("[MED] 240s expired! GIVE MED reminder");
+        Serial.println("[MED] ALARMING start: continuous until main-button dismiss");
         return;
     }
 
-    // STEP 04: 提醒持續中 → 每 30 秒重複嗶聲
-    if (medReminderActive && (now - lastReminderBeepMs >= MED_REMINDER_REPEAT_MS)) {
+    // STEP 05: ALARMING 階段連續 pulse（每 MED_ALARM_PULSE_MS）
+    //   直到按主鍵解除（onShortPress BTN_PRIMARY 會清 medReminderActive 並重置倒數）
+    if (action.fireAlarmingPulse) {
         lastReminderBeepMs = now;
         triggerBeep(EXPIRE_BEEP_PULSES, EXPIRE_BEEP_ON_MS, EXPIRE_BEEP_OFF_MS);
         triggerOledFlash(OLED_INVERT_FLASH_MS);
 #if ENABLE_VIBRATION
         triggerVibration();
 #endif
-        Serial.println("[MED] reminder repeat");
     }
 }
 
 /**
- * 通氣節拍器（MODE_VENT + STATE_RUNNING 每 6 秒短嗶一聲）
+ * 通氣節拍器（MODE_VENT + STATE_RUNNING 每 6 秒觸發節拍）
  *
  * 對應 PM 規格：
  *   pm-dev-spec.md §4.2 — 6 秒 CPR 節拍 ±50ms（僅通氣模式啟用）
- *   pm-flow-spec.md §2   — 節律提醒循環
+ *                         每 6 秒觸發「蜂鳴 + 震動 + LED 提示」
+ *   pm-flow-spec.md §2  — 節律提醒循環
  *
  * 行為：
  *   - 離開 VENT 模式或 RUNNING 狀態 → 重置 lastVentTickMs = 0，下次回來立即 fire 第一聲
  *   - 節拍決策委派給純函式 decideVentTickAction()（ems_vent.h，單元測試覆蓋）
+ *   - fire 時同時觸發：triggerBeep（蜂鳴）+ triggerVibration（震動，ENABLE_VIBRATION）
+ *                     + triggerOledFlash（LED 提示的 OLED 替代，實體 status LED 待 Phase 3）
  *   - 不 recordEvent（節拍器純提醒，不污染事件陣列；實際通氣動作由使用者短按主鍵記錄）
  */
 void updateVentMetronome() {
@@ -1079,9 +1098,15 @@ void updateVentMetronome() {
     uint32_t now = millis();
     ems::VentTickAction action = ems::decideVentTickAction(now, lastVentTickMs);
 
-    // STEP 03: 執行 side effect（嗶聲 + 更新 lastTickMs）
+    // STEP 03: 執行 side effect（蜂鳴 + 震動 + LED 提示 + 更新 lastTickMs）
+    //   PM 規格 pm-flow-spec v1.4 §2：每 6 秒三模態提示
     if (action.fireBeep) {
         triggerBeep(SHORT_BEEP_PULSES, SHORT_BEEP_ON_MS, 0);
+#if ENABLE_VIBRATION
+        triggerVibration();
+#endif
+        // LED 提示：實體 status LED 待 Phase 3，目前以 OLED 短暫反色替代
+        triggerOledFlash(OLED_INVERT_FLASH_MS);
         lastVentTickMs = now;
     }
 }
