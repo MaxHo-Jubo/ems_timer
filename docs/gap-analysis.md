@@ -124,7 +124,7 @@ PM 規格 `event_t` 有 `uint8_t device_id`。韌體 EmsEvent 目前無此欄位
 
 ### D. VENT 6 秒節拍器 ✅ 已實作（2026-04-23 Phase 2 Step B）
 
-PM 規格 `pm-flow-spec §2 節律提醒循環` / `pm-dev-spec §4.2`：每 6 秒 BEEP（CPR 節拍），±50ms 精度，僅通氣模式啟用。
+PM 規格 `pm-flow-spec §2 節律提醒循環` / `pm-dev-spec §4.2`：每 6 秒蜂鳴 + 震動 + LED 提示（CPR 節拍），±50ms 精度，僅通氣模式啟用。
 
 **實作**：
 - 純函式 `decideVentTickAction()` → `firmware/lib/ems_logic/ems_vent.{h,cpp}`

@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS DoseSync — 產品流程規格</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto; zoom: 1.5;
+  }
+
+  .header { text-align: center; margin-bottom: 40px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+  .header .version { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--blue); display: flex; align-items: center; gap: 8px; }
+  .section-title .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--blue); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .sub-title { font-size: 15px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+
+  /* OLED Screen Mockup */
+  .oled-flow { display: flex; gap: 12px; overflow-x: auto; padding: 8px 0; align-items: flex-end; }
+  .oled-step { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 155px; flex-shrink: 0; }
+  .oled-screen {
+    width: 150px; height: 90px; background: #0a0a0a; border-radius: 8px; border: 2px solid #333;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: "Courier New", monospace; color: #fff; position: relative; overflow: hidden;
+  }
+  .oled-screen .oled-header { font-size: 8px; color: #888; letter-spacing: 1px; }
+  .oled-screen .oled-time { font-size: 28px; font-weight: 900; line-height: 1.1; }
+  .oled-screen .oled-label { font-size: 7px; color: #aaa; margin-top: 2px; letter-spacing: 0.5px; }
+  .oled-screen .oled-status { font-size: 7px; color: #4ade80; margin-top: 1px; }
+  .oled-screen.oled-warning { border-color: var(--amber); }
+  .oled-screen.oled-warning .oled-time { color: var(--amber); }
+  .oled-screen.oled-alarm {
+    border-color: var(--red); background: #1a0000;
+    animation: alarmPulse 1s infinite alternate;
+  }
+  @keyframes alarmPulse { from { background: #1a0000; } to { background: #3a0000; } }
+  .oled-screen.oled-alarm .oled-time { color: var(--red); font-size: 20px; }
+  .oled-screen.oled-alarm .oled-alert { font-size: 14px; font-weight: 900; color: #fff; letter-spacing: 4px; }
+  .oled-screen.oled-reset { border-color: var(--green); }
+  .oled-screen.oled-reset .oled-time { color: var(--green); }
+  .oled-screen.oled-reset .oled-status { color: var(--green); }
+
+  .oled-step-label { font-size: 11px; font-weight: 600; text-align: center; max-width: 155px; }
+  .oled-step-desc { font-size: 10px; color: var(--text-secondary); text-align: center; max-width: 155px; line-height: 1.3; }
+  .oled-arrow { font-size: 20px; color: var(--gray); flex-shrink: 0; align-self: center; margin-bottom: 40px; }
+
+  /* Drug Menu */
+  .drug-menu { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+  .drug-pill {
+    padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--card); cursor: default;
+  }
+  .drug-pill.drug-epi { background: var(--red-light); border-color: var(--red); color: var(--red); }
+
+  /* Vent Timeline */
+  .vent-timeline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 0; }
+  .vent-beat {
+    width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--teal);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: var(--teal); background: var(--teal-light);
+  }
+  .vent-gap { font-size: 10px; color: var(--text-secondary); }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-purple { background: var(--purple-light); color: var(--purple); }
+  .badge-teal { background: var(--teal-light); color: var(--teal); }
+
+  .note { margin-top: 12px; padding: 10px 14px; background: var(--amber-light); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; font-size: 12px; color: #92400e; }
+
+  /* State Machine */
+  .state-machine { display: flex; align-items: center; justify-content: center; gap: 0; flex-wrap: wrap; padding: 32px 16px; }
+  .state-node { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 130px; height: 80px; border-radius: var(--radius); font-weight: 700; font-size: 15px; border: 2px solid; }
+  .state-node .state-desc { font-size: 11px; font-weight: 400; opacity: 0.75; margin-top: 2px; }
+  .state-idle { background: var(--blue-light); border-color: var(--blue); color: var(--blue); }
+  .state-running { background: var(--green-light); border-color: var(--green); color: #15803d; }
+  .state-pause { background: var(--amber-light); border-color: var(--amber); color: #b45309; }
+  .state-end { background: var(--red-light); border-color: var(--red); color: var(--red); }
+  .arrow { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 0 6px; color: var(--text-secondary); font-size: 11px; min-width: 80px; }
+  .arrow .arrow-line { font-size: 22px; line-height: 1; color: var(--gray); letter-spacing: -2px; }
+  .arrow .arrow-label { background: var(--bg); padding: 2px 8px; border-radius: 4px; white-space: nowrap; font-size: 11px; text-align: center; line-height: 1.3; }
+  .superlong-shortcut { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 16px; padding: 10px 16px; background: var(--red-light); border: 1px dashed var(--red); border-radius: 8px; font-size: 12px; color: var(--red); }
+  .superlong-shortcut strong { font-size: 13px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 13px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  /* Mode Cards */
+  .mode-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .mode-card { padding: 16px; border-radius: var(--radius); border: 1px solid var(--border); text-align: center; }
+  .mode-card .mode-icon { font-size: 28px; margin-bottom: 6px; }
+  .mode-card .mode-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .mode-card .mode-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+  .mode-med { background: var(--blue-light); border-color: var(--blue); }
+  .mode-vent { background: var(--teal-light); border-color: var(--teal); }
+  .mode-custom { background: var(--purple-light); border-color: var(--purple); }
+  .mode-setting { background: var(--bg); border-color: var(--gray); }
+
+  /* Flow Steps */
+  .flow-steps { display: flex; flex-direction: column; gap: 0; }
+  .flow-step { display: flex; align-items: flex-start; gap: 16px; position: relative; padding-bottom: 20px; }
+  .flow-step:last-child { padding-bottom: 0; }
+  .flow-step::before { content: ''; position: absolute; left: 17px; top: 36px; bottom: 0; width: 2px; background: var(--border); }
+  .flow-step:last-child::before { display: none; }
+  .flow-dot { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; flex-shrink: 0; z-index: 1; }
+  .flow-content { flex: 1; padding-top: 6px; }
+  .flow-content h4 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .flow-content p { font-size: 12px; color: var(--text-secondary); }
+
+  /* Data Structure */
+  .data-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+  .data-field { padding: 12px; background: var(--bg); border-radius: 8px; text-align: center; }
+  .data-field .field-name { font-weight: 700; font-size: 13px; color: var(--blue); }
+  .data-field .field-desc { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* BLE */
+  .ble-flow { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; padding: 20px 0; }
+  .ble-device { padding: 20px 24px; border-radius: var(--radius); text-align: center; border: 2px solid; min-width: 140px; }
+  .ble-device .device-icon { font-size: 32px; margin-bottom: 6px; }
+  .ble-device .device-name { font-weight: 700; font-size: 14px; }
+  .ble-device .device-role { font-size: 11px; margin-top: 2px; }
+  .ble-master { background: var(--blue-light); border-color: var(--blue); color: #1e40af; }
+  .ble-slave { background: var(--purple-light); border-color: var(--purple); color: var(--purple); }
+  .ble-app { background: var(--green-light); border-color: var(--green); color: #15803d; }
+  .ble-arrow { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--gray); font-size: 11px; }
+  .ble-arrow .ble-arrow-icon { font-size: 20px; }
+
+  /* Hardware */
+  .hw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .hw-item { padding: 14px; background: var(--bg); border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+  .hw-item .hw-icon { font-size: 24px; margin-bottom: 4px; }
+  .hw-item .hw-name { font-weight: 600; font-size: 13px; }
+  .hw-item .hw-detail { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  /* Phase */
+  .phase-timeline { display: flex; gap: 12px; overflow-x: auto; padding: 4px 0; }
+  .phase-item { flex: 1; min-width: 200px; padding: 16px; border-radius: var(--radius); border: 2px solid; position: relative; }
+  .phase-item .phase-num { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .phase-item .phase-name { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .phase-item .phase-tasks { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  .phase-done { background: var(--green-light); border-color: var(--green); }
+  .phase-current { background: var(--blue-light); border-color: var(--blue); }
+  .phase-future { background: var(--bg); border-color: var(--border); }
+  .phase-done .phase-num { color: var(--green); }
+  .phase-current .phase-num { color: var(--blue); }
+  .phase-future .phase-num { color: var(--gray); }
+  .phase-check { position: absolute; top: 12px; right: 12px; width: 22px; height: 22px; background: var(--green); border-radius: 50%; color: #fff; display: flex; align-items: center; justify-content: center; font-size: 13px; }
+
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+
+  .precision-badge { display: inline-flex; align-items: center; gap: 4px; margin-top: 12px; padding: 4px 12px; background: #fff; border-radius: 20px; font-size: 12px; font-weight: 600; border: 1px solid; }
+
+  /* Two-col layout for drug + vent */
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 22px; }
+    .state-machine { flex-direction: column; gap: 4px; }
+    .arrow { transform: rotate(90deg); min-width: unset; padding: 4px 0; }
+    .oled-flow { flex-direction: column; align-items: center; }
+    .oled-arrow { transform: rotate(90deg); margin-bottom: 0; }
+    .two-col { grid-template-columns: 1fr; }
+    .phase-timeline { flex-direction: column; }
+    .ble-flow { flex-direction: column; }
+    .ble-arrow { transform: rotate(90deg); }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>EMS DoseSync</h1>
+  <div class="subtitle">救護計時器 — 產品行為流程規格</div>
+  <div class="version">v1.0 | 2026-04-23 | 依據 pm-flow-spec.md v1.4 + pm-dev-spec.md v1.2</div>
+</div>
+
+<!-- ============================================================ -->
+<!-- 1. 給藥倒數提醒 + 通氣 + 獨立給藥 -->
+<!-- ============================================================ -->
+<div class="section">
+  <div class="section-title"><span class="num">1</span> 給藥倒數提醒（適用 OHCA 等流程）</div>
+  <div class="card">
+
+    <!-- 1A: Epi 倒數 OLED 流程圖 -->
+    <div class="sub-title">1A. Epinephrine 4 分鐘倒數循環</div>
+    <div class="oled-flow">
+      <div class="oled-step">
+        <div class="oled-screen">
+          <div class="oled-header">DoseSync</div>
+          <div class="oled-time">03:59</div>
+          <div class="oled-label">OHCA — EPINEPHRINE</div>
+          <div class="oled-status">任務進行中</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-green">COUNTING</span></div>
+        <div class="oled-step-desc">全螢幕顯示剩餘時間<br>LED 狀態指示</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-warning">
+          <div class="oled-header">DoseSync</div>
+          <div class="oled-time">00:59</div>
+          <div class="oled-label">OHCA — EPINEPHRINE</div>
+          <div class="oled-status" style="color:var(--amber)">任務進行中</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-amber">WARNING</span></div>
+        <div class="oled-step-desc">LED 恆亮 + 閃動<br>蜂鳴提示加強</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm">
+          <div class="oled-alert">請 給 藥</div>
+          <div class="oled-time">EPINEPHRINE</div>
+          <div class="oled-label" style="color:#ff6b6b">00:00</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">ALARMING</span></div>
+        <div class="oled-step-desc">全螢幕閃爍 + 蜂鳴連續發報<br>震動 + 顯示「請給藥」</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-reset">
+          <div class="oled-header">DoseSync</div>
+          <div class="oled-time">04:00</div>
+          <div class="oled-label">OHCA — EPINEPHRINE</div>
+          <div class="oled-status">重新開始</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-blue">按主鍵</span></div>
+        <div class="oled-step-desc">解除發報 + 記錄 Epi<br>重新開始 4 分鐘倒數</div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:12px;align-items:center">
+      <div class="precision-badge" style="border-color:var(--blue);color:#1e40af">✓ 精度 ±50ms</div>
+      <div style="font-size:12px;color:var(--text-secondary)">循環重複直到任務結束 · PAUSE 時倒數暫停、發報停止 · 恢復後繼續</div>
+    </div>
+
+    <!-- 1B: 獨立給藥（藥物選單） -->
+    <div class="sub-title">1B. 獨立給藥（藥物選單）</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:260px">
+        <p style="font-size:13px;margin-bottom:10px">
+          <strong>非 ALARMING 時按主鍵</strong> → 進入藥物選單，選擇藥物後記錄時間戳。
+        </p>
+        <div class="drug-menu">
+          <span class="drug-pill drug-epi">Epinephrine（倒數管控）</span>
+          <span class="drug-pill">Amiodarone</span>
+          <span class="drug-pill">TXA</span>
+          <span class="drug-pill">D50</span>
+          <span class="drug-pill">⋯</span>
+        </div>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 20px;background:var(--blue-light);border-radius:var(--radius);border:1px solid var(--blue);font-size:12px;color:#1e40af;max-width:280px">
+        <strong>不影響 Epi 倒數</strong><br>
+        Epinephrine 每 4 分鐘由倒數模組管控。<br>
+        其他藥物依臨床判斷隨時給予，獨立記錄事件。
+      </div>
+    </div>
+
+    <!-- 1C: 通氣節拍器 -->
+    <div class="sub-title">1C. 通氣節拍器（僅通氣模式 / Phase 3 副機）</div>
+    <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start">
+      <div style="flex:1;min-width:260px">
+        <div class="vent-timeline">
+          <div class="vent-beat">BEEP</div>
+          <div class="vent-gap">← 6s →</div>
+          <div class="vent-beat">BEEP</div>
+          <div class="vent-gap">← 6s →</div>
+          <div class="vent-beat">BEEP</div>
+          <div class="vent-gap">← 6s →</div>
+          <div class="vent-beat">⋯</div>
+        </div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-top:4px">
+          ▸ 進入通氣模式 + RUNNING → 立即啟動<br>
+          ▸ 每 6 秒 BEEP + 震動 + LED 提示<br>
+          ▸ 離開通氣模式或暫停 → 停止並重置<br>
+          ▸ 僅為節律輔助，不記錄事件
+        </div>
+      </div>
+      <div style="flex:0 0 auto;padding:14px 20px;background:var(--teal-light);border-radius:var(--radius);border:1px solid var(--teal);font-size:12px;color:#0f766e;max-width:280px">
+        <strong>Phase 3 雙機架構</strong><br>
+        主機（給藥者）遙控啟動副機（給氣者）的通氣節律。<br>
+        Phase 2 單機：模式切換兼任。
+        <div class="precision-badge" style="border-color:var(--teal);color:#0f766e;margin-top:8px">✓ 精度 ±50ms</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2. 按鍵操作 -->
+<div class="section">
+  <div class="section-title"><span class="num">2</span> 按鍵操作定義</div>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th style="width:120px">按鍵</th>
+          <th style="width:130px">觸發方式</th>
+          <th>動作</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td rowspan="3" style="font-weight:600">主鍵<br><span style="font-size:11px;color:var(--text-secondary)">（正下方大鍵）</span></td>
+          <td><span class="badge badge-green">短按 &lt; 1.5s</span></td>
+          <td>
+            <strong>給藥 ALARMING：</strong>解除發報 + 記錄 Epi + 重置倒數<br>
+            <strong>給藥非 ALARMING：</strong>進入藥物選單 → 選藥 → 記錄（不影響 Epi 倒數）<br>
+            <strong>通氣：</strong>記錄通氣事件
+          </td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-amber">長按 2~5s</span></td>
+          <td>狀態循環切換：IDLE → RUNNING → PAUSE → RUNNING → …</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-red">超長按 ≥ 5s</span></td>
+          <td>結束任務（RUNNING / PAUSE → END → IDLE）</td>
+        </tr>
+        <tr>
+          <td style="font-weight:600">上下鍵<br><span style="font-size:11px;color:var(--text-secondary)">（左側）</span></td>
+          <td><span class="badge badge-blue">短按</span></td>
+          <td>切換模式（給藥 → 通氣 → 自訂 → 設定，4 種循環）</td>
+        </tr>
+        <tr>
+          <td rowspan="2" style="font-weight:600">電源鍵<br><span style="font-size:11px;color:var(--text-secondary)">（右側）</span></td>
+          <td><span class="badge badge-blue">短按</span></td>
+          <td>螢幕亮 / 滅</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-amber">長按 ≥ 2s</span></td>
+          <td>開機 / 關機</td>
+        </tr>
+        <tr>
+          <td style="font-weight:600">錄音鍵<br><span style="font-size:11px;color:var(--text-secondary)">（左上轉角）</span></td>
+          <td><span class="badge badge-purple">長按 ≥ 2s</span></td>
+          <td>開始 / 停止錄音（INMP441 + SD 卡，Phase 1.5 啟用）</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- 3. 模式 -->
+<div class="section">
+  <div class="section-title"><span class="num">3</span> 操作模式（左側上下鍵切換）</div>
+  <div class="mode-grid">
+    <div class="mode-card mode-med">
+      <div class="mode-icon">💊</div>
+      <div class="mode-name">給藥模式</div>
+      <div class="mode-desc">Epi 每 4 分鐘倒數提醒<br>其他藥物獨立記錄<br>含藥物選單</div>
+    </div>
+    <div class="mode-card mode-vent">
+      <div class="mode-icon">🫁</div>
+      <div class="mode-name">通氣模式</div>
+      <div class="mode-desc">每 6 秒 CPR 節拍<br>僅此模式啟用節拍器<br>切換離開時自動重置</div>
+    </div>
+    <div class="mode-card mode-custom">
+      <div class="mode-icon">⚙️</div>
+      <div class="mode-name">自訂模式</div>
+      <div class="mode-desc">預留擴充使用</div>
+    </div>
+    <div class="mode-card mode-setting">
+      <div class="mode-icon">🔧</div>
+      <div class="mode-name">設定模式</div>
+      <div class="mode-desc">裝置參數調整</div>
+    </div>
+  </div>
+</div>
+
+<!-- 4. 系統啟動流程 -->
+<div class="section">
+  <div class="section-title"><span class="num">4</span> 系統啟動流程</div>
+  <div class="card">
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="flow-dot" style="background:var(--blue)">1</div>
+        <div class="flow-content"><h4>電源開啟</h4><p>右側電源鍵長按 ≥ 2 秒開機</p></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot" style="background:var(--purple)">2</div>
+        <div class="flow-content"><h4>模組初始化</h4><p>RTC 時鐘 → 按鍵 IO → OLED 顯示 → 蜂鳴器 → BLE 藍牙 → SPI Flash → I2S 音訊</p></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot" style="background:var(--teal)">3</div>
+        <div class="flow-content"><h4>開機確認</h4><p>蜂鳴器嗶 2 聲 → 記憶體檢查</p></div>
+      </div>
+      <div class="flow-step">
+        <div class="flow-dot" style="background:var(--green)">4</div>
+        <div class="flow-content"><h4>待機畫面（IDLE）</h4><p>顯示：時間 / 電量 / 當前模式 / BLE 連線狀態 → 等待使用者長按主鍵開始任務</p></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 5. 任務狀態機（移到啟動與資料結構之間） -->
+<div class="section">
+  <div class="section-title"><span class="num">5</span> 任務狀態機</div>
+  <div class="card">
+    <div class="state-machine">
+      <div class="state-node state-idle">IDLE<span class="state-desc">待機</span></div>
+      <div class="arrow">
+        <div class="arrow-label">長按 ≥ 2s</div>
+        <div class="arrow-line">────▶</div>
+      </div>
+      <div class="state-node state-running">RUNNING<span class="state-desc">任務執行中</span></div>
+      <div class="arrow">
+        <div class="arrow-label">長按 ≥ 2s</div>
+        <div class="arrow-line">◀───▶</div>
+        <div class="arrow-label" style="margin-top:2px">雙向切換</div>
+      </div>
+      <div class="state-node state-pause">PAUSE<span class="state-desc">暫停</span></div>
+      <div class="arrow">
+        <div class="arrow-label" style="color:var(--red)">自動 2s</div>
+        <div class="arrow-line">◀────</div>
+      </div>
+      <div class="state-node state-end">END<span class="state-desc">結束顯示</span></div>
+    </div>
+    <div class="superlong-shortcut">
+      <strong>⚡ 超長按 ≥ 5s</strong>
+      <span>RUNNING 或 PAUSE → 直接跳到 END → 2 秒後自動回 IDLE</span>
+    </div>
+    <div class="note">
+      <strong>兩段式長按設計：</strong>放開才結算（fire-on-release），按到 2s 放開 = 切換狀態；繼續按到 5s = 結束任務。
+      灰色地帶 1.5s ~ 2s 之間直接忽略，避免誤觸。
+    </div>
+  </div>
+</div>
+
+<!-- 6. 事件資料結構 -->
+<div class="section">
+  <div class="section-title"><span class="num">6</span> 事件資料結構</div>
+  <div class="card">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">每次按鍵觸發記錄一筆事件，每次出勤最多 30 筆</p>
+    <div class="data-fields">
+      <div class="data-field"><div class="field-name">event_id</div><div class="field-desc">事件編號</div></div>
+      <div class="data-field"><div class="field-name">timestamp</div><div class="field-desc">絕對時間戳</div></div>
+      <div class="data-field"><div class="field-name">elapsed_ms</div><div class="field-desc">任務經過毫秒</div></div>
+      <div class="data-field"><div class="field-name">event_type</div><div class="field-desc">事件類型</div></div>
+      <div class="data-field"><div class="field-name">source</div><div class="field-desc">來源（按鍵/系統）</div></div>
+      <div class="data-field"><div class="field-name">device_id</div><div class="field-desc">裝置 ID（Phase 3）</div></div>
+      <div class="data-field"><div class="field-name">mode</div><div class="field-desc">記錄時的模式</div></div>
+      <div class="data-field"><div class="field-name">sync_flag</div><div class="field-desc">同步旗標</div></div>
+    </div>
+    <div class="note">
+      <strong>elapsed_ms</strong>：自任務起點扣除所有暫停時間的淨經過毫秒數，App 依此欄位繪製事件時間軸。
+    </div>
+  </div>
+</div>
+
+<!-- 7. BLE 通訊 -->
+<div class="section">
+  <div class="section-title"><span class="num">7</span> 通訊架構（BLE）</div>
+  <div class="card">
+    <div class="ble-flow">
+      <div class="ble-device ble-master">
+        <div class="device-icon">📡</div>
+        <div class="device-name">主機（給藥者）</div>
+        <div class="device-role">Central — Epi 倒數 + 藥物選單</div>
+      </div>
+      <div class="ble-arrow"><div class="ble-arrow-icon">⇄</div><div>BLE 配對<br>事件同步</div></div>
+      <div class="ble-device ble-slave">
+        <div class="device-icon">📟</div>
+        <div class="device-name">副機（給氣者）</div>
+        <div class="device-role">Peripheral — 6 秒通氣節拍（主機遙控）</div>
+      </div>
+      <div class="ble-arrow"><div class="ble-arrow-icon">⇨</div><div>NUS + JSON<br>dump 事件</div></div>
+      <div class="ble-device ble-app">
+        <div class="device-icon">📱</div>
+        <div class="device-name">手機 App</div>
+        <div class="device-role">接收 / 顯示 / 匯出</div>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:8px">
+      <span class="badge badge-blue">事件資料</span>
+      <span class="badge badge-green">裝置狀態（電量 / 模式）</span>
+      <span class="badge badge-purple">設定參數</span>
+      <span class="badge badge-amber">指令（開始 / 停止 / 切換）</span>
+    </div>
+  </div>
+</div>
+
+<!-- 8. App 資料流 -->
+<div class="section">
+  <div class="section-title"><span class="num">8</span> App 資料流程</div>
+  <div class="card">
+    <div class="flow-steps">
+      <div class="flow-step"><div class="flow-dot" style="background:var(--blue)">1</div><div class="flow-content"><h4>裝置傳輸</h4><p>透過 BLE 接收事件資料</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--purple)">2</div><div class="flow-content"><h4>資料解析與驗證</h4><p>JSON 解析、欄位校驗</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--teal)">3</div><div class="flow-content"><h4>本地儲存</h4><p>SQLite 持久化（依 session 分組）</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--green)">4</div><div class="flow-content"><h4>資料呈現</h4><p>事件時間軸 / 清單 / 統計圖表</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--amber)">5</div><div class="flow-content"><h4>匯出與備份</h4><p>PDF / CSV / EMS 系統匯入 / 雲端備份</p></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- 9. 開發階段 -->
+<div class="section">
+  <div class="section-title"><span class="num">9</span> 開發階段</div>
+  <div class="phase-timeline">
+    <div class="phase-item phase-done">
+      <div class="phase-check">✓</div>
+      <div class="phase-num">Phase 1</div>
+      <div class="phase-name">硬體原型</div>
+      <div class="phase-tasks">✓ ESP32-S3 + 按鈕<br>✓ OLED 顯示<br>✓ 蜂鳴器<br>✓ 狀態機 + 計時器</div>
+    </div>
+    <div class="phase-item phase-current">
+      <div class="phase-num">Phase 2 ← 進行中</div>
+      <div class="phase-name">BLE + 純函式</div>
+      <div class="phase-tasks">▸ 主副機配對同步<br>▸ 給藥倒數決策純函式<br>▸ 通氣節拍器純函式<br>▸ 單元測試覆蓋</div>
+    </div>
+    <div class="phase-item phase-future">
+      <div class="phase-num">Phase 3</div>
+      <div class="phase-name">App + RTC</div>
+      <div class="phase-tasks">▸ 手機 App 開發<br>▸ DS3231 RTC 升級<br>▸ 雙機角色綁定<br>▸ AI 品質分析</div>
+    </div>
+    <div class="phase-item phase-future">
+      <div class="phase-num">Phase 4</div>
+      <div class="phase-name">整合優化</div>
+      <div class="phase-tasks">▸ 外殼設計<br>▸ 電源方案定案<br>▸ 整合測試<br>▸ 現場驗證</div>
+    </div>
+  </div>
+</div>
+
+<!-- 10. 硬體架構 -->
+<div class="section">
+  <div class="section-title"><span class="num">10</span> 硬體模組總覽</div>
+  <div class="hw-grid">
+    <div class="hw-item"><div class="hw-icon">🔌</div><div class="hw-name">電源</div><div class="hw-detail">USB-C 直供<br>（Phase 4 定案電池）</div></div>
+    <div class="hw-item"><div class="hw-icon">🧠</div><div class="hw-name">主控晶片</div><div class="hw-detail">ESP32-S3</div></div>
+    <div class="hw-item"><div class="hw-icon">🖲️</div><div class="hw-name">按鍵輸入</div><div class="hw-detail">主鍵 + 上下鍵<br>電源鍵 + 錄音鍵</div></div>
+    <div class="hw-item"><div class="hw-icon">📺</div><div class="hw-name">OLED 顯示</div><div class="hw-detail">SSD1306 128×64<br>I2C 介面</div></div>
+    <div class="hw-item"><div class="hw-icon">🔊</div><div class="hw-name">蜂鳴器</div><div class="hw-detail">提醒音 + 節拍</div></div>
+    <div class="hw-item"><div class="hw-icon">📡</div><div class="hw-name">BLE 通訊</div><div class="hw-detail">NUS + JSON</div></div>
+    <div class="hw-item"><div class="hw-icon">💾</div><div class="hw-name">儲存</div><div class="hw-detail">LittleFS (Flash)<br>+ MicroSD</div></div>
+    <div class="hw-item"><div class="hw-icon">🎤</div><div class="hw-name">麥克風</div><div class="hw-detail">INMP441 I2S<br>（Phase 1.5）</div></div>
+  </div>
+</div>
+
+<div class="footer">
+  EMS DoseSync — 救護計時器產品流程規格 v1.0<br>
+  來源：pm-flow-spec.md v1.4（產品行為）+ pm-dev-spec.md v1.2（工程實作）
+</div>
+
+</body>
+</html>

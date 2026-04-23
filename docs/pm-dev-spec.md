@@ -1,6 +1,6 @@
 # EMS DoseSync 工程實作規格
 
-版本：v1.1
+版本：v1.2
 日期：2026/04/23
 
 ---
@@ -23,6 +23,14 @@
 當兩份文件在同一主題上有衝突時，以 **Source of Truth 標註的那一份為準**（每節標示 SoT 歸屬）。
 
 ### 版本紀錄
+
+**v1.2（2026-04-23）**：給藥倒數三階段 + 藥物選單 + 主副機角色 + 通氣輸出補齊（對齊 PM 流程圖）
+- §4.2 新增 `MED_PHASE_COUNTING / WARNING / ALARMING` 內部階段與階段轉換規則
+- 移除 `DEFAULT_MED_REMINDER_REPEAT_MS`，改為連續發報直到按主鍵解除
+- §4.2 階段轉換規則拆分：ALARMING 時重置 Epi 倒數；非 ALARMING 時進入藥物選單獨立記錄
+- §4.2 通氣節拍輸出補齊為**蜂鳴 + 震動 + LED 提示**（對齊 PM 流程圖 §4）
+- §4.3 按鍵行為表拆分主鍵短按為三種情境（ALARMING / 非 ALARMING / 通氣）
+- §4.6 BLE 新增 Phase 3 角色綁定（主機=給藥者、副機=給氣者、遙控啟停）
 
 **v1.1（2026-04-23）**：文件整合 — 方案 B（職責邊界分離）
 - 新增頂部「文件定位」聲明
@@ -101,19 +109,38 @@ PAUSE ───────────────┤
 
 #### 4.2 節律提醒引擎（**SoT**：精度規格與實作常數的權威來源）
 
-- **6 秒節拍（CPR 節律）— 僅通氣模式啟用**（PM 2026-04-23 確認）
-- **4 分鐘高提醒（給藥）— 僅給藥模式啟用**
+- **6 秒節拍（CPR 節律）— 僅通氣模式啟用**（PM 2026-04-23 確認）：每 6 秒觸發蜂鳴 + 震動 + LED 提示
+- **4 分鐘給藥倒數提醒 — 僅給藥模式啟用**（適用 OHCA 等救護流程）
 
 **精度需求：**
 
 - 節拍/倒數誤差 < ±50ms
 - 可切換模式（通氣 / 給藥），模式切換時節拍器停止並重置
 
+**給藥倒數內部階段**（不影響頂層狀態機，為倒數模組內部狀態）：
+
+| 階段 | 條件 | 輸出行為 |
+|------|------|---------|
+| `MED_PHASE_COUNTING` | 倒數中（剩餘 > 1 分鐘） | 螢幕顯示剩餘時間、LED 狀態指示 |
+| `MED_PHASE_WARNING` | 剩餘 ≤ 1 分鐘 | LED 恆亮 + 閃動、蜂鳴提示加強 |
+| `MED_PHASE_ALARMING` | 倒數歸零 | 全螢幕閃爍 + 蜂鳴連續發報 + 震動 + 顯示「請給藥」 |
+
+**階段轉換規則**：
+
+| 觸發 | COUNTING / WARNING 時 | ALARMING 時 |
+|------|----------------------|-------------|
+| 短按主鍵 | 進入藥物選單（Amiodarone / TXA / D50 …）→ 記錄該藥物事件（`EVT_MEDICATION` + drug_type）→ **不重置 Epi 倒數** | 解除發報 + 記錄 `EVT_EPINEPHRINE` + 重置至 `COUNTING`（重新倒數 4 分鐘） |
+| PAUSE | 倒數暫停、發報停止、保留剩餘時間；恢復 RUNNING 時從剩餘時間繼續 | 同左 |
+| 結束任務（超長按 5s） | 一切停止 | 同左 |
+
+> **設計原理**：4 分鐘倒數專為 Epinephrine（OHCA 標準每 4 分鐘給一次），其他藥物隨時按臨床判斷給予，兩者互不干擾。
+
 **實作常數**（對應 `firmware/lib/ems_logic/ems_countdown.h`）：
 - `DEFAULT_MED_COUNTDOWN_MS = 240000`（4 分鐘）
-- `DEFAULT_MED_WARN_1MIN_MS = 60000`（剩 1 分鐘中途警示）
-- `DEFAULT_MED_REMINDER_REPEAT_MS = 30000`（到時後每 30 秒重複提醒）
+- `DEFAULT_MED_WARN_1MIN_MS = 60000`（進入 WARNING 階段的剩餘時間門檻）
 - VENT 6 秒節拍常數：Phase 2 抽 `VentMetronome` 模組時補齊（見 `docs/gap-analysis.md` Phase 2 待辦）
+
+> ~~`DEFAULT_MED_REMINDER_REPEAT_MS = 30000`~~（已移除）：原設計為到時後每 30 秒重複提醒，改為 ALARMING 階段**連續發報直到按主鍵解除**（對齊 PM 流程圖 2026-04-23）。
 
 **實作方式**：純函式 `decideMedCountdownAction()` 決定本 cycle 要觸發的行為，主迴圈執行 side effect（beep / OLED flash / event record）。單元測試見 `firmware/test/test_countdown/test_med_countdown.cpp`。
 
@@ -132,7 +159,9 @@ PAUSE ───────────────┤
 
 | 按鍵 | 行為 |
 |------|------|
-| 主鍵短按（< 1500ms） | 記錄事件（依模式：給藥 / 通氣 / 自訂） |
+| 主鍵短按（< 1500ms）— 給藥 ALARMING | 解除發報 + 記錄 Epinephrine + 重置 4 分鐘倒數 |
+| 主鍵短按（< 1500ms）— 給藥非 ALARMING | 進入藥物選單 → 選藥 → 記錄事件（不影響 Epi 倒數） |
+| 主鍵短按（< 1500ms）— 通氣 / 自訂 | 記錄事件（依模式） |
 | 主鍵灰色地帶（1500~1999ms） | 忽略（避免短/長按混淆） |
 | 主鍵長按（2000ms ≤ t < 5000ms） | 狀態循環：IDLE→RUNNING→PAUSE→RUNNING→PAUSE→…（放開時結算） |
 | 主鍵超長按（≥ 5000ms） | 結束任務：RUNNING 或 PAUSE 直接進入 END（即刻觸發） |
@@ -189,6 +218,12 @@ typedef struct {
 
 - 主機：Central
 - 副機：Peripheral
+
+**Phase 3 角色綁定**（2026-04-23 PM 流程圖確認）：
+- 主機（Central）= 給藥者 → 跑 Epinephrine 4 分鐘倒數 + 藥物選單
+- 副機（Peripheral）= 給氣者 → 跑 6 秒通氣節拍（由主機遙控啟停）
+- 主機需實作 BLE 指令：啟動/停止副機通氣節律
+- 單機階段（Phase 2）：同一台裝置透過模式切換兼任兩種角色
 
 **GATT Service 列表**
 
