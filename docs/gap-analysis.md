@@ -15,7 +15,7 @@
 | 狀態機 | IDLE → RUNNING → PAUSE → END | 4 態狀態機 ✅ 完整實作 | 🟢 一致 |
 | 任務控制 | 長按主鍵開始 / 結束任務 | 長按主鍵 ≥2000ms 驅動 IDLE→RUNNING / RUNNING→PAUSE / PAUSE→END | 🟢 一致 |
 | RUNNING↔PAUSE 切換 | **PM 2026-04-23 拍板：長按 2s 循環；超長按 5s 直接結束任務** | RUNNING→PAUSE 長按 ✅ / PAUSE→RUNNING 目前短按 ❌；RUNNING→END / PAUSE→END 目前用長按 2s（需改 5s） | 🟠 韌體按鍵處理需重構為兩段式長按 |
-| 節律提醒 | 6 秒 CPR 節拍（僅通氣模式）+ 4 分鐘給藥提醒（±50ms） | MED 模式 240 秒給藥倒數 ✅；VENT 模式僅記錄事件，**無 6 秒節拍** ❌ | 🟡 中（VENT 節拍待實作，PM 2026-04-23 確認「通氣模式才有」） |
+| 節律提醒 | 6 秒 CPR 節拍（僅通氣模式）+ 4 分鐘給藥提醒（±50ms） | MED 模式 240 秒給藥倒數 ✅；VENT 模式 6 秒節拍器 ✅（2026-04-23 Phase 2 Step B 完成） | 🟢 一致 |
 | 資料結構 | event_t（8 欄位 → 9 欄位，PM 2026-04-23 採方案 A 納入 `elapsed_ms`） | EmsEvent（9 欄位，多 `elapsed_ms`、缺 `device_id`） | 🟢 `elapsed_ms` 已對齊（PM 規格追實作）；`device_id` 待 Phase 3 補 |
 | 容量 | Ring Buffer 100~500 events | MAX_EVENTS = 100 | 🟢 符合下限 |
 | 持久儲存 | SPI Flash 批次寫入（每 5 秒）+ wear leveling | **LittleFS**，任務 END 時整批寫 `/sessions/<epoch>.json` | 🟡 中（用 LittleFS 替代 SPI Flash raw；寫入時機非每 5 秒而是 END 時） |
@@ -122,17 +122,18 @@ PM 規格 `event_t` 有 `uint8_t device_id`。韌體 EmsEvent 目前無此欄位
 
 ---
 
-### D. VENT 6 秒節拍器未實作 🟡
+### D. VENT 6 秒節拍器 ✅ 已實作（2026-04-23 Phase 2 Step B）
 
-PM 規格 `pm-flow-spec §2 節律提醒循環`：每 6 秒 BEEP（CPR 節拍），需要 ±50ms 精度（pm-dev §4.2）。
+PM 規格 `pm-flow-spec §2 節律提醒循環` / `pm-dev-spec §4.2`：每 6 秒 BEEP（CPR 節拍），±50ms 精度，僅通氣模式啟用。
 
-韌體現況：VENT 模式只記錄按鍵事件，無節拍器機制。
+**實作**：
+- 純函式 `decideVentTickAction()` → `firmware/lib/ems_logic/ems_vent.{h,cpp}`
+- main.cpp `updateVentMetronome()` thin wrapper（guard + triggerBeep + 更新 lastVentTickMs）
+- 單元測試 12 個全綠：`firmware/test/test_vent/test_vent_metronome.cpp`（首次啟動、週期邊界、±50ms 精度、millis wraparound、自訂週期）
 
-**影響**：這是 PM 規格核心要求之一（「OHCA 數據化紀錄 + CPR 品質監測」核心價值）。
-
-**PM 決議（2026-04-23）**：**通氣模式才有** — 6 秒節拍僅在 VENT 模式啟用時觸發，其他模式（MED 等）不跑節拍器。
-
-**Phase 2 待辦**：抽 `VentMetronome` 純函式模組（進入/離開 VENT 模式時啟停、tick 輸出 BEEP 事件），unit test 覆蓋 ±50ms 節拍精度。
+**設計細節**：
+- 切離 VENT 或 RUNNING → `lastVentTickMs = 0`，下次回來立即 fire 第一聲（PAUSE 恢復後不補齊中斷週期，而是重新起算）
+- 不 recordEvent（節拍器純提醒，不污染事件陣列；實際通氣動作由使用者短按主鍵記錄）
 
 ---
 
@@ -140,13 +141,17 @@ PM 規格 `pm-flow-spec §2 節律提醒循環`：每 6 秒 BEEP（CPR 節拍）
 
 | 測試檔 | 對象 | 測試數 | 狀態 | PM 規格對應 |
 |--------|------|--------|------|------------|
-| `test/test_time/test_task_elapsed.cpp` | `computeTaskElapsedMs` | 9 | ✅ 全綠 | ⚠️ 測的 `elapsed_ms` 為韌體擴充欄位，**不在 PM 規格條款中** |
+| `test/test_time/test_task_elapsed.cpp` | `computeTaskElapsedMs` | 9 | ✅ 全綠 | PM §4.5（2026-04-23 方案 A 納入 `elapsed_ms`） |
+| `test/test_countdown/test_med_countdown.cpp` | `decideMedCountdownAction` | 12 | ✅ 全綠 | PM §4.2「4 分鐘給藥高提醒 ±50ms」 |
+| `test/test_vent/test_vent_metronome.cpp` | `decideVentTickAction` | 12 | ✅ 全綠 | PM §4.2「6 秒 CPR 節拍 ±50ms」 |
 
-**結論**：現有測試**邏輯正確**（對照實作），但因覆蓋對象不在 PM 規格條款中，**不能聲稱「符合 Source of Truth」**。
+**總計 33 tests，全綠。**
 
-**Phase 2 單元測試優先順序**（對齊 PM 規格的條款）：
-1. `MedCountdownDecision`（抽自 `updateMedCountdown`）→ 對應 PM §4.2「4 分鐘高提醒 ±50ms」
-2. `VentMetronome`（新模組）→ 對應 PM §4.2「6 秒節拍 ±50ms」
+**結論**：所有單元測試對齊 PM 規格。
+
+**Phase 2 後續單元測試**（可延後）：
+1. ~~`MedCountdownDecision`~~ ✅ 已完成（12 tests）
+2. ~~`VentMetronome`~~ ✅ 已完成（12 tests）
 3. `computePauseCorrection` → 確保暫停不污染計時精度
 4. `recordEvent` 欄位組裝 → 確保 event_t 所有欄位正確填入（MAX_EVENTS 上限、event_id 遞增）
 
