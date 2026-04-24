@@ -137,3 +137,52 @@
 ### 外觀概念
 
 ![外觀概念圖](ems_timer_exterior.png)
+
+---
+
+## Repository & CI/CD
+
+### Remotes
+
+| 用途 | Remote 名稱 | URL |
+|------|------------|-----|
+| 主要（推拉） | `origin` | `https://gitlab.webotopia.work/maxhero/ems_timer.git` |
+| 備份鏡像 | `github` | `https://github.com/MaxHo-Jubo/ems_timer.git` |
+
+同步備份到 GitHub：
+
+```bash
+git push github main
+```
+
+### GitLab 認證（首次 push）
+
+macOS 已預設 `osxkeychain` credential helper，第一次 push 會要求輸入帳密，之後自動記憶。
+
+產生 Personal Access Token（PAT）：
+
+1. 登入 GitLab → **User Settings** → **Access Tokens**
+2. Scope 勾 `write_repository`（push/pull 權限）
+3. 複製 token（離開頁面後無法再看）
+4. 第一次 `git push` 時：
+   - Username：GitLab 帳號
+   - Password：貼上 PAT（不是 GitLab 登入密碼）
+
+### CI — 自動測試
+
+每次 push 到 `main` 或開 Merge Request 時，GitLab CI 會在 `python:3.11-slim` 容器跑 PlatformIO native 單元測試：
+
+```
+pio test -e native -d firmware
+```
+
+設定檔：[`.gitlab-ci.yml`](.gitlab-ci.yml)
+
+### GitLab Pages — 規格文件站
+
+`main` push 後自動發佈 `docs/` 為靜態站：
+
+- 首頁：`docs/ems-flow-spec.html`（互動版規格）
+- MD 規格檔同時部署，可直連瀏覽
+
+實際 Pages URL 視 GitLab 實例設定，通常為 `https://<namespace>.pages.<domain>/<project>/`。

@@ -1,5 +1,36 @@
 # EMS Timer 開發進度
 
+## GitLab 遷移設定（2026-04-24 完成）
+
+**背景**：repo 從 GitHub 移植到 GitLab（`https://gitlab.webotopia.work/maxhero/ems_timer.git`）。
+
+### 完成項目
+
+- [x] **1. Git credential 設定**
+  - `osxkeychain` helper 已預設啟用（macOS）
+  - PAT 產生步驟已文件化於 `README.md` § Repository & CI/CD
+- [x] **2. 保留 GitHub 當備份**
+  - 新增 remote `github`（`git push github main` 手動同步）
+- [x] **3. GitLab CI — 自動跑單元測試**
+  - `.gitlab-ci.yml` 建立，`test` job 跑 `pio test -e native -d firmware`
+  - 觸發：push to main + Merge Request
+  - Cache：`.platformio/` + `.pip-cache/`（加速後續 pipeline）
+- [x] **4. GitLab Pages — 發佈 docs/**
+  - `pages` job 部署 `docs/ems-flow-spec.html` 為首頁 + 全部 MD / HTML
+  - 僅 main branch 觸發
+
+### 決策結論
+
+- Q1: 首頁 = `ems-flow-spec.html`（不另做 landing page）
+- Q2: 備份 remote 名稱 = `github`
+- Q3: CI 只跑 native test（不跑 ESP32 build；本機跑即可）
+
+### 待驗證（首次 push 後）
+
+- [ ] Pipeline 綠燈（`test` + `pages` 兩個 job）
+- [ ] Pages URL 實際 accessible
+- [ ] `git push github main` 備份同步成功
+
 ## 已完成階段
 
 ### Phase 0 — 開發環境（2026-04-13）
@@ -251,20 +282,14 @@
 - [x] 新增 `test/test_countdown/test_med_countdown.cpp` — 12 tests 全綠
 - [x] 對應 PM 規格 §4.2「4 分鐘給藥高提醒 ±50ms」
 
-### MedCountdownDecision — Step B ⏳ 待處理（下次實機驗證時做）
+### MedCountdownDecision — Step B ✅ 完成（commit `07a0963`，2026-04-23）
 
-- [ ] 修改 `main.cpp` 的 `updateMedCountdown()` 為 thin wrapper
-  - 呼叫 `ems::decideMedCountdownAction()` 取得 action
-  - 依 `fireWarn1Min` / `fireReminderStart` / `fireReminderRepeat` 三旗標執行 side effect：
-    - `triggerBeep(MIN1_BEEP_PULSES, MIN1_BEEP_ON_MS, MIN1_BEEP_OFF_MS)` + `Serial.println("[MED] 1-min warning")`
-    - `recordEvent(EVT_MEDICATION, SRC_SYSTEM, "reminder")` + `triggerBeep(EXPIRE_*)` + `triggerOledFlash` + `Serial.println("[MED] 240s expired...")`
-    - `triggerBeep(EXPIRE_*)` + `triggerOledFlash` + `Serial.println("[MED] reminder repeat")`
-  - 呼叫後 set 狀態：`medOneMinWarningTriggered=true` / `medReminderActive=true`, `lastReminderBeepMs=now` / `lastReminderBeepMs=now`
-- [ ] **實機驗證**：跑一次完整 MED 4 分鐘倒數流程（P2-2~P2-6），確認無 regression
-  - 剩 60 秒時 2 短嗶
-  - 歸零時 3 嗶 + OLED 反色 + `GIVE MED!` 閃爍
-  - 30 秒後重複提醒
-  - 短按 BTN0 確認給藥，倒數重置
+- [x] `main.cpp` `updateMedCountdown()` 改為 thin wrapper，呼叫 `ems::decideMedCountdownAction()`
+- [x] 同步 spec v1.4/v1.2：新增 `MedPhase` enum、`fireReminderRepeat` → `fireAlarmingPulse`（連續發報語意）
+- [x] 移除 `DEFAULT_MED_REMINDER_REPEAT_MS`、新增 `DEFAULT_MED_ALARM_PULSE_MS=1500`
+- [x] 補齊通氣節拍三模態輸出（蜂鳴 + 震動 guard + OLED flash 作 LED stub）
+- [x] 單元測試擴充至 20 cases（phase 判定 + ALARMING 連續 pulse + wraparound）
+- [ ] **實機煙霧測試待跑** → 見下方「實機煙霧測試清單（spec v1.4/v1.2 對齊）」
 
 ### 其他 Phase 2 候選（尚未排期）
 
@@ -282,5 +307,95 @@
 
 - PlatformIO `[env:native]` 已設（`platform=native`, `test_framework=unity`, `build_src_filter=-<*>`）
 - Unity 2.6.1 已自動下載
-- 測試目錄結構：`firmware/test/test_time/` + `firmware/test/test_countdown/`
-- 執行：`pio test -e native -d firmware`（跑全部）或 `-f test_time` / `-f test_countdown`（指定）
+- 測試目錄結構：`firmware/test/test_time/` + `firmware/test/test_countdown/` + `firmware/test/test_vent/`
+- 執行：`pio test -e native -d firmware`（跑全部）或 `-f test_time` / `-f test_countdown` / `-f test_vent`（指定）
+- Arduino build：`pio run -e esp32-s3-devkitc-1 -d firmware`
+
+---
+
+# 實機煙霧測試清單（spec v1.4/v1.2 對齊，2026-04-23 commit `07a0963`）
+
+> 下次上開發板時依此清單逐項驗證。任一項 fail 就回 code 修到過為止。
+> 硬體：ESP32-S3 + 5 鍵 + OLED + 蜂鳴器（震動 disabled、status LED 未接）
+
+## A. MED_PHASE 三階段判定（核心變更）
+
+- [ ] **A1 COUNTING 顯示**：IDLE 按主鍵進 RUNNING/MED，OLED 顯示 4 分鐘倒數，讀秒順暢（剩餘 > 1min 階段）
+- [ ] **A2 WARNING 進入點**：等到剩餘 ≤ 60s 時，觸發一次「2 短嗶」中途警示（`MIN1_BEEP_PULSES` x `MIN1_BEEP_ON_MS`），Serial 印 `[MED] WARNING phase: 1-min remaining`，且不重複觸發
+- [ ] **A3 ALARMING 首次觸發**：倒數歸零時立即 3 嗶 + OLED 反色 + Serial 印 `[MED] ALARMING start: continuous until main-button dismiss`，同時 `recordEvent(EVT_MEDICATION, SRC_SYSTEM, "reminder")` 寫入事件陣列
+
+## B. ALARMING 連續發報（取代 v1.3 前的 30s 週期）
+
+- [ ] **B1 連續 pulse 節奏**：ALARMING 進入後，每 ~1.5s 觸發一次 3 嗶 + OLED 反色，從使用者感知為連續發報（不再是 30s 一次的長間隙）
+- [ ] **B2 持續時間**：放著不理 30 秒，Buzzer 仍持續吵（至少觸發 15 次以上 pulse），驗證確實「連續到按鍵為止」
+- [ ] **B3 主鍵解除**：ALARMING 中短按主鍵 → 立即停嗶、OLED 停閃、記錄 `EVT_MEDICATION "epi"` 事件、倒數重置回 4:00（COUNTING 階段）
+- [ ] **B4 迴圈重複**：連續做 2~3 輪「等 4 分鐘 → ALARMING → 主鍵重置」確認循環穩定、事件陣列累積正確
+
+## C. 主鍵短按階段依賴行為（spec v1.4 新拆分）
+
+- [ ] **C1 ALARMING 短按**：ALARMING 時短按主鍵 → 解除 + 記錄 Epi + 重置（同 B3）
+- [ ] **C2 COUNTING 短按開選單**：倒數中（剩餘 > 1min）短按主鍵 → 開啟藥物選單，OLED 顯示當前藥物（游標 0 = Amiodarone），倒數持續運行不重置
+- [ ] **C3 WARNING 短按開選單**：剩餘 ≤ 60s 期間短按主鍵 → 同樣開選單，Epi 倒數不受影響
+- [ ] **C4 選單內選藥**：選單開啟時上下鍵切換藥物（Amiodarone / TXA / D50 / Atropine / Adenosine / Naloxone），主鍵確認 → 記錄該藥物事件、選單關閉、Epi 倒數仍在跑
+- [ ] **C5 選單超時**：開啟選單後放 8s 不動，選單自動關閉，未記錄事件
+
+## D. 通氣節拍三模態輸出（spec v1.2 補齊）
+
+- [ ] **D1 6 秒 BEEP 節奏**：切 MODE_VENT + RUNNING，每 6 秒短嗶一聲（精度 ±50ms 人耳可接受）
+- [ ] **D2 OLED flash（LED 提示替代）**：每次 BEEP 同時 OLED 短暫反色（200ms）—— Phase 3 換真 status LED 前以 OLED 作替代
+- [ ] **D3 震動 skip**：`ENABLE_VIBRATION=0` 下不觸發震動馬達，Serial 無震動訊息（硬體到貨改 1 後再驗 D3b 震動觸發）
+- [ ] **D4 離開重置**：VENT → 切 MED（或 RUNNING → PAUSE）後 lastVentTickMs=0，再切回 VENT+RUNNING 時立即 fire 第一聲
+
+## E. PAUSE 行為（對齊 spec §4.2 階段轉換規則）
+
+- [ ] **E1 COUNTING 中 PAUSE**：倒數中長按主鍵 ≥ 2s 進 PAUSE → 倒數暫停、OLED 顯示 PAUSE，主鍵短按不觸發任何行為
+- [ ] **E2 ALARMING 中 PAUSE**（關鍵！）：ALARMING 中長按 ≥ 2s → 立即停止發報、不再連續 pulse，OLED 進 PAUSE 畫面
+- [ ] **E3 PAUSE → RESUME 繼續**：長按 ≥ 2s 恢復 RUNNING，倒數從剩餘時間繼續（不是從 4:00 重新起算）
+- [ ] **E4 VENT PAUSE**：通氣模式 PAUSE 後節拍器停止，RESUME 立即 fire 第一聲重新起算
+
+## F. 回歸測試（確認沒打破既有功能）
+
+- [ ] **F1 超長按結束**：任何狀態長按 ≥ 5s → END → IDLE，寫入 LittleFS 的 `/sessions/<task_id>.json`
+- [ ] **F2 模式切換**：上下鍵循環 MED → VENT → CUST → SET → MED，OLED 正確顯示當前模式
+- [ ] **F3 BLE 連線**：手機 App 連上後能收到 JSON 事件通知（連續給藥重置 + ALARMING 觸發事件）
+- [ ] **F4 事件時間戳**：確認 `timestamp` / `elapsed_ms` 欄位在 ALARMING 觸發、主鍵解除、藥物選單選藥時都正確填入
+- [ ] **F5 記憶體無泄漏**：跑 30 分鐘以上（含多輪 ALARMING + 藥物選單 + PAUSE/RESUME），Serial 觀察 heap 沒持續下降
+
+## 驗收標準
+
+- 所有 A~F 項目打勾完成
+- Serial log 無異常錯誤訊息
+- OLED 顯示無錯亂、無殘影
+- LittleFS session 檔案能被 App 正常讀取
+- 任一 fail → 回 code 修，不移交問題到下一輪
+
+---
+
+# Session Progress Snapshot
+
+> 自動存檔於 2026-04-23 23:10
+
+## 本次 session 完成的工作
+
+- HTML 規格文件（`docs/ems-flow-spec.html`）`body` 加 `zoom: 1.5` 放大整體視覺
+- 依 PM 流程圖（時間機制與提醒條件）比對 spec，發現通氣節拍器輸出方式不一致
+- 補齊 `pm-flow-spec.md` §2、`pm-dev-spec.md` §4.2、`gap-analysis.md` 的通氣輸出為「蜂鳴 + 震動 + LED 提示」
+- 採用新版本號管理策略：只比 committed 版本多 1 小版本 → `pm-flow-spec` v1.4、`pm-dev-spec` v1.2、HTML v1.0
+- 合併之前累積的多個小版本變更為單一版本紀錄條目
+- Spec commit `1d5a454` 推送 origin/main
+- 依 spec 變更改造韌體：
+  - 新增 `MedPhase` enum（NOT_STARTED / COUNTING / WARNING / ALARMING）
+  - 移除 `DEFAULT_MED_REMINDER_REPEAT_MS`、新增 `DEFAULT_MED_ALARM_PULSE_MS=1500`
+  - `fireReminderRepeat` → `fireAlarmingPulse`（連續發報語意）
+  - `main.cpp` `updateMedCountdown` 改為純函式 thin wrapper
+  - `updateVentMetronome` 補齊震動（guard）+ OLED flash（LED stub）
+  - `test_med_countdown` 重寫擴充至 20 cases
+- Unit test 41/41 全綠、ESP32-S3 build 成功
+- 韌體 commit `07a0963` 推送 origin/main
+- 煙霧測試清單（A~F 6 大類 27 項）整理進 `tasks/todo.md`
+
+## 未完成 / 後續待處理
+
+- 上開發板重跑實機煙霧測試（見上方 A~F 清單）
+- Phase 3 實體 status LED 接線（目前以 OLED flash 代替）
+- 震動馬達到貨後 `#define ENABLE_VIBRATION 1` + 接 `VIBRATION_PIN` 驗證 D3b 震動觸發

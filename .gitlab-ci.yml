@@ -1,0 +1,47 @@
+# EMS Timer — GitLab CI/CD
+# - test: 跑 PlatformIO native 單元測試（純邏輯，不需硬體）
+# - pages: 發佈 docs/ 為 GitLab Pages 靜態站
+
+stages:
+  - test
+  - deploy
+
+variables:
+  # 把 PlatformIO core 裝到專案目錄內，才能被 GitLab Cache 抓到
+  PLATFORMIO_CORE_DIR: "$CI_PROJECT_DIR/.platformio"
+  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
+
+test:
+  stage: test
+  image: python:3.11-slim
+  cache:
+    key:
+      files:
+        - firmware/platformio.ini
+    paths:
+      - .platformio/
+      - .pip-cache/
+  before_script:
+    - pip install --upgrade platformio
+  script:
+    - pio test -e native -d firmware
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+
+pages:
+  stage: deploy
+  image: alpine:latest
+  script:
+    - mkdir -p public
+    # 互動版 HTML 規格當首頁
+    - cp docs/ems-flow-spec.html public/index.html
+    # MD 規格直接放旁邊，供直連瀏覽/下載
+    - cp docs/*.md public/
+    # 同時保留 HTML 原檔（方便直連）
+    - cp docs/*.html public/
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
