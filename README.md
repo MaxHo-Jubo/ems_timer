@@ -168,15 +168,15 @@ macOS 已預設 `osxkeychain` credential helper，第一次 push 會要求輸入
    - Username：GitLab 帳號
    - Password：貼上 PAT（不是 GitLab 登入密碼）
 
-### CI — 自動測試
+### CI — 單元測試（本機執行）
 
-每次 push 到 `main` 或開 Merge Request 時，GitLab CI 會在 `python:3.11-slim` 容器跑 PlatformIO native 單元測試：
+此 GitLab 實例目前無可用 runner，CI test job 已停用。單元測試改本機執行：
 
 ```
 pio test -e native -d firmware
 ```
 
-設定檔：[`.gitlab-ci.yml`](.gitlab-ci.yml)
+若未來朋友的 GitLab 掛上 runner，再把 test job 加回 [`.gitlab-ci.yml`](.gitlab-ci.yml)。
 
 ### GitLab Pages — 規格文件站
 

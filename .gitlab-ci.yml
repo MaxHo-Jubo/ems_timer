@@ -1,36 +1,9 @@
 # EMS Timer — GitLab CI/CD
-# - test: 跑 PlatformIO native 單元測試（純邏輯，不需硬體）
 # - pages: 發佈 docs/ 為 GitLab Pages 靜態站
-
-stages:
-  - test
-  - deploy
-
-variables:
-  # 把 PlatformIO core 裝到專案目錄內，才能被 GitLab Cache 抓到
-  PLATFORMIO_CORE_DIR: "$CI_PROJECT_DIR/.platformio"
-  PIP_CACHE_DIR: "$CI_PROJECT_DIR/.pip-cache"
-
-test:
-  stage: test
-  image: python:3.11-slim
-  cache:
-    key:
-      files:
-        - firmware/platformio.ini
-    paths:
-      - .platformio/
-      - .pip-cache/
-  before_script:
-    - pip install --upgrade platformio
-  script:
-    - pio test -e native -d firmware
-  rules:
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+# 注意：test job 已移除（此 GitLab 實例無可用 runner）；單元測試改本機執行：
+#   pio test -e native -d firmware
 
 pages:
-  stage: deploy
   image: alpine:latest
   script:
     - mkdir -p public

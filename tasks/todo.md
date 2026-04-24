@@ -11,24 +11,25 @@
   - PAT 產生步驟已文件化於 `README.md` § Repository & CI/CD
 - [x] **2. 保留 GitHub 當備份**
   - 新增 remote `github`（`git push github main` 手動同步）
-- [x] **3. GitLab CI — 自動跑單元測試**
-  - `.gitlab-ci.yml` 建立，`test` job 跑 `pio test -e native -d firmware`
-  - 觸發：push to main + Merge Request
-  - Cache：`.platformio/` + `.pip-cache/`（加速後續 pipeline）
-- [x] **4. GitLab Pages — 發佈 docs/**
-  - `pages` job 部署 `docs/ems-flow-spec.html` 為首頁 + 全部 MD / HTML
+- [x] **3. GitLab CI** — test job 已移除
+  - 2026-04-24：此 GitLab 實例無可用 runner，test job 取消
+  - 單元測試改本機執行：`pio test -e native -d firmware`
+  - 未來若有 runner，再把 test job 加回 `.gitlab-ci.yml`
+- [x] **4. GitLab Pages — 發佈 docs/**（待驗證 Pages 功能是否啟用）
+  - `pages` job 設定完成：部署 `docs/ems-flow-spec.html` 為首頁 + 全部 MD / HTML
   - 僅 main branch 觸發
+  - ⚠️ 自架 GitLab 的 Pages 功能需 admin 啟用，目前 Settings 沒看到 Pages 項 → 待確認 Deploy 選單或請朋友開啟
 
 ### 決策結論
 
 - Q1: 首頁 = `ems-flow-spec.html`（不另做 landing page）
 - Q2: 備份 remote 名稱 = `github`
-- Q3: CI 只跑 native test（不跑 ESP32 build；本機跑即可）
+- Q3: CI 不跑 test job（無 runner）；本機手動 `pio test`
 
-### 待驗證（首次 push 後）
+### 待驗證 / 待處理
 
-- [ ] Pipeline 綠燈（`test` + `pages` 兩個 job）
-- [ ] Pages URL 實際 accessible
+- [ ] Pages 功能是否啟用（Deploy → Pages 或請朋友在 GitLab admin 開啟）
+- [ ] 若 Pages 不可用，改用 GitHub Pages 或整個移除 pages job
 - [ ] `git push github main` 備份同步成功
 
 ## 已完成階段
