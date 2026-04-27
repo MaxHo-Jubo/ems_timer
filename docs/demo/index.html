@@ -1,0 +1,1321 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0a0a">
+<title>EMS DoseSync Pro — 互動 Demo</title>
+<style>
+  /* === 全域 reset === */
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; }
+  html, body { height: 100%; overflow: hidden; background: #1a1a1a; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif;
+    color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  #app {
+    width: 100%; max-width: 480px; height: 100%; max-height: 900px;
+    display: flex; flex-direction: column;
+    background: #0a0a0a; position: relative;
+  }
+
+  /* === 頂部 status === */
+  #status-bar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 12px; font-size: 11px; color: #64748b;
+    background: #050505; border-bottom: 1px solid #222;
+  }
+  #status-bar .speed-badge {
+    background: #1e3a5f; color: #93c5fd; padding: 2px 8px; border-radius: 8px; font-weight: 700;
+  }
+  #status-bar .state-badge { font-family: "Courier New", monospace; }
+
+  /* === LED bar === */
+  #led-bar {
+    height: 6px; background: #050505; transition: background 0.1s;
+  }
+  #led-bar.led-yellow-slow { animation: ledYellowSlow 1.6s infinite; }
+  #led-bar.led-red-fast    { animation: ledRedFast 0.3s infinite; }
+  #led-bar.led-red-slow    { animation: ledRedSlow 1.6s infinite; }
+  #led-bar.led-green-flash { animation: ledGreen 0.5s 2; }
+  #led-bar.led-vent-pulse  { animation: ledVentPulse 0.3s 1; }
+  @keyframes ledYellowSlow { 0%, 50% { background: #050505; } 25% { background: #f59e0b; } }
+  @keyframes ledRedFast    { 0%, 100% { background: #050505; } 50% { background: #ef4444; } }
+  @keyframes ledRedSlow    { 0%, 70% { background: #050505; } 30% { background: #ef4444; } }
+  @keyframes ledGreen      { 0%, 100% { background: #050505; } 50% { background: #22c55e; } }
+  @keyframes ledVentPulse  { 0%, 100% { background: #050505; } 50% { background: #ef4444; } }
+
+  /* === OLED 螢幕區 === */
+  #screen {
+    flex: 1; background: #000; position: relative; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  #screen.flash-red { animation: flashRed 0.6s infinite; }
+  @keyframes flashRed { 0%, 100% { background: #000; } 50% { background: #4a0000; } }
+  #screen.flash-vent { background: #5a0000; }
+
+  #screen-watermark {
+    position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg);
+    font-size: 80px; color: rgba(96, 165, 250, 0.08); font-weight: 900; letter-spacing: 12px;
+    pointer-events: none; white-space: nowrap;
+  }
+  #screen-watermark.show { display: block; }
+  #screen-watermark.hide { display: none; }
+
+  #screen-content {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 16px; position: relative; z-index: 1;
+  }
+
+  /* === 螢幕通用 components === */
+  .scr-title { font-size: 14px; color: #94a3b8; letter-spacing: 4px; margin-bottom: 8px; text-transform: uppercase; }
+  .scr-mode  { font-size: 11px; color: #4ade80; margin-bottom: 12px; letter-spacing: 2px; }
+  .scr-time-big { font-size: 84px; font-weight: 900; line-height: 1; font-family: "Courier New", monospace; color: #fff; }
+  .scr-time-amber { color: #fbbf24; }
+  .scr-time-red   { color: #ef4444; }
+  .scr-label   { font-size: 16px; color: #cbd5e1; margin-top: 12px; }
+  .scr-counter { font-size: 13px; color: #64748b; margin-top: 16px; font-family: "Courier New", monospace; }
+  .scr-alert-big { font-size: 56px; font-weight: 900; letter-spacing: 8px; color: #fff; }
+  .scr-flash-msg { font-size: 24px; font-weight: 700; color: #fff; text-align: center; }
+  .scr-flash-sub { font-size: 14px; color: #94a3b8; margin-top: 8px; }
+
+  .scr-vent-num { font-size: 200px; font-weight: 900; line-height: 1; color: #fff; font-family: "Courier New", monospace; }
+  .scr-vent-num.emphasis { color: #fff; }
+  .scr-vent-label { font-size: 14px; color: #94a3b8; margin-top: 8px; letter-spacing: 4px; }
+  .scr-vent-epi-hint { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 13px; color: #cbd5e1; font-family: "Courier New", monospace; }
+  .scr-vent-epi-hint.warning { color: #fbbf24; }
+  .scr-vent-epi-hint.alarm   { color: #ef4444; }
+
+  /* === Menu list === */
+  .menu-list { width: 100%; max-width: 320px; padding: 0 16px; }
+  .menu-item { padding: 12px 16px; font-size: 18px; color: #94a3b8; border-radius: 8px; }
+  .menu-item.selected { background: #1e3a5f; color: #fff; font-weight: 700; }
+  .menu-item .menu-cursor { display: inline-block; width: 16px; color: #4ade80; }
+  .menu-header { font-size: 14px; color: #4ade80; letter-spacing: 4px; margin-bottom: 16px; text-align: center; text-transform: uppercase; }
+
+  /* === Confirm dialog === */
+  #overlay {
+    position: absolute; inset: 0; background: rgba(0, 0, 0, 0.92);
+    display: none; align-items: center; justify-content: center; z-index: 10;
+    padding: 24px;
+  }
+  #overlay.show { display: flex; }
+  .dialog {
+    background: #111; border: 2px solid #f59e0b; border-radius: 12px;
+    padding: 24px; max-width: 320px; width: 100%; text-align: center;
+  }
+  .dialog.danger { border-color: #ef4444; }
+  .dialog-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 12px; }
+  .dialog-body  { font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px; }
+  .dialog-hint  { font-size: 11px; color: #64748b; padding-top: 12px; border-top: 1px solid #333; }
+
+  /* === Summary === */
+  .summary-box { width: 100%; max-width: 360px; padding: 0 16px; font-size: 13px; }
+  .summary-box .sum-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; }
+  .summary-box .sum-row .sum-key { color: #94a3b8; }
+  .summary-box .sum-row .sum-val { color: #fff; font-family: "Courier New", monospace; font-weight: 700; }
+  .summary-box .sum-section { color: #4ade80; font-size: 11px; letter-spacing: 2px; margin: 12px 0 4px; }
+
+  .timeline-box { width: 100%; max-width: 360px; padding: 0 16px; font-family: "Courier New", monospace; font-size: 12px; }
+  .timeline-box .tl-row { padding: 4px 0; display: flex; gap: 12px; }
+  .timeline-box .tl-time { color: #4ade80; min-width: 56px; }
+  .timeline-box .tl-time-na { color: #64748b; }
+  .timeline-box .tl-event { color: #fff; }
+  .timeline-box .tl-event-supp { color: #fbbf24; }
+  .timeline-box .tl-event-end { color: #94a3b8; }
+
+  /* === Buttons 區 === */
+  #buttons {
+    background: #1a1a1a; padding: 12px 12px 16px;
+    display: flex; flex-direction: column; gap: 8px;
+    border-top: 1px solid #2a2a2a;
+  }
+  .btn-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .btn {
+    padding: 14px 0; border: none; border-radius: 10px;
+    font-size: 14px; font-weight: 700; color: #fff;
+    background: #2a2a2a; touch-action: manipulation;
+    transition: transform 0.05s, background 0.1s;
+    font-family: inherit; cursor: pointer;
+  }
+  .btn:active { transform: scale(0.95); }
+  .btn-epi   { background: #b91c1c; }
+  .btn-shock { background: #d97706; }
+  .btn-back  { background: #475569; }
+  .btn-up    { background: #475569; }
+  .btn-down  { background: #475569; }
+  .btn-power { background: #1e293b; font-size: 11px; color: #64748b; }
+  .btn-main  {
+    width: 100%; padding: 22px 0; font-size: 18px;
+    background: linear-gradient(180deg, #2563eb, #1e40af); color: #fff;
+    border-radius: 16px; font-weight: 900; letter-spacing: 8px;
+    box-shadow: 0 4px 0 #1e3a8a;
+  }
+  .btn-main:active { box-shadow: 0 2px 0 #1e3a8a; transform: translateY(2px); }
+  .btn.long-pressing { background: #f59e0b !important; animation: longPressGlow 0.3s infinite alternate; }
+  @keyframes longPressGlow { from { box-shadow: 0 0 0 rgba(245, 158, 11, 0.5); } to { box-shadow: 0 0 16px rgba(245, 158, 11, 0.9); } }
+
+  .btn-hint { font-size: 9px; color: #64748b; text-align: center; padding: 2px 0 0; letter-spacing: 1px; font-weight: 400; }
+
+  /* === Speed control 隱藏式 === */
+  #speed-toggle { font-size: 10px; color: #64748b; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
+  #speed-toggle:hover { background: #1e293b; }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="status-bar">
+    <span class="state-badge" id="state-name">MAIN_MENU</span>
+    <span class="speed-badge" id="speed-toggle">8x ⏵</span>
+  </div>
+
+  <div id="led-bar"></div>
+
+  <div id="screen">
+    <div id="screen-watermark" class="hide">TRAINING</div>
+    <div id="screen-content"></div>
+    <div id="overlay"></div>
+  </div>
+
+  <div id="buttons">
+    <div class="btn-row">
+      <button class="btn btn-shock" data-btn="SHOCK">電擊</button>
+      <button class="btn btn-up"    data-btn="UP">▲</button>
+      <button class="btn btn-epi"   data-btn="EPI">EPI</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-back"  data-btn="BACK">返回</button>
+      <button class="btn btn-down"  data-btn="DOWN">▼</button>
+      <button class="btn btn-power" data-btn="POWER">⏻ Power</button>
+    </div>
+    <button class="btn btn-main" data-btn="MAIN">主鍵</button>
+    <div class="btn-hint">短按 = 確認 / 選取　│　長按 ≥ 0.75s = 結束 / 進入子選單</div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+// ============================================================
+// SECTION 1：常數與 Speed 設定
+// ============================================================
+
+/** 倒數 4 分鐘對應的真實毫秒（1x 速度時） */
+const EPI_CYCLE_REAL_MS         = 240_000;
+/** 進入 WARNING 階段的剩餘時間門檻（剩 1 分鐘） */
+const EPI_WARNING_REMAINING_MS  = 60_000;
+/** ALARMING 階段持續發報的時長（5 秒） */
+const EPI_ALARM_INITIAL_MS      = 5_000;
+/** 超時後每 N ms 短嗶提醒一次 */
+const EPI_OVERTIME_REMIND_MS    = 15_000;
+/** WARNING 階段每 N ms 短嗶一次 */
+const EPI_WARN_BEEP_MS          = 15_000;
+/** 通氣節奏 1 拍 = 1 秒（依 V1 §13.4） */
+const VENT_BEAT_REAL_MS         = 1_000;
+/** 兩段確認 timeout（首次按下 N ms 內未再按則自動取消） */
+const CONFIRM_TIMEOUT_REAL_MS   = 5_000;
+/** 長按判定門檻（ms） */
+const LONG_PRESS_THRESHOLD_MS   = 750;
+/** Tick 頻率（demo render + 計時用） */
+const TICK_INTERVAL_MS          = 100;
+/** 過場閃顯預設停留時間 */
+const FLASH_DEFAULT_MS          = 1_200;
+
+/** 倒數加速倍率（URL ?speed=8x），影響「OHCA EPI 倒數 + 通氣節拍」的模擬時間 */
+const SPEED_MULT = (() => {
+  const raw = new URLSearchParams(location.search).get('speed') || '8x';
+  const num = parseInt(raw, 10);
+  return (num >= 1 && num <= 64) ? num : 8;
+})();
+
+// ============================================================
+// SECTION 2：音效（Web Audio）+ 震動 + LED
+// ============================================================
+
+let audioCtx = null;
+let alarmOsc = null;
+let alarmGain = null;
+
+/** 首次 user gesture 時 init AudioContext（Mobile Safari 限制） */
+function ensureAudio() {
+  if (audioCtx) return;
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (Ctx) audioCtx = new Ctx();
+}
+
+/** 播放單聲嗶 */
+function beep(freq, durationMs, volume = 0.25, type = 'square') {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + durationMs / 1000);
+  osc.connect(gain).connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + durationMs / 1000);
+}
+
+/** 連續高優先警報音（ALARMING 用）— 持續發聲直到 stopAlarm() */
+function startAlarm() {
+  if (!audioCtx || alarmOsc) return;
+  alarmOsc  = audioCtx.createOscillator();
+  alarmGain = audioCtx.createGain();
+  alarmOsc.type = 'square';
+  alarmOsc.frequency.value = 1200;
+  alarmGain.gain.value = 0.3;
+  alarmOsc.connect(alarmGain).connect(audioCtx.destination);
+  alarmOsc.start();
+}
+function stopAlarm() {
+  if (!alarmOsc) return;
+  try { alarmOsc.stop(); } catch (_) {}
+  alarmOsc = null;
+  alarmGain = null;
+}
+
+/** 震動 helper（不支援會 silently fail） */
+function vibrate(pattern) {
+  if (navigator.vibrate) navigator.vibrate(pattern);
+}
+
+const led = document.getElementById('led-bar');
+/** 設定 LED 模式：'off' / 'yellow_slow' / 'red_fast' / 'red_slow' / 'green_flash' / 'vent_pulse' */
+function setLed(mode) {
+  led.className = mode === 'off' ? '' : `led-${mode.replace(/_/g, '-')}`;
+}
+
+// ============================================================
+// SECTION 3：全域 state machine
+// ============================================================
+
+const screenContent = document.getElementById('screen-content');
+const screenEl      = document.getElementById('screen');
+const overlay       = document.getElementById('overlay');
+const stateNameEl   = document.getElementById('state-name');
+const watermark     = document.getElementById('screen-watermark');
+
+let currentState = null;
+/** 每個 state 的 ephemeral 資料（如 menu cursor、confirm 時 first_press 時間等） */
+let stateData = {};
+
+/** 跳到指定 state，觸發 onExit / onEnter */
+function go(stateName, data = {}) {
+  if (currentState && STATES[currentState]?.onExit) {
+    STATES[currentState].onExit();
+  }
+  currentState = stateName;
+  stateData = data;
+  stateNameEl.textContent = stateName;
+  if (STATES[stateName]?.onEnter) {
+    STATES[stateName].onEnter();
+  }
+  render();
+}
+
+/** 由當前 state 決定要 render 什麼；不改 state */
+function render() {
+  if (!currentState) return;
+  const s = STATES[currentState];
+  if (s?.render) s.render();
+}
+
+// ============================================================
+// SECTION 4：OHCA case 資料結構
+// ============================================================
+
+/** 當前 OHCA case；null = 沒有進行中的案件 */
+let ohcaCase = null;
+
+function newOhcaCase() {
+  ohcaCase = {
+    startedAt:                performance.now(),  // real ms when case started
+    lastEpiRealAt:            null,               // real ms of last local EPI confirm（null = 待本機 EPI）
+    events:                   [],                 // ems_event_t[]
+    locked:                   false,
+    alarmingEnteredSimMs:     null,               // sim ms within current cycle when entered ALARMING
+    warningLastBeepSimMs:     null,
+    overtimeLastReminderSimMs:null,
+  };
+}
+
+/** 從案件起算的模擬經過毫秒（含加速） */
+function caseElapsedSimMs() {
+  if (!ohcaCase) return 0;
+  return (performance.now() - ohcaCase.startedAt) * SPEED_MULT;
+}
+/** 從上次本機 EPI 起算的模擬毫秒；待本機 EPI 時回 null */
+function sinceLastEpiSimMs() {
+  if (!ohcaCase || !ohcaCase.lastEpiRealAt) return null;
+  return (performance.now() - ohcaCase.lastEpiRealAt) * SPEED_MULT;
+}
+/** 計算當前 OHCA EPI 倒數階段 */
+function ohcaPhase() {
+  if (!ohcaCase) return null;
+  const t = sinceLastEpiSimMs();
+  if (t === null) return 'WAIT_FIRST_EPI';
+  if (t < EPI_CYCLE_REAL_MS - EPI_WARNING_REMAINING_MS) return 'COUNTING';   // 剩 > 1 分鐘
+  if (t < EPI_CYCLE_REAL_MS) return 'WARNING';                                // 剩 ≤ 1 分鐘
+  if (t < EPI_CYCLE_REAL_MS + EPI_ALARM_INITIAL_MS) return 'ALARMING';        // 0~5s 警報
+  return 'OVERTIME';
+}
+
+/** 寫入事件並回傳新事件 */
+function recordEvent(type, count = 1, actualTimeNull = false) {
+  if (!ohcaCase) return null;
+  const ev = {
+    type,
+    timestamp:        Date.now(),
+    elapsedSimMs:     caseElapsedSimMs(),
+    count,
+    actualTimeNull,
+  };
+  ohcaCase.events.push(ev);
+  return ev;
+}
+
+/** 確認 EPI 二段成立：記錄事件 + 重啟倒數 + 清警報 */
+function commitEpiLocal() {
+  recordEvent('EPI_LOCAL');
+  ohcaCase.lastEpiRealAt              = performance.now();
+  ohcaCase.alarmingEnteredSimMs       = null;
+  ohcaCase.warningLastBeepSimMs       = null;
+  ohcaCase.overtimeLastReminderSimMs  = null;
+  stopAlarm();
+  setLed('green_flash');
+  beep(1500, 80); setTimeout(() => beep(1800, 100), 120);
+  vibrate(80);
+}
+
+function commitShockLocal() {
+  recordEvent('SHOCK_LOCAL');
+  setLed('green_flash');
+  beep(1500, 80); setTimeout(() => beep(1800, 100), 120);
+  vibrate(80);
+}
+
+function commitAmiodarone() {
+  recordEvent('AMIODARONE');
+  setLed('green_flash');
+  beep(1500, 80); setTimeout(() => beep(1800, 100), 120);
+  vibrate(80);
+}
+
+function commitSupp(typeStr, count) {
+  recordEvent(typeStr, count, true);
+  setLed('green_flash');
+  beep(1200, 100); setTimeout(() => beep(1500, 120), 150);
+  vibrate([80, 50, 80]);
+}
+
+// ============================================================
+// SECTION 5：OHCA tick — 每 100ms 跑，依 phase 觸發輸出
+// ============================================================
+
+function ohcaTick() {
+  if (!ohcaCase || ohcaCase.locked) return;
+  const phase = ohcaPhase();
+  const t     = sinceLastEpiSimMs();
+
+  if (phase === 'COUNTING') {
+    setLed('off');
+    // STEP 01: 重置 phase 邊界 trackers，避免下次進 WARNING/ALARMING 時誤判
+    ohcaCase.warningLastBeepSimMs       = null;
+    ohcaCase.alarmingEnteredSimMs       = null;
+    ohcaCase.overtimeLastReminderSimMs  = null;
+  } else if (phase === 'WARNING') {
+    setLed('yellow_slow');
+    // STEP 01: 每 EPI_WARN_BEEP_MS 短嗶（用 sim ms 計，speed 加速也跟著加速）
+    if (ohcaCase.warningLastBeepSimMs === null
+        || t - ohcaCase.warningLastBeepSimMs >= EPI_WARN_BEEP_MS) {
+      beep(880, 100);
+      vibrate(60);
+      ohcaCase.warningLastBeepSimMs = t;
+    }
+  } else if (phase === 'ALARMING') {
+    setLed('red_fast');
+    if (ohcaCase.alarmingEnteredSimMs === null) {
+      // STEP 01: 首次進入 ALARMING，啟動連續警報
+      ohcaCase.alarmingEnteredSimMs = t;
+      startAlarm();
+      vibrate([300, 100, 300, 100, 300]);
+    }
+  } else if (phase === 'OVERTIME') {
+    setLed('red_slow');
+    stopAlarm();
+    // STEP 01: 進入超時時刻先短嗶一次，之後每 15s 提醒
+    if (ohcaCase.overtimeLastReminderSimMs === null
+        || t - ohcaCase.overtimeLastReminderSimMs >= EPI_OVERTIME_REMIND_MS) {
+      beep(880, 100);
+      vibrate(80);
+      ohcaCase.overtimeLastReminderSimMs = t;
+    }
+  }
+  render();
+}
+
+// ============================================================
+// SECTION 6：通氣節奏 controller
+// ============================================================
+
+let ventState = null;  // null = 未啟動；{ startedAt, currentBeat, lastBeatRealMs, mode: 'standalone' | 'in_ohca', ohcaInterrupted }
+
+function startVent(mode) {
+  ventState = {
+    startedAt:        performance.now(),
+    currentBeat:      0,
+    lastBeatRealMs:   0,
+    mode,
+    ohcaInterrupted: false,
+  };
+  ventTickFire();
+}
+function stopVent() {
+  ventState = null;
+  setLed('off');
+  screenEl.classList.remove('flash-vent');
+}
+
+/** 推進到下一拍（1~6 循環） */
+function ventTickFire() {
+  if (!ventState) return;
+  ventState.currentBeat = (ventState.currentBeat % 6) + 1;
+  ventState.lastBeatRealMs = performance.now();
+
+  if (ventState.currentBeat === 1) {
+    beep(1000, 200, 0.4);
+    vibrate(150);
+    setLed('vent_pulse');
+    screenEl.classList.add('flash-vent');
+    setTimeout(() => screenEl.classList.remove('flash-vent'), 300);
+  } else {
+    beep(800, 80, 0.2);
+  }
+  render();
+}
+
+function ventTick() {
+  if (!ventState) return;
+  const realElapsedSinceLastBeat = performance.now() - ventState.lastBeatRealMs;
+  // STEP 01: 通氣節拍受 SPEED_MULT 影響（與 EPI 倒數同步加速）
+  if (realElapsedSinceLastBeat * SPEED_MULT >= VENT_BEAT_REAL_MS) {
+    ventTickFire();
+  }
+  // STEP 02: OHCA 中切入時，背景 OHCA EPI tick 仍要跑
+  if (ventState.mode === 'in_ohca') {
+    ohcaTick();
+    // STEP 02.01: EPI 高優先打斷：進入 ALARMING 立即停通氣音 + 跳回 OHCA 警報
+    if (ohcaPhase() === 'ALARMING' && !ventState.ohcaInterrupted) {
+      ventState.ohcaInterrupted = true;
+      stopVent();
+      go('OHCA_RUNNING');  // 跳回 OHCA 警報畫面
+    }
+  }
+}
+
+// ============================================================
+// SECTION 7：通用過場閃顯 (FLASH state)
+// ============================================================
+
+/** 顯示一個過場訊息 N ms 後 go(nextState)；用 stateData 傳資料 */
+function flash(msg, sub, durationMs, nextState, nextData = {}) {
+  go('FLASH', { msg, sub, until: performance.now() + durationMs, nextState, nextData });
+}
+
+// ============================================================
+// SECTION 8：State 定義
+// ============================================================
+
+const STATES = {
+
+  // ----- 主功能表 -----
+  MAIN_MENU: {
+    onEnter: () => {
+      stateData.cursor = stateData.cursor ?? 0;
+      stopAlarm(); setLed('off');
+    },
+    onButton: (btn, kind) => {
+      const items = ['OHCA 案件', '6 秒通氣節奏', '訓練模式', '歷史紀錄', '系統設定'];
+      if (btn === 'UP') {
+        stateData.cursor = (stateData.cursor + items.length - 1) % items.length;
+        beep(600, 30, 0.1); render();
+      } else if (btn === 'DOWN') {
+        stateData.cursor = (stateData.cursor + 1) % items.length;
+        beep(600, 30, 0.1); render();
+      } else if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const idx = stateData.cursor;
+        if (idx === 0) {
+          newOhcaCase();
+          flash('案件開始', 'OHCA', FLASH_DEFAULT_MS, 'OHCA_RUNNING');
+        } else if (idx === 1) {
+          go('VENT_PRE');
+        } else if (idx === 2 || idx === 3 || idx === 4) {
+          flash('Demo 範圍未涵蓋', '請按返回鍵', 1500, 'MAIN_MENU', { cursor: stateData.cursor });
+        }
+      }
+    },
+    render: () => {
+      const items = ['OHCA 案件', '6 秒通氣節奏', '訓練模式', '歷史紀錄', '系統設定'];
+      const cursor = stateData.cursor || 0;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">EMS DoseSync Pro</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 過場閃顯 -----
+  FLASH: {
+    onEnter: () => {
+      const remain = stateData.until - performance.now();
+      setTimeout(() => {
+        if (currentState === 'FLASH') go(stateData.nextState, stateData.nextData);
+      }, Math.max(0, remain));
+    },
+    onButton: () => {},
+    render: () => {
+      screenContent.innerHTML = `
+        <div style="text-align:center">
+          <div class="scr-flash-msg">${stateData.msg}</div>
+          ${stateData.sub ? `<div class="scr-flash-sub">${stateData.sub}</div>` : ''}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- OHCA 主畫面（包含 WAIT_FIRST_EPI / COUNTING / WARNING / ALARMING / OVERTIME 五種 view variant） -----
+  OHCA_RUNNING: {
+    onEnter: () => { /* tick 由 global ticker 處理 */ },
+    onExit:  () => { stopAlarm(); screenEl.classList.remove('flash-red'); },
+    onButton: (btn, kind) => {
+      const phase = ohcaPhase();
+
+      // === 主鍵 ===
+      if (btn === 'MAIN') {
+        if (kind === 'LONG') {
+          // 長按 ≥ 0.75s → 結束前檢查
+          go('OHCA_END_CHECK');
+        } else {
+          // 短按：ALARMING / OVERTIME 時只消音；其他時間什麼都不做（依 V1 §6.7）
+          if (phase === 'ALARMING' || phase === 'OVERTIME') {
+            stopAlarm();
+            setLed('off');
+          }
+        }
+        return;
+      }
+
+      // === EPI 鍵 ===
+      if (btn === 'EPI' && kind === 'SHORT') {
+        stopAlarm(); setLed('off');
+        go('OHCA_CONFIRM', { evType: 'EPI', label: '確認已給 EPI？', confirmKey: 'EPI' });
+        return;
+      }
+      if (btn === 'EPI' && kind === 'LONG') {
+        go('OHCA_DRUG_MENU', { cursor: 0 });
+        return;
+      }
+
+      // === 電擊鍵 ===
+      if (btn === 'SHOCK' && kind === 'SHORT') {
+        go('OHCA_CONFIRM', { evType: 'SHOCK', label: '確認已電擊？', confirmKey: 'SHOCK' });
+        return;
+      }
+      if (btn === 'SHOCK' && kind === 'LONG') {
+        go('OHCA_SHOCK_SUPP_MENU', { cursor: 0 });
+        return;
+      }
+
+      // === 返回鍵 → 快速功能 ===
+      if (btn === 'BACK' && kind === 'SHORT') {
+        go('OHCA_QUICK_MENU', { cursor: 0 });
+        return;
+      }
+    },
+    render: () => {
+      const phase = ohcaPhase();
+      const counters = countLocal();
+      let inner = '';
+      if (phase === 'WAIT_FIRST_EPI') {
+        inner = `
+          <div class="scr-mode">OHCA</div>
+          <div class="scr-label" style="font-size:24px;color:#94a3b8">待本機 EPI</div>
+          <div class="scr-counter">EPI ${counters.epi}｜電擊 ${counters.shock}</div>
+        `;
+        screenEl.classList.remove('flash-red');
+      } else {
+        const t = sinceLastEpiSimMs();
+        let timeStr, label, timeClass = '';
+        if (phase === 'COUNTING') {
+          const remaining = Math.max(0, EPI_CYCLE_REAL_MS - t);
+          timeStr = formatMMSS(remaining);
+          label = '下次給藥';
+          screenEl.classList.remove('flash-red');
+        } else if (phase === 'WARNING') {
+          const remaining = Math.max(0, EPI_CYCLE_REAL_MS - t);
+          timeStr = formatMMSS(remaining);
+          label = '請準備給藥';
+          timeClass = 'scr-time-amber';
+          screenEl.classList.remove('flash-red');
+        } else if (phase === 'ALARMING') {
+          timeStr = '04:00';
+          label = '請給藥';
+          timeClass = 'scr-time-red';
+          screenEl.classList.add('flash-red');
+        } else { // OVERTIME
+          timeStr = formatMMSS(t);
+          label = '請給藥';
+          timeClass = 'scr-time-amber';
+          screenEl.classList.remove('flash-red');
+        }
+        inner = `
+          <div class="scr-mode">OHCA</div>
+          <div class="scr-time-big ${timeClass}">${timeStr}</div>
+          <div class="scr-label">${label}</div>
+          <div class="scr-counter">EPI ${counters.epi}｜電擊 ${counters.shock}</div>
+        `;
+      }
+      screenContent.innerHTML = inner;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 兩段確認彈窗（EPI / SHOCK / AMIO 共用） -----
+  OHCA_CONFIRM: {
+    onEnter: () => {
+      stateData.firstAt = performance.now();
+      // STEP 01: timeout auto-cancel
+      stateData.timeoutId = setTimeout(() => {
+        if (currentState === 'OHCA_CONFIRM') {
+          go('OHCA_RUNNING');
+        }
+      }, CONFIRM_TIMEOUT_REAL_MS);
+    },
+    onExit: () => {
+      if (stateData.timeoutId) clearTimeout(stateData.timeoutId);
+    },
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('OHCA_RUNNING'); return; }
+      // STEP 01: 第二次按下「同一個」事件鍵 → 成立
+      if (btn === stateData.confirmKey) {
+        const ev = stateData.evType;
+        if (ev === 'EPI')   { commitEpiLocal();   flash('EPI 已紀錄',     '重新倒數 4 分鐘', FLASH_DEFAULT_MS, 'OHCA_RUNNING'); }
+        if (ev === 'SHOCK') { commitShockLocal(); flash('電擊已紀錄',     '',                 FLASH_DEFAULT_MS, 'OHCA_RUNNING'); }
+        if (ev === 'AMIO')  { commitAmiodarone(); flash('Amiodarone 已紀錄','',               FLASH_DEFAULT_MS, 'OHCA_RUNNING'); }
+      }
+    },
+    render: () => {
+      // 背景仍 render OHCA 主畫面
+      STATES.OHCA_RUNNING.render();
+      const ev = stateData.evType;
+      const confirmBtn = stateData.confirmKey === 'MAIN' ? '主鍵' : `${stateData.confirmKey} 鍵`;
+      overlay.innerHTML = `
+        <div class="dialog">
+          <div class="dialog-title">${stateData.label}</div>
+          <div class="dialog-body">確認後將建立時間戳<br>${ev === 'EPI' ? '並重啟 4 分鐘倒數' : '不影響 EPI 倒數'}</div>
+          <div class="dialog-hint">再按 ${confirmBtn} 確認　│　返回取消</div>
+        </div>
+      `;
+      overlay.classList.add('show');
+    },
+  },
+
+  // ----- 長按 EPI → 藥物選單 -----
+  OHCA_DRUG_MENU: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['補登 EPI', 'Amiodarone'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        if (stateData.cursor === 0) {
+          go('OHCA_SUPP_COUNT', { suppType: 'EPI', cursor: 0 });
+        } else {
+          go('OHCA_CONFIRM', { evType: 'AMIO', label: '確認已給 Amiodarone？', confirmKey: 'MAIN' });
+        }
+      }
+    },
+    render: () => {
+      const items = ['補登 EPI', 'Amiodarone'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">EPI / 藥物選單</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 長按電擊 → 電擊補登選單 -----
+  OHCA_SHOCK_SUPP_MENU: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['接手前電擊', '純補登電擊'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const suppType = stateData.cursor === 0 ? 'SHOCK_PRE_HANDOVER' : 'SHOCK_PURE_SUPP';
+        go('OHCA_SUPP_COUNT', { suppType, cursor: 0 });
+      }
+    },
+    render: () => {
+      const items = ['接手前電擊', '純補登電擊'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">電擊補登</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 補登次數選擇器（接手前 1~5 / 純補登 1~3） -----
+  OHCA_SUPP_COUNT: {
+    onEnter: () => {
+      stateData.cursor = stateData.cursor ?? 0;
+      // STEP 01: 補登 EPI 入口需要再選「接手前 / 純補登」；此處先簡化為兩種次數範圍對應預設
+      if (stateData.suppType === 'EPI') {
+        // STEP 01.01: 為 EPI 補登多加一層（接手前 EPI / 純補登 EPI）；但 demo 簡化：直接固定 EPI_PRE_HANDOVER（最常見）
+        stateData.suppType = 'EPI_PRE_HANDOVER';
+      }
+      const isPreHandover = stateData.suppType.endsWith('PRE_HANDOVER');
+      stateData.maxCount = isPreHandover ? 5 : 3;
+    },
+    onButton: (btn, kind) => {
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + stateData.maxCount - 1) % stateData.maxCount; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % stateData.maxCount; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        go('OHCA_SUPP_CONFIRM', { suppType: stateData.suppType, count: stateData.cursor + 1 });
+      }
+    },
+    render: () => {
+      const cursor = stateData.cursor;
+      const max = stateData.maxCount;
+      const typeLabel = ({
+        EPI_PRE_HANDOVER:   '接手前 EPI',
+        EPI_PURE_SUPP:      '純補登 EPI',
+        SHOCK_PRE_HANDOVER: '接手前電擊',
+        SHOCK_PURE_SUPP:    '純補登電擊',
+      })[stateData.suppType];
+      const items = Array.from({ length: max }, (_, i) => `${typeLabel} ×${i + 1}`);
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">選擇次數</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 補登最後確認 -----
+  OHCA_SUPP_CONFIRM: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('OHCA_RUNNING'); return; }
+      if (btn === 'MAIN') {
+        commitSupp(stateData.suppType, stateData.count);
+        const typeLabel = ({
+          EPI_PRE_HANDOVER:   '接手前 EPI',
+          EPI_PURE_SUPP:      '純補登 EPI',
+          SHOCK_PRE_HANDOVER: '接手前電擊',
+          SHOCK_PURE_SUPP:    '純補登電擊',
+        })[stateData.suppType];
+        flash(`${typeLabel} ×${stateData.count}`, '補登成功', 2000, 'OHCA_RUNNING');
+      }
+    },
+    render: () => {
+      const typeLabel = ({
+        EPI_PRE_HANDOVER:   '接手前 EPI',
+        EPI_PURE_SUPP:      '純補登 EPI',
+        SHOCK_PRE_HANDOVER: '接手前電擊',
+        SHOCK_PURE_SUPP:    '純補登電擊',
+      })[stateData.suppType];
+      screenContent.innerHTML = `
+        <div style="text-align:center;padding:24px">
+          <div class="dialog-title" style="font-size:20px">確認補登？</div>
+          <div class="dialog-body" style="margin-top:12px">${typeLabel} ×${stateData.count}<br>成立後不可撤銷</div>
+          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 結束前檢查 -----
+  OHCA_END_CHECK: {
+    onEnter: () => {
+      stateData.cursor = 0;
+      stopAlarm(); setLed('off');
+    },
+    onButton: (btn, kind) => {
+      const items = ['完成並結束案件', '前往補登', '返回案件'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const idx = stateData.cursor;
+        if (idx === 0) go('OHCA_END_CONFIRM');
+        if (idx === 1) go('OHCA_DRUG_MENU', { cursor: 0 });  // 簡化：補登入口共用
+        if (idx === 2) go('OHCA_RUNNING');
+      }
+    },
+    render: () => {
+      const items = ['完成並結束案件', '前往補登', '返回案件'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">結束前檢查</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  OHCA_END_CONFIRM: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('OHCA_END_CHECK'); return; }
+      if (btn === 'MAIN') {
+        ohcaCase.locked = true;
+        beep(1800, 80); setTimeout(() => beep(2200, 120), 100);
+        flash('案件結束並鎖定', '', FLASH_DEFAULT_MS, 'OHCA_SUMMARY');
+      }
+    },
+    render: () => {
+      screenContent.innerHTML = `
+        <div style="text-align:center;padding:24px">
+          <div class="dialog-title" style="font-size:20px;color:#ef4444">確認結束案件？</div>
+          <div class="dialog-body" style="margin-top:12px">結束後不可修改</div>
+          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  OHCA_SUMMARY: {
+    onEnter: () => { stopAlarm(); setLed('off'); },
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('MAIN_MENU', { cursor: 0 }); return; }
+      if (btn === 'MAIN' || btn === 'DOWN') { go('OHCA_TIMELINE'); }
+    },
+    render: () => {
+      const c = countAll();
+      const firstEpi = ohcaCase.events.find(e => e.type === 'EPI_LOCAL');
+      const lastEpi  = [...ohcaCase.events].reverse().find(e => e.type === 'EPI_LOCAL');
+      const lastShock = [...ohcaCase.events].reverse().find(e => e.type === 'SHOCK_LOCAL');
+      const lastAmio  = [...ohcaCase.events].reverse().find(e => e.type === 'AMIODARONE');
+      screenContent.innerHTML = `
+        <div class="summary-box">
+          <div class="sum-section">案件總覽 ｜ OHCA</div>
+          <div class="sum-row"><span class="sum-key">同步狀態</span><span class="sum-val">App 未同步</span></div>
+          <div class="sum-section">EPI</div>
+          <div class="sum-row"><span class="sum-key">總數</span><span class="sum-val">${c.epi.total}</span></div>
+          <div class="sum-row"><span class="sum-key">本機 / 接手前 / 純補登</span><span class="sum-val">${c.epi.local} / ${c.epi.preHandover} / ${c.epi.pureSupp}</span></div>
+          <div class="sum-row"><span class="sum-key">第一次本機</span><span class="sum-val">${firstEpi ? formatTime(firstEpi.timestamp) : '無'}</span></div>
+          <div class="sum-row"><span class="sum-key">最後本機</span><span class="sum-val">${lastEpi ? formatTime(lastEpi.timestamp) : '無'}</span></div>
+          <div class="sum-section">電擊</div>
+          <div class="sum-row"><span class="sum-key">總數</span><span class="sum-val">${c.shock.total}</span></div>
+          <div class="sum-row"><span class="sum-key">本機 / 接手前 / 純補登</span><span class="sum-val">${c.shock.local} / ${c.shock.preHandover} / ${c.shock.pureSupp}</span></div>
+          <div class="sum-row"><span class="sum-key">最後本機</span><span class="sum-val">${lastShock ? formatTime(lastShock.timestamp) : '無'}</span></div>
+          <div class="sum-section">藥物</div>
+          <div class="sum-row"><span class="sum-key">Amiodarone</span><span class="sum-val">${c.amio} ${lastAmio ? '/ ' + formatTime(lastAmio.timestamp) : ''}</span></div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:12px">主鍵 / ▼ = Timeline　│　返回 = 主功能表</div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  OHCA_TIMELINE: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK' || btn === 'UP') { go('OHCA_SUMMARY'); return; }
+      if (btn === 'MAIN') { go('MAIN_MENU', { cursor: 0 }); }
+    },
+    render: () => {
+      const startStr = formatTime(ohcaCase.startedAt + (Date.now() - performance.now()));
+      const endEv = { timestamp: Date.now() };
+      const rows = [];
+      rows.push({ time: startStr, label: '案件開始', cls: 'tl-event' });
+      ohcaCase.events.forEach(e => {
+        const isSupp = e.actualTimeNull;
+        const tStr = isSupp ? '-' : formatTime(e.timestamp);
+        const cls = isSupp ? 'tl-event-supp' : 'tl-event';
+        rows.push({ time: tStr, label: eventLabel(e), cls });
+      });
+      rows.push({ time: formatTime(endEv.timestamp), label: '案件結束', cls: 'tl-event-end' });
+      screenContent.innerHTML = `
+        <div class="timeline-box">
+          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:11px;letter-spacing:2px;margin-bottom:8px">事件時間軸</div>
+          ${rows.map(r => `
+            <div class="tl-row">
+              <span class="tl-time ${r.time === '-' ? 'tl-time-na' : ''}">${r.time}</span>
+              <span class="${r.cls}">${r.label}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:12px">▲ = 回總覽　│　主鍵 = 主功能表</div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- OHCA 中按返回 → 快速功能 -----
+  OHCA_QUICK_MENU: {
+    onEnter: () => { stateData.cursor = 0; },
+    onButton: (btn, kind) => {
+      const items = ['6 秒通氣節奏', '案件簡版總覽', '返回 OHCA'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const idx = stateData.cursor;
+        if (idx === 0) {
+          startVent('in_ohca');
+          go('VENT_RUNNING', { mode: 'in_ohca' });
+        } else if (idx === 1) {
+          flash('簡版總覽', 'Demo 略過，請結束案件後看完整總覽', 2000, 'OHCA_RUNNING');
+        } else {
+          go('OHCA_RUNNING');
+        }
+      }
+    },
+    render: () => {
+      const items = ['6 秒通氣節奏', '案件簡版總覽', '返回 OHCA'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">快速功能</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 通氣節奏：開始前畫面（獨立模式） -----
+  VENT_PRE: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('MAIN_MENU', { cursor: 1 }); return; }
+      if (btn === 'MAIN') {
+        startVent('standalone');
+        go('VENT_RUNNING', { mode: 'standalone' });
+      }
+    },
+    render: () => {
+      screenContent.innerHTML = `
+        <div style="text-align:center">
+          <div class="scr-mode">6 秒通氣節奏</div>
+          <div class="scr-flash-msg" style="margin-top:24px">按主鍵開始</div>
+          <div class="scr-flash-sub" style="margin-top:12px">通氣音量可由 ▲▼ 調整<br>長按主鍵 ≥ 0.75s 結束</div>
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // ----- 通氣節奏：執行中（含 OHCA 中切入版本） -----
+  VENT_RUNNING: {
+    onEnter: () => {},
+    onExit:  () => { stopVent(); },
+    onButton: (btn, kind) => {
+      if (btn === 'MAIN' && kind === 'LONG') {
+        // STEP 01: 長按主鍵 → 結束通氣（獨立模式）/ Demo 簡化：OHCA 內也可長按結束
+        if (stateData.mode === 'standalone') {
+          go('VENT_END_CONFIRM');
+        } else {
+          // OHCA 中通氣模式長按主鍵：依 V1 §14.5 主鍵不控制通氣，但 demo 允許長按結束
+          stopVent();
+          go('OHCA_RUNNING');
+        }
+        return;
+      }
+      if (btn === 'BACK' && kind === 'SHORT') {
+        if (stateData.mode === 'in_ohca') {
+          // V1 §14.5: 返回鍵直接回 OHCA 主畫面
+          stopVent();
+          go('OHCA_RUNNING');
+        } else {
+          // V1 §13.8: 返回鍵不直接結束，提示長按主鍵
+          flash('如要結束通氣節奏', '請長按主鍵', 1500, 'VENT_RUNNING', { mode: 'standalone' });
+        }
+        return;
+      }
+      if (btn === 'EPI' && kind === 'SHORT' && stateData.mode === 'in_ohca') {
+        flash('請返回 OHCA', '處理 EPI', 1200, 'VENT_RUNNING', { mode: 'in_ohca' });
+        return;
+      }
+      if (btn === 'SHOCK' && kind === 'SHORT' && stateData.mode === 'in_ohca') {
+        // 通氣中允許電擊（V1 §14.6）；確認流程簡化為直接記錄
+        commitShockLocal();
+        flash('電擊已紀錄', '', FLASH_DEFAULT_MS, 'VENT_RUNNING', { mode: 'in_ohca' });
+        return;
+      }
+    },
+    render: () => {
+      const beat = ventState ? ventState.currentBeat : 1;
+      const inOhca = stateData.mode === 'in_ohca';
+      let epiHint = '';
+      if (inOhca && ohcaCase) {
+        const phase = ohcaPhase();
+        const t = sinceLastEpiSimMs();
+        if (phase === 'WAIT_FIRST_EPI') {
+          epiHint = `<div class="scr-vent-epi-hint">EPI 待第一次</div>`;
+        } else if (phase === 'COUNTING') {
+          const remaining = Math.max(0, EPI_CYCLE_REAL_MS - t);
+          epiHint = `<div class="scr-vent-epi-hint">EPI ${formatMMSS(remaining)}</div>`;
+        } else if (phase === 'WARNING') {
+          const remaining = Math.max(0, EPI_CYCLE_REAL_MS - t);
+          epiHint = `<div class="scr-vent-epi-hint warning">EPI ${formatMMSS(remaining)}｜請準備給藥</div>`;
+        } else if (phase === 'OVERTIME') {
+          epiHint = `<div class="scr-vent-epi-hint alarm">EPI ${formatMMSS(t)}｜請給藥</div>`;
+        }
+      }
+      screenContent.innerHTML = `
+        <div style="text-align:center;width:100%;position:relative">
+          ${inOhca ? '<div class="scr-mode" style="color:#fbbf24">OHCA 中</div>' : '<div class="scr-mode">6 秒通氣節奏</div>'}
+          <div class="scr-vent-num ${beat === 1 ? 'emphasis' : ''}">${beat}</div>
+          <div class="scr-vent-label">${beat === 1 ? '吹氣 ◉' : `${beat}/6`}</div>
+          ${epiHint}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  VENT_END_CONFIRM: {
+    onEnter: () => {},
+    onExit: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('VENT_RUNNING', { mode: 'standalone' }); return; }
+      if (btn === 'MAIN') {
+        stopVent();
+        flash('通氣節奏', '已結束', FLASH_DEFAULT_MS, 'MAIN_MENU', { cursor: 1 });
+      }
+    },
+    render: () => {
+      // 背景 vent 仍跑（保持節奏感）
+      STATES.VENT_RUNNING.render();
+      overlay.innerHTML = `
+        <div class="dialog">
+          <div class="dialog-title">結束通氣節奏？</div>
+          <div class="dialog-hint">主鍵確認　│　返回取消</div>
+        </div>
+      `;
+      overlay.classList.add('show');
+    },
+  },
+
+};
+
+// ============================================================
+// SECTION 9：輔助函式
+// ============================================================
+
+/** ms → "MM:SS" */
+function formatMMSS(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const mm = String(Math.floor(s / 60)).padStart(2, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+/** epoch ms → "HH:MM" */
+function formatTime(epochMs) {
+  const d = new Date(epochMs);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function countLocal() {
+  if (!ohcaCase) return { epi: 0, shock: 0 };
+  let epi = 0, shock = 0;
+  ohcaCase.events.forEach(e => {
+    if (e.type === 'EPI_LOCAL')   epi   += 1;
+    if (e.type === 'SHOCK_LOCAL') shock += 1;
+  });
+  return { epi, shock };
+}
+
+function countAll() {
+  const c = {
+    epi:   { total: 0, local: 0, preHandover: 0, pureSupp: 0 },
+    shock: { total: 0, local: 0, preHandover: 0, pureSupp: 0 },
+    amio:  0,
+  };
+  if (!ohcaCase) return c;
+  ohcaCase.events.forEach(e => {
+    const n = e.count;
+    if (e.type === 'EPI_LOCAL')          { c.epi.local += 1;        c.epi.total += 1; }
+    if (e.type === 'EPI_PRE_HANDOVER')   { c.epi.preHandover += n;  c.epi.total += n; }
+    if (e.type === 'EPI_PURE_SUPP')      { c.epi.pureSupp += n;     c.epi.total += n; }
+    if (e.type === 'SHOCK_LOCAL')        { c.shock.local += 1;      c.shock.total += 1; }
+    if (e.type === 'SHOCK_PRE_HANDOVER') { c.shock.preHandover += n;c.shock.total += n; }
+    if (e.type === 'SHOCK_PURE_SUPP')    { c.shock.pureSupp += n;   c.shock.total += n; }
+    if (e.type === 'AMIODARONE')         { c.amio += 1; }
+  });
+  return c;
+}
+
+function eventLabel(e) {
+  switch (e.type) {
+    case 'EPI_LOCAL':          return `EPI #${countTypeBefore(e, 'EPI_LOCAL')}`;
+    case 'SHOCK_LOCAL':        return `電擊 #${countTypeBefore(e, 'SHOCK_LOCAL')}`;
+    case 'AMIODARONE':         return 'Amiodarone';
+    case 'EPI_PRE_HANDOVER':   return `接手前 EPI ×${e.count}`;
+    case 'EPI_PURE_SUPP':      return `純補登 EPI ×${e.count}`;
+    case 'SHOCK_PRE_HANDOVER': return `接手前電擊 ×${e.count}`;
+    case 'SHOCK_PURE_SUPP':    return `純補登電擊 ×${e.count}`;
+    default: return e.type;
+  }
+}
+function countTypeBefore(target, type) {
+  let n = 0;
+  for (const e of ohcaCase.events) {
+    if (e.type === type) n += 1;
+    if (e === target) return n;
+  }
+  return n;
+}
+
+// ============================================================
+// SECTION 10：按鍵 input 處理（短按 / 長按）
+// ============================================================
+
+let pressTimers = {};   // btn → timeoutId
+let longFired   = {};   // btn → bool
+
+function bindButton(el) {
+  const btn = el.dataset.btn;
+
+  const onDown = (e) => {
+    e.preventDefault();
+    ensureAudio();
+    longFired[btn] = false;
+    pressTimers[btn] = setTimeout(() => {
+      longFired[btn] = true;
+      el.classList.add('long-pressing');
+      vibrate(40);
+      // STEP 01: fire-on-hold for long press（達門檻立即觸發，不等放開）
+      handleButton(btn, 'LONG');
+    }, LONG_PRESS_THRESHOLD_MS);
+  };
+
+  const onUp = (e) => {
+    e.preventDefault();
+    clearTimeout(pressTimers[btn]);
+    el.classList.remove('long-pressing');
+    if (!longFired[btn]) {
+      handleButton(btn, 'SHORT');
+    }
+    longFired[btn] = false;
+  };
+
+  const onCancel = () => {
+    clearTimeout(pressTimers[btn]);
+    el.classList.remove('long-pressing');
+    longFired[btn] = false;
+  };
+
+  el.addEventListener('touchstart',  onDown,   { passive: false });
+  el.addEventListener('touchend',    onUp,     { passive: false });
+  el.addEventListener('touchcancel', onCancel);
+  el.addEventListener('mousedown',   onDown);
+  el.addEventListener('mouseup',     onUp);
+  el.addEventListener('mouseleave',  onCancel);
+}
+
+function handleButton(btn, kind) {
+  if (STATES[currentState]?.onButton) {
+    STATES[currentState].onButton(btn, kind);
+  }
+}
+
+document.querySelectorAll('[data-btn]').forEach(bindButton);
+
+// Speed toggle 切換循環
+const SPEED_OPTIONS = [1, 4, 8, 16, 32];
+const speedToggle = document.getElementById('speed-toggle');
+function refreshSpeedBadge() { speedToggle.textContent = `${SPEED_MULT}x ⏵`; }
+speedToggle.addEventListener('click', () => {
+  const next = SPEED_OPTIONS[(SPEED_OPTIONS.indexOf(SPEED_MULT) + 1) % SPEED_OPTIONS.length];
+  const url = new URL(location.href);
+  url.searchParams.set('speed', `${next}x`);
+  location.href = url.toString();
+});
+refreshSpeedBadge();
+
+// ============================================================
+// SECTION 11：global ticker + boot
+// ============================================================
+
+setInterval(() => {
+  if (currentState && currentState.startsWith('OHCA_') && currentState !== 'OHCA_SUMMARY' && currentState !== 'OHCA_TIMELINE') {
+    ohcaTick();
+  }
+  if (ventState) {
+    ventTick();
+  }
+}, TICK_INTERVAL_MS);
+
+go('MAIN_MENU', { cursor: 0 });
+</script>
+</body>
+</html>
