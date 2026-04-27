@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS DoseSync Pro Prototype V1 — 產品流程規格</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+
+  .header { text-align: center; margin-bottom: 40px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+  .header .version { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .toc-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  .toc-list a { color: var(--blue); text-decoration: none; }
+  .toc-list a:hover { text-decoration: underline; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--blue); display: flex; align-items: center; gap: 8px; scroll-margin-top: 16px; }
+  .section-title .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--blue); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .sub-title { font-size: 15px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+
+  .oled-flow { display: flex; gap: 12px; overflow-x: auto; padding: 8px 0; align-items: flex-end; }
+  .oled-step { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 155px; flex-shrink: 0; }
+  .oled-screen {
+    width: 150px; height: 90px; background: #0a0a0a; border-radius: 8px; border: 2px solid #333;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-family: "Courier New", monospace; color: #fff; position: relative; overflow: hidden;
+    padding: 4px;
+  }
+  .oled-screen .oled-header { font-size: 8px; color: #888; letter-spacing: 1px; }
+  .oled-screen .oled-time { font-size: 26px; font-weight: 900; line-height: 1.1; }
+  .oled-screen .oled-label { font-size: 8px; color: #aaa; margin-top: 2px; letter-spacing: 0.5px; text-align: center; }
+  .oled-screen .oled-status { font-size: 8px; color: #4ade80; margin-top: 1px; }
+  .oled-screen.oled-warning { border-color: var(--amber); }
+  .oled-screen.oled-warning .oled-time { color: var(--amber); }
+  .oled-screen.oled-alarm {
+    border-color: var(--red); background: #1a0000;
+    animation: alarmPulse 1s infinite alternate;
+  }
+  @keyframes alarmPulse { from { background: #1a0000; } to { background: #3a0000; } }
+  .oled-screen.oled-alarm .oled-time { color: var(--red); font-size: 18px; }
+  .oled-screen.oled-alarm .oled-alert { font-size: 13px; font-weight: 900; color: #fff; letter-spacing: 3px; }
+  .oled-screen.oled-overtime { border-color: #b45309; background: #1a0a00; }
+  .oled-screen.oled-overtime .oled-time { color: #fbbf24; font-size: 22px; }
+  .oled-screen.oled-reset { border-color: var(--green); }
+  .oled-screen.oled-reset .oled-time { color: var(--green); }
+  .oled-screen.oled-reset .oled-status { color: var(--green); }
+
+  .oled-step-label { font-size: 11px; font-weight: 600; text-align: center; max-width: 155px; }
+  .oled-step-desc { font-size: 10px; color: var(--text-secondary); text-align: center; max-width: 155px; line-height: 1.3; }
+  .oled-arrow { font-size: 20px; color: var(--gray); flex-shrink: 0; align-self: center; margin-bottom: 40px; }
+
+  .vent-timeline { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 0; }
+  .vent-beat {
+    width: 40px; height: 40px; border-radius: 50%; border: 2px solid var(--teal);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; color: var(--teal); background: var(--teal-light);
+  }
+  .vent-beat.vent-emphasis { background: var(--red); color: #fff; border-color: var(--red); }
+  .vent-gap { font-size: 10px; color: var(--text-secondary); }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-purple { background: var(--purple-light); color: var(--purple); }
+  .badge-teal { background: var(--teal-light); color: var(--teal); }
+
+  .note { margin-top: 12px; padding: 10px 14px; background: var(--amber-light); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; font-size: 12px; color: #92400e; }
+  .note-blue { background: var(--blue-light); border-left-color: var(--blue); color: #1e40af; }
+  .note-red { background: var(--red-light); border-left-color: var(--red); color: #991b1b; }
+
+  .ohca-states { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .ohca-state { padding: 14px 12px; border-radius: var(--radius); border: 2px solid; text-align: center; }
+  .ohca-state .ohca-state-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; }
+  .ohca-state .ohca-state-desc { font-size: 11px; opacity: 0.85; line-height: 1.3; }
+  .ohca-wait { background: var(--bg); border-color: var(--gray); color: var(--text-secondary); }
+  .ohca-counting { background: var(--green-light); border-color: var(--green); color: #15803d; }
+  .ohca-warning { background: var(--amber-light); border-color: var(--amber); color: #b45309; }
+  .ohca-alarming { background: var(--red-light); border-color: var(--red); color: var(--red); }
+  .ohca-overtime { background: #fef3c7; border-color: #f59e0b; color: #78350f; }
+  .ohca-locked { background: var(--purple-light); border-color: var(--purple); color: var(--purple); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .twostep-flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 12px 0; }
+  .twostep-box { padding: 10px 16px; border-radius: 8px; background: var(--card); border: 1px solid var(--border); font-size: 12px; }
+  .twostep-arrow { color: var(--gray); }
+
+  .menu-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .menu-card { padding: 16px; border-radius: var(--radius); border: 1px solid var(--border); text-align: center; }
+  .menu-card .menu-icon { font-size: 28px; margin-bottom: 6px; }
+  .menu-card .menu-name { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+  .menu-card .menu-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
+  .menu-ohca { background: var(--red-light); border-color: var(--red); }
+  .menu-vent { background: var(--teal-light); border-color: var(--teal); }
+  .menu-training { background: var(--blue-light); border-color: var(--blue); }
+  .menu-history { background: var(--purple-light); border-color: var(--purple); }
+  .menu-settings { background: var(--bg); border-color: var(--gray); }
+
+  .flow-steps { display: flex; flex-direction: column; gap: 0; }
+  .flow-step { display: flex; align-items: flex-start; gap: 16px; position: relative; padding-bottom: 20px; }
+  .flow-step:last-child { padding-bottom: 0; }
+  .flow-step::before { content: ''; position: absolute; left: 17px; top: 36px; bottom: 0; width: 2px; background: var(--border); }
+  .flow-step:last-child::before { display: none; }
+  .flow-dot { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; color: #fff; flex-shrink: 0; z-index: 1; }
+  .flow-content { flex: 1; padding-top: 6px; }
+  .flow-content h4 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .flow-content p { font-size: 12px; color: var(--text-secondary); }
+
+  .timeline-list { font-family: "Courier New", monospace; font-size: 13px; background: #0a0a0a; color: #e2e8f0; padding: 16px; border-radius: 8px; }
+  .timeline-list .tl-row { padding: 4px 0; display: flex; gap: 12px; }
+  .timeline-list .tl-time { color: #4ade80; min-width: 60px; }
+  .timeline-list .tl-time-na { color: #94a3b8; }
+  .timeline-list .tl-event { color: #fff; }
+  .timeline-list .tl-event-supp { color: #fbbf24; }
+
+  .pair-card { display: flex; gap: 16px; align-items: center; padding: 20px; background: var(--blue-light); border: 2px dashed var(--blue); border-radius: var(--radius); }
+  .pair-code { font-family: "Courier New", monospace; font-size: 36px; font-weight: 900; color: var(--blue); letter-spacing: 6px; }
+  .pair-info { flex: 1; font-size: 13px; }
+
+  .ble-flow { display: flex; align-items: center; justify-content: center; gap: 16px; flex-wrap: wrap; padding: 20px 0; }
+  .ble-device { padding: 20px 24px; border-radius: var(--radius); text-align: center; border: 2px solid; min-width: 160px; }
+  .ble-device .device-icon { font-size: 32px; margin-bottom: 6px; }
+  .ble-device .device-name { font-weight: 700; font-size: 14px; }
+  .ble-device .device-role { font-size: 11px; margin-top: 2px; }
+  .ble-device-d { background: var(--blue-light); border-color: var(--blue); color: #1e40af; }
+  .ble-app { background: var(--green-light); border-color: var(--green); color: #15803d; }
+  .ble-typec { background: var(--purple-light); border-color: var(--purple); color: var(--purple); }
+  .ble-arrow { display: flex; flex-direction: column; align-items: center; gap: 2px; color: var(--gray); font-size: 11px; }
+  .ble-arrow .ble-arrow-icon { font-size: 20px; }
+
+  .hw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .hw-item { padding: 14px; background: var(--bg); border-radius: 8px; text-align: center; border: 1px solid var(--border); }
+  .hw-item .hw-icon { font-size: 24px; margin-bottom: 4px; }
+  .hw-item .hw-name { font-weight: 600; font-size: 13px; }
+  .hw-item .hw-detail { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+
+  .phase-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .phase-item { padding: 16px; border-radius: var(--radius); border: 2px solid; position: relative; }
+  .phase-item .phase-num { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+  .phase-item .phase-name { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+  .phase-item .phase-tasks { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+  .phase-pri-1 { background: var(--red-light); border-color: var(--red); }
+  .phase-pri-2 { background: var(--amber-light); border-color: var(--amber); }
+  .phase-pri-3 { background: var(--blue-light); border-color: var(--blue); }
+  .phase-pri-4 { background: var(--bg); border-color: var(--border); }
+  .phase-pri-1 .phase-num { color: var(--red); }
+  .phase-pri-2 .phase-num { color: var(--amber); }
+  .phase-pri-3 .phase-num { color: var(--blue); }
+  .phase-pri-4 .phase-num { color: var(--gray); }
+
+  .btn-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+  .btn-item { padding: 12px 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; font-size: 12px; }
+  .btn-item .btn-name { font-weight: 700; font-size: 13px; margin-bottom: 4px; color: var(--blue); }
+
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 22px; }
+    .oled-flow { flex-direction: column; align-items: center; }
+    .oled-arrow { transform: rotate(90deg); margin-bottom: 0; }
+    .phase-timeline { grid-template-columns: 1fr; }
+    .ble-flow { flex-direction: column; }
+    .ble-arrow { transform: rotate(90deg); }
+    .pair-card { flex-direction: column; text-align: center; }
+    .pair-code { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>EMS DoseSync Pro</h1>
+  <div class="subtitle">院前 OHCA 給藥與事件時間同步輔助裝置 — Prototype V1 行為流程規格</div>
+  <div class="version">v1.0（封版） | 2026-04-27 | SoT：EMS_DoseSync_Pro_Prototype_V1.md</div>
+</div>
+
+<div class="toc">
+  <div class="toc-title">章節導覽</div>
+  <div class="toc-list">
+    <a href="#sec-1">1. 產品定位</a>
+    <a href="#sec-2">2. 主功能表</a>
+    <a href="#sec-3">3. OHCA 案件 lifecycle</a>
+    <a href="#sec-4">4. EPI 倒數提醒</a>
+    <a href="#sec-5">5. 事件兩段確認</a>
+    <a href="#sec-6">6. 補登（接手前 / 純補登）</a>
+    <a href="#sec-7">7. 案件總覽 + Timeline</a>
+    <a href="#sec-8">8. 6 秒通氣節奏</a>
+    <a href="#sec-9">9. OHCA 中切入通氣</a>
+    <a href="#sec-10">10. Training 模式</a>
+    <a href="#sec-11">11. 歷史紀錄</a>
+    <a href="#sec-12">12. App 單案同步</a>
+    <a href="#sec-13">13. Type-C 管理</a>
+    <a href="#sec-14">14. 系統設定</a>
+    <a href="#sec-15">15. 按鍵總覽</a>
+    <a href="#sec-16">16. 通訊架構</a>
+    <a href="#sec-17">17. 硬體</a>
+    <a href="#sec-18">18. 開發階段</a>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-1"><span class="num">1</span> 產品定位</div>
+  <div class="card">
+    <p style="font-size:14px;margin-bottom:12px">院前 OHCA 現場的給藥與事件時間同步輔助裝置，協助 EMT / ALS 接手人員：</p>
+    <ul style="font-size:13px;padding-left:24px;line-height:1.9;color:var(--text-secondary)">
+      <li>掌握 EPI 給藥 4 分鐘節奏</li>
+      <li>紀錄本機 EPI、電擊、Amiodarone 事件時間戳</li>
+      <li>支援接手前與純補登事件</li>
+      <li>降低高壓現場記錄負擔，案件結束提供完整總覽</li>
+      <li>可將單一案件同步至手機 App，輔助登打救護紀錄表</li>
+      <li>提供獨立 6 秒通氣節奏模式 + Training 模式</li>
+    </ul>
+    <div class="note note-blue" style="margin-top:16px">
+      <strong>V1 排除：</strong>雲端、帳號登入、即時院端同步、GPS、病患個資、錄音功能（外觀位置保留）、PDF 報表、權限管理。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-2"><span class="num">2</span> 主功能表</div>
+  <div class="card">
+    <p style="font-size:13px;margin-bottom:12px;color:var(--text-secondary)">開機 Logo 1~2 秒後進入，預設游標停在 OHCA 案件。</p>
+    <div class="menu-grid">
+      <div class="menu-card menu-ohca">
+        <div class="menu-icon">🚑</div>
+        <div class="menu-name">OHCA 案件</div>
+        <div class="menu-desc">正式勤務案件流程<br>EPI 4 分鐘倒數</div>
+      </div>
+      <div class="menu-card menu-vent">
+        <div class="menu-icon">🫁</div>
+        <div class="menu-name">6 秒通氣節奏</div>
+        <div class="menu-desc">獨立通氣提示工具<br>不建立紀錄</div>
+      </div>
+      <div class="menu-card menu-training">
+        <div class="menu-icon">🎓</div>
+        <div class="menu-name">訓練模式</div>
+        <div class="menu-desc">模擬訓練流程<br>30s / 1m / 4m</div>
+      </div>
+      <div class="menu-card menu-history">
+        <div class="menu-icon">📂</div>
+        <div class="menu-name">歷史紀錄</div>
+        <div class="menu-desc">OHCA 50 筆<br>Training 20 筆</div>
+      </div>
+      <div class="menu-card menu-settings">
+        <div class="menu-icon">⚙️</div>
+        <div class="menu-name">系統設定</div>
+        <div class="menu-desc">音量 / 亮度 / 連線<br>裝置資訊</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-3"><span class="num">3</span> OHCA 案件 lifecycle</div>
+  <div class="card">
+    <p style="font-size:13px;margin-bottom:12px;color:var(--text-secondary)">案件啟動不等於 EPI 倒數啟動。倒數只能由「本機 EPI 二段確認」成立後啟動。</p>
+    <div class="ohca-states">
+      <div class="ohca-state ohca-wait">
+        <div class="ohca-state-name">案件開始</div>
+        <div class="ohca-state-desc">主鍵短按啟動<br>顯示 1 秒</div>
+      </div>
+      <div class="ohca-state ohca-wait">
+        <div class="ohca-state-name">待本機 EPI</div>
+        <div class="ohca-state-desc">允許即時/補登/電擊/Amio<br>不啟動倒數</div>
+      </div>
+      <div class="ohca-state ohca-counting">
+        <div class="ohca-state-name">EPI 倒數中</div>
+        <div class="ohca-state-desc">4 分鐘倒數<br>正常狀態</div>
+      </div>
+      <div class="ohca-state ohca-warning">
+        <div class="ohca-state-name">剩 1 分鐘</div>
+        <div class="ohca-state-desc">每 15s 短提示音<br>黃燈慢閃</div>
+      </div>
+      <div class="ohca-state ohca-alarming">
+        <div class="ohca-state-name">請給藥（到期）</div>
+        <div class="ohca-state-desc">高優先警報 5 秒<br>紅燈快閃</div>
+      </div>
+      <div class="ohca-state ohca-overtime">
+        <div class="ohca-state-name">超時</div>
+        <div class="ohca-state-desc">顯示累計時間<br>每 15s 短提醒</div>
+      </div>
+      <div class="ohca-state ohca-locked">
+        <div class="ohca-state-name">結束鎖定</div>
+        <div class="ohca-state-desc">不可修改<br>進入案件總覽</div>
+      </div>
+    </div>
+    <div class="note">
+      <strong>結束流程：</strong>OHCA 中長按主鍵 ≥ 3s → 結束前檢查（完成並結束 / 前往補登 / 返回案件）→ 最後確認 → 鎖定。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-4"><span class="num">4</span> EPI 倒數提醒視覺流程</div>
+  <div class="card">
+    <div class="oled-flow">
+      <div class="oled-step">
+        <div class="oled-screen">
+          <div class="oled-header">OHCA</div>
+          <div class="oled-time">03:58</div>
+          <div class="oled-label">下次給藥</div>
+          <div class="oled-status">EPI 1｜電擊 1</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-green">倒數中</span></div>
+        <div class="oled-step-desc">4 分鐘倒數<br>無警報音</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-warning">
+          <div class="oled-header">OHCA</div>
+          <div class="oled-time">00:59</div>
+          <div class="oled-label">請準備給藥</div>
+          <div class="oled-status" style="color:var(--amber)">EPI 1｜電擊 1</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-amber">剩 1 分鐘</span></div>
+        <div class="oled-step-desc">每 15s 短提示音<br>黃燈慢閃</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm">
+          <div class="oled-alert">請 給 藥</div>
+          <div class="oled-time">04:00</div>
+          <div class="oled-label" style="color:#fff">EPI 1｜電擊 1</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">到期警報</span></div>
+        <div class="oled-step-desc">高優先連續 5s<br>紅燈快閃</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-overtime">
+          <div class="oled-header">OHCA</div>
+          <div class="oled-time">05:43</div>
+          <div class="oled-label" style="color:#fbbf24">請給藥</div>
+          <div class="oled-status" style="color:#fbbf24">EPI 1｜電擊 1</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-amber">超時</span></div>
+        <div class="oled-step-desc">累計時間<br>每 15s 短提醒</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-reset">
+          <div class="oled-header">EPI 已紀錄</div>
+          <div class="oled-time">04:00</div>
+          <div class="oled-label">重新倒數</div>
+          <div class="oled-status">EPI 2｜電擊 1</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-green">EPI 二段確認</span></div>
+        <div class="oled-step-desc">建立時間戳<br>重啟 4 分鐘</div>
+      </div>
+    </div>
+    <div class="note note-red" style="margin-top:16px">
+      <strong>到期後按鍵差異：</strong>EPI 鍵 = 消音 + 進入確認 + 可建立新紀錄；主鍵 = 只消音不建立紀錄；返回鍵 = 取消確認。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-5"><span class="num">5</span> 事件兩段確認</div>
+  <div class="card">
+    <p style="font-size:13px;margin-bottom:12px;color:var(--text-secondary)">EPI / 電擊 / Amiodarone 共用「按鍵 → 確認畫面 → 再按 → 成立」模式，避免誤觸建立錯誤紀錄。</p>
+    <div class="twostep-flow">
+      <div class="twostep-box">按 EPI 鍵</div>
+      <span class="twostep-arrow">→</span>
+      <div class="twostep-box" style="background:var(--amber-light);border-color:var(--amber)">確認已給 EPI？<br><small>再按 EPI 確認 / 返回取消</small></div>
+      <span class="twostep-arrow">→</span>
+      <div class="twostep-box" style="background:var(--green-light);border-color:var(--green)">再按 EPI</div>
+      <span class="twostep-arrow">→</span>
+      <div class="twostep-box" style="background:var(--blue-light);border-color:var(--blue)"><strong>建立時間戳</strong><br><small>EPI 次數 +1<br>啟動 / 重啟 4 分鐘倒數</small></div>
+    </div>
+    <table style="margin-top:16px">
+      <thead>
+        <tr>
+          <th>事件型別</th>
+          <th>觸發鍵</th>
+          <th>對 EPI 倒數的影響</th>
+          <th>用詞</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>EPI（本機）</strong></td><td>EPI 鍵 ×2</td><td>啟動 / 重啟 4 分鐘倒數</td><td>EPI 已紀錄</td></tr>
+        <tr><td><strong>電擊（本機）</strong></td><td>電擊鍵 ×2</td><td>不影響 EPI 倒數</td><td>電擊已紀錄</td></tr>
+        <tr><td><strong>Amiodarone</strong></td><td>長按 EPI → 選單 → 主鍵 ×2</td><td>不影響 EPI 倒數</td><td>Amiodarone 已紀錄</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      <strong>用詞統一：</strong>系統內統一使用中文「電擊」，不顯示 Shock。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-6"><span class="num">6</span> 補登（接手前 / 純補登）</div>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>類別</th>
+          <th>入口</th>
+          <th>可選次數</th>
+          <th>說明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>接手前 EPI</strong></td>
+          <td rowspan="2">長按 EPI 鍵 → 選擇「補登 EPI」</td>
+          <td>1~5</td>
+          <td>接手前已給予</td>
+        </tr>
+        <tr>
+          <td><strong>純補登 EPI</strong></td>
+          <td>1~3</td>
+          <td>案件中漏記</td>
+        </tr>
+        <tr>
+          <td><strong>接手前電擊</strong></td>
+          <td rowspan="2">長按電擊鍵</td>
+          <td>1~5</td>
+          <td>接手前已執行</td>
+        </tr>
+        <tr>
+          <td><strong>純補登電擊</strong></td>
+          <td>1~3</td>
+          <td>案件中漏記</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note note-red" style="margin-top:16px">
+      <strong>補登成立後規則：</strong>
+      不建立本機時間戳 / 不啟動 EPI 倒數 / 不重啟倒數 / 不解除 EPI 超時 /
+      <strong>不可撤銷 / 不可修改 / 不可刪除</strong>。
+      Timeline 時間欄顯示 <code>-</code>，匯出 JSON <code>actual_time: null</code>。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-7"><span class="num">7</span> 案件總覽 + Timeline</div>
+  <div class="card">
+    <div class="sub-title">案件總覽（OHCA）</div>
+    <table>
+      <tbody>
+        <tr><td style="width:160px"><strong>EPI 詳細</strong></td><td>總數 ╱ 本機 ╱ 接手前 ╱ 純補登 ╱ 第一次本機 EPI ╱ 最後本機 EPI</td></tr>
+        <tr><td><strong>電擊詳細</strong></td><td>總數 ╱ 本機 ╱ 接手前 ╱ 純補登 ╱ 最後本機電擊（不顯示「第一次本機電擊」）</td></tr>
+        <tr><td><strong>Amiodarone</strong></td><td>總數 + 最後紀錄時間（不拆分來源）</td></tr>
+        <tr><td><strong>同步狀態</strong></td><td>App 已同步 / App 未同步</td></tr>
+        <tr><td><strong>事件時間軸</strong></td><td>獨立分類進入</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub-title">事件時間軸範例</div>
+    <div class="timeline-list">
+      <div class="tl-row"><span class="tl-time">14:20</span><span class="tl-event">案件開始</span></div>
+      <div class="tl-row"><span class="tl-time tl-time-na">-</span><span class="tl-event-supp">接手前 EPI ×2</span></div>
+      <div class="tl-row"><span class="tl-time tl-time-na">-</span><span class="tl-event-supp">接手前電擊 ×1</span></div>
+      <div class="tl-row"><span class="tl-time">14:22</span><span class="tl-event">電擊 #2</span></div>
+      <div class="tl-row"><span class="tl-time">14:24</span><span class="tl-event">EPI #3</span></div>
+      <div class="tl-row"><span class="tl-time">14:28</span><span class="tl-event">Amiodarone</span></div>
+      <div class="tl-row"><span class="tl-time">14:35</span><span class="tl-event">案件結束</span></div>
+    </div>
+    <div class="note">
+      <strong>裝置端不顯示 EPI 間隔分析</strong>（如 #1→#2 04:12），保留給 App / PC Tool / 未來系統。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-8"><span class="num">8</span> 6 秒通氣節奏（獨立模式）</div>
+  <div class="card">
+    <div class="vent-timeline">
+      <div class="vent-beat vent-emphasis">1</div>
+      <div class="vent-gap">→</div>
+      <div class="vent-beat">2</div>
+      <div class="vent-gap">→</div>
+      <div class="vent-beat">3</div>
+      <div class="vent-gap">→</div>
+      <div class="vent-beat">4</div>
+      <div class="vent-gap">→</div>
+      <div class="vent-beat">5</div>
+      <div class="vent-gap">→</div>
+      <div class="vent-beat">6</div>
+      <div class="vent-gap">→ 1 ⋯</div>
+    </div>
+    <table style="margin-top:12px">
+      <thead><tr><th>秒</th><th>畫面</th><th>聲音</th><th>LED</th></tr></thead>
+      <tbody>
+        <tr><td><strong>第 1 秒</strong></td><td>反紅</td><td>加強提示音</td><td>紅燈閃</td></tr>
+        <tr><td>第 2~6 秒</td><td>數字 2~6</td><td>每秒短提示音</td><td>不閃</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      <strong>通氣音量 0~5（獨立記憶）：</strong>0 = 靜音時聲音關閉，但畫面反紅與 LED 紅燈閃保留。<br>
+      <strong>不建立紀錄：</strong>不寫入 Timeline，不同步 App，不列入歷史紀錄。<br>
+      <strong>螢幕常亮 + 邊充邊用：</strong>插拔 Type-C 不中斷節奏。
+    </div>
+    <div class="note">
+      <strong>結束方式：</strong>長按主鍵 3s 進入「結束通氣節奏？」確認；返回鍵不直接結束（提示「請長按主鍵」）。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-9"><span class="num">9</span> OHCA 中切入通氣節奏</div>
+  <div class="card">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">OHCA 中按返回鍵開啟快速功能選單，可進入通氣節奏，EPI 計時於背景持續。</p>
+
+    <div class="oled-flow">
+      <div class="oled-step">
+        <div class="oled-screen">
+          <div class="oled-header" style="color:#4ade80">OHCA中</div>
+          <div class="oled-time" style="font-size:32px">1</div>
+          <div class="oled-label">6秒通氣節奏</div>
+          <div class="oled-status">EPI 02:35</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-teal">通氣 + EPI 倒數</span></div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-warning">
+          <div class="oled-header" style="color:var(--amber)">OHCA中</div>
+          <div class="oled-time" style="font-size:32px;color:var(--amber)">3</div>
+          <div class="oled-label">EPI 00:59</div>
+          <div class="oled-status" style="color:var(--amber)">請準備給藥</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-amber">剩 1 分鐘</span></div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm">
+          <div class="oled-alert">請 給 藥</div>
+          <div class="oled-time" style="font-size:14px">EPINEPHRINE</div>
+          <div class="oled-label" style="color:#ff6b6b">EPI 到期</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">高優先打斷</span></div>
+        <div class="oled-step-desc">立即停止通氣音<br>跳回 OHCA 警報</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-reset">
+          <div class="oled-header">EPI 已紀錄</div>
+          <div class="oled-time" style="font-size:14px">返回通氣節奏？</div>
+          <div class="oled-label">主鍵=是　返回=否</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-green">EPI 完成</span></div>
+        <div class="oled-step-desc">詢問是否返回<br>選「是」從 1 重來</div>
+      </div>
+    </div>
+
+    <table style="margin-top:16px">
+      <thead><tr><th>按鍵</th><th>OHCA 中通氣畫面行為</th></tr></thead>
+      <tbody>
+        <tr><td>返回鍵</td><td>直接回 OHCA 主畫面</td></tr>
+        <tr><td>主鍵</td><td>提示「如要離開通氣模式請用返回鍵」</td></tr>
+        <tr><td>EPI 鍵</td><td>提示「請返回 OHCA 處理 EPI」</td></tr>
+        <tr><td>電擊鍵</td><td>可二段確認紀錄電擊（背景節奏不重置）</td></tr>
+        <tr><td>上 / 下鍵</td><td>調整通氣音量</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note note-red">
+      <strong>EPI 高優先：</strong>EPI 到期時通氣音必須立即停止，跳回 OHCA 警報畫面。必須完成 EPI 二段確認，不可只消音返回通氣。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-10"><span class="num">10</span> Training 模式</div>
+  <div class="card">
+    <table>
+      <tbody>
+        <tr><td style="width:140px"><strong>畫面標示</strong></td><td>全程顯示「訓練模式」浮水印</td></tr>
+        <tr><td><strong>倒數長度</strong></td><td>30 秒 / 1 分鐘 / 4 分鐘（可選）</td></tr>
+        <tr><td><strong>重置功能</strong></td><td>長按主鍵 3s → 重置 / 結束 / 返回（OHCA 不提供重置）</td></tr>
+        <tr><td><strong>結束選擇</strong></td><td>保存 → 列入 Training 紀錄（最近 20 筆）／ 不保存 → 不占用儲存</td></tr>
+        <tr><td><strong>App 同步</strong></td><td>保存後可從案件總覽同步，App 端標示 Training 不混入 OHCA</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-11"><span class="num">11</span> 歷史紀錄</div>
+  <div class="card">
+    <div class="menu-grid">
+      <div class="menu-card menu-ohca">
+        <div class="menu-icon">🚑</div>
+        <div class="menu-name">OHCA 案件</div>
+        <div class="menu-desc">最近 50 筆<br>達上限自動覆蓋最舊</div>
+      </div>
+      <div class="menu-card menu-training">
+        <div class="menu-icon">🎓</div>
+        <div class="menu-name">Training 紀錄</div>
+        <div class="menu-desc">最近 20 筆<br>達上限自動覆蓋最舊</div>
+      </div>
+    </div>
+    <div class="note">
+      <strong>裝置端不提供刪除功能。</strong>提前清除資料只能透過 Type-C 電腦端管理工具。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-12"><span class="num">12</span> App 單案同步</div>
+  <div class="card">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">同步至 App 只同步目前這一筆已結束案件，不同步全部案件。</p>
+
+    <div class="pair-card">
+      <div>
+        <div style="font-size:12px;color:var(--text-secondary);margin-bottom:4px">App 配對碼</div>
+        <div class="pair-code">4286</div>
+      </div>
+      <div class="pair-info">
+        <strong>請於手機 App 輸入</strong><br>
+        有效時間 <strong>120 秒</strong>，逾時需重新產生<br>
+        <span style="color:var(--text-secondary)">剩餘：085 秒</span>
+      </div>
+    </div>
+
+    <div class="flow-steps" style="margin-top:20px">
+      <div class="flow-step"><div class="flow-dot" style="background:var(--blue)">1</div><div class="flow-content"><h4>產生配對碼</h4><p>案件總覽 → 同步至 App → 顯示 4 位配對碼（120s 有效）</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--purple)">2</div><div class="flow-content"><h4>App 輸入配對碼</h4><p>App 連線後按主鍵開始同步</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--teal)">3</div><div class="flow-content"><h4>傳輸案件</h4><p>同步中 → 同步完成（顯示 1 秒）→ 自動回案件總覽</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--green)">4</div><div class="flow-content"><h4>狀態更新</h4><p>同步狀態變為「App 已同步」+ 同步時間戳</p></div></div>
+    </div>
+
+    <div class="note note-blue">
+      <strong>Case ID 去重：</strong>App 端以 Case ID 為主鍵，重複同步覆蓋而非新增。中斷重試重新傳送整筆案件，不做片段接續。
+    </div>
+    <div class="note">
+      <strong>裝置端原始資料不因同步刪除。</strong>App 已同步案件可再次同步（會詢問確認）。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-13"><span class="num">13</span> Type-C 電腦端管理</div>
+  <div class="card">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">裝置本體不提供案件刪除功能，提前清除資料只能透過 Type-C 連接電腦執行。</p>
+    <div class="flow-steps">
+      <div class="flow-step"><div class="flow-dot" style="background:var(--blue)">1</div><div class="flow-content"><h4>Type-C 連接電腦</h4><p>裝置自動進入電腦管理模式</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--purple)">2</div><div class="flow-content"><h4>啟動管理工具</h4><p>EMS DoseSync 管理工具識別裝置</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--teal)">3</div><div class="flow-content"><h4>匯出 / 備份</h4><p>清除前必須先備份</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--amber)">4</div><div class="flow-content"><h4>二次確認</h4><p>避免誤刪</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--red)">5</div><div class="flow-content"><h4>清除資料</h4><p>OHCA / Training 區重置</p></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-14"><span class="num">14</span> 系統設定</div>
+  <div class="card">
+    <table>
+      <thead><tr><th style="width:130px">設定項</th><th style="width:100px">範圍</th><th>規則</th></tr></thead>
+      <tbody>
+        <tr><td><strong>螢幕亮度</strong></td><td>1~5</td><td>最低 1，不可關閉螢幕，預設 3/5</td></tr>
+        <tr><td><strong>系統音量</strong></td><td>1~5</td><td><strong>不可靜音</strong>，最低 1。控制 OHCA 警報 / 預警 / 成功音</td></tr>
+        <tr><td><strong>通氣音量</strong></td><td>0~5</td><td>0 = 靜音（畫面反紅與 LED 保留）</td></tr>
+        <tr><td><strong>裝置名稱</strong></td><td>App 寫入</td><td>裝置端不負責中文輸入；案件中不可修改</td></tr>
+        <tr><td><strong>App 連線</strong></td><td>—</td><td>BLE 由系統自動管理，不提供藍牙開關</td></tr>
+        <tr><td><strong>Type-C 連線</strong></td><td>—</td><td>只顯示狀態，不提供模式切換</td></tr>
+        <tr><td><strong>韌體版本</strong></td><td>read-only</td><td>顯示版本 / 序號 / 電池</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <strong>恢復預設值：</strong>清除亮度 / 系統音量 / 通氣音量。<strong>不清除</strong>裝置名稱 / OHCA 案件 / Training / App 同步狀態。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-15"><span class="num">15</span> 按鍵總覽</div>
+  <div class="card">
+    <div class="btn-list">
+      <div class="btn-item"><div class="btn-name">主按鍵</div>選單確認 / 開始 / 結束確認 / 消音</div>
+      <div class="btn-item"><div class="btn-name">返回鍵</div>返回 / 取消 / 開啟快速功能選單</div>
+      <div class="btn-item"><div class="btn-name">上鍵</div>選單上移 / 音量增加</div>
+      <div class="btn-item"><div class="btn-name">下鍵</div>選單下移 / 音量降低</div>
+      <div class="btn-item"><div class="btn-name">EPI 鍵</div>即時 EPI 入口 / 長按進 EPI 藥物選單</div>
+      <div class="btn-item"><div class="btn-name">電擊鍵</div>即時電擊入口 / 長按進電擊補登</div>
+      <div class="btn-item"><div class="btn-name">Power 鍵</div>開關機</div>
+      <div class="btn-item" style="opacity:0.5"><div class="btn-name">錄音鍵</div>V1 保留外觀位置，不啟用</div>
+    </div>
+    <div class="note note-blue">
+      <strong>核心操作口訣：</strong>即時事件按事件鍵 / 選單確認按主鍵 / 返回取消按返回鍵
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-16"><span class="num">16</span> 通訊架構</div>
+  <div class="card">
+    <div class="ble-flow">
+      <div class="ble-device ble-device-d">
+        <div class="device-icon">📟</div>
+        <div class="device-name">EMS DoseSync Pro</div>
+        <div class="device-role">裝置端（事件時間戳本地儲存）</div>
+      </div>
+      <div class="ble-arrow"><div class="ble-arrow-icon">⇄</div><div>BLE 配對碼<br>單案同步</div></div>
+      <div class="ble-device ble-app">
+        <div class="device-icon">📱</div>
+        <div class="device-name">手機 App</div>
+        <div class="device-role">交班摘要 / Timeline / 備註 / 複製</div>
+      </div>
+      <div class="ble-arrow"><div class="ble-arrow-icon">⇨</div><div>Type-C<br>備援管理</div></div>
+      <div class="ble-device ble-typec">
+        <div class="device-icon">💻</div>
+        <div class="device-name">電腦管理工具</div>
+        <div class="device-role">匯出 / 清除資料</div>
+      </div>
+    </div>
+    <div class="note note-blue">
+      <strong>App 同步資料安全：</strong>Case ID 去重；中斷重試重傳整筆；App 端覆蓋同 Case ID 不新增；同步不刪除裝置端原始資料。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-17"><span class="num">17</span> 硬體模組</div>
+  <div class="card">
+    <div class="hw-grid">
+      <div class="hw-item"><div class="hw-icon">🧠</div><div class="hw-name">主控</div><div class="hw-detail">ESP32-S3</div></div>
+      <div class="hw-item"><div class="hw-icon">📺</div><div class="hw-name">顯示</div><div class="hw-detail">2.4 吋螢幕</div></div>
+      <div class="hw-item"><div class="hw-icon">🖲️</div><div class="hw-name">按鍵</div><div class="hw-detail">主 / 返回 / 上下<br>EPI / 電擊 / Power</div></div>
+      <div class="hw-item"><div class="hw-icon">💡</div><div class="hw-name">LED</div><div class="hw-detail">狀態指示燈</div></div>
+      <div class="hw-item"><div class="hw-icon">🔊</div><div class="hw-name">蜂鳴器</div><div class="hw-detail">警報 + 提示音</div></div>
+      <div class="hw-item"><div class="hw-icon">📳</div><div class="hw-name">震動</div><div class="hw-detail">高優先警報</div></div>
+      <div class="hw-item"><div class="hw-icon">🔌</div><div class="hw-name">Type-C</div><div class="hw-detail">充電 + 電腦管理</div></div>
+      <div class="hw-item"><div class="hw-icon">🔋</div><div class="hw-name">電池</div><div class="hw-detail">3.7V 1000mAh<br>邊充邊用</div></div>
+      <div class="hw-item"><div class="hw-icon">📡</div><div class="hw-name">BLE</div><div class="hw-detail">5.0</div></div>
+      <div class="hw-item"><div class="hw-icon">📦</div><div class="hw-name">外殼</div><div class="hw-detail">3D 列印<br>背面平整</div></div>
+    </div>
+    <div class="note">
+      <strong>外觀重點：</strong>EPI 鍵在主鍵右上 / 電擊鍵在主鍵左上 / 上下鍵中間有返回鍵 / 左上角預留錄音鍵與麥克風開孔（V1 不啟用）。
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-18"><span class="num">18</span> 開發階段（Phase A~H）</div>
+  <div class="phase-timeline">
+    <div class="phase-item phase-pri-1">
+      <div class="phase-num">Phase A — 最高優先</div>
+      <div class="phase-name">OHCA 核心狀態機</div>
+      <div class="phase-tasks">▸ 案件 lifecycle<br>▸ EPI 4 分鐘倒數 + 預警 + 警報 + 超時<br>▸ EPI / 電擊兩段確認</div>
+    </div>
+    <div class="phase-item phase-pri-2">
+      <div class="phase-num">Phase B</div>
+      <div class="phase-name">補登 + Amio + 案件總覽</div>
+      <div class="phase-tasks">▸ 藥物選單 / 電擊補登<br>▸ Amiodarone<br>▸ 結束前檢查 + Timeline</div>
+    </div>
+    <div class="phase-item phase-pri-2">
+      <div class="phase-num">Phase C</div>
+      <div class="phase-name">6 秒通氣節奏</div>
+      <div class="phase-tasks">▸ 獨立模式<br>▸ OHCA 中切入<br>▸ EPI 高優先打斷</div>
+    </div>
+    <div class="phase-item phase-pri-3">
+      <div class="phase-num">Phase D</div>
+      <div class="phase-name">Training 模式</div>
+      <div class="phase-tasks">▸ 30s / 1m / 4m<br>▸ 重置 / 保存<br>▸ 全程訓練浮水印</div>
+    </div>
+    <div class="phase-item phase-pri-3">
+      <div class="phase-num">Phase E</div>
+      <div class="phase-name">持久化 + 歷史紀錄</div>
+      <div class="phase-tasks">▸ LittleFS partition<br>▸ 50 OHCA + 20 Training FIFO<br>▸ 重啟資料不遺失</div>
+    </div>
+    <div class="phase-item phase-pri-3">
+      <div class="phase-num">Phase F</div>
+      <div class="phase-name">App 配對碼同步</div>
+      <div class="phase-tasks">▸ 4 位配對碼 + 120s TTL<br>▸ 單案傳輸 + Case ID 去重<br>▸ 已同步 / 未同步狀態</div>
+    </div>
+    <div class="phase-item phase-pri-4">
+      <div class="phase-num">Phase G</div>
+      <div class="phase-name">系統設定 + Type-C 工具</div>
+      <div class="phase-tasks">▸ 亮度 / 音量 NVS<br>▸ 裝置名稱由 App 寫入<br>▸ Type-C 管理工具 MVP</div>
+    </div>
+    <div class="phase-item phase-pri-4">
+      <div class="phase-num">Phase H</div>
+      <div class="phase-name">電源管理</div>
+      <div class="phase-tasks">▸ 螢幕常亮<br>▸ 邊充邊用<br>▸ 低電量提示（不強制關機）</div>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  EMS DoseSync Pro — Prototype V1 行為流程規格 v1.0<br>
+  SoT：<code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> ｜ 工程實作：<code>docs/pm-dev-spec.md</code>
+</div>
+
+</body>
+</html>
