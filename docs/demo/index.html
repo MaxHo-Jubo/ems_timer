@@ -138,26 +138,47 @@
   .btn {
     padding: 14px 0; border: none; border-radius: 10px;
     font-size: 14px; font-weight: 700; color: #fff;
-    background: #2a2a2a; touch-action: manipulation;
-    transition: transform 0.05s, background 0.1s;
+    background-color: #2a2a2a; touch-action: manipulation;
+    transition: transform 0.05s, background-color 0.1s;
     font-family: inherit; cursor: pointer;
+    position: relative; overflow: hidden;
   }
   .btn:active { transform: scale(0.95); }
-  .btn-epi   { background: #b91c1c; }
-  .btn-shock { background: #d97706; }
-  .btn-back  { background: #475569; }
-  .btn-up    { background: #475569; }
-  .btn-down  { background: #475569; }
-  .btn-power { background: #1e293b; font-size: 11px; color: #64748b; }
+  .btn-epi   { background-color: #b91c1c; }
+  .btn-shock { background-color: #d97706; }
+  .btn-back  { background-color: #475569; }
+  .btn-up    { background-color: #475569; }
+  .btn-down  { background-color: #475569; }
+  .btn-power { background-color: #1e293b; font-size: 11px; color: #64748b; }
   .btn-main  {
     width: 100%; padding: 22px 0; font-size: 18px;
-    background: linear-gradient(180deg, #2563eb, #1e40af); color: #fff;
+    background-image: linear-gradient(180deg, #2563eb, #1e40af); color: #fff;
     border-radius: 16px; font-weight: 900; letter-spacing: 8px;
     box-shadow: 0 4px 0 #1e3a8a;
   }
   .btn-main:active { box-shadow: 0 2px 0 #1e3a8a; transform: translateY(2px); }
-  .btn.long-pressing { background: #f59e0b !important; animation: longPressGlow 0.3s infinite alternate; }
-  @keyframes longPressGlow { from { box-shadow: 0 0 0 rgba(245, 158, 11, 0.5); } to { box-shadow: 0 0 16px rgba(245, 158, 11, 0.9); } }
+
+  /* 長按進度填充：按下後 0.75s 從左填滿到右；達門檻轉為 long-fired 持續高亮 */
+  .btn::before {
+    content: ''; position: absolute; inset: 0;
+    background: rgba(245, 158, 11, 0.6);
+    transform: translateX(-100%);
+    transition: none;
+    pointer-events: none;
+    z-index: 0;
+  }
+  .btn.pressing::before {
+    transform: translateX(0);
+    transition: transform 0.75s linear;
+  }
+  .btn.long-fired::before {
+    transform: translateX(0);
+    background: rgba(245, 158, 11, 0.85);
+    transition: none;
+  }
+  .btn > * { position: relative; z-index: 1; }
+  /* button 文字本身不在子元素中，需用 text-shadow 確保填充期間仍可讀 */
+  .btn { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4); }
 
   .btn-hint { font-size: 9px; color: #64748b; text-align: center; padding: 2px 0 0; letter-spacing: 1px; font-weight: 400; }
 
@@ -1278,11 +1299,15 @@ function bindButton(el) {
     e.preventDefault();
     ensureAudio();
     longFired[btn] = false;
+    // STEP 01: 立即加 .pressing class 觸發 CSS 進度填充動畫（0.75s linear）
+    el.classList.remove('long-fired');
+    el.classList.add('pressing');
     pressTimers[btn] = setTimeout(() => {
+      // STEP 02: 達門檻 → 切換為 long-fired（持續高亮）+ fire-on-hold 立即觸發
       longFired[btn] = true;
-      el.classList.add('long-pressing');
+      el.classList.remove('pressing');
+      el.classList.add('long-fired');
       vibrate(40);
-      // STEP 01: fire-on-hold for long press（達門檻立即觸發，不等放開）
       handleButton(btn, 'LONG');
     }, LONG_PRESS_THRESHOLD_MS);
   };
@@ -1290,7 +1315,7 @@ function bindButton(el) {
   const onUp = (e) => {
     e.preventDefault();
     clearTimeout(pressTimers[btn]);
-    el.classList.remove('long-pressing');
+    el.classList.remove('pressing', 'long-fired');
     if (!longFired[btn]) {
       handleButton(btn, 'SHORT');
     }
@@ -1299,7 +1324,7 @@ function bindButton(el) {
 
   const onCancel = () => {
     clearTimeout(pressTimers[btn]);
-    el.classList.remove('long-pressing');
+    el.classList.remove('pressing', 'long-fired');
     longFired[btn] = false;
   };
 
