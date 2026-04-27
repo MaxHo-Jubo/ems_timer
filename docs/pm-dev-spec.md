@@ -1,449 +1,630 @@
-# EMS DoseSync 工程實作規格
+# EMS DoseSync Pro 工程實作規格
 
-版本：v1.2
-日期：2026/04/23
+版本：v2.0
+日期：2026-04-27
+對齊 SoT：`docs/EMS_DoseSync_Pro_Prototype_V1.md`
 
 ---
 
-## 📘 本文件定位
+## 📘 文件定位
 
-**本文件管什麼：**
-- 工程實作細節：MCU 型號、RTOS、Task 分工、C struct 型別與 bytes
-- **timing 常數**（`SHORT_PRESS_MAX_MS = 1500`、`LONG_PRESS_MIN_MS = 2000`、`VERY_LONG_PRESS_MIN_MS = 5000` 等）
-- **精度實作**：節律 ±50ms 的實作方式（RTOS timer / 計時補正）
-- BLE GATT Service / Characteristic / UUID 規格
-- App 功能模組、SQL schema、REST API 端點
-- Phase 開發順序、系統整合架構
+**SoT 階層**
 
-**本文件不管什麼：**
-- 使用者可感知的行為描述（啟動流程、狀態轉換、按鍵互動）→ 詳見 `pm-flow-spec.md`
-- 硬體模組清單（電源 / 輸入 / 輸出 / 通訊 / 儲存 / 音訊 / 介面）→ 詳見 `pm-flow-spec.md §7`
-- 主副機 BLE 配對流程 → 詳見 `pm-flow-spec.md §4`
+1. `docs/EMS_DoseSync_Pro_Prototype_V1.md`（PM 規格，所有產品行為的權威來源）
+2. `docs/EMS_DoseSync_Pro_Prototype_V1_flow.html`（同等內容的視覺化版本）
+3. **本文件**（工程實作細節：模組分工、API、資料結構、Phase 計畫）
 
-當兩份文件在同一主題上有衝突時，以 **Source of Truth 標註的那一份為準**（每節標示 SoT 歸屬）。
+**v2.0 重要變更（2026-04-27）**
+
+- 完全對齊 V1 SoT；舊 `pm-flow-spec.md` 已 `git rm`
+- 既有韌體（`MED_PHASE` / `VentMetronome` / 5 鍵 / 4 模式切換）視為 throwaway prototype，全部砍掉重寫
+- App backend 章節完全刪除（V1 §2.2 排除雲端 / 帳號 / 即時院端同步）
+- 範圍從「自由按鍵記錄 + 6 秒節拍」改為「OHCA 案件 lifecycle 為核心」
 
 ### 版本紀錄
 
-**v1.2（2026-04-23）**：給藥倒數三階段 + 藥物選單 + 主副機角色 + 通氣輸出補齊（對齊 PM 流程圖）
-- §4.2 新增 `MED_PHASE_COUNTING / WARNING / ALARMING` 內部階段與階段轉換規則
-- 移除 `DEFAULT_MED_REMINDER_REPEAT_MS`，改為連續發報直到按主鍵解除
-- §4.2 階段轉換規則拆分：ALARMING 時重置 Epi 倒數；非 ALARMING 時進入藥物選單獨立記錄
-- §4.2 通氣節拍輸出補齊為**蜂鳴 + 震動 + LED 提示**（對齊 PM 流程圖 §4）
-- §4.3 按鍵行為表拆分主鍵短按為三種情境（ALARMING / 非 ALARMING / 通氣）
-- §4.6 BLE 新增 Phase 3 角色綁定（主機=給藥者、副機=給氣者、遙控啟停）
-
-**v1.1（2026-04-23）**：文件整合 — 方案 B（職責邊界分離）
-- 新增頂部「文件定位」聲明
-- §3 狀態機、§4.2 節律引擎、§4.3 按鍵事件、§4.5 event_t、§4.6 BLE Service 明確標示 SoT
-- §4.3 按鍵表加入 timing 常數值（對應韌體 `main.cpp` 宣告）
-
-**v1.0（2026-04-22 及之前）**：PM 初版工程開發規格（拆分版）
+- **v2.0（2026-04-27）**：對齊 V1 SoT 全面重寫；廢止 pm-flow-spec.md；砍 backend；重新分階段 Phase A~H
+- **v1.2 及以前**：基於舊 pm-flow-spec 的工程規格（已廢止）
 
 ---
 
-## 一、Firmware（韌體規格）
-
-> 目標：即時任務控制 + 精準時間記錄 + 穩定資料儲存 + BLE 通訊
-
----
+## 一、Firmware
 
 ### 1. 系統架構
 
-**MCU**
-
-- ESP32-S3
-- RTOS：FreeRTOS（建議）
-
-> 硬體模組清單（電源 / 輸入 / 輸出 / 通訊 / 儲存 / 音訊 / 介面）詳見 `pm-flow-spec.md §7`（SoT）。本文件不重複列表，僅在需要實作細節時引用。
-
----
-
-### 2. 任務模組（Task Design）
-
-| Task 名稱 | 功能 |
-|-----------|------|
-| Main Task | 狀態機（IDLE / RUNNING / PAUSE）|
-| Timer Task | 節律提醒（6秒 / 4分鐘）|
-| Input Task | 按鍵偵測（含 debounce）|
-| BLE Task | 主副機通訊 |
-| Storage Task | Flash 寫入 |
-| UI Task | 顯示更新 |
-| Audio Task | 蜂鳴 / 語音 |
-| Power Task | 電源監控 |
-
----
-
-### 3. 狀態機設計（**SoT**：timing 常數與轉換規則的權威來源）
-
-```
-IDLE
-  ↓（長按 ≥ 2s）
-RUNNING ─────────────┐
-  ↓（長按 ≥ 2s）      │（超長按 ≥ 5s）
-PAUSE ───────────────┤
-  ↑（長按 ≥ 2s）      ↓
-  └── RUNNING         END → IDLE（END_DISPLAY_MS = 2000ms 後自動返回）
-```
-
-**Timing 常數**（對應 `firmware/src/main.cpp`）：
-- `SHORT_PRESS_MAX_MS = 1500`
-- `LONG_PRESS_MIN_MS = 2000`
-- `VERY_LONG_PRESS_MIN_MS = 5000`
-- 1500~1999ms 為**灰色地帶**（既非短按也非長按），直接忽略
-- 長按採 **fire-on-release** 模式（放開才結算 action），避免 5s 超長按觸發前誤轉狀態
-
-> 2026-04-23 PM 確認：
-> - **長按（≥ 2s）**：IDLE↔RUNNING↔PAUSE 之間循環切換（與 `pm-flow-spec.md §3` 一致）
-> - **超長按（≥ 5s）**：RUNNING 或 PAUSE 直接結束任務（→ END → IDLE）
-> - 兩段式長按設計避免救護現場誤觸結束正在進行中的任務
-
----
-
-### 4. 核心功能模組
-
-#### 4.1 任務控制
-
-- 任務建立（Task ID）
-- 計時器（毫秒級）
-- 任務狀態保存
-
-#### 4.2 節律提醒引擎（**SoT**：精度規格與實作常數的權威來源）
-
-- **6 秒節拍（CPR 節律）— 僅通氣模式啟用**（PM 2026-04-23 確認）：每 6 秒觸發蜂鳴 + 震動 + LED 提示
-- **4 分鐘給藥倒數提醒 — 僅給藥模式啟用**（適用 OHCA 等救護流程）
-
-**精度需求：**
-
-- 節拍/倒數誤差 < ±50ms
-- 可切換模式（通氣 / 給藥），模式切換時節拍器停止並重置
-
-**給藥倒數內部階段**（不影響頂層狀態機，為倒數模組內部狀態）：
-
-| 階段 | 條件 | 輸出行為 |
-|------|------|---------|
-| `MED_PHASE_COUNTING` | 倒數中（剩餘 > 1 分鐘） | 螢幕顯示剩餘時間、LED 狀態指示 |
-| `MED_PHASE_WARNING` | 剩餘 ≤ 1 分鐘 | LED 恆亮 + 閃動、蜂鳴提示加強 |
-| `MED_PHASE_ALARMING` | 倒數歸零 | 全螢幕閃爍 + 蜂鳴連續發報 + 震動 + 顯示「請給藥」 |
-
-**階段轉換規則**：
-
-| 觸發 | COUNTING / WARNING 時 | ALARMING 時 |
-|------|----------------------|-------------|
-| 短按主鍵 | 進入藥物選單（Amiodarone / TXA / D50 …）→ 記錄該藥物事件（`EVT_MEDICATION` + drug_type）→ **不重置 Epi 倒數** | 解除發報 + 記錄 `EVT_EPINEPHRINE` + 重置至 `COUNTING`（重新倒數 4 分鐘） |
-| PAUSE | 倒數暫停、發報停止、保留剩餘時間；恢復 RUNNING 時從剩餘時間繼續 | 同左 |
-| 結束任務（超長按 5s） | 一切停止 | 同左 |
-
-> **設計原理**：4 分鐘倒數專為 Epinephrine（OHCA 標準每 4 分鐘給一次），其他藥物隨時按臨床判斷給予，兩者互不干擾。
-
-**實作常數**（對應 `firmware/lib/ems_logic/ems_countdown.h`）：
-- `DEFAULT_MED_COUNTDOWN_MS = 240000`（4 分鐘）
-- `DEFAULT_MED_WARN_1MIN_MS = 60000`（進入 WARNING 階段的剩餘時間門檻）
-- VENT 6 秒節拍常數：Phase 2 抽 `VentMetronome` 模組時補齊（見 `docs/gap-analysis.md` Phase 2 待辦）
-
-> ~~`DEFAULT_MED_REMINDER_REPEAT_MS = 30000`~~（已移除）：原設計為到時後每 30 秒重複提醒，改為 ALARMING 階段**連續發報直到按主鍵解除**（對齊 PM 流程圖 2026-04-23）。
-
-**實作方式**：純函式 `decideMedCountdownAction()` 決定本 cycle 要觸發的行為，主迴圈執行 side effect（beep / OLED flash / event record）。單元測試見 `firmware/test/test_countdown/test_med_countdown.cpp`。
-
-#### 4.3 按鍵事件處理（**SoT**：timing 常數與判定流程的權威來源）
-
-**Timing 常數**（對應 `firmware/src/main.cpp`）：
-
-| 常數 | 值 | 用途 |
-|------|-----|------|
-| `DEBOUNCE_MS` | 80 | 下降緣 debounce |
-| `SHORT_PRESS_MAX_MS` | 1500 | 短按上限 |
-| `LONG_PRESS_MIN_MS` | 2000 | 長按下限（fire-on-release） |
-| `VERY_LONG_PRESS_MIN_MS` | 5000 | 超長按下限（fire-on-hold，即刻觸發） |
-
-**按鍵行為對照表**：
-
-| 按鍵 | 行為 |
+| 項目 | 規格 |
 |------|------|
-| 主鍵短按（< 1500ms）— 給藥 ALARMING | 解除發報 + 記錄 Epinephrine + 重置 4 分鐘倒數 |
-| 主鍵短按（< 1500ms）— 給藥非 ALARMING | 進入藥物選單 → 選藥 → 記錄事件（不影響 Epi 倒數） |
-| 主鍵短按（< 1500ms）— 通氣 / 自訂 | 記錄事件（依模式） |
-| 主鍵灰色地帶（1500~1999ms） | 忽略（避免短/長按混淆） |
-| 主鍵長按（2000ms ≤ t < 5000ms） | 狀態循環：IDLE→RUNNING→PAUSE→RUNNING→PAUSE→…（放開時結算） |
-| 主鍵超長按（≥ 5000ms） | 結束任務：RUNNING 或 PAUSE 直接進入 END（即刻觸發） |
-| 上下鍵短按 | 切模式（給藥 / 通氣 / 自訂 / 設定，共 4 種） |
-| 電源鍵 | 短按螢幕亮滅 / 長按開關機 |
-| 錄音鍵長按（≥ 2000ms） | INMP441 錄音啟停，錄音檔存 SD 卡（Phase 1.5 到貨後啟用） |
+| MCU | ESP32-S3 |
+| RTOS | FreeRTOS |
+| 顯示 | 2.4 吋螢幕（V1 §21.1） |
+| 持久化 | SPI Flash + LittleFS |
+| 通訊 | BLE 5.0 + Type-C CDC |
+| 開發框架 | PlatformIO + Arduino |
 
-**實作模式**：
-- 長按採 **fire-on-release**：使用者放開時才根據累計 held 時間分派 short / long / gray
-- 超長按採 **fire-on-hold**：達 5000ms 當下立即 fire，放開時 noop
-- 目的：避免使用者按到 3 秒放棄（實際按超過 2s）時誤觸發 PAUSE，再按 5s 又觸發 END 的雙重事件
+> 完整硬體模組清單見 V1.md §21（SoT）。
 
-> 2026-04-23 PM 確認：
-> - 只提供**錄音鍵**，**無靜音鍵**（原規格靜音鍵條款移除）
-> - **模式 4 種**：給藥 / 通氣 / 自訂 / 設定（對齊 PM 流程圖）
-> - **錄音鍵採長按觸發**（對齊 PM 流程圖），短按目前保留
+---
 
-#### 4.4 資料記錄系統
+### 2. 全域狀態機
 
-**RAM Buffer（Ring Buffer）**
+最頂層狀態（對應 V1 §3 主功能表）：
 
-- 大小：建議 100~500 events
-- 防止寫入阻塞
+```
+BOOT → MAIN_MENU
+         ├─ OHCA              （V1 §5–11）
+         ├─ VENT_STANDALONE   （V1 §13）
+         ├─ TRAINING          （V1 §15）
+         ├─ HISTORY           （V1 §12）
+         └─ SETTINGS          （V1 §19）
+```
 
-**Flash 寫入策略**
+各模式為獨立子狀態機，回主功能表必經 `MAIN_MENU`。
 
-- 批次寫入（每 5 秒）
-- Wear leveling
-- Fail-safe（斷電保護）
+---
 
-#### 4.5 資料結構（**SoT**：C struct 欄位、型別、bytes 的權威來源）
+### 3. OHCA 案件子狀態機
+
+對應 V1 §5–11：
+
+```
+MAIN_MENU
+   │ 短按主鍵
+   ▼
+OHCA_START_FLASH（顯示「案件開始 OHCA」1 秒）
+   ▼
+OHCA_WAIT_FIRST_EPI（待本機 EPI；允許即時/補登/電擊/Amio）
+   │ EPI 二段確認
+   ▼
+OHCA_COUNTDOWN（4 分鐘倒數中）
+   │ 剩餘 ≤ 60s
+   ▼
+OHCA_WARNING（剩 1 分鐘；每 15s 短嗶）
+   │ 倒數歸零
+   ▼
+OHCA_ALARMING（請給藥；高優先連續 5s）
+   │ 超過 5s 仍未確認
+   ▼
+OHCA_OVERTIME（顯示累計時間；每 15s 短提醒）
+   │ EPI 二段確認 → 重新進入 OHCA_COUNTDOWN
+   │
+   │ 長按主鍵 ≥ 3s
+   ▼
+OHCA_END_CHECK（完成並結束 / 前往補登 / 返回案件）
+   │ 確認結束
+   ▼
+OHCA_LOCKED（不可修改）→ OHCA_SUMMARY（案件總覽）
+```
+
+子狀態與頂層狀態機正交，僅在 OHCA 子樹內生效。
+
+---
+
+### 4. EPI 倒數引擎（精度 ±50ms）
+
+**新檔**：`firmware/lib/ems_ohca/ems_ohca_countdown.h`
+
+**常數**
+
+```c
+#define EPI_CYCLE_MS                  240000  // 4 分鐘
+#define EPI_WARNING_MS                 60000  // 剩 1 分鐘
+#define EPI_ALARM_INITIAL_MS            5000  // 連續發報 5 秒
+#define EPI_ALARM_REMIND_INTERVAL_MS   15000  // 超時後每 15s 短提醒
+#define EPI_WARN_BEEP_INTERVAL_MS      15000  // 預警每 15s 短嗶
+```
+
+**API（純函式）**
+
+```c
+typedef enum {
+  OHCA_PHASE_WAIT_FIRST_EPI,
+  OHCA_PHASE_COUNTDOWN,
+  OHCA_PHASE_WARNING,
+  OHCA_PHASE_ALARMING,
+  OHCA_PHASE_OVERTIME,
+} ohca_phase_t;
+
+typedef struct {
+  bool        buzz_short;            // 短嗶
+  bool        buzz_alarm_continuous; // 高優先連續發報
+  bool        led_yellow_slow;       // 黃燈慢閃
+  bool        led_red_fast;          // 紅燈快閃
+  bool        led_red_slow;          // 紅燈慢閃
+  bool        vibrate;
+  bool        screen_flash;
+  const char* display_label;         // "請準備給藥" / "請給藥" / NULL
+  uint32_t    display_remaining_ms;  // 倒數剩餘；超時則為自上次 EPI 起算累計
+} ohca_output_t;
+
+ohca_output_t decideOhcaOutput(ohca_phase_t phase,
+                                uint32_t since_last_epi_ms,
+                                uint32_t now_ms);
+```
+
+純函式可被單元測試覆蓋（沿用既有 PlatformIO native 環境）。
+
+---
+
+### 5. 兩段確認模組
+
+V1 §6.2 / §7.2 / §8.2 共用模式。
+
+**新檔**：`firmware/lib/ems_ohca/ems_two_step_confirm.h`
 
 ```c
 typedef struct {
-    uint32_t event_id;
-    uint64_t timestamp;
-    uint32_t elapsed_ms;    // 自任務起點扣除所有暫停後的毫秒數（2026-04-23 PM 採方案 A 正式納入）
-    uint8_t  event_type;
-    uint8_t  source;
-    uint8_t  device_id;     // 單機階段固定 0；Phase 3 主副機時區分 0x01 主機 / 0x02 副機
-    uint8_t  mode;
-    char     extra_data[32];
-    uint8_t  sync_flag;
-} event_t;
+  uint32_t first_press_ms;
+  bool     armed;
+  uint32_t timeout_ms;     // 預設 5000
+} two_step_confirm_t;
+
+bool twoStepConfirm_press(two_step_confirm_t* s, uint32_t now_ms);
+// 第一次按 → armed=true，回 false（顯示確認畫面）
+// 第二次按（≤ timeout）→ armed=false，回 true（成立）
+// 逾時自動清除 armed
 ```
 
-> `elapsed_ms` 為 BLE NUS `dump` 協定承諾的欄位，App 依此繪製時間軸。韌體實作見 `firmware/lib/ems_logic/ems_time.h` `computeTaskElapsedMs()`。
+每個事件型別獨立持有 `two_step_confirm_t` instance：
+- `confirm_epi_t`
+- `confirm_shock_t`
+- `confirm_amio_t`
 
-#### 4.6 BLE 通訊（**SoT**：GATT Service 定義的權威來源）
-
-> 主副機**配對與同步流程**（掃描 / 連線 / 心跳）詳見 `pm-flow-spec.md §4`。本節只定義 GATT Service 技術規格。
-
-**Role**
-
-- 主機：Central
-- 副機：Peripheral
-
-**Phase 3 角色綁定**（2026-04-23 PM 流程圖確認）：
-- 主機（Central）= 給藥者 → 跑 Epinephrine 4 分鐘倒數 + 藥物選單
-- 副機（Peripheral）= 給氣者 → 跑 6 秒通氣節拍（由主機遙控啟停）
-- 主機需實作 BLE 指令：啟動/停止副機通氣節律
-- 單機階段（Phase 2）：同一台裝置透過模式切換兼任兩種角色
-
-**GATT Service 列表**
-
-- Device Info Service
-- Sync Service
-- Command Service
-- Event Upload Service
-
-（Characteristic UUID 與 payload schema 於 Phase 3 主副機實作時補齊。）
-
-#### 4.7 低功耗設計
-
-- Light sleep（待機）
-- 螢幕自動關閉
-- BLE 廣播間隔調整
-
-#### 4.8 錯誤處理
-
-- Flash 寫入失敗 retry
-- BLE reconnect
-- RTC 校正
+EPI 到期警報（ALARMING / OVERTIME）下，**主鍵只消音不建立紀錄**；EPI 鍵才能進入確認畫面（V1 §6.7）。
 
 ---
 
-## 二、App（行動端規格，**SoT**）
+### 6. 補登資料模型
 
-> 目標：資料接收、分析、呈現、匯出。`pm-flow-spec.md §6` 只寫 App 資料流程概觀，實作規格以本節為準。
+V1 §9。
+
+```c
+typedef enum {
+  EVT_EPI_LOCAL,        // 本機 EPI（有時間戳）
+  EVT_SHOCK_LOCAL,      // 本機電擊（有時間戳）
+  EVT_AMIODARONE,
+  EVT_EPI_PRE_HANDOVER, // 接手前 EPI（無時間戳）
+  EVT_EPI_PURE_SUPP,    // 純補登 EPI（無時間戳）
+  EVT_SHOCK_PRE_HANDOVER,
+  EVT_SHOCK_PURE_SUPP,
+} ems_event_type_t;
+
+typedef struct {
+  uint32_t          event_id;
+  ems_event_type_t  type;
+  uint64_t          timestamp_ms;     // 補登事件 = recorded_at（不是實際發生時間）
+  uint32_t          elapsed_ms;       // 自案件起點扣除 PAUSE
+  uint8_t           count;            // 補登批量（1~5 / 1~3）；本機事件固定 1
+  bool              actual_time_null; // 補登事件 = true
+} ems_event_t;
+```
+
+**補登成立後韌體層拒絕修改 / 撤銷 / 刪除**（V1 §9.7）。
 
 ---
+
+### 7. 6 秒通氣節奏
+
+#### 7.1 獨立模式（V1 §13）
+
+**新檔**：`firmware/lib/ems_vent/ems_vent_metronome.h`
+
+進入後立即啟動 1~6 循環：
+
+| 秒 | 蜂鳴 | LED | 畫面 |
+|----|------|-----|------|
+| 1 | 加強提示音 | 紅閃 | 反紅 |
+| 2~6 | 短提示音 | — | 數字 2~6 |
+
+通氣音量 0~5 獨立記憶（NVS key 與系統音量分開）。
+靜音時：聲音關閉，畫面反紅 + LED 紅閃保留（V1 §13.6）。
+
+#### 7.2 OHCA 中切入（V1 §14）
+
+OHCA 中按返回鍵 → 快速功能選單 → 進入通氣節奏。
+EPI 倒數背景持續；畫面同時顯示 `EPI MM:SS` 小提示。
+
+**EPI 高優先打斷**（V1 §14.3）：
+
+```c
+if (ohca_phase == OHCA_PHASE_ALARMING && in_vent_overlay) {
+  vent_metronome.silence();          // 立即停止通氣音
+  ui.switch_to(OHCA_ALARM_SCREEN);
+  // 必須完成 EPI 二段確認才能返回
+  // 確認後彈出「返回通氣節奏？」
+}
+```
+
+---
+
+### 8. Training 模式（V1 §15）
+
+倒數可選 30s / 1min / 4min。
+全程顯示「訓練模式」浮水印。
+重置功能僅 Training 提供（OHCA 不提供）。
+結束後選擇保存 / 不保存：
+- 保存 → 寫入 Training 紀錄區（最近 20 筆，FIFO）
+- 不保存 → 不占用儲存
+
+---
+
+### 9. 案件總覽 + Timeline（V1 §11）
+
+案件鎖定後產生：
+
+```c
+typedef struct {
+  uint32_t epi_total;
+  uint32_t epi_local;
+  uint32_t epi_pre_handover;
+  uint32_t epi_pure_supp;
+  uint64_t first_epi_local_ms;       // 0 = 無
+  uint64_t last_epi_local_ms;
+  uint32_t shock_total;
+  uint32_t shock_local;
+  uint32_t shock_pre_handover;
+  uint32_t shock_pure_supp;
+  uint64_t last_shock_local_ms;      // 不顯示「第一次本機電擊」
+  uint32_t amio_total;
+  uint64_t last_amio_ms;
+  bool     synced_to_app;
+  uint64_t synced_at_ms;
+} ohca_case_summary_t;
+```
+
+Timeline 補登事件時間欄位顯示 `-`。
+
+---
+
+### 10. 持久化
+
+**LittleFS partition 規劃**
+
+| 區域 | 上限 | 覆蓋策略 |
+|------|------|---------|
+| `/cases/ohca/*.dat` | 50 | FIFO，覆蓋最舊 |
+| `/cases/training/*.dat` | 20 | FIFO |
+| `/config/system.json` | 1 | 覆寫 |
+| `/config/device_name.txt` | 1 | App 寫入 |
+| `/sync_state.json` | 1 | Case ID 同步狀態索引 |
+
+**裝置端不提供刪除 API**，僅 Type-C 管理工具可清除（V1 §18.2 / §18.3）。
+
+---
+
+### 11. 按鍵事件處理
+
+V1 §4.1：主鍵 / 返回鍵 / 上鍵 / 下鍵 / EPI 鍵 / 電擊鍵 / Power / 錄音鍵（V1 不啟用）。
+
+**Timing 常數**（最終由實機調整）
+
+| 常數 | 預設 | 用途 |
+|------|------|------|
+| `DEBOUNCE_MS` | 30 | 下降緣 debounce |
+| `LONG_PRESS_END_MS` | 3000 | OHCA 主鍵長按 → 結束前檢查 |
+| `LONG_PRESS_DRUG_MENU_MS` | 1000 | EPI 鍵長按 → 藥物選單 |
+| `LONG_PRESS_SHOCK_SUPP_MS` | 1000 | 電擊鍵長按 → 電擊補登 |
+| `LONG_PRESS_POWER_MS` | 2000 | Power 開關機 |
+| `CONFIRM_TIMEOUT_MS` | 5000 | 兩段確認 timeout |
+
+**核心口訣**（V1 §4.2）
+- 即時事件按事件鍵
+- 選單確認按主鍵
+- 返回取消按返回鍵
+
+---
+
+### 12. 顯示模組
+
+OLED 畫面分類（對應 V1 §6.4 / §6.7 / §11 / §13.4 等）：
+
+- `IDLE`：主功能表
+- `OHCA_*`：倒數 / 預警 / 請給藥 / 超時
+- `CONFIRM_DIALOG`：兩段確認彈窗
+- `OHCA_SUMMARY` / `OHCA_TIMELINE`
+- `VENT_BEAT_1~6`（含 OHCA 中切入版本，含 EPI 小提示）
+- `TRAINING_*`（含「訓練模式」浮水印）
+- `SETTINGS_*`
+
+統一畫面框架 + 狀態驅動 render。
+
+---
+
+### 13. 蜂鳴 / LED / 震動輸出
+
+| 場景 | 蜂鳴 | LED | 震動 |
+|------|------|-----|------|
+| EPI WARNING | 每 15s 短嗶 | 黃慢閃 | — |
+| EPI ALARMING | 高優先連續 5s | 紅快閃 | 持續 |
+| EPI OVERTIME | 每 15s 短嗶 | 紅慢閃 | — |
+| 通氣第 1 秒 | 加強提示音 | 紅閃 | — |
+| 通氣 2~6 秒 | 短提示音 | — | — |
+| 確認成立 | 成功音 1 聲 | 綠閃 | — |
+| 低電量 | 不發聲 | 電量圖示閃 | — |
+
+通氣音量 = 0：蜂鳴關閉，畫面 + LED 保留（V1 §13.6）。
+
+---
+
+### 14. BLE 通訊
+
+#### 14.1 Phase F 過渡：NUS + JSON
+
+延用既有 `firmware/lib/ble_nus`。
+單案同步 payload：
+
+```json
+{
+  "type": "case_sync",
+  "case_id": "uuid-v4",
+  "mode": "ohca",
+  "device_name": "安康91",
+  "device_id": "DSP-0001",
+  "fw_version": "v1.0.0",
+  "started_at_ms": 1745740800000,
+  "ended_at_ms":   1745741700000,
+  "events": [
+    { "type": 0, "timestamp_ms": ..., "elapsed_ms": ..., "count": 1, "actual_time_null": false },
+    { "type": 3, "timestamp_ms": ..., "elapsed_ms": ..., "count": 2, "actual_time_null": true  }
+  ],
+  "summary": { ... ohca_case_summary_t ... }
+}
+```
+
+#### 14.2 Phase F+ 自訂 GATT（可選）
+
+V1 §16 配對碼流程：
+
+| Service | Characteristic | Property |
+|---------|----------------|----------|
+| Pairing Service | `pair_code` | read / notify |
+| Pairing Service | `pair_status` | notify |
+| Case Sync Service | `case_meta` | read |
+| Case Sync Service | `case_chunk` | notify |
+| Case Sync Service | `sync_ack` | write |
+| Device Info | `name` | read / write |
+| Device Info | `fw_version` | read |
+| Device Info | `battery` | read / notify |
+
+UUID 與 payload schema 在 Phase F 落地時補齊。
+
+#### 14.3 配對碼
+
+- 4 位數字
+- 有效期 120 秒（V1 §16.4）
+- 逾時必須重新產生
+- 同案件重複同步：App 端 Case ID 去重，覆蓋而非新增（V1 §16.8）
+
+---
+
+### 15. 系統設定
+
+對應 V1 §19。
+
+| 設定 | 範圍 | 持久化 | 預設 |
+|------|------|--------|------|
+| 螢幕亮度 | 1~5（最低 1） | NVS | 3 |
+| 系統音量 | 1~5（不可靜音） | NVS | 3 |
+| 通氣音量 | 0~5（0 = 靜音） | NVS | 3 |
+| 裝置名稱 | App 寫入 | LittleFS | 「未命名」 |
+| 韌體版本 | read-only | 編譯時嵌入 | — |
+
+**恢復預設值**（V1 §19.6）：清除前三項。**不清** 裝置名稱 / 案件 / Training / 同步狀態。
+
+---
+
+### 16. 電源管理
+
+V1 §20：
+
+- OHCA / 通氣模式螢幕常亮，**禁止**自動進入 deep sleep
+- 案件中**不強制**自動關機，只提示低電量
+- 插拔 Type-C **不重啟、不中斷** case
+
+---
+
+## 二、App（行動端）
+
+對齊 V1 §17。
 
 ### 1. 平台
 
-- iOS / Android（Flutter 或 React Native 建議）
+iOS / Android（暫定 React Native）。
 
----
+### 2. 範圍
 
-### 2. 功能模組
+**做：**
+- BLE 配對（輸入 4 位配對碼）
+- 接收單案資料
+- 4 頁籤顯示（交班摘要 / 完整總覽 / Timeline / 備註）
+- 一鍵複製
+- 案件刪除（僅手機端，不影響裝置）
+- OHCA / Training 分開列表
 
-#### 2.1 裝置管理
-
-- 掃描 BLE
-- 配對
-- 顯示狀態（電量 / 連線）
-
-#### 2.2 即時監控
-
-- 任務進行中畫面
-- 節律顯示（動畫）
-- 事件即時更新
-
-#### 2.3 資料同步
-
-- 自動同步
-- 手動同步
-- 斷線補傳
-
-#### 2.4 資料儲存（Local DB）
-
-- SQLite
-
-**Table：events**
-
-| 欄位 | 型別 |
-|------|------|
-| id | int |
-| timestamp | datetime |
-| type | int |
-| mode | int |
-| device_id | int |
-
-#### 2.5 視覺化分析
-
-- 時間軸（Timeline）
-- CPR 節律圖
-- 給藥間隔圖
-- 事件統計
-
-#### 2.6 匯出功能
-
-- PDF 報告
-- CSV
-- EMS 系統格式
-
-#### 2.7 UI 頁面
-
-| 頁面 | 功能 |
-|------|------|
-| 首頁 | 裝置狀態 |
-| 任務頁 | 即時監控 |
-| 歷史紀錄 | 列表 |
-| 分析頁 | 圖表 |
-| 設定 | 裝置設定 |
-
----
-
-## 三、Backend（後端系統規格）
-
-> 目標：資料集中管理 + 分析 + 醫療整合
-
----
-
-### 1. 架構
-
-- Cloud-based（AWS / GCP）
-- REST API + WebSocket
-
----
-
-### 2. API 設計
-
-#### 2.1 上傳資料
-
-```http
-POST /events/upload
-```
-
-#### 2.2 查詢任務
-
-```http
-GET /tasks/{id}
-```
-
-#### 2.3 查詢事件
-
-```http
-GET /events?task_id=xxx
-```
-
----
-
-### 3. 資料庫設計（SQL）
-
-**Table: tasks**
-
-| 欄位 | 型別 |
-|------|------|
-| id | UUID |
-| start_time | datetime |
-| end_time | datetime |
-| device_id | string |
-
-**Table: events**
-
-| 欄位 | 型別 |
-|------|------|
-| id | UUID |
-| task_id | UUID |
-| timestamp | datetime |
-| type | int |
-| mode | int |
-| extra | JSON |
-
----
-
-### 4. 核心功能
-
-#### 4.1 資料清洗
-
-- 去重
-- 時間排序
-- 異常檢測
-
-#### 4.2 分析引擎
-
-- CPR 品質分析（節律準確率）
-- 給藥間隔
-- 反應時間
-
-#### 4.3 報告生成
-
-- 自動生成 PDF
-- OHCA 報告格式
-
-#### 4.4 使用者系統
-
-- 帳號登入
-- 權限控管（消防 / 醫院）
-
----
-
-## 四、系統整合關係
-
-```
-[Device Firmware]
-      ↓ BLE / Wi-Fi
-[Mobile App]
-      ↓ HTTPS
-[Backend Server]
-      ↓
-[醫療系統 / 報表]
-```
-
----
-
-## 五、開發優先順序（非常重要）
-
-### Phase 1（MVP）
-
-- Firmware：任務 + 記錄 + BLE
-- App：資料接收 + 顯示
-- Backend：基本儲存
-
-### Phase 2
-
-- 分析圖表
-- 報告輸出
+**不做（V1 §2.2 明令排除）：**
 - 雲端同步
+- 帳號登入
+- 病患個資輸入
+- 即時院端同步
+- PDF 報表（V1 排除，未來再議）
 
-### Phase 3
+### 3. 本地儲存
 
-- 多裝置同步（主副機）
-- Wi-Fi
-- AI 分析（CPR 品質）
+SQLite。
+
+```sql
+CREATE TABLE cases (
+  case_id     TEXT PRIMARY KEY,
+  mode        TEXT,            -- 'ohca' / 'training'
+  device_name TEXT,
+  device_id   TEXT,
+  fw_version  TEXT,
+  started_at  INTEGER,
+  ended_at    INTEGER,
+  synced_at   INTEGER,
+  raw_json    TEXT             -- 原始 payload，避免欄位變更
+);
+
+CREATE TABLE notes (
+  case_id              TEXT PRIMARY KEY,
+  hospital_arrival_at  INTEGER,
+  rosc                 INTEGER,    -- bool
+  handover_to          TEXT,
+  special_situation    TEXT,
+  other                TEXT,
+  FOREIGN KEY (case_id) REFERENCES cases(case_id)
+);
+```
+
+備註欄位**不回寫裝置**（V1 §17.5）。
+
+### 4. Case ID 去重
+
+App 端以 `case_id` 為主鍵；重複同步時覆蓋。
 
 ---
 
-## 六、產品關鍵技術價值（非常重要）
+## 三、Type-C 電腦端管理工具
 
-這不是一般裝置，實際在做的是：
+V1 §18.3。
 
-- 「OHCA 數據化紀錄系統」
-- 「CPR 品質監測工具」
-- 「救護流程數位轉型」
+獨立 Python 或 Electron 工具，連線 ESP32 USB CDC：
+
+- 列出案件
+- 匯出（CSV / JSON）
+- 二次確認後清除案件區
+- **不可修改**既有案件內容
+
+協定可重用 NUS payload 格式（透過 USB CDC 傳輸而非 BLE）。
+
+---
+
+## 四、實作階段
+
+### Phase A — OHCA 核心（最高優先）
+
+**目標**：跑完一個 case，從待本機 EPI → 倒數 → 預警 → 警報 → 超時 → 結束鎖定。
+
+**範圍**
+- 重寫主功能表 + OHCA 子狀態機
+- EPI 4 分鐘倒數引擎（純函式 + 單元測試）
+- EPI / 電擊兩段確認
+- OLED 主畫面 / 倒數 / 預警 / 警報 / 超時
+- 蜂鳴 / LED / 震動三模態輸出對齊 V1 §6.6
+
+**驗收**
+- `decideOhcaOutput()` 單元測試 ≥ 30 案例全綠
+- 實機跑完 1 case 並結束鎖定，不可再新增事件
+- EPI 到期 5 秒未確認 → 自動進入 OVERTIME，顯示累計時間
+
+**廢止**：既有 `MED_PHASE` enum、`ems_countdown.cpp`、`vent_metronome.cpp` 全砍。
+
+---
+
+### Phase B — 補登 + Amiodarone + 案件總覽
+
+- 長按 EPI 鍵 → 藥物選單（補登 EPI / Amiodarone）
+- 長按電擊鍵 → 電擊補登（接手前 / 純補登）
+- 補登次數選擇 UI（1~5 / 1~3）
+- Amiodarone 兩段確認
+- 結束前檢查（V1 §10）
+- 案件總覽（V1 §11）+ Timeline（補登時間欄 = `-`）
+
+**驗收**：補登成立後不可撤銷；總覽欄位完整對齊 V1 §11。
+
+---
+
+### Phase C — 6 秒通氣節奏
+
+- 獨立模式（從主功能表進入）
+- 通氣音量 0~5 獨立 NVS
+- OHCA 中快速功能進入（返回鍵）
+- EPI 高優先打斷邏輯
+- EPI 完成後「返回通氣節奏？」詢問
+
+**驗收**：EPI ALARMING 觸發時通氣音 ≤ 50ms 內停止。
+
+---
+
+### Phase D — Training 模式
+
+- 30s / 1min / 4min 倒數可選
+- 全程「訓練模式」浮水印
+- 重置 / 結束 / 保存選項
+- 保存進 Training 區（不混入 OHCA）
+
+**驗收**：Training 與 OHCA 列表完全分離。
+
+---
+
+### Phase E — 持久化 + 歷史紀錄
+
+- LittleFS partition 規劃
+- 50 OHCA + 20 Training FIFO 覆蓋
+- 從歷史紀錄重新進入案件總覽
+- 重啟後資料不遺失
+
+**驗收**：寫滿 51 筆 OHCA 後最舊一筆自動覆蓋；重啟後總覽完整。
+
+---
+
+### Phase F — App 配對碼同步
+
+- 配對碼 4 位數 + 120s TTL
+- 單案傳輸（NUS + JSON 過渡）
+- Case ID 去重
+- 已同步 / 未同步狀態
+- 中斷重試 = 整筆重傳
+
+**驗收**：同案件同步 2 次，App 端不重複；中斷後重試成功。
+
+---
+
+### Phase G — 系統設定 + Type-C 工具
+
+- 螢幕亮度 / 系統音量 / 通氣音量 NVS
+- 裝置名稱由 App 寫入
+- 韌體版本 read-only
+- Type-C 管理工具 MVP（列案件 / 匯出 / 清除）
+
+**驗收**：恢復預設不影響案件 / Training / 裝置名稱。
+
+---
+
+### Phase H — 電源管理
+
+- OHCA / 通氣螢幕常亮
+- 邊充邊用測試
+- 低電量警告（不強制關機）
+- Type-C 插拔不中斷案件
+
+**驗收**：插拔 Type-C 期間 OHCA 計時連續，不丟事件。
+
+---
+
+## 五、現有韌體：廢棄 vs 保留
+
+### Phase A 開工時刪除
+
+- `firmware/lib/ems_logic/ems_countdown.{h,cpp}` — 舊三階段藥物倒數
+- `firmware/lib/ems_logic/vent_metronome.{h,cpp}` — 舊 6 秒節拍器
+- `MED_PHASE_*` enum 與相關常數
+- 5 鍵 / 4 模式切換邏輯（給藥/通氣/自訂/設定）
+- `firmware/test/test_countdown/test_med_countdown.cpp` — 舊測試
+- `tasks/` 內舊版煙霧測試清單（A~F 27 項，不適用新狀態機）
+
+### 保留可重用
+
+- `firmware/lib/ems_logic/ems_time.h` `computeTaskElapsedMs()`
+- `firmware/lib/ble_nus` — Phase F 過渡使用
+- 按鍵 debounce / fire-on-release 框架（timing 常數重新定義）
+- PlatformIO native 測試環境
+- OLED 驅動 / I2C bus / 蜂鳴器 PWM 驅動
+
+### 新建模組
+
+- `firmware/lib/ems_ohca/` — OHCA 子狀態機 + 倒數 + 兩段確認
+- `firmware/lib/ems_supp/` — 補登模型
+- `firmware/lib/ems_persist/` — LittleFS 案件儲存
+- `firmware/lib/ems_pairing/` — 配對碼產生 / 驗證
+- `firmware/lib/ems_vent/` — 6 秒通氣節拍器（重寫）
+- `firmware/lib/ems_training/` — Training 模式
