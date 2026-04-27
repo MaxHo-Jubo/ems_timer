@@ -1,188 +1,164 @@
-# EMS Timer / EMS DoseSync — 救護計時器
+# EMS DoseSync Pro — Prototype V1
 
-給救護人員使用的手持計時裝置。長按主鍵啟動任務，短按記錄給藥 / 通氣事件，裝置本機儲存完整任務紀錄（LittleFS），事後可透過藍牙傳輸至手機 App。
+院前 OHCA 現場的給藥與事件時間同步輔助裝置。協助 EMT / ALS 接手人員掌握 EPI 4 分鐘節奏、紀錄電擊與藥物事件、案件結束提供完整總覽，並可透過手機 App 同步單一案件輔助登打救護紀錄表。
 
-> 產品對外名稱 **EMS Timer**；PM 規格層使用 **EMS DoseSync**。兩者指同一個專案。
-
----
-
-## Source of Truth 排序（權威順序）
-
-本專案文件分層，越上層越權威；底層文件不得與上層衝突。
-
-**兩份 PM 規格文件採職責邊界分離（2026-04-23 整合，方案 B）**：`pm-flow-spec.md` 管使用者可感知的行為；`pm-dev-spec.md` 管工程實作常數與型別。當兩份在同一主題上有衝突時，以各節標註的 **SoT** 為準。
-
-| 優先 | 層級 | 文件 | 說明 |
-|:---:|------|------|------|
-| 1a | 行為規格 | [`docs/pm-flow-spec.md`](docs/pm-flow-spec.md) | 產品行為規格 — 啟動流程、狀態轉換、按鍵互動（含秒數 / 精度）、硬體模組清單（**SoT**：§7 硬體模組） |
-| 1b | 工程實作規格 | [`docs/pm-dev-spec.md`](docs/pm-dev-spec.md) | 工程實作規格 — timing 常數、C struct、GATT Service、SQL schema、REST API、FreeRTOS Task 分工（**SoT**：§3 狀態機 timing、§4.2 節律精度、§4.3 按鍵常數、§4.5 event_t、§4.6 GATT）|
-| 2 | 差距分析 | [`docs/gap-analysis.md`](docs/gap-analysis.md) | PM 規格 vs 當前韌體實作的差距盤點 |
-| 2 | 執行計畫 | [`docs/incremental-impl-plan.md`](docs/incremental-impl-plan.md) | 對齊 PM 規格的增量實作計畫 |
-| 3 | AI 協作規則 | [`CLAUDE.md`](CLAUDE.md) | Phase 設計決策、資料模型、開發約定 |
-| 4 | 執行追蹤 | [`tasks/todo.md`](tasks/todo.md) | 開發進度、測試勾選清單 |
-| 4 | 執行追蹤 | [`tasks/unit-test-plan.md`](tasks/unit-test-plan.md) | 單元測試規劃（Phase 1 起步） |
-| 5 | 對外介紹 | `README.md`（本檔） | 現況快速導覽；規格細節以上述文件為準 |
-
-若發現 README 與 `docs/` 不一致，以 `docs/` 為準。README 定期同步（最新：2026-04-22）。
+> 對外正式名稱 **EMS DoseSync Pro**；專案目錄沿用舊名 `ems_timer`。
 
 ---
 
-## 當前功能（Phase 2A~2E + 3A 完成，已 commit）
+## 🌐 線上 Demo
 
-- **5 鍵狀態機**：IDLE / RUNNING / PAUSE / END 四態，主鍵短按/長按分流
-- **四種操作模式**：MED（給藥）/ VENT（通氣）/ CUSTOM / SETTINGS（後兩者 Phase 3 補強）
-- **MED 給藥倒數**：240 秒倒數、剩 60 秒中途警示、到時 3 嗶 + OLED 整螢幕反色、每 30 秒重複提醒、短按確認給藥（記錄 "epi"）重置倒數
-- **藥物子選單**：6 種藥物（Amiodarone / TXA / D50 / Atropine / Adenosine / Naloxone），8 秒無操作自動關閉
-- **OLED 畫面**：狀態驅動（IDLE / RUNNING 大字倒數 / PAUSED 閃爍 / Saved）
-- **LittleFS 持久儲存**：任務結束自動寫 `/sessions/<epoch>.json`，開機掃描列出未同步檔
-- **事件紀錄**：單任務最多 100 筆，含 event_id / timestamp / elapsed_ms / source / mode / extra_data / sync_flag
-- **按鍵 debug log**：完整按鍵生命週期 Serial 輸出（PRESS / RELEASE / GRAY / LONG fired / debounce reject）
+| 內容 | 網址 |
+|------|------|
+| **Landing 首頁** | https://ems-dosesync-demo.pages.dev/ |
+| 產品流程規格（互動 HTML） | https://ems-dosesync-demo.pages.dev/EMS_DoseSync_Pro_Prototype_V1_flow.html |
+| 互動 Demo（手機沉浸式） | https://ems-dosesync-demo.pages.dev/demo/ |
+| Demo 真實速度模式 | https://ems-dosesync-demo.pages.dev/demo/?speed=1x |
 
----
-
-## 硬體架構
-
-| 元件 | 型號 / 規格 | 介面 |
-|------|------------|------|
-| 主控板 | ESP32-S3-DevKitC-1 | — |
-| 螢幕 | SSD1306 OLED 0.96" | I2C（SDA/SCL = GPIO 42/41） |
-| 按鈕 | 有段式 × 5（計畫換 tactile momentary） | GPIO INPUT_PULLUP |
-| 蜂鳴器 | 主動式蜂鳴器 | GPIO 14 |
-| 震動馬達 | 1027 硬幣馬達 + S8050 NPN | GPIO 16（`ENABLE_VIBRATION=0` 預設關，OLED 反色取代視覺） |
-| 麥克風 | INMP441 數位麥克風 | I2S（SCK/WS/SD = 40/39/38，Phase 1.5 待換模組） |
-| 儲存 | LittleFS（內建 Flash）| — |
-
-## 按鍵配置（5 鍵）
-
-| 按鍵 | 常數名 | GPIO | 短按（<1500ms） | 長按（≥2000ms） |
-|------|--------|------|----------------|----------------|
-| 正下方大鍵 | BTN_PRIMARY | 4 | 依 state + mode 分派：MED 提醒時 = 確認 epi、MED 一般 = 開藥物選單、VENT = 記通氣事件、PAUSE = 繼續任務 | 任務狀態轉換：IDLE→RUNNING / RUNNING→PAUSE / PAUSE→END |
-| 左側上鍵 | BTN_UP | 5 | 選單游標上移 / 模式反向切換 | noop |
-| 左側下鍵 | BTN_DOWN | 6 | 選單游標下移 / 模式正向切換 | noop |
-| 右側電源鍵 | BTN_POWER | 7 | log 輸出（screen wake 待實作） | log 輸出（shutdown 待實作） |
-| 左上錄音鍵 | BTN_RECORD | 15 | log 輸出（INMP441 到貨後啟用） | log 輸出 |
-
-> 門檻：SHORT <1500ms、LONG ≥2000ms、1500~2000ms 為灰色地帶忽略、DEBOUNCE 80ms、END 狀態下 2 秒自動回 IDLE。
-
-## BLE 通訊協定（Phase 2B 已驗證，Phase 2/3A 重構後升級為 phase2c）
-
-服務：Nordic UART Service（NUS），裝置為 Peripheral。
-
-| 命令（App → 裝置） | 說明 |
-|-------------------|------|
-| `{"cmd":"sync","ts":<epoch_ms>}` | 時間同步（裝置用軟體 epoch 補正）|
-| `{"cmd":"dump"}` | 批次取得所有事件紀錄 |
-| `{"cmd":"clear"}` | 清空事件陣列 |
-
-事件欄位（dump 回傳）：`event_id` / `timestamp`（epoch 秒 + ms 小數）/ `elapsed_ms` / `event_type` / `source` / `mode` / `extra_data` / `sync_flag`
-
-> **PM 規格差異注意**：PM 規格的 `event_t` 有 `device_id` 但韌體目前無（Phase 3 主副機時補）；韌體 `elapsed_ms` 為實作擴充，PM 規格未定義。
+部署於 Cloudflare Pages。建議在手機開啟 Demo 取得最佳互動體驗。
 
 ---
 
-## 開發階段
+## 📘 文件結構（Source of Truth 由上至下）
 
-- [x] **Phase 1**（2026-04-17）— 硬體原型：ESP32-S3 + 8 按鈕 + OLED + 蜂鳴器驗收通過
-- [x] **Phase 2A~2E + 3A**（2026-04-22）— 5 鍵狀態機 + 給藥倒數 + 藥物選單 + LittleFS 持久化
-  - 實機煙霧測試 25/34 項通過（剩餘 9 項等 tactile 按鍵到貨補測）
-  - 3 個 bug 已修：END 邊界誤觸、END 鎖死、切模式 MED 倒數未重置
-  - PR review 5 項 MINOR/INFO 修正（millis overflow、抽 switchMode helper 等）
-- [x] **Phase 1 單元測試框架**（2026-04-22）— `lib/ems_logic` + `[env:native]` + `computeTaskElapsedMs` 9/9 tests 綠
-- [ ] **Phase 1.5** — INMP441 麥克風重試（換新模組後啟用 `ENABLE_MIC_MONITOR`）
-- [ ] **Phase 2F** — 1.3" SH1106 OLED 升級（採 U8g2 library，型號到貨先驗證）
-- [ ] **Phase 2 單元測試延伸** — MedCountdownDecision / computePauseCorrection / recordEvent
-- [ ] **Phase 3** — 手機 App + DS3231 RTC 升級 + 主副機架構
-- [ ] **Phase 4** — 整合測試、電源方案、外殼設計、量產化
+| 優先 | 文件 | 用途 |
+|:---:|------|------|
+| 1 | [`docs/EMS_DoseSync_Pro_Prototype_V1.md`](docs/EMS_DoseSync_Pro_Prototype_V1.md) | **產品規格唯一真實來源**（PM 封版） — 主功能 / OHCA lifecycle / EPI 倒數 / 兩段確認 / 補登 / 案件總覽 / 6 秒通氣 / Training / App 同步 / 系統設定 / 硬體 |
+| 1 | [`docs/EMS_DoseSync_Pro_Prototype_V1_flow.html`](docs/EMS_DoseSync_Pro_Prototype_V1_flow.html) | 同等內容的視覺化版本（18 章節） |
+| 2 | [`docs/pm-dev-spec.md`](docs/pm-dev-spec.md) | 工程實作細節（v2.0）— 模組 API、資料結構、Phase A~H 開發階段 |
+| 3 | [`docs/demo/index.html`](docs/demo/index.html) | 手機互動 Demo 原始碼（single file，~1900 行） |
+| 4 | [`tasks/todo.md`](tasks/todo.md) | 開發進度與下一步待辦 |
+| 5 | [`CLAUDE.md`](CLAUDE.md) | 專案約定 |
 
-詳細進度見 [`tasks/todo.md`](tasks/todo.md)。
+衝突時以較高層為準。`docs/pm-flow-spec.md` 已於 2026-04-27 廢止（被 V1 SoT 取代）。
 
 ---
 
-## 量產化路線
+## 🎯 產品範圍（V1 封版）
 
-| 階段 | 硬體方案 | 說明 |
-|------|---------|------|
-| 0 | 麵包板 + 杜邦線 | 韌體驗證（當前） |
-| 1 | 洞洞板手焊 | 使用者試用與功能測試 |
-| 2 | 客製 PCB 手焊 | 5~10 台，確認設計定版 |
-| 3 | PCB + SMT 代焊 | 機器焊接被動元件，降低組裝成本 |
+**做：**
+- OHCA 案件 lifecycle（待本機 EPI → 倒數 → 預警 → 警報 → 超時 → 結束鎖定）
+- EPI 4 分鐘倒數提醒（精度 ±50ms）
+- EPI / 電擊 / Amiodarone 兩段確認
+- 補登（接手前 1~5 / 純補登 1~3）
+- 案件總覽 + Timeline
+- 獨立 6 秒通氣節奏 + OHCA 中切入（EPI 高優先打斷）
+- Training 模式（30s / 1m / 4m）
+- 歷史紀錄（OHCA 50 + Training 20 自動覆蓋）
+- App 單案配對碼同步（4 位數 / 120s TTL）
+- Type-C 電腦端管理工具（匯出 / 清除）
+- 系統設定（亮度 / 音量 × 2）
 
-詳細各階段說明、工具、成本估算與外殼設計指引，見 [`tasks/production-roadmap.md`](tasks/production-roadmap.md)。
-
----
-
-## 文件索引（依 Source of Truth 排序）
-
-| 層級 | 文件 | 說明 |
-|------|------|------|
-| 1a | [docs/pm-flow-spec.md](docs/pm-flow-spec.md) | PM 行為規格（流程 / 互動 / 硬體模組） |
-| 1b | [docs/pm-dev-spec.md](docs/pm-dev-spec.md) | PM 工程實作規格（常數 / 型別 / API / schema） |
-| 2 | [docs/gap-analysis.md](docs/gap-analysis.md) | PM 規格 vs 現況差距 |
-| 2 | [docs/incremental-impl-plan.md](docs/incremental-impl-plan.md) | 增量實作計畫 |
-| 3 | [CLAUDE.md](CLAUDE.md) | 專案規則 / Phase 設計決策 |
-| 4 | [tasks/todo.md](tasks/todo.md) | 開發進度與待辦清單 |
-| 4 | [tasks/unit-test-plan.md](tasks/unit-test-plan.md) | 單元測試規劃 |
-| 4 | [tasks/production-roadmap.md](tasks/production-roadmap.md) | 量產化路線 |
-| 4 | [tasks/phase2-acceptance.md](tasks/phase2-acceptance.md) | Phase 2 驗收清單 |
-| 5 | [design-philosophy.md](design-philosophy.md) | 視覺設計哲學（Technical Cartography） |
+**不做（V1 §2.2 明令排除）：**
+雲端、帳號登入、即時院端同步、GPS、病患個資、錄音功能、PDF 報表、權限管理。
 
 ---
 
-## 概念設計預覽
+## 🚀 部署
 
-### 電路配置
+### 線上 Demo（Cloudflare Pages）
 
-![電路配置示意圖](ems_timer_schematic.png)
-
-### 外觀概念
-
-![外觀概念圖](ems_timer_exterior.png)
-
----
-
-## Repository & CI/CD
-
-### Remotes
-
-| 用途 | Remote 名稱 | URL |
-|------|------------|-----|
-| 主要（推拉） | `origin` | `https://gitlab.webotopia.work/maxhero/ems_timer.git` |
-| 備份鏡像 | `github` | `https://github.com/MaxHo-Jubo/ems_timer.git` |
-
-同步備份到 GitHub：
+一次性設定：
 
 ```bash
-git push github main
+npm install -g wrangler
+# OAuth 不通可改 API Token 路線：產生 token → export CLOUDFLARE_API_TOKEN=xxx
+wrangler login
 ```
 
-### GitLab 認證（首次 push）
+每次部署：
 
-macOS 已預設 `osxkeychain` credential helper，第一次 push 會要求輸入帳密，之後自動記憶。
-
-產生 Personal Access Token（PAT）：
-
-1. 登入 GitLab → **User Settings** → **Access Tokens**
-2. Scope 勾 `write_repository`（push/pull 權限）
-3. 複製 token（離開頁面後無法再看）
-4. 第一次 `git push` 時：
-   - Username：GitLab 帳號
-   - Password：貼上 PAT（不是 GitLab 登入密碼）
-
-### CI — 單元測試（本機執行）
-
-此 GitLab 實例目前無可用 runner，CI test job 已停用。單元測試改本機執行：
-
-```
-pio test -e native -d firmware
+```bash
+./scripts/deploy-cf-pages.sh
 ```
 
-若未來朋友的 GitLab 掛上 runner，再把 test job 加回 [`.gitlab-ci.yml`](.gitlab-ci.yml)。
+腳本會：
+1. 從 `docs/` 挑出公開檔案組成 `dist/`
+2. 加上 `scripts/landing.html` 當首頁
+3. 跑 `wrangler pages deploy`（commit message 強制純 ASCII 規避 Cloudflare API 8000111）
 
-### GitLab Pages — 規格文件站
+只 build 不部署：
 
-`main` push 後自動發佈 `docs/` 為靜態站：
+```bash
+./scripts/deploy-cf-pages.sh --build-only
+```
 
-- 首頁：`docs/ems-flow-spec.html`（互動版規格）
-- MD 規格檔同時部署，可直連瀏覽
+### 隔離設計
 
-實際 Pages URL 視 GitLab 實例設定，通常為 `https://<namespace>.pages.<domain>/<project>/`。
+`dist/` 只包含 3 個公開檔案，工程文件（`pm-dev-spec.md` / `gap-analysis.md` / `incremental-impl-plan.md` / V1.md）不會 deploy。
+
+---
+
+## 🔧 開發階段（Phase A~H）
+
+對齊 `docs/pm-dev-spec.md §四`。**目前狀態：規格封版完成、Demo 完成；韌體尚未開工。**
+
+| Phase | 範圍 | 狀態 |
+|-------|------|------|
+| **A** | OHCA 核心狀態機 + EPI 倒數 + 兩段確認 | ⏳ 下次工作起點 |
+| B | 補登 + Amiodarone + 案件總覽 + Timeline | ⏸ 待 A |
+| C | 6 秒通氣節奏（獨立 + OHCA 切入 + EPI 高優先打斷） | ⏸ 待 A |
+| D | Training 模式 | ⏸ 待 A |
+| E | LittleFS 持久化 + 歷史紀錄 | ⏸ 待 B |
+| F | App 配對碼同步 | ⏸ 待 E |
+| G | 系統設定 + Type-C 管理工具 | ⏸ 並行 |
+| H | 電源管理 | ⏸ 並行 |
+
+**Phase A 開工時 throwaway 重寫**：既有韌體 `MED_PHASE` / `ems_countdown.cpp` / `vent_metronome.cpp` / 5 鍵 / 4 模式切換邏輯全砍。詳見 `docs/pm-dev-spec.md §五` 與 `tasks/todo.md`。
+
+---
+
+## 📦 Repo 結構
+
+```
+ems_timer/
+├── docs/
+│   ├── EMS_DoseSync_Pro_Prototype_V1.md         ← SoT
+│   ├── EMS_DoseSync_Pro_Prototype_V1_flow.html  ← SoT 視覺化
+│   ├── pm-dev-spec.md                           ← 工程實作
+│   ├── demo/index.html                          ← 手機互動 Demo
+│   ├── gap-analysis.md
+│   └── incremental-impl-plan.md
+├── firmware/                                    ← Phase A 開工時重寫
+│   ├── src/main.cpp
+│   ├── lib/ems_logic/                           ← throwaway
+│   ├── lib/ble_nus/                             ← Phase F 過渡保留
+│   └── test/                                    ← throwaway
+├── scripts/
+│   ├── landing.html
+│   └── deploy-cf-pages.sh
+├── tasks/
+│   ├── todo.md                                  ← 進度與待辦
+│   └── ...
+├── .gitlab-ci.yml                               ← GitLab Pages（test job 已移除無 runner）
+├── CLAUDE.md
+└── README.md
+```
+
+---
+
+## 🧪 韌體本機測試
+
+```bash
+cd firmware
+pio test -e native
+```
+
+CI 不跑單元測試（GitLab webotopia 實例無 runner）。
+
+---
+
+## 📡 Repository
+
+- **主要開發**：GitLab webotopia — `https://gitlab.webotopia.work/maxhero/ems_timer.git`
+- **備份鏡像**：GitHub — `https://github.com/MaxHo-Jubo/ems_timer.git`（手動 `git push github main` 同步）
+
+---
+
+## 📝 變更紀錄重點
+
+- **2026-04-27**：V1 規格封版；舊 `pm-flow-spec.md` 廢止；pm-dev-spec 重寫 v2.0；手機互動 Demo 上線；部署 Cloudflare Pages
+- **2026-04-24**：repo 遷移至 GitLab webotopia（origin），GitHub 改備份
+- **2026-04-23**：MED_PHASE 三階段倒數 + 通氣節拍三模態輸出（將在 Phase A 重寫）
+- **2026-04-21**：Phase 2C 按鈕重構（將在 Phase A 重寫）
+- **2026-04-17**：Phase 1 硬體原型驗收通過

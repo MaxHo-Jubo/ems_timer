@@ -1,5 +1,73 @@
 # EMS Timer 開發進度
 
+> **2026-04-27 重要更新**：V1 規格封版並完成手機互動 Demo。
+> 韌體下次工作從 **Phase A 開工**，既有韌體（`MED_PHASE` / `ems_countdown` / `vent_metronome` / 5 鍵 / 4 模式切換）視為 throwaway prototype 全砍重寫。
+> 詳見 `docs/pm-dev-spec.md` v2.0。
+
+---
+
+## 🎯 下次工作起點：Phase A 韌體重寫（OHCA 核心）
+
+對齊 `docs/EMS_DoseSync_Pro_Prototype_V1.md` SoT 與 `docs/pm-dev-spec.md` v2.0。
+
+### Phase A 開工 Checklist
+
+#### Phase A 開工前先刪（pm-dev-spec §五）
+
+- [ ] `firmware/lib/ems_logic/ems_countdown.{h,cpp}` — 舊三階段藥物倒數
+- [ ] `firmware/lib/ems_logic/vent_metronome.{h,cpp}` — 舊 6 秒節拍器（Phase C 重寫）
+- [ ] `MED_PHASE_*` enum 與相關常數
+- [ ] 5 鍵 / 4 模式切換邏輯（給藥/通氣/自訂/設定）
+- [ ] `firmware/test/test_countdown/test_med_countdown.cpp` — 舊測試
+- [ ] `tasks/` 內舊版煙霧測試清單（A~F 27 項，不適用新狀態機）
+
+#### Phase A 開工保留可重用
+
+- `firmware/lib/ems_logic/ems_time.h` `computeTaskElapsedMs()`
+- `firmware/lib/ble_nus` — Phase F 過渡使用
+- 按鍵 debounce / fire-on-release 框架（timing 常數重新定義）
+- PlatformIO native 測試環境
+- OLED 驅動 / I2C bus / 蜂鳴器 PWM 驅動
+
+#### Phase A 新建模組
+
+- [ ] `firmware/lib/ems_ohca/ems_ohca_state.{h,cpp}` — OHCA 子狀態機（待本機 EPI / 倒數 / 預警 / 警報 / 超時 / 結束鎖定）
+- [ ] `firmware/lib/ems_ohca/ems_ohca_countdown.{h,cpp}` — EPI 4 分鐘倒數引擎（純函式 `decideOhcaOutput`）
+- [ ] `firmware/lib/ems_ohca/ems_two_step_confirm.{h,cpp}` — 兩段確認模組（EPI / 電擊 / Amio 共用）
+- [ ] `firmware/lib/ems_supp/` — 補登資料模型（Phase B 用，Phase A 預留 type）
+
+#### Phase A 驗收
+
+- [ ] `decideOhcaOutput()` 單元測試 ≥ 30 案例全綠
+- [ ] 實機跑完 1 case：待本機 EPI → EPI×2 確認 → 倒數 → WARNING → ALARMING → EPI×2 重啟 → 長按主鍵結束 → 鎖定
+- [ ] EPI 到期 5 秒未確認自動進入 OVERTIME，顯示自上次 EPI 起算的累計時間
+- [ ] 案件鎖定後不可再新增事件（API 拒絕）
+- [ ] 蜂鳴 / LED / 震動三模態輸出對齊 V1 §6.6（warn 黃慢閃 / alarm 紅快閃 / overtime 紅慢閃）
+
+### Phase B~H 概覽
+
+| Phase | 範圍 | 關鍵驗收 |
+|-------|------|---------|
+| B | 補登 + Amiodarone + 案件總覽 + Timeline | 補登成立後不可撤銷；總覽欄位完整對齊 V1 §11 |
+| C | 6 秒通氣節奏（獨立 + OHCA 切入 + EPI 高優先打斷） | EPI ALARMING 觸發時通氣音 ≤ 50ms 內停止 |
+| D | Training 模式（30s / 1m / 4m） | Training 與 OHCA 列表完全分離 |
+| E | LittleFS 持久化 + 歷史紀錄 | 寫滿 51 筆 OHCA 後最舊一筆自動覆蓋；重啟後總覽完整 |
+| F | App 配對碼同步（4 位數 / 120s TTL） | 同案件同步 2 次 App 端不重複；中斷後重試成功 |
+| G | 系統設定 + Type-C 工具 | 恢復預設不影響案件 / Training / 裝置名稱 |
+| H | 電源管理 | 插拔 Type-C 期間 OHCA 計時連續，不丟事件 |
+
+### Phase A 開工建議步驟
+
+1. **新 branch**：`feat/phase-a-ohca-rewrite`
+2. **先寫 unit tests**（TDD）：`decideOhcaOutput` 30 案例先紅
+3. **刪舊檔**：上面 Checklist 一併移除（含 commit 紀錄）
+4. **新建純函式**：`ems_ohca_countdown.{h,cpp}` 讓 tests 變綠
+5. **狀態機接線**：`main.cpp` 改用新 OHCA 子狀態機
+6. **OLED render**：對應 V1 §6.4 / §6.7 五種畫面變體
+7. **實機煙霧測試**：5 個關鍵 path 跑過
+
+---
+
 ## GitLab 遷移設定（2026-04-24 完成）
 
 **背景**：repo 從 GitHub 移植到 GitLab（`https://gitlab.webotopia.work/maxhero/ems_timer.git`）。
