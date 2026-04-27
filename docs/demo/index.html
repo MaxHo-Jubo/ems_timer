@@ -750,7 +750,7 @@ const STATES = {
       if (btn === 'MAIN' && kind === 'SHORT') {
         beep(1500, 60);
         if (stateData.cursor === 0) {
-          go('OHCA_SUPP_COUNT', { suppType: 'EPI', cursor: 0 });
+          go('OHCA_EPI_SUPP_MENU', { cursor: 0 });
         } else {
           go('OHCA_CONFIRM', { evType: 'AMIO', label: '確認已給 Amiodarone？', confirmKey: 'MAIN' });
         }
@@ -773,6 +773,37 @@ const STATES = {
     },
   },
 
+  // ----- 補登 EPI → 接手前 / 純補登 子選單（V1 §9.6）-----
+  OHCA_EPI_SUPP_MENU: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['接手前 EPI', '純補登 EPI'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_DRUG_MENU', { cursor: 0 }); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const suppType = stateData.cursor === 0 ? 'EPI_PRE_HANDOVER' : 'EPI_PURE_SUPP';
+        go('OHCA_SUPP_COUNT', { suppType, cursor: 0, backTo: 'OHCA_EPI_SUPP_MENU' });
+      }
+    },
+    render: () => {
+      const items = ['接手前 EPI', '純補登 EPI'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">補登 EPI</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
   // ----- 長按電擊 → 電擊補登選單 -----
   OHCA_SHOCK_SUPP_MENU: {
     onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
@@ -784,7 +815,7 @@ const STATES = {
       if (btn === 'MAIN' && kind === 'SHORT') {
         beep(1500, 60);
         const suppType = stateData.cursor === 0 ? 'SHOCK_PRE_HANDOVER' : 'SHOCK_PURE_SUPP';
-        go('OHCA_SUPP_COUNT', { suppType, cursor: 0 });
+        go('OHCA_SUPP_COUNT', { suppType, cursor: 0, backTo: 'OHCA_SHOCK_SUPP_MENU' });
       }
     },
     render: () => {
@@ -808,18 +839,14 @@ const STATES = {
   OHCA_SUPP_COUNT: {
     onEnter: () => {
       stateData.cursor = stateData.cursor ?? 0;
-      // STEP 01: 補登 EPI 入口需要再選「接手前 / 純補登」；此處先簡化為兩種次數範圍對應預設
-      if (stateData.suppType === 'EPI') {
-        // STEP 01.01: 為 EPI 補登多加一層（接手前 EPI / 純補登 EPI）；但 demo 簡化：直接固定 EPI_PRE_HANDOVER（最常見）
-        stateData.suppType = 'EPI_PRE_HANDOVER';
-      }
+      // V1 §9.6：接手前 1~5、純補登 1~3
       const isPreHandover = stateData.suppType.endsWith('PRE_HANDOVER');
       stateData.maxCount = isPreHandover ? 5 : 3;
     },
     onButton: (btn, kind) => {
       if (btn === 'UP')   { stateData.cursor = (stateData.cursor + stateData.maxCount - 1) % stateData.maxCount; beep(600, 30, 0.1); render(); }
       if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % stateData.maxCount; beep(600, 30, 0.1); render(); }
-      if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
+      if (btn === 'BACK' && kind === 'SHORT') { go(stateData.backTo || 'OHCA_RUNNING'); }
       if (btn === 'MAIN' && kind === 'SHORT') {
         beep(1500, 60);
         go('OHCA_SUPP_CONFIRM', { suppType: stateData.suppType, count: stateData.cursor + 1 });
