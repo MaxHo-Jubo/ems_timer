@@ -248,16 +248,63 @@ const TICK_INTERVAL_MS          = 100;
 /** 過場閃顯預設停留時間 */
 const FLASH_DEFAULT_MS          = 1_200;
 
-/** 倒數加速倍率（URL ?speed=8x），影響「OHCA EPI 倒數 + 通氣節拍」的模擬時間 */
+/** 倒數加速倍率（URL ?speed=8x），影響「OHCA EPI 倒數 + 通氣節拍 + Training 倒數」 */
 const SPEED_MULT = (() => {
   const raw = new URLSearchParams(location.search).get('speed') || '8x';
   const num = parseInt(raw, 10);
   return (num >= 1 && num <= 64) ? num : 8;
 })();
 
+/** 設定預設值（V1 §19） */
+const DEFAULT_SETTINGS = {
+  brightness: 3,   // 1~5（最低 1，無關機）
+  sysVolume:  3,   // 1~5（不可靜音）
+  ventVolume: 3,   // 0~5（0 = 靜音）
+};
+const SETTINGS_STORAGE_KEY    = 'ems_settings_v1';
+const HISTORY_OHCA_KEY        = 'ems_history_ohca_v1';
+const HISTORY_TRAINING_KEY    = 'ems_history_training_v1';
+const HISTORY_OHCA_LIMIT      = 50;     // V1 §12.4
+const HISTORY_TRAINING_LIMIT  = 20;     // V1 §12.4
+
+/** Training 倒數可選長度（ms，真實時間） */
+const TRAINING_DURATIONS_MS = [30_000, 60_000, 240_000];
+const TRAINING_DURATION_LABELS = ['30 秒', '1 分鐘', '4 分鐘'];
+
+/** 裝置資訊 mock（V1 §19.7；demo 限制不能由 App 寫入） */
+const DEVICE_MOCK = {
+  name:        '未命名',
+  model:       'EMS DoseSync Pro',
+  serial:      'DSP-DEMO',
+  fwVersion:   'v1.0.0-demo',
+  battery:     86,
+  charging:    true,
+};
+
 // ============================================================
-// SECTION 2：音效（Web Audio）+ 震動 + LED
+// SECTION 2：設定 + 音效（Web Audio）+ 震動 + LED
 // ============================================================
+
+/** 從 localStorage 讀取設定，merge 預設值補齊缺失欄位 */
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+  } catch (_) {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(SETTINGS)); } catch (_) {}
+}
+let SETTINGS = loadSettings();
+
+/** 套用螢幕亮度：brightness 1~5 → CSS filter 0.4~1.0 */
+function applyBrightness() {
+  const v = (SETTINGS.brightness - 1) / 4 * 0.6 + 0.4;
+  document.getElementById('screen').style.filter = `brightness(${v})`;
+}
 
 let audioCtx = null;
 let alarmOsc = null;
@@ -270,8 +317,8 @@ function ensureAudio() {
   if (Ctx) audioCtx = new Ctx();
 }
 
-/** 播放單聲嗶 */
-function beep(freq, durationMs, volume = 0.25, type = 'square') {
+/** 底層發聲；不套任何音量縮放 */
+function _beepRaw(freq, durationMs, volume, type = 'square') {
   if (!audioCtx) return;
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
@@ -284,6 +331,17 @@ function beep(freq, durationMs, volume = 0.25, type = 'square') {
   osc.stop(audioCtx.currentTime + durationMs / 1000);
 }
 
+/** 一般系統嗶（套系統音量 1~5） */
+function beep(freq, durationMs, baseVolume = 0.25, type = 'square') {
+  _beepRaw(freq, durationMs, baseVolume * (SETTINGS.sysVolume / 5), type);
+}
+
+/** 通氣專用嗶（套通氣音量 0~5；0 = 完全靜音） */
+function ventBeep(freq, durationMs, baseVolume) {
+  if (SETTINGS.ventVolume === 0) return;
+  _beepRaw(freq, durationMs, baseVolume * (SETTINGS.ventVolume / 5));
+}
+
 /** 連續高優先警報音（ALARMING 用）— 持續發聲直到 stopAlarm() */
 function startAlarm() {
   if (!audioCtx || alarmOsc) return;
@@ -291,7 +349,7 @@ function startAlarm() {
   alarmGain = audioCtx.createGain();
   alarmOsc.type = 'square';
   alarmOsc.frequency.value = 1200;
-  alarmGain.gain.value = 0.3;
+  alarmGain.gain.value = 0.3 * (SETTINGS.sysVolume / 5);
   alarmOsc.connect(alarmGain).connect(audioCtx.destination);
   alarmOsc.start();
 }
@@ -511,13 +569,14 @@ function ventTickFire() {
   ventState.lastBeatRealMs = performance.now();
 
   if (ventState.currentBeat === 1) {
-    beep(1000, 200, 0.4);
+    // V1 §13.6：通氣音量 = 0 時聲音關閉，但畫面反紅 + LED 紅燈閃保留
+    ventBeep(1000, 200, 0.4);
     vibrate(150);
     setLed('vent_pulse');
     screenEl.classList.add('flash-vent');
     setTimeout(() => screenEl.classList.remove('flash-vent'), 300);
   } else {
-    beep(800, 80, 0.2);
+    ventBeep(800, 80, 0.2);
   }
   render();
 }
@@ -570,6 +629,8 @@ const STATES = {
       } else if (btn === 'DOWN') {
         stateData.cursor = (stateData.cursor + 1) % items.length;
         beep(600, 30, 0.1); render();
+      } else if (btn === 'POWER' && kind === 'SHORT') {
+        flash('Demo 不支援關機', '請關閉瀏覽器分頁', 1800, 'MAIN_MENU', { cursor: stateData.cursor });
       } else if (btn === 'MAIN' && kind === 'SHORT') {
         beep(1500, 60);
         const idx = stateData.cursor;
@@ -578,8 +639,12 @@ const STATES = {
           flash('案件開始', 'OHCA', FLASH_DEFAULT_MS, 'OHCA_RUNNING');
         } else if (idx === 1) {
           go('VENT_PRE');
-        } else if (idx === 2 || idx === 3 || idx === 4) {
-          flash('Demo 範圍未涵蓋', '請按返回鍵', 1500, 'MAIN_MENU', { cursor: stateData.cursor });
+        } else if (idx === 2) {
+          go('TRAINING_PICK_DURATION', { cursor: 0 });
+        } else if (idx === 3) {
+          go('HISTORY_CATEGORY', { cursor: 0 });
+        } else if (idx === 4) {
+          go('SETTINGS_MENU', { cursor: 0 });
         }
       }
     },
@@ -975,8 +1040,9 @@ const STATES = {
       if (btn === 'BACK') { go('OHCA_END_CHECK'); return; }
       if (btn === 'MAIN') {
         ohcaCase.locked = true;
+        persistOhcaCase();
         beep(1800, 80); setTimeout(() => beep(2200, 120), 100);
-        flash('案件結束並鎖定', '', FLASH_DEFAULT_MS, 'OHCA_SUMMARY');
+        flash('案件結束並鎖定', '已存入歷史紀錄', FLASH_DEFAULT_MS, 'OHCA_SUMMARY');
       }
     },
     render: () => {
@@ -995,8 +1061,13 @@ const STATES = {
     onEnter: () => { stopAlarm(); setLed('off'); },
     onButton: (btn, kind) => {
       if (kind !== 'SHORT') return;
-      if (btn === 'BACK') { go('MAIN_MENU', { cursor: 0 }); return; }
-      if (btn === 'MAIN' || btn === 'DOWN') { go('OHCA_TIMELINE'); }
+      if (btn === 'BACK') {
+        // 從歷史進來的回歷史列表；案件結束流程進來的回主功能表
+        if (stateData.fromHistory) go('HISTORY_LIST', { kind: 'ohca', cursor: 0 });
+        else                       go('MAIN_MENU', { cursor: 0 });
+        return;
+      }
+      if (btn === 'MAIN' || btn === 'DOWN') { go('OHCA_TIMELINE', { fromHistory: stateData.fromHistory }); }
     },
     render: () => {
       const c = countAll();
@@ -1030,12 +1101,16 @@ const STATES = {
     onEnter: () => {},
     onButton: (btn, kind) => {
       if (kind !== 'SHORT') return;
-      if (btn === 'BACK' || btn === 'UP') { go('OHCA_SUMMARY'); return; }
-      if (btn === 'MAIN') { go('MAIN_MENU', { cursor: 0 }); }
+      if (btn === 'BACK' || btn === 'UP') { go('OHCA_SUMMARY', { fromHistory: stateData.fromHistory }); return; }
+      if (btn === 'MAIN') {
+        if (stateData.fromHistory) go('HISTORY_LIST', { kind: 'ohca', cursor: 0 });
+        else                       go('MAIN_MENU', { cursor: 0 });
+      }
     },
     render: () => {
-      const startStr = formatTime(ohcaCase.startedAt + (Date.now() - performance.now()));
-      const endEv = { timestamp: Date.now() };
+      const startEpoch = ohcaCase.startedAtEpoch ?? (ohcaCase.startedAt + (Date.now() - performance.now()));
+      const startStr   = formatTime(startEpoch);
+      const endEv      = { timestamp: ohcaCase.endedAtEpoch ?? Date.now() };
       const rows = [];
       rows.push({ time: startStr, label: '案件開始', cls: 'tl-event' });
       ohcaCase.events.forEach(e => {
@@ -1215,6 +1290,413 @@ const STATES = {
     },
   },
 
+  // =========================================================
+  // ===== Training 模式（V1 §15）=====
+  // =========================================================
+
+  TRAINING_PICK_DURATION: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const max = TRAINING_DURATIONS_MS.length;
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + max - 1) % max; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % max; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('MAIN_MENU', { cursor: 2 }); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        newTrainingCase(TRAINING_DURATIONS_MS[stateData.cursor]);
+        watermark.classList.remove('hide');
+        watermark.classList.add('show');
+        watermark.textContent = '訓練模式';
+        flash('訓練模式', '開始', FLASH_DEFAULT_MS, 'TRAINING_RUNNING');
+      }
+    },
+    render: () => {
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">訓練倒數長度</div>
+          ${TRAINING_DURATION_LABELS.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  TRAINING_RUNNING: {
+    onEnter: () => {},
+    onExit:  () => { stopAlarm(); screenEl.classList.remove('flash-red'); },
+    onButton: (btn, kind) => {
+      if (btn === 'MAIN') {
+        if (kind === 'LONG') {
+          // V1 §15.4：Training 中長按主鍵 → 訓練操作選單
+          go('TRAINING_OPTIONS', { cursor: 0 });
+        } else {
+          // ALARMING 時短按主鍵 = 解除（demo 簡化：跳到保存提示）
+          if (trainingCase && trainingCase.alarming) {
+            stopAlarm();
+            setLed('off');
+            go('TRAINING_END_SAVE_PROMPT', { cursor: 0 });
+          }
+        }
+      }
+    },
+    render: () => {
+      if (!trainingCase) return;
+      const elapsed = trainingElapsedSimMs();
+      const remaining = Math.max(0, trainingCase.durationMs - elapsed);
+      const expired = elapsed >= trainingCase.durationMs;
+      let timeStr, label, timeClass = '';
+      if (expired) {
+        timeStr = '00:00';
+        label = '時間到 — 按主鍵結束';
+        timeClass = 'scr-time-red';
+        if (!trainingCase.alarming) {
+          trainingCase.alarming = true;
+          startAlarm();
+          setLed('red_fast');
+          vibrate([300, 100, 300]);
+        }
+        screenEl.classList.add('flash-red');
+      } else {
+        timeStr = formatMMSS(remaining);
+        label = '訓練倒數中';
+        screenEl.classList.remove('flash-red');
+      }
+      screenContent.innerHTML = `
+        <div class="scr-mode" style="color:#60a5fa">訓練模式</div>
+        <div class="scr-time-big ${timeClass}">${timeStr}</div>
+        <div class="scr-label">${label}</div>
+        <div class="scr-counter">長按主鍵 = 操作選單</div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  TRAINING_OPTIONS: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; stopAlarm(); setLed('off'); },
+    onButton: (btn, kind) => {
+      const items = ['重置訓練', '結束訓練', '返回'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('TRAINING_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const idx = stateData.cursor;
+        if (idx === 0) {
+          newTrainingCase(trainingCase.durationMs);
+          flash('已重置訓練', '', FLASH_DEFAULT_MS, 'TRAINING_RUNNING');
+        } else if (idx === 1) {
+          go('TRAINING_END_SAVE_PROMPT', { cursor: 0 });
+        } else {
+          go('TRAINING_RUNNING');
+        }
+      }
+    },
+    render: () => {
+      const items = ['重置訓練', '結束訓練', '返回'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">訓練操作</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  TRAINING_END_SAVE_PROMPT: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['保存', '不保存'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        if (stateData.cursor === 0) {
+          persistTrainingCase();
+          flash('訓練已保存', '', FLASH_DEFAULT_MS, 'MAIN_MENU', { cursor: 0, exitTraining: true });
+        } else {
+          flash('訓練未保存', '', FLASH_DEFAULT_MS, 'MAIN_MENU', { cursor: 0, exitTraining: true });
+        }
+        // 清除 watermark
+        watermark.classList.remove('show');
+        watermark.classList.add('hide');
+        trainingCase = null;
+      }
+    },
+    render: () => {
+      const items = ['保存', '不保存'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">訓練紀錄</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // =========================================================
+  // ===== 歷史紀錄（V1 §12）=====
+  // =========================================================
+
+  HISTORY_CATEGORY: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['OHCA 案件', 'Training 紀錄'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('MAIN_MENU', { cursor: 3 }); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const kind2 = stateData.cursor === 0 ? 'ohca' : 'training';
+        go('HISTORY_LIST', { kind: kind2, cursor: 0 });
+      }
+    },
+    render: () => {
+      const ohcaCount     = loadHistory(HISTORY_OHCA_KEY).length;
+      const trainingCount = loadHistory(HISTORY_TRAINING_KEY).length;
+      const items = [`OHCA 案件 (${ohcaCount})`, `Training 紀錄 (${trainingCount})`];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">歷史紀錄</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  HISTORY_LIST: {
+    onEnter: () => {
+      stateData.cursor = stateData.cursor ?? 0;
+      const key = stateData.kind === 'ohca' ? HISTORY_OHCA_KEY : HISTORY_TRAINING_KEY;
+      // STEP 01: 倒序顯示，最新在上
+      stateData.records = loadHistory(key).slice().reverse();
+    },
+    onButton: (btn, kind) => {
+      const list = stateData.records;
+      if (btn === 'BACK' && kind === 'SHORT') { go('HISTORY_CATEGORY', { cursor: stateData.kind === 'ohca' ? 0 : 1 }); return; }
+      if (list.length === 0) return;
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + list.length - 1) % list.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % list.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const rec = list[stateData.cursor];
+        if (rec.kind === 'ohca') {
+          // 重建 ohcaCase 進總覽（read-only 模式）
+          ohcaCase = {
+            startedAt:           performance.now() - (rec.endedAt - rec.startedAt),
+            startedAtEpoch:      rec.startedAt,
+            endedAtEpoch:        rec.endedAt,
+            lastEpiRealAt:       null,
+            events:              rec.events,
+            locked:              true,
+            alarmingEnteredSimMs:     null,
+            warningLastBeepSimMs:     null,
+            overtimeLastReminderSimMs:null,
+          };
+          go('OHCA_SUMMARY', { fromHistory: true });
+        } else {
+          // Training summary 簡化：直接顯示一行紀錄
+          flash(`訓練 ${formatTime(rec.startedAt)}`, `長度 ${formatMMSS(rec.durationMs)}`, 2000, 'HISTORY_LIST', { kind: 'training', cursor: stateData.cursor });
+        }
+      }
+    },
+    render: () => {
+      const list = stateData.records;
+      const cursor = stateData.cursor;
+      const headerLabel = stateData.kind === 'ohca' ? 'OHCA 案件' : 'Training 紀錄';
+      if (list.length === 0) {
+        screenContent.innerHTML = `
+          <div style="text-align:center">
+            <div class="scr-mode">${headerLabel}</div>
+            <div class="scr-flash-msg" style="margin-top:24px;font-size:16px">尚無紀錄</div>
+            <div class="scr-flash-sub">完成案件後會自動列入</div>
+          </div>
+        `;
+      } else {
+        screenContent.innerHTML = `
+          <div class="menu-list" style="max-width:340px">
+            <div class="menu-header">${headerLabel}（${list.length}）</div>
+            ${list.map((r, i) => {
+              const d = new Date(r.startedAt);
+              const mmdd = `${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+              const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+              const tag  = r.kind === 'ohca' ? 'App未同步' : 'Training';
+              return `
+                <div class="menu-item ${i === cursor ? 'selected' : ''}" style="font-size:13px">
+                  <span class="menu-cursor">${i === cursor ? '▶' : ''}</span>
+                  ${mmdd} ${hhmm}｜${tag}
+                </div>
+              `;
+            }).join('')}
+          </div>
+        `;
+      }
+      overlay.classList.remove('show');
+    },
+  },
+
+  // =========================================================
+  // ===== 系統設定（V1 §19）=====
+  // =========================================================
+
+  SETTINGS_MENU: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['螢幕亮度', '系統音量', '通氣音量', '裝置資訊', '恢復預設值'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('MAIN_MENU', { cursor: 4 }); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const idx = stateData.cursor;
+        if (idx === 0) go('SETTINGS_SLIDER', { kind: 'brightness', min: 1, max: 5, label: '螢幕亮度', back: 0 });
+        if (idx === 1) go('SETTINGS_SLIDER', { kind: 'sysVolume',  min: 1, max: 5, label: '系統音量', back: 1 });
+        if (idx === 2) go('SETTINGS_SLIDER', { kind: 'ventVolume', min: 0, max: 5, label: '通氣音量', back: 2 });
+        if (idx === 3) go('SETTINGS_DEVICE_INFO');
+        if (idx === 4) go('SETTINGS_RESET_CONFIRM');
+      }
+    },
+    render: () => {
+      const items = ['螢幕亮度', '系統音量', '通氣音量', '裝置資訊', '恢復預設值'];
+      const valueOf = ['brightness', 'sysVolume', 'ventVolume', null, null]
+        .map(k => k ? `${SETTINGS[k]}/${k === 'ventVolume' ? '5' : '5'}` : '');
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">系統設定</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}" style="display:flex;justify-content:space-between">
+              <span><span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}</span>
+              <span style="color:#64748b;font-family:monospace">${valueOf[i]}</span>
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  SETTINGS_SLIDER: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      const k = stateData.kind;
+      if (btn === 'UP') {
+        SETTINGS[k] = Math.min(stateData.max, SETTINGS[k] + 1);
+        saveSettings(); applyBrightness();
+        beep(900, 40, 0.15); render();
+      } else if (btn === 'DOWN') {
+        SETTINGS[k] = Math.max(stateData.min, SETTINGS[k] - 1);
+        saveSettings(); applyBrightness();
+        beep(700, 40, 0.15); render();
+      } else if (btn === 'BACK' && kind === 'SHORT') {
+        go('SETTINGS_MENU', { cursor: stateData.back });
+      } else if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        go('SETTINGS_MENU', { cursor: stateData.back });
+      }
+    },
+    render: () => {
+      const k = stateData.kind;
+      const v = SETTINGS[k];
+      const bars = Array.from({ length: stateData.max + 1 }, (_, i) => i)
+        .filter(i => i >= stateData.min || stateData.min === 0);
+      const blocks = bars.map(i => {
+        const filled = i <= v && i >= stateData.min;
+        const isZero = i === 0;
+        const bg = filled ? (isZero ? '#475569' : '#3b82f6') : '#1e293b';
+        return `<div style="flex:1;height:32px;background:${bg};border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;font-weight:700">${i}</div>`;
+      }).join('');
+      const note = (k === 'ventVolume' && v === 0)
+        ? '0 = 靜音（畫面與 LED 仍顯示）'
+        : (k === 'sysVolume')
+          ? '不可靜音，最低 1'
+          : '';
+      screenContent.innerHTML = `
+        <div style="width:100%;max-width:340px;padding:0 16px">
+          <div class="menu-header">${stateData.label}</div>
+          <div style="display:flex;gap:6px;margin-top:24px">${blocks}</div>
+          <div style="text-align:center;margin-top:16px;font-size:14px;color:#cbd5e1">當前：${v}/${stateData.max}</div>
+          <div style="text-align:center;margin-top:24px;font-size:11px;color:#64748b">▲ 增加　▼ 降低　│　主鍵 / 返回 = 完成</div>
+          ${note ? `<div style="text-align:center;margin-top:8px;font-size:11px;color:#fbbf24">${note}</div>` : ''}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  SETTINGS_DEVICE_INFO: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK' || btn === 'MAIN') { go('SETTINGS_MENU', { cursor: 3 }); }
+    },
+    render: () => {
+      screenContent.innerHTML = `
+        <div class="summary-box">
+          <div class="sum-section">裝置資訊</div>
+          <div class="sum-row"><span class="sum-key">名稱</span><span class="sum-val">${DEVICE_MOCK.name}</span></div>
+          <div class="sum-row"><span class="sum-key">型號</span><span class="sum-val">${DEVICE_MOCK.model}</span></div>
+          <div class="sum-row"><span class="sum-key">序號</span><span class="sum-val">${DEVICE_MOCK.serial}</span></div>
+          <div class="sum-row"><span class="sum-key">韌體</span><span class="sum-val">${DEVICE_MOCK.fwVersion}</span></div>
+          <div class="sum-row"><span class="sum-key">電池</span><span class="sum-val">${DEVICE_MOCK.battery}%${DEVICE_MOCK.charging ? ' ⚡' : ''}</span></div>
+          <div class="sum-section">連線</div>
+          <div class="sum-row"><span class="sum-key">App 連線</span><span class="sum-val" style="color:#64748b">未連線</span></div>
+          <div class="sum-row"><span class="sum-key">Type-C</span><span class="sum-val" style="color:#64748b">未連線</span></div>
+          <div style="margin-top:12px;font-size:10px;color:#64748b;text-align:center">Demo 限制：裝置名稱由 App 寫入｜App / Type-C 真實連線需實機</div>
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:8px">主鍵 / 返回 = 回設定選單</div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  SETTINGS_RESET_CONFIRM: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('SETTINGS_MENU', { cursor: 4 }); return; }
+      if (btn === 'MAIN') {
+        // V1 §19.6：恢復亮度 / 系統音量 / 通氣音量；不清裝置名稱 / OHCA / Training / 同步狀態
+        SETTINGS = { ...DEFAULT_SETTINGS };
+        saveSettings(); applyBrightness();
+        beep(1200, 80); setTimeout(() => beep(1500, 100), 100);
+        flash('已恢復預設', '', FLASH_DEFAULT_MS, 'SETTINGS_MENU', { cursor: 4 });
+      }
+    },
+    render: () => {
+      screenContent.innerHTML = `
+        <div style="text-align:center;padding:24px">
+          <div class="dialog-title" style="font-size:20px">恢復預設設定？</div>
+          <div class="dialog-body" style="margin-top:12px">將清除：螢幕亮度 / 系統音量 / 通氣音量<br>不清除：案件 / Training / 裝置名稱</div>
+          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
 };
 
 // ============================================================
@@ -1262,6 +1744,71 @@ function countAll() {
     if (e.type === 'AMIODARONE')         { c.amio += 1; }
   });
   return c;
+}
+
+// === History 持久化 ===
+
+/** 從 localStorage 讀歷史紀錄；解析失敗回空陣列 */
+function loadHistory(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+/** 寫回 localStorage（FIFO，超過 limit 則砍掉最舊） */
+function saveHistory(key, arr, limit) {
+  const trimmed = arr.slice(-limit);
+  try { localStorage.setItem(key, JSON.stringify(trimmed)); } catch (_) {}
+}
+
+/** OHCA 結束鎖定時，把 case 寫入歷史（FIFO 50） */
+function persistOhcaCase() {
+  if (!ohcaCase) return;
+  const arr = loadHistory(HISTORY_OHCA_KEY);
+  const startEpoch = Date.now() - (performance.now() - ohcaCase.startedAt);
+  arr.push({
+    kind:        'ohca',
+    startedAt:   startEpoch,
+    endedAt:     Date.now(),
+    events:      ohcaCase.events,
+    deviceName:  DEVICE_MOCK.name,
+    fwVersion:   DEVICE_MOCK.fwVersion,
+    syncedToApp: false,
+  });
+  saveHistory(HISTORY_OHCA_KEY, arr, HISTORY_OHCA_LIMIT);
+}
+
+/** Training case 結構 */
+let trainingCase = null;
+function newTrainingCase(durationMs) {
+  trainingCase = {
+    startedAt:   performance.now(),
+    durationMs,
+    expiredAt:   null,             // 真實到期時間（performance.now()）
+    confirmed:   false,            // 使用者已按主鍵確認到期
+    events:      [],               // demo 訓練可記事件（簡化：不開放使用者按 EPI/電擊）
+    alarming:    false,
+  };
+}
+/** Training 從案件起算的模擬經過毫秒（含加速） */
+function trainingElapsedSimMs() {
+  if (!trainingCase) return 0;
+  return (performance.now() - trainingCase.startedAt) * SPEED_MULT;
+}
+/** Training 結束（保存 / 不保存） */
+function persistTrainingCase() {
+  if (!trainingCase) return;
+  const arr = loadHistory(HISTORY_TRAINING_KEY);
+  const startEpoch = Date.now() - (performance.now() - trainingCase.startedAt);
+  arr.push({
+    kind:        'training',
+    startedAt:   startEpoch,
+    endedAt:     Date.now(),
+    durationMs:  trainingCase.durationMs,
+  });
+  saveHistory(HISTORY_TRAINING_KEY, arr, HISTORY_TRAINING_LIMIT);
 }
 
 function eventLabel(e) {
@@ -1360,15 +1907,23 @@ refreshSpeedBadge();
 // SECTION 11：global ticker + boot
 // ============================================================
 
+/** 不該繼續觸發 OHCA tick 的 state（總覽 / 時間軸 / 結束確認流程） */
+const OHCA_NO_TICK = new Set(['OHCA_SUMMARY', 'OHCA_TIMELINE', 'OHCA_END_CHECK', 'OHCA_END_CONFIRM']);
+
 setInterval(() => {
-  if (currentState && currentState.startsWith('OHCA_') && currentState !== 'OHCA_SUMMARY' && currentState !== 'OHCA_TIMELINE') {
+  if (currentState && currentState.startsWith('OHCA_') && !OHCA_NO_TICK.has(currentState)) {
     ohcaTick();
   }
   if (ventState) {
     ventTick();
   }
+  if (currentState === 'TRAINING_RUNNING' && trainingCase) {
+    render();
+  }
 }, TICK_INTERVAL_MS);
 
+// 啟動：套用持久化的螢幕亮度，再進主功能表
+applyBrightness();
 go('MAIN_MENU', { cursor: 0 });
 </script>
 </body>
