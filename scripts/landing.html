@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1e3a5f">
+<title>EMS DoseSync Pro — Prototype V1</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    color: #fff;
+  }
+  .container {
+    max-width: 640px;
+    width: 100%;
+    text-align: center;
+  }
+  .logo {
+    font-size: 12px;
+    letter-spacing: 8px;
+    opacity: 0.65;
+    margin-bottom: 16px;
+  }
+  h1 {
+    font-size: clamp(28px, 6vw, 40px);
+    font-weight: 900;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+  .subtitle {
+    font-size: 14px;
+    opacity: 0.85;
+    margin-bottom: 6px;
+    line-height: 1.5;
+  }
+  .version {
+    font-size: 11px;
+    opacity: 0.5;
+    letter-spacing: 1px;
+    margin-bottom: 40px;
+  }
+  .cards {
+    display: grid;
+    gap: 16px;
+  }
+  .card {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 16px;
+    padding: 24px 20px;
+    text-decoration: none;
+    color: #fff;
+    transition: background 0.2s, transform 0.1s, border-color 0.2s;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: block;
+  }
+  .card:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px);
+  }
+  .card:active { transform: translateY(0); }
+  .card-icon {
+    font-size: 36px;
+    margin-bottom: 12px;
+  }
+  .card-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .card-desc {
+    font-size: 12px;
+    opacity: 0.85;
+    line-height: 1.5;
+  }
+  .card-hint {
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 11px;
+    opacity: 0.65;
+    font-family: "Courier New", monospace;
+  }
+  .footer {
+    margin-top: 40px;
+    font-size: 11px;
+    opacity: 0.45;
+    line-height: 1.6;
+  }
+  @media (min-width: 520px) {
+    .cards { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="logo">EMS DOSESYNC</div>
+  <h1>Prototype V1</h1>
+  <div class="subtitle">院前 OHCA 給藥與事件時間同步輔助裝置</div>
+  <div class="version">2026-04-27 · Spec v1.0（封版）</div>
+
+  <div class="cards">
+    <a class="card" href="EMS_DoseSync_Pro_Prototype_V1_flow.html">
+      <div class="card-icon">📄</div>
+      <div class="card-title">產品流程規格</div>
+      <div class="card-desc">18 章節完整視覺化規格<br>OHCA / 補登 / 通氣 / Training / App 同步</div>
+    </a>
+    <a class="card" href="demo/">
+      <div class="card-icon">📱</div>
+      <div class="card-title">互動 Demo</div>
+      <div class="card-desc">手機沉浸式佈局<br>5 大主功能可實際操作</div>
+      <div class="card-hint">?speed=8x 加速 / ?speed=1x 真實</div>
+    </a>
+  </div>
+
+  <div class="footer">
+    建議在手機開啟 Demo 以獲得最佳互動體驗<br>
+    Demo 用 localStorage 持久化案件 / Training / 設定
+  </div>
+</div>
+</body>
+</html>

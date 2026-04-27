@@ -3,3 +3,9 @@
 
 # macOS
 .DS_Store
+
+# Cloudflare Pages build output（由 scripts/deploy-cf-pages.sh 產生）
+dist/
+
+# Wrangler 本機狀態
+.wrangler/
