@@ -725,7 +725,9 @@ const STATES = {
       // 背景仍 render OHCA 主畫面
       STATES.OHCA_RUNNING.render();
       const ev = stateData.evType;
-      const confirmBtn = stateData.confirmKey === 'MAIN' ? '主鍵' : `${stateData.confirmKey} 鍵`;
+      // V1 §7.1：系統內統一中文「電擊」，不得顯示 Shock
+      const BTN_LABEL = { EPI: 'EPI 鍵', SHOCK: '電擊鍵', MAIN: '主鍵' };
+      const confirmBtn = BTN_LABEL[stateData.confirmKey] || `${stateData.confirmKey} 鍵`;
       overlay.innerHTML = `
         <div class="dialog">
           <div class="dialog-title">${stateData.label}</div>
