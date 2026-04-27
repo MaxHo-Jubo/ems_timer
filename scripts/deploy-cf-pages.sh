@@ -43,4 +43,16 @@ fi
 
 echo ""
 echo "▶ Deploying to Cloudflare Pages project: $PROJECT_NAME"
-wrangler pages deploy "$DIST_DIR" --project-name "$PROJECT_NAME"
+
+# Cloudflare API（code 8000111）對 commit message 含非 ASCII 會 reject，
+# 因此手動帶純 ASCII 訊息，但保留 commit hash 供追溯到 repo。
+GIT_HASH="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+GIT_SHORT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+GIT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo main)"
+SAFE_MSG="Deploy ${GIT_SHORT} from ${GIT_BRANCH}"
+
+wrangler pages deploy "$DIST_DIR" \
+  --project-name "$PROJECT_NAME" \
+  --commit-hash "$GIT_HASH" \
+  --commit-message "$SAFE_MSG" \
+  --branch "$GIT_BRANCH"
