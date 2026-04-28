@@ -1341,13 +1341,18 @@ const STATES = {
         }
         return;
       }
-      // STEP 02: EPI 短按 — 兩段確認（對齊 V1 §6.2）
+      // STEP 02: EPI 長按 — 進 EPI / 藥物選單（對齊 V1 §15.9）
+      if (btn === 'EPI' && kind === 'LONG') {
+        go('TRAINING_DRUG_MENU', { cursor: 0 });
+        return;
+      }
+      // STEP 03: EPI 短按 — 兩段確認（對齊 V1 §15.5）
       if (btn === 'EPI' && kind === 'SHORT') {
         stopAlarm(); setLed('off');
         go('TRAINING_CONFIRM', { evType: 'EPI', label: '確認已給 EPI？', confirmKey: 'EPI' });
         return;
       }
-      // STEP 03: 電擊短按 — 兩段確認（對齊 V1 §7.2）
+      // STEP 04: 電擊短按 — 兩段確認（對齊 V1 §15.8）
       if (btn === 'SHOCK' && kind === 'SHORT') {
         go('TRAINING_CONFIRM', { evType: 'SHOCK', label: '確認已電擊？', confirmKey: 'SHOCK' });
         return;
@@ -1355,11 +1360,25 @@ const STATES = {
     },
     render: () => {
       if (!trainingCase) return;
+      const counts = trainingCountLocal();
+      const hint = '長按主鍵 = 操作選單';
+      // STEP 00: V1 §15.4 — 待本機 EPI 階段（cycleStartedAt 尚未啟動）
+      if (trainingCase.cycleStartedAt === null) {
+        screenEl.classList.remove('flash-red');
+        screenContent.innerHTML = `
+          <div class="scr-mode" style="color:#60a5fa">訓練模式</div>
+          <div class="scr-flash-msg" style="margin-top:24px;font-size:22px">待本機 EPI</div>
+          <div class="scr-flash-sub" style="margin-top:8px">案件開始 ≠ 倒數開始<br>第一筆 EPI 確認後啟動倒數</div>
+          <div class="scr-counter" style="margin-top:24px">EPI ${counts.epi}｜電擊 ${counts.shock}${counts.amio ? `｜Amio ${counts.amio}` : ''}</div>
+          <div class="scr-counter" style="font-size:11px;color:#64748b;margin-top:6px">${hint}</div>
+        `;
+        overlay.classList.remove('show');
+        return;
+      }
       const elapsed = trainingCycleElapsedSimMs();
       const remaining = Math.max(0, trainingCase.durationMs - elapsed);
       const expired = elapsed >= trainingCase.durationMs;
-      const counts = trainingCountLocal();
-      let timeStr, label, timeClass = '', hint = '長按主鍵 = 操作選單';
+      let timeStr, label, timeClass = '';
       // STEP 01: 過期 → ALARMING（解除靠按 EPI 重啟倒數，仿 OHCA §6.7）
       if (expired) {
         timeStr  = '00:00';
@@ -1380,12 +1399,12 @@ const STATES = {
         if (isFourMin && remaining <= 60_000) timeClass = 'scr-time-amber';
         screenEl.classList.remove('flash-red');
       }
-      // STEP 02: render 對齊 V1 §15.1（訓練模式 / 倒數 / 下次給藥 / EPI N｜電擊 N）
+      // STEP 02: render 對齊 V1 §15.6（訓練模式 / 倒數 / 下次給藥 / EPI N｜電擊 N）
       screenContent.innerHTML = `
         <div class="scr-mode" style="color:#60a5fa">訓練模式</div>
         <div class="scr-time-big ${timeClass}">${timeStr}</div>
         <div class="scr-label">${label}</div>
-        <div class="scr-counter">EPI ${counts.epi}｜電擊 ${counts.shock}</div>
+        <div class="scr-counter">EPI ${counts.epi}｜電擊 ${counts.shock}${counts.amio ? `｜Amio ${counts.amio}` : ''}</div>
         <div class="scr-counter" style="font-size:11px;color:#64748b;margin-top:6px">${hint}</div>
       `;
       overlay.classList.remove('show');
@@ -1411,10 +1430,13 @@ const STATES = {
         const ev = stateData.evType;
         if (ev === 'EPI') {
           trainingCommitEpi();
-          flash('EPI 已紀錄', '重新倒數', FLASH_DEFAULT_MS, 'TRAINING_RUNNING');
+          flash('EPI 已紀錄', '啟動訓練倒數', FLASH_DEFAULT_MS, 'TRAINING_RUNNING');
         } else if (ev === 'SHOCK') {
           trainingCommitShock();
           flash('電擊已紀錄', '', FLASH_DEFAULT_MS, 'TRAINING_RUNNING');
+        } else if (ev === 'AMIO') {
+          trainingCommitAmio();
+          flash('Amiodarone 已紀錄', '', FLASH_DEFAULT_MS, 'TRAINING_RUNNING');
         }
       }
     },
@@ -1424,14 +1446,53 @@ const STATES = {
       const ev = stateData.evType;
       const BTN_LABEL = { EPI: 'EPI 鍵', SHOCK: '電擊鍵', MAIN: '主鍵' };
       const confirmBtn = BTN_LABEL[stateData.confirmKey] || `${stateData.confirmKey} 鍵`;
+      const bodyText = ev === 'EPI'   ? '確認後啟動 / 重啟訓練倒數'
+                     : ev === 'SHOCK' ? '電擊不影響倒數（V1 §15.8）'
+                     :                  'Amiodarone 不影響倒數（V1 §15.9）';
       overlay.innerHTML = `
         <div class="dialog">
           <div class="dialog-title">${stateData.label}</div>
-          <div class="dialog-body">${ev === 'EPI' ? '確認後重啟訓練倒數' : '電擊不影響倒數（V1 §7.4）'}</div>
+          <div class="dialog-body">${bodyText}</div>
           <div class="dialog-hint">再按 ${confirmBtn} 確認　│　返回取消</div>
         </div>
       `;
       overlay.classList.add('show');
+    },
+  },
+
+  // V1 §15.9：EPI / 藥物選單（長按 EPI 進入）
+  TRAINING_DRUG_MENU: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['補登 EPI', 'Amiodarone'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('TRAINING_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        if (stateData.cursor === 0) {
+          // V1 §15.10：Training 補登（Demo 暫未展開）
+          flash('Training 補登', 'Demo 暫未展開', 1500, 'TRAINING_RUNNING');
+        } else {
+          // V1 §15.9：Amiodarone 二段確認，第二次按主鍵成立
+          go('TRAINING_CONFIRM', { evType: 'AMIO', label: '確認已給 Amiodarone？', confirmKey: 'MAIN' });
+        }
+      }
+    },
+    render: () => {
+      const items = ['補登 EPI', 'Amiodarone'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">EPI / 藥物選單</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
     },
   },
 
@@ -1449,7 +1510,7 @@ const STATES = {
           // V1 §15.4：重置需「再次確認」
           go('TRAINING_RESET_CONFIRM');
         } else if (idx === 1) {
-          // V1 §15.10：結束 → 結束前檢查（完成並結束 / 前往補登 / 返回訓練）
+          // V1 §15.11：結束 → 結束前檢查（完成並結束 / 前往補登 / 返回訓練）
           go('TRAINING_END_CHECK', { cursor: 0 });
         } else {
           go('TRAINING_RUNNING');
@@ -1473,7 +1534,7 @@ const STATES = {
     },
   },
 
-  // V1 §15.10：Training 結束前檢查（對齊 OHCA 結束流程）
+  // V1 §15.11：Training 結束前檢查（對齊 OHCA 結束流程）
   TRAINING_END_CHECK: {
     onEnter: () => { stateData.cursor = stateData.cursor ?? 0; stopAlarm(); setLed('off'); },
     onButton: (btn, kind) => {
@@ -1624,6 +1685,7 @@ const STATES = {
       const firstEpi = trainingCase.events.find(e => e.type === 'EPI_LOCAL');
       const lastEpi  = [...trainingCase.events].reverse().find(e => e.type === 'EPI_LOCAL');
       const lastShock = [...trainingCase.events].reverse().find(e => e.type === 'SHOCK_LOCAL');
+      const lastAmio  = [...trainingCase.events].reverse().find(e => e.type === 'AMIODARONE');
       screenContent.innerHTML = `
         <div class="summary-box">
           <div class="sum-section">案件總覽｜Training</div>
@@ -1637,6 +1699,8 @@ const STATES = {
           <div class="sum-section">電擊</div>
           <div class="sum-row"><span class="sum-key">總數</span><span class="sum-val">${counts.shock}</span></div>
           <div class="sum-row"><span class="sum-key">最後本機</span><span class="sum-val">${lastShock ? formatTime(lastShock.timestamp) : '無'}</span></div>
+          <div class="sum-section">藥物</div>
+          <div class="sum-row"><span class="sum-key">Amiodarone</span><span class="sum-val">${counts.amio} ${lastAmio ? '/ ' + formatTime(lastAmio.timestamp) : ''}</span></div>
         </div>
         <div style="font-size:11px;color:#64748b;margin-top:12px">主鍵 / ▼ = 事件時間軸　│　返回 = ${stateData.fromHistory ? '案件操作' : '主功能表'}</div>
       `;
@@ -1670,6 +1734,7 @@ const STATES = {
       trainingCase.events.forEach(e => {
         if (e.type === 'EPI_LOCAL')   { epiN += 1;   rows.push({ time: formatTime(e.timestamp), label: `EPI #${epiN}`,   cls: 'tl-event' }); }
         if (e.type === 'SHOCK_LOCAL') { shockN += 1; rows.push({ time: formatTime(e.timestamp), label: `電擊 #${shockN}`, cls: 'tl-event' }); }
+        if (e.type === 'AMIODARONE')  {              rows.push({ time: formatTime(e.timestamp), label: 'Amiodarone',     cls: 'tl-event' }); }
       });
       // 歷史回放才顯示「案件結束」（進行中無結束時間）
       if (stateData.fromHistory) {
@@ -2116,9 +2181,9 @@ function newTrainingCase(durationMs) {
   const now = performance.now();
   trainingCase = {
     sessionStartedAt: now,        // 整段 training 起點（事件時間軸 / 保存用）
-    cycleStartedAt:   now,        // 當前 EPI 倒數週期起點（按 EPI 重設）
+    cycleStartedAt:   null,       // V1 §15.4：null = 待本機 EPI（第一筆 EPI 後才啟動倒數）
     durationMs,
-    events:           [],         // {type:'EPI_LOCAL'|'SHOCK_LOCAL', timestamp, elapsedSimMs}
+    events:           [],         // {type:'EPI_LOCAL'|'SHOCK_LOCAL'|'AMIODARONE', timestamp, elapsedSimMs}
     alarming:         false,
     fromHistory:      false,      // 由歷史紀錄重建時設 true，render 走 read-only
   };
@@ -2128,20 +2193,21 @@ function trainingSessionElapsedSimMs() {
   if (!trainingCase) return 0;
   return (performance.now() - trainingCase.sessionStartedAt) * SPEED_MULT;
 }
-/** Training 當前倒數週期經過毫秒（按 EPI 重設） */
+/** Training 當前倒數週期經過毫秒（按 EPI 重設）；待本機 EPI 階段返回 0 */
 function trainingCycleElapsedSimMs() {
-  if (!trainingCase) return 0;
+  if (!trainingCase || trainingCase.cycleStartedAt === null) return 0;
   return (performance.now() - trainingCase.cycleStartedAt) * SPEED_MULT;
 }
-/** Training EPI / 電擊 累計次數 */
+/** Training EPI / 電擊 / Amiodarone 累計次數 */
 function trainingCountLocal() {
-  if (!trainingCase) return { epi: 0, shock: 0 };
-  let epi = 0, shock = 0;
+  if (!trainingCase) return { epi: 0, shock: 0, amio: 0 };
+  let epi = 0, shock = 0, amio = 0;
   trainingCase.events.forEach(e => {
     if (e.type === 'EPI_LOCAL')   epi   += 1;
     if (e.type === 'SHOCK_LOCAL') shock += 1;
+    if (e.type === 'AMIODARONE')  amio  += 1;
   });
-  return { epi, shock };
+  return { epi, shock, amio };
 }
 /** Training 寫入事件 */
 function trainingRecordEvent(type) {
@@ -2152,7 +2218,7 @@ function trainingRecordEvent(type) {
     elapsedSimMs: trainingSessionElapsedSimMs(),
   });
 }
-/** Training EPI 二段確認成立：記錄 + 重啟倒數 + 清警報 */
+/** Training EPI 二段確認成立：記錄 + 啟動/重啟倒數 + 清警報（V1 §15.4 第一筆 EPI 啟動倒數） */
 function trainingCommitEpi() {
   if (!trainingCase) return;
   trainingRecordEvent('EPI_LOCAL');
@@ -2163,10 +2229,18 @@ function trainingCommitEpi() {
   beep(1500, 80); setTimeout(() => beep(1800, 100), 120);
   vibrate(80);
 }
-/** Training 電擊二段確認成立：只記錄，不影響倒數（V1 §7.4） */
+/** Training 電擊二段確認成立：只記錄，不影響倒數（V1 §15.8） */
 function trainingCommitShock() {
   if (!trainingCase) return;
   trainingRecordEvent('SHOCK_LOCAL');
+  setLed('green_flash');
+  beep(1500, 80); setTimeout(() => beep(1800, 100), 120);
+  vibrate(80);
+}
+/** Training Amiodarone 二段確認成立：只記錄，不影響倒數（V1 §15.9） */
+function trainingCommitAmio() {
+  if (!trainingCase) return;
+  trainingRecordEvent('AMIODARONE');
   setLed('green_flash');
   beep(1500, 80); setTimeout(() => beep(1800, 100), 120);
   vibrate(80);

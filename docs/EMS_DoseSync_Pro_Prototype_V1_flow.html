@@ -635,6 +635,18 @@
     <div class="sub-title">10.4 訓練操作選單（長按主鍵）</div>
     <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Training 進行中長按主鍵 → 訓練操作選單（重置訓練 / 結束訓練 / 返回）。重置與結束皆需二次確認。OHCA 不提供重置。</p>
 
+    <div class="sub-title">10.4.1 電擊 / Amiodarone / 補登 行為對齊（§15.8 / §15.9 / §15.10）</div>
+    <table>
+      <thead><tr><th style="width:130px">事件</th><th style="width:140px">入口</th><th>對 EPI 倒數的影響</th></tr></thead>
+      <tbody>
+        <tr><td><strong>本機 EPI</strong></td><td>EPI 鍵短按 → 二段確認</td><td>第一筆啟動倒數，後續每次重啟倒數</td></tr>
+        <tr><td><strong>本機電擊</strong></td><td>電擊鍵短按 → 二段確認</td><td>不啟動 / 不重啟 / 不解除超時</td></tr>
+        <tr><td><strong>Amiodarone</strong></td><td>長按 EPI → EPI / 藥物選單 → Amiodarone → 二段確認（再按主鍵）</td><td>不啟動 / 不重啟 / 不解除超時</td></tr>
+        <tr><td><strong>補登（接手前 / 純補登）</strong></td><td>長按 EPI → 補登 EPI / 長按電擊 → 補登電擊</td><td>不啟動 / 不重啟 / 不解除超時；事件時間欄顯示「-」</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-secondary);margin-top:6px">所有事件統一寫入 Training Timeline，補登事件 <code style="background:var(--bg);padding:1px 5px;border-radius:3px">actual_time</code> 為 null。</p>
+
     <div class="sub-title">10.5 結束流程</div>
     <div class="flow-steps">
       <div class="flow-step"><div class="flow-dot" style="background:var(--blue)">1</div><div class="flow-content"><h4>結束前檢查</h4><p>完成並結束訓練 / 前往補登 / 返回訓練</p></div></div>
@@ -645,7 +657,10 @@
     <div class="sub-title">10.6 Training 紀錄裝置端刪除（§12.5 / §15.16）</div>
     <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">在 Training 紀錄列表選取某筆 → <strong>Training 案件操作</strong>（查看總覽 / 同步至 App / 刪除此訓練紀錄 / 返回）。刪除需二次確認，已同步至 App 的紀錄裝置端刪除不回寫 App。<strong>OHCA 正式案件不可由裝置端刪除</strong>。</p>
 
-    <div class="sub-title">10.7 工程實作建議（§15.18）</div>
+    <div class="sub-title">10.7 Training App 同步（§15.17）</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Training 紀錄保存後可從案件總覽或 Training 案件操作同步至 App。<strong>App 端必須明確標示 <code style="background:var(--bg);padding:2px 6px;border-radius:4px">Training</code></strong>，<strong style="color:var(--red)">不得混入正式 OHCA 案件列表</strong>。已同步的 Training 紀錄若在裝置端被刪除，不回寫 App；App 端原資料保留。</p>
+
+    <div class="sub-title">10.8 工程實作建議（§15.18）</div>
     <p style="font-size:13px;color:var(--text-secondary)">Training 與 OHCA 共用核心狀態機，以參數區分：<code style="background:var(--bg);padding:2px 6px;border-radius:4px">case_mode</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">epi_interval_seconds</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">history_limit</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">allow_device_delete</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">show_training_label</code>。<strong>不要</strong>另寫獨立簡化流程。</p>
 
   </div>
