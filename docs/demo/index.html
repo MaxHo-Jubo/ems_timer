@@ -1077,7 +1077,7 @@ const STATES = {
       const lastAmio  = [...ohcaCase.events].reverse().find(e => e.type === 'AMIODARONE');
       screenContent.innerHTML = `
         <div class="summary-box">
-          <div class="sum-section">案件總覽 ｜ OHCA</div>
+          <div class="sum-section">案件總覽｜OHCA</div>
           <div class="sum-row"><span class="sum-key">同步狀態</span><span class="sum-val">App 未同步</span></div>
           <div class="sum-section">EPI</div>
           <div class="sum-row"><span class="sum-key">總數</span><span class="sum-val">${c.epi.total}</span></div>
@@ -1363,7 +1363,7 @@ const STATES = {
       // STEP 01: 過期 → ALARMING（解除靠按 EPI 重啟倒數，仿 OHCA §6.7）
       if (expired) {
         timeStr  = '00:00';
-        label    = '時間到 — 請給 EPI';
+        label    = '請給藥';
         timeClass = 'scr-time-red';
         if (!trainingCase.alarming) {
           trainingCase.alarming = true;
@@ -1374,7 +1374,10 @@ const STATES = {
         screenEl.classList.add('flash-red');
       } else {
         timeStr = formatMMSS(remaining);
-        label   = '下次給藥';
+        // V1 §15.7：4 分鐘訓練剩 1 分鐘時顯示「請準備給藥」；30s/1min 不顯示
+        const isFourMin = trainingCase.durationMs === 240_000;
+        label = (isFourMin && remaining <= 60_000) ? '請準備給藥' : '下次給藥';
+        if (isFourMin && remaining <= 60_000) timeClass = 'scr-time-amber';
         screenEl.classList.remove('flash-red');
       }
       // STEP 02: render 對齊 V1 §15.1（訓練模式 / 倒數 / 下次給藥 / EPI N｜電擊 N）
@@ -1446,7 +1449,8 @@ const STATES = {
           // V1 §15.4：重置需「再次確認」
           go('TRAINING_RESET_CONFIRM');
         } else if (idx === 1) {
-          go('TRAINING_END_SAVE_PROMPT', { cursor: 0 });
+          // V1 §15.10：結束 → 結束前檢查（完成並結束 / 前往補登 / 返回訓練）
+          go('TRAINING_END_CHECK', { cursor: 0 });
         } else {
           go('TRAINING_RUNNING');
         }
@@ -1463,6 +1467,67 @@ const STATES = {
               <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
             </div>
           `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // V1 §15.10：Training 結束前檢查（對齊 OHCA 結束流程）
+  TRAINING_END_CHECK: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; stopAlarm(); setLed('off'); },
+    onButton: (btn, kind) => {
+      const items = ['完成並結束訓練', '前往補登', '返回訓練'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('TRAINING_RUNNING'); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const idx = stateData.cursor;
+        if (idx === 0) {
+          go('TRAINING_END_FINAL_CONFIRM');
+        } else if (idx === 1) {
+          // Training 補登：Demo 暫不展開，提示後回 RUNNING
+          flash('Training 補登', 'Demo 暫未展開', 1500, 'TRAINING_RUNNING');
+        } else {
+          go('TRAINING_RUNNING');
+        }
+      }
+    },
+    render: () => {
+      const items = ['完成並結束訓練', '前往補登', '返回訓練'];
+      const cursor = stateData.cursor;
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">結束前檢查 ｜ Training</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // V1 §15.11：「確認結束訓練？/ 結束後不可修改」
+  TRAINING_END_FINAL_CONFIRM: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('TRAINING_END_CHECK', { cursor: 0 }); return; }
+      if (btn === 'MAIN') {
+        beep(1800, 80); setTimeout(() => beep(2200, 120), 100);
+        go('TRAINING_END_SAVE_PROMPT', { cursor: 0 });
+      }
+    },
+    render: () => {
+      screenContent.innerHTML = `
+        <div style="text-align:center;padding:24px">
+          <div class="dialog-title" style="font-size:20px;color:#fbbf24">確認結束訓練？</div>
+          <div class="dialog-body" style="margin-top:12px">結束後不可修改</div>
+          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
         </div>
       `;
       overlay.classList.remove('show');
@@ -1532,19 +1597,24 @@ const STATES = {
     },
   },
 
-  // V1 §15.3 / §15.5：案件總覽｜Training
+  // V1 §15.13：案件總覽｜Training（標題不可有空格分隔）
   TRAINING_SUMMARY: {
     onEnter: () => { stopAlarm(); setLed('off'); screenEl.classList.remove('flash-red'); },
     onButton: (btn, kind) => {
       if (kind !== 'SHORT') return;
       if (btn === 'BACK') {
-        // 從歷史進來的回歷史列表；保存流程進來的回主功能表
+        // 從歷史進來的回 Training 案件操作；保存流程進來的回主功能表
         const fromHistory = stateData.fromHistory;
         watermark.classList.remove('show');
         watermark.classList.add('hide');
+        const histIdx = stateData.histIdx;
         trainingCase = null;
-        if (fromHistory) go('HISTORY_LIST', { kind: 'training', cursor: 0 });
+        if (fromHistory) go('TRAINING_HISTORY_OPTIONS', { cursor: 0, histIdx });
         else             go('MAIN_MENU', { cursor: 0 });
+        return;
+      }
+      if (btn === 'MAIN' || btn === 'DOWN') {
+        go('TRAINING_TIMELINE', { fromHistory: stateData.fromHistory, histIdx: stateData.histIdx });
       }
     },
     render: () => {
@@ -1556,9 +1626,10 @@ const STATES = {
       const lastShock = [...trainingCase.events].reverse().find(e => e.type === 'SHOCK_LOCAL');
       screenContent.innerHTML = `
         <div class="summary-box">
-          <div class="sum-section">案件總覽 ｜ Training</div>
+          <div class="sum-section">案件總覽｜Training</div>
           <div class="sum-row"><span class="sum-key">倒數長度</span><span class="sum-val">${formatMMSS(trainingCase.durationMs)}</span></div>
           <div class="sum-row"><span class="sum-key">開始時間</span><span class="sum-val">${formatTime(startEpoch)}</span></div>
+          <div class="sum-row"><span class="sum-key">同步狀態</span><span class="sum-val">App 未同步</span></div>
           <div class="sum-section">EPI</div>
           <div class="sum-row"><span class="sum-key">總數</span><span class="sum-val">${counts.epi}</span></div>
           <div class="sum-row"><span class="sum-key">第一次本機</span><span class="sum-val">${firstEpi ? formatTime(firstEpi.timestamp) : '無'}</span></div>
@@ -1567,7 +1638,55 @@ const STATES = {
           <div class="sum-row"><span class="sum-key">總數</span><span class="sum-val">${counts.shock}</span></div>
           <div class="sum-row"><span class="sum-key">最後本機</span><span class="sum-val">${lastShock ? formatTime(lastShock.timestamp) : '無'}</span></div>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-top:12px">返回 = ${stateData.fromHistory ? '歷史列表' : '主功能表'}</div>
+        <div style="font-size:11px;color:#64748b;margin-top:12px">主鍵 / ▼ = 事件時間軸　│　返回 = ${stateData.fromHistory ? '案件操作' : '主功能表'}</div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // V1 §15.14：事件時間軸｜Training
+  TRAINING_TIMELINE: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK' || btn === 'UP') { go('TRAINING_SUMMARY', { fromHistory: stateData.fromHistory, histIdx: stateData.histIdx }); return; }
+      if (btn === 'MAIN') {
+        const fromHistory = stateData.fromHistory;
+        const histIdx = stateData.histIdx;
+        watermark.classList.remove('show');
+        watermark.classList.add('hide');
+        trainingCase = null;
+        if (fromHistory) go('TRAINING_HISTORY_OPTIONS', { cursor: 0, histIdx });
+        else             go('MAIN_MENU', { cursor: 0 });
+      }
+    },
+    render: () => {
+      if (!trainingCase) return;
+      const startEpoch = Date.now() - (performance.now() - trainingCase.sessionStartedAt);
+      const startStr   = formatTime(startEpoch);
+      const rows = [];
+      rows.push({ time: startStr, label: '案件開始', cls: 'tl-event' });
+      let epiN = 0, shockN = 0;
+      trainingCase.events.forEach(e => {
+        if (e.type === 'EPI_LOCAL')   { epiN += 1;   rows.push({ time: formatTime(e.timestamp), label: `EPI #${epiN}`,   cls: 'tl-event' }); }
+        if (e.type === 'SHOCK_LOCAL') { shockN += 1; rows.push({ time: formatTime(e.timestamp), label: `電擊 #${shockN}`, cls: 'tl-event' }); }
+      });
+      // 歷史回放才顯示「案件結束」（進行中無結束時間）
+      if (stateData.fromHistory) {
+        rows.push({ time: formatTime(Date.now()), label: '案件結束', cls: 'tl-event-end' });
+      }
+      screenContent.innerHTML = `
+        <div class="timeline-box">
+          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:11px;letter-spacing:2px;margin-bottom:8px">事件時間軸｜Training</div>
+          ${rows.length === 1 ? '<div style="text-align:center;color:#64748b;font-size:12px;margin-top:16px">尚無事件</div>' : ''}
+          ${rows.map(r => `
+            <div class="tl-row">
+              <span class="tl-time">${r.time}</span>
+              <span class="${r.cls}">${r.label}</span>
+            </div>
+          `).join('')}
+        </div>
+        <div style="font-size:11px;color:#64748b;margin-top:12px">▲ = 回總覽　│　主鍵 = ${stateData.fromHistory ? '案件操作' : '主功能表'}</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1640,16 +1759,10 @@ const STATES = {
           };
           go('OHCA_SUMMARY', { fromHistory: true });
         } else {
-          // V1 §15.3：重建 trainingCase 進總覽（read-only 模式）
-          trainingCase = {
-            sessionStartedAt: performance.now() - (rec.endedAt - rec.startedAt),
-            cycleStartedAt:   performance.now(),
-            durationMs:       rec.durationMs,
-            events:           rec.events || [],
-            alarming:         false,
-            fromHistory:      true,
-          };
-          go('TRAINING_SUMMARY', { fromHistory: true });
+          // V1 §15.16：Training 進「Training 案件操作」menu，不直接到總覽
+          // histIdx 是「原始陣列 index」（未 reverse），刪除/同步用
+          const originalIdx = loadHistory(HISTORY_TRAINING_KEY).length - 1 - stateData.cursor;
+          go('TRAINING_HISTORY_OPTIONS', { cursor: 0, histIdx: originalIdx });
         }
       }
     },
@@ -1684,6 +1797,92 @@ const STATES = {
           </div>
         `;
       }
+      overlay.classList.remove('show');
+    },
+  },
+
+  // V1 §15.16：Training 案件操作（從歷史進來）
+  TRAINING_HISTORY_OPTIONS: {
+    onEnter: () => { stateData.cursor = stateData.cursor ?? 0; },
+    onButton: (btn, kind) => {
+      const items = ['查看總覽', '同步至 App', '刪除此訓練紀錄', '返回'];
+      if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
+      if (btn === 'BACK' && kind === 'SHORT') { go('HISTORY_LIST', { kind: 'training', cursor: 0 }); }
+      if (btn === 'MAIN' && kind === 'SHORT') {
+        beep(1500, 60);
+        const idx = stateData.cursor;
+        const histIdx = stateData.histIdx;
+        const rec = loadHistory(HISTORY_TRAINING_KEY)[histIdx];
+        if (!rec) { go('HISTORY_LIST', { kind: 'training', cursor: 0 }); return; }
+        if (idx === 0) {
+          // 重建 trainingCase 進總覽（read-only 模式）
+          trainingCase = {
+            sessionStartedAt: performance.now() - (rec.endedAt - rec.startedAt),
+            cycleStartedAt:   performance.now(),
+            durationMs:       rec.durationMs,
+            events:           rec.events || [],
+            alarming:         false,
+            fromHistory:      true,
+          };
+          watermark.classList.remove('hide');
+          watermark.classList.add('show');
+          watermark.textContent = '訓練模式';
+          go('TRAINING_SUMMARY', { fromHistory: true, histIdx });
+        } else if (idx === 1) {
+          flash('同步至 App', 'Demo 暫未連線真實 App', 1500, 'TRAINING_HISTORY_OPTIONS', { cursor: 1, histIdx });
+        } else if (idx === 2) {
+          go('TRAINING_DELETE_CONFIRM', { histIdx });
+        } else {
+          go('HISTORY_LIST', { kind: 'training', cursor: 0 });
+        }
+      }
+    },
+    render: () => {
+      const items = ['查看總覽', '同步至 App', '刪除此訓練紀錄', '返回'];
+      const cursor = stateData.cursor;
+      const rec = loadHistory(HISTORY_TRAINING_KEY)[stateData.histIdx];
+      let header = 'Training 案件操作';
+      if (rec) {
+        const d = new Date(rec.startedAt);
+        const mmdd = `${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+        const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        header = `${mmdd} ${hhmm}｜Training`;
+      }
+      screenContent.innerHTML = `
+        <div class="menu-list">
+          <div class="menu-header">${header}</div>
+          ${items.map((it, i) => `
+            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+            </div>
+          `).join('')}
+        </div>
+      `;
+      overlay.classList.remove('show');
+    },
+  },
+
+  // V1 §15.16：刪除此訓練紀錄？（二次確認）
+  TRAINING_DELETE_CONFIRM: {
+    onEnter: () => {},
+    onButton: (btn, kind) => {
+      if (kind !== 'SHORT') return;
+      if (btn === 'BACK') { go('TRAINING_HISTORY_OPTIONS', { cursor: 2, histIdx: stateData.histIdx }); return; }
+      if (btn === 'MAIN') {
+        beep(1800, 80);
+        deleteTrainingHistoryAt(stateData.histIdx);
+        flash('訓練紀錄已刪除', '', FLASH_DEFAULT_MS, 'HISTORY_LIST', { kind: 'training', cursor: 0 });
+      }
+    },
+    render: () => {
+      screenContent.innerHTML = `
+        <div style="text-align:center;padding:24px">
+          <div class="dialog-title" style="font-size:20px;color:#ef4444">刪除此訓練紀錄？</div>
+          <div class="dialog-body" style="margin-top:12px">刪除後不可復原</div>
+          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
+        </div>
+      `;
       overlay.classList.remove('show');
     },
   },
@@ -1985,6 +2184,14 @@ function persistTrainingCase() {
     events:      trainingCase.events.slice(),
   });
   saveHistory(HISTORY_TRAINING_KEY, arr, HISTORY_TRAINING_LIMIT);
+}
+
+/** V1 §15.16：刪除指定 index 的 Training 紀錄（OHCA 不適用） */
+function deleteTrainingHistoryAt(idx) {
+  const arr = loadHistory(HISTORY_TRAINING_KEY);
+  if (idx < 0 || idx >= arr.length) return;
+  arr.splice(idx, 1);
+  try { localStorage.setItem(HISTORY_TRAINING_KEY, JSON.stringify(arr)); } catch (_) {}
 }
 
 function eventLabel(e) {

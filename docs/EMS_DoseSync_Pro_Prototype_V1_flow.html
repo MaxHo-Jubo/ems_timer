@@ -202,7 +202,7 @@
 <div class="header">
   <h1>EMS DoseSync Pro</h1>
   <div class="subtitle">院前 OHCA 給藥與事件時間同步輔助裝置 — Prototype V1 行為流程規格</div>
-  <div class="version">v1.0（封版） | 2026-04-27 | SoT：EMS_DoseSync_Pro_Prototype_V1.md</div>
+  <div class="version">v1.0（封版） | 2026-04-27 初版 · 2026-04-28 更新 Training 模式整合規格 | SoT：EMS_DoseSync_Pro_Prototype_V1.md</div>
   <a href="demo/" style="display:inline-block;margin-top:14px;padding:8px 18px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.4);border-radius:20px;color:#fff;text-decoration:none;font-size:13px;font-weight:600">📱 互動 Demo（手機版）</a>
 </div>
 
@@ -598,15 +598,56 @@
 <div class="section">
   <div class="section-title" id="sec-10"><span class="num">10</span> Training 模式</div>
   <div class="card">
+
+    <div class="note note-blue" style="margin-bottom:16px">
+      <strong>核心定義：Training 模式 = OHCA 模式的訓練版本。</strong>不另寫獨立簡化流程，不省略 OHCA 核心事件邏輯。差異只有 EPI 倒數時間可調 + 全程「訓練模式」標示 + 歷史獨立分類 + 可裝置端刪除。
+    </div>
+
+    <div class="sub-title">10.1 與 OHCA 的差異</div>
     <table>
+      <thead><tr><th style="width:120px">項目</th><th>OHCA 正式案件</th><th>Training 模式</th></tr></thead>
       <tbody>
-        <tr><td style="width:140px"><strong>畫面標示</strong></td><td>全程顯示「訓練模式」浮水印</td></tr>
-        <tr><td><strong>倒數長度</strong></td><td>30 秒 / 1 分鐘 / 4 分鐘（可選）</td></tr>
-        <tr><td><strong>重置功能</strong></td><td>長按主鍵 3s → 重置 / 結束 / 返回（OHCA 不提供重置）</td></tr>
-        <tr><td><strong>結束選擇</strong></td><td>保存 → 列入 Training 紀錄（最近 20 筆）／ 不保存 → 不占用儲存</td></tr>
-        <tr><td><strong>App 同步</strong></td><td>保存後可從案件總覽同步，App 端標示 Training 不混入 OHCA</td></tr>
+        <tr><td><strong>EPI 倒數時間</strong></td><td>固定 4 分鐘</td><td>可選 30 秒 / 1 分鐘 / 4 分鐘</td></tr>
+        <tr><td><strong>畫面標示</strong></td><td>OHCA</td><td>全程「訓練模式」浮水印</td></tr>
+        <tr><td><strong>案件總覽</strong></td><td>案件總覽｜OHCA</td><td>案件總覽｜Training</td></tr>
+        <tr><td><strong>Timeline</strong></td><td>事件時間軸</td><td>事件時間軸｜Training</td></tr>
+        <tr><td><strong>歷史分類</strong></td><td>OHCA 案件</td><td>Training 紀錄</td></tr>
+        <tr><td><strong>保存上限</strong></td><td>50 筆</td><td>20 筆</td></tr>
+        <tr><td><strong>裝置端刪除</strong></td><td>不可</td><td><strong style="color:var(--red)">可刪除（二次確認）</strong></td></tr>
+        <tr><td><strong>App 同步</strong></td><td>可</td><td>可，但 App 端標示 Training</td></tr>
       </tbody>
     </table>
+
+    <div class="sub-title">10.2 入口與倒數時間選擇</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">主功能表 → 訓練模式 → 先選倒數時間（30 秒 / 1 分鐘 / 4 分鐘）→ 進入待本機 EPI 狀態。<strong>第一筆本機 EPI 二段確認後才啟動倒數</strong>（與 OHCA 同：案件開始 ≠ 倒數開始）。</p>
+
+    <div class="sub-title">10.3 「請準備給藥」預警規則（§15.7）</div>
+    <table>
+      <thead><tr><th style="width:160px">Training 倒數時間</th><th>剩 1 分鐘預警</th></tr></thead>
+      <tbody>
+        <tr><td>30 秒</td><td>不顯示</td></tr>
+        <tr><td>1 分鐘</td><td>不顯示</td></tr>
+        <tr><td>4 分鐘</td><td>剩 1 分鐘時顯示「請準備給藥」</td></tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--text-secondary);margin-top:6px">理由：避免短時間訓練一開始就進入預警狀態。</p>
+
+    <div class="sub-title">10.4 訓練操作選單（長按主鍵）</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">Training 進行中長按主鍵 → 訓練操作選單（重置訓練 / 結束訓練 / 返回）。重置與結束皆需二次確認。OHCA 不提供重置。</p>
+
+    <div class="sub-title">10.5 結束流程</div>
+    <div class="flow-steps">
+      <div class="flow-step"><div class="flow-dot" style="background:var(--blue)">1</div><div class="flow-content"><h4>結束前檢查</h4><p>完成並結束訓練 / 前往補登 / 返回訓練</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--amber)">2</div><div class="flow-content"><h4>最後確認</h4><p>「確認結束訓練？／ 結束後不可修改」 → 主鍵確認</p></div></div>
+      <div class="flow-step"><div class="flow-dot" style="background:var(--purple)">3</div><div class="flow-content"><h4>保存選擇</h4><p>保存 → 案件總覽｜Training（最近 20 筆）／ 不保存 → 不占用儲存，回主功能表</p></div></div>
+    </div>
+
+    <div class="sub-title">10.6 Training 紀錄裝置端刪除（§12.5 / §15.16）</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">在 Training 紀錄列表選取某筆 → <strong>Training 案件操作</strong>（查看總覽 / 同步至 App / 刪除此訓練紀錄 / 返回）。刪除需二次確認，已同步至 App 的紀錄裝置端刪除不回寫 App。<strong>OHCA 正式案件不可由裝置端刪除</strong>。</p>
+
+    <div class="sub-title">10.7 工程實作建議（§15.18）</div>
+    <p style="font-size:13px;color:var(--text-secondary)">Training 與 OHCA 共用核心狀態機，以參數區分：<code style="background:var(--bg);padding:2px 6px;border-radius:4px">case_mode</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">epi_interval_seconds</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">history_limit</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">allow_device_delete</code> / <code style="background:var(--bg);padding:2px 6px;border-radius:4px">show_training_label</code>。<strong>不要</strong>另寫獨立簡化流程。</p>
+
   </div>
 </div>
 
@@ -626,7 +667,8 @@
       </div>
     </div>
     <div class="note">
-      <strong>裝置端不提供刪除功能。</strong>提前清除資料只能透過 Type-C 電腦端管理工具。
+      <strong>OHCA 正式案件：</strong>裝置端不提供刪除功能；提前清除只能透過 Type-C 電腦端管理工具。<br>
+      <strong style="color:var(--red)">Training 紀錄：</strong>可由裝置端手動刪除（二次確認），不影響 OHCA 案件。
     </div>
   </div>
 </div>
@@ -667,7 +709,7 @@
 <div class="section">
   <div class="section-title" id="sec-13"><span class="num">13</span> Type-C 電腦端管理</div>
   <div class="card">
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">裝置本體不提供案件刪除功能，提前清除資料只能透過 Type-C 連接電腦執行。</p>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px"><strong>OHCA 正式案件</strong>裝置本體不提供刪除功能，提前清除資料只能透過 Type-C 連接電腦執行。Training 紀錄則允許裝置端刪除。</p>
     <div class="flow-steps">
       <div class="flow-step"><div class="flow-dot" style="background:var(--blue)">1</div><div class="flow-content"><h4>Type-C 連接電腦</h4><p>裝置自動進入電腦管理模式</p></div></div>
       <div class="flow-step"><div class="flow-dot" style="background:var(--purple)">2</div><div class="flow-content"><h4>啟動管理工具</h4><p>EMS DoseSync 管理工具識別裝置</p></div></div>
@@ -702,15 +744,27 @@
 <div class="section">
   <div class="section-title" id="sec-15"><span class="num">15</span> 按鍵總覽</div>
   <div class="card">
-    <div class="btn-list">
-      <div class="btn-item"><div class="btn-name">主按鍵</div>選單確認 / 開始 / 結束確認 / 消音</div>
-      <div class="btn-item"><div class="btn-name">返回鍵</div>返回 / 取消 / 開啟快速功能選單</div>
-      <div class="btn-item"><div class="btn-name">上鍵</div>選單上移 / 音量增加</div>
-      <div class="btn-item"><div class="btn-name">下鍵</div>選單下移 / 音量降低</div>
-      <div class="btn-item"><div class="btn-name">EPI 鍵</div>即時 EPI 入口 / 長按進 EPI 藥物選單</div>
-      <div class="btn-item"><div class="btn-name">電擊鍵</div>即時電擊入口 / 長按進電擊補登</div>
-      <div class="btn-item"><div class="btn-name">Power 鍵</div>開關機</div>
-      <div class="btn-item" style="opacity:0.5"><div class="btn-name">錄音鍵</div>V1 保留外觀位置，不啟用</div>
+    <table>
+      <thead><tr><th style="width:90px">按鍵</th><th style="width:170px">實體外觀標示</th><th>功能定位</th></tr></thead>
+      <tbody>
+        <tr><td><strong>主按鍵</strong></td><td>大型主按鍵</td><td>選單確認 / 開始 / 結束確認 / 消音</td></tr>
+        <tr><td><strong>返回鍵</strong></td><td>返回圖示</td><td>返回 / 取消 / 開啟快速功能選單</td></tr>
+        <tr><td><strong>上鍵</strong></td><td>上方向圖示</td><td>選單上移 / 音量增加</td></tr>
+        <tr><td><strong>下鍵</strong></td><td>下方向圖示</td><td>選單下移 / 音量降低</td></tr>
+        <tr><td><strong>EPI 鍵</strong></td><td><strong style="color:var(--red)">針筒圖案</strong>（不以 EPI 文字為主標）</td><td>即時 EPI 入口 / 長按進 EPI / 藥物選單</td></tr>
+        <tr><td><strong>電擊鍵</strong></td><td><strong style="color:var(--amber)">閃電圖案</strong>（表面不得使用 Shock 字樣）</td><td>即時電擊入口 / 長按進電擊補登</td></tr>
+        <tr><td><strong>Power 鍵</strong></td><td>電源圖示</td><td>開關機</td></tr>
+        <tr style="opacity:0.5"><td><strong>錄音鍵</strong></td><td>錄音圖示位置預留</td><td>V1 保留外觀位置，不啟用</td></tr>
+      </tbody>
+    </table>
+    <div class="note" style="margin-top:12px">
+      <strong>按鍵圖示標示規則（§4.1.1）：</strong>
+      <ul style="margin-top:6px;padding-left:20px;font-size:13px;color:var(--text-secondary);line-height:1.8">
+        <li>EPI 鍵以針筒圖案為主標；電擊鍵以閃電圖案為主標。</li>
+        <li>電擊鍵<strong style="color:var(--red)">不得</strong>使用 <code>Shock</code> 字樣；UI 一律顯示中文「電擊」。</li>
+        <li>韌體內部命名（<code>epi_button</code> / <code>shock_button</code>）可保留，但所有使用者介面不得露出 <code>Shock</code>。</li>
+        <li>裝置畫面、案件總覽、Timeline、App 內仍使用事件名稱「EPI」與「電擊」。</li>
+      </ul>
     </div>
     <div class="note note-blue">
       <strong>核心操作口訣：</strong>即時事件按事件鍵 / 選單確認按主鍵 / 返回取消按返回鍵
