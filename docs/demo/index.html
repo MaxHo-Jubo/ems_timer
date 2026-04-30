@@ -90,6 +90,20 @@
   .scr-vent-epi-hint.warning { color: #fbbf24; }
   .scr-vent-epi-hint.alarm   { color: #ef4444; }
 
+  /* V1 §14：OHCA 主畫面內 6秒通氣恆常顯示輔助區塊（單秒數視窗） */
+  .scr-vent-overlay {
+    margin-top: 14px; padding: 6px 8px; border-top: 1px dashed #334155;
+    text-align: center; transition: background 120ms;
+  }
+  .scr-vent-overlay-label { font-size: 10px; color: #94a3b8; letter-spacing: 2px; }
+  .scr-vent-overlay-num   { font-size: 26px; font-weight: 900; color: #e2e8f0; font-family: "Courier New", monospace; line-height: 1.1; }
+  .scr-vent-overlay.beat-1 {
+    background: #7f1d1d; border-radius: 4px; border-top-color: transparent;
+    padding: 6px 8px;
+  }
+  .scr-vent-overlay.beat-1 .scr-vent-overlay-label { color: #fecaca; }
+  .scr-vent-overlay.beat-1 .scr-vent-overlay-num   { color: #fff; }
+
   /* === Menu list === */
   .menu-list { width: 100%; max-width: 320px; padding: 0 16px; }
   .menu-item { padding: 12px 16px; font-size: 18px; color: #94a3b8; border-radius: 8px; }
@@ -414,6 +428,8 @@ function render() {
 let ohcaCase = null;
 
 function newOhcaCase() {
+  // V1 §14.9：新案件開始時清除前次殘留的 6秒給氣狀態
+  stopVent();
   ohcaCase = {
     startedAt:                performance.now(),  // real ms when case started
     lastEpiRealAt:            null,               // real ms of last local EPI confirm（null = 待本機 EPI）
@@ -568,15 +584,23 @@ function ventTickFire() {
   ventState.currentBeat = (ventState.currentBeat % 6) + 1;
   ventState.lastBeatRealMs = performance.now();
 
+  // V1 §14.7：in_ohca 恆常顯示模式下，若 EPI 處於 ALARMING（請給藥）警報中，
+  // 6秒給氣不蓋過 EPI 警報音，但秒數視窗仍持續更新。
+  const ohcaAlarming = ventState.mode === 'in_ohca' && ohcaPhase() === 'ALARMING';
+  // V1 §14.6：in_ohca 模式為輔助區塊，僅更新區塊樣式，不全螢幕反紅
+  const fullScreenFlash = ventState.mode === 'standalone';
+
   if (ventState.currentBeat === 1) {
     // V1 §13.6：通氣音量 = 0 時聲音關閉，但畫面反紅 + LED 紅燈閃保留
-    ventBeep(1000, 200, 0.4);
+    if (!ohcaAlarming) ventBeep(1000, 200, 0.4);
     vibrate(150);
     setLed('vent_pulse');
-    screenEl.classList.add('flash-vent');
-    setTimeout(() => screenEl.classList.remove('flash-vent'), 300);
+    if (fullScreenFlash) {
+      screenEl.classList.add('flash-vent');
+      setTimeout(() => screenEl.classList.remove('flash-vent'), 300);
+    }
   } else {
-    ventBeep(800, 80, 0.2);
+    if (!ohcaAlarming) ventBeep(800, 80, 0.2);
   }
   render();
 }
@@ -588,15 +612,10 @@ function ventTick() {
   if (realElapsedSinceLastBeat * SPEED_MULT >= VENT_BEAT_REAL_MS) {
     ventTickFire();
   }
-  // STEP 02: OHCA 中切入時，背景 OHCA EPI tick 仍要跑
+  // V1 §14.6：OHCA 內 6秒給氣為輔助子計時器，背景 OHCA EPI tick 仍要跑，
+  // 不再因 EPI 到期打斷（恆常顯示），EPI 警報由 OHCA_RUNNING 主邏輯處理。
   if (ventState.mode === 'in_ohca') {
     ohcaTick();
-    // STEP 02.01: EPI 高優先打斷：進入 ALARMING 立即停通氣音 + 跳回 OHCA 警報
-    if (ohcaPhase() === 'ALARMING' && !ventState.ohcaInterrupted) {
-      ventState.ohcaInterrupted = true;
-      stopVent();
-      go('OHCA_RUNNING');  // 跳回 OHCA 警報畫面
-    }
   }
 }
 
@@ -620,6 +639,8 @@ const STATES = {
     onEnter: () => {
       stateData.cursor = stateData.cursor ?? 0;
       stopAlarm(); setLed('off');
+      // V1 §14.9：返回主功能表時清除任何殘留的 6秒給氣狀態
+      stopVent();
     },
     onButton: (btn, kind) => {
       const items = ['OHCA 案件', '6 秒通氣節奏', '訓練模式', '歷史紀錄', '系統設定'];
@@ -737,12 +758,22 @@ const STATES = {
     render: () => {
       const phase = ohcaPhase();
       const counters = countLocal();
+      // V1 §14：6秒給氣恆常顯示輔助區塊（in_ohca 模式時開啟）
+      const ventOn = !!ventState && ventState.mode === 'in_ohca';
+      const ventBeat = ventOn ? ventState.currentBeat : null;
+      const ventOverlayHTML = ventOn ? `
+        <div class="scr-vent-overlay ${ventBeat === 1 ? 'beat-1' : ''}">
+          <div class="scr-vent-overlay-label">6秒給氣｜已開啟</div>
+          <div class="scr-vent-overlay-num">${ventBeat}</div>
+        </div>
+      ` : '';
       let inner = '';
       if (phase === 'WAIT_FIRST_EPI') {
         inner = `
           <div class="scr-mode">OHCA</div>
           <div class="scr-label" style="font-size:24px;color:#94a3b8">待本機 EPI</div>
           <div class="scr-counter">EPI ${counters.epi}｜電擊 ${counters.shock}</div>
+          ${ventOverlayHTML}
         `;
         screenEl.classList.remove('flash-red');
       } else {
@@ -775,6 +806,7 @@ const STATES = {
           <div class="scr-time-big ${timeClass}">${timeStr}</div>
           <div class="scr-label">${label}</div>
           <div class="scr-counter">EPI ${counters.epi}｜電擊 ${counters.shock}</div>
+          ${ventOverlayHTML}
         `;
       }
       screenContent.innerHTML = inner;
@@ -814,11 +846,20 @@ const STATES = {
       // V1 §7.1：系統內統一中文「電擊」，不得顯示 Shock
       const BTN_LABEL = { EPI: 'EPI 鍵', SHOCK: '電擊鍵', MAIN: '主鍵' };
       const confirmBtn = BTN_LABEL[stateData.confirmKey] || `${stateData.confirmKey} 鍵`;
+      // V1 §8.3：Amiodarone 確認畫面為選單事件樣式 — 標題大字、主鍵確認突出、不顯示「再按針筒鍵確認」
+      const isAmio = ev === 'AMIO';
+      const titleStyle = isAmio ? 'font-size:22px' : '';
+      const hintHTML  = isAmio
+        ? `<span style="font-size:14px;color:#fbbf24;font-weight:700">主鍵確認</span><span style="color:#64748b">　│　返回取消</span>`
+        : `再按 ${confirmBtn} 確認　│　返回取消`;
+      const bodyText = ev === 'EPI'   ? '確認後將建立時間戳<br>並重啟 4 分鐘倒數'
+                     : ev === 'SHOCK' ? '確認後將建立時間戳<br>不影響 EPI 倒數'
+                     :                  '確認後將建立時間戳<br>不影響 EPI 倒數';
       overlay.innerHTML = `
         <div class="dialog">
-          <div class="dialog-title">${stateData.label}</div>
-          <div class="dialog-body">確認後將建立時間戳<br>${ev === 'EPI' ? '並重啟 4 分鐘倒數' : '不影響 EPI 倒數'}</div>
-          <div class="dialog-hint">再按 ${confirmBtn} 確認　│　返回取消</div>
+          <div class="dialog-title" style="${titleStyle}">${stateData.label}</div>
+          <div class="dialog-body">${bodyText}</div>
+          <div class="dialog-hint">${hintHTML}</div>
         </div>
       `;
       overlay.classList.add('show');
@@ -838,7 +879,8 @@ const STATES = {
         if (stateData.cursor === 0) {
           go('OHCA_EPI_SUPP_MENU', { cursor: 0 });
         } else {
-          go('OHCA_CONFIRM', { evType: 'AMIO', label: '確認已給 Amiodarone？', confirmKey: 'MAIN' });
+          // V1 §8.3：Amiodarone 確認畫面標題用「確認 Amiodarone？」，最終確認鍵為主鍵（不使用針筒鍵）
+          go('OHCA_CONFIRM', { evType: 'AMIO', label: '確認 Amiodarone？', confirmKey: 'MAIN' });
         }
       }
     },
@@ -1039,6 +1081,8 @@ const STATES = {
       if (kind !== 'SHORT') return;
       if (btn === 'BACK') { go('OHCA_END_CHECK'); return; }
       if (btn === 'MAIN') {
+        // V1 §14.9：OHCA 案件結束後 6秒給氣自動停止
+        stopVent();
         ohcaCase.locked = true;
         persistOhcaCase();
         beep(1800, 80); setTimeout(() => beep(2200, 120), 100);
@@ -1136,11 +1180,12 @@ const STATES = {
     },
   },
 
-  // ----- OHCA 中按返回 → 快速功能 -----
+  // ----- OHCA 中按返回 → 快速功能（V1 §14.8 toggle 6秒給氣恆常顯示） -----
   OHCA_QUICK_MENU: {
     onEnter: () => { stateData.cursor = 0; },
     onButton: (btn, kind) => {
-      const items = ['6 秒通氣節奏', '案件簡版總覽', '返回 OHCA'];
+      const ventOn = !!ventState && ventState.mode === 'in_ohca';
+      const items = [ventOn ? '關閉6秒給氣提示' : '開啟6秒給氣提示', '案件簡版總覽', '返回 OHCA'];
       if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
       if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
       if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
@@ -1148,8 +1193,14 @@ const STATES = {
         beep(1500, 60);
         const idx = stateData.cursor;
         if (idx === 0) {
-          startVent('in_ohca');
-          go('VENT_RUNNING', { mode: 'in_ohca' });
+          // V1 §14.8：toggle 6秒給氣恆常顯示輔助區塊（不再切換到全螢幕通氣畫面）
+          if (ventOn) {
+            stopVent();
+            flash('6秒給氣', '已關閉', 800, 'OHCA_RUNNING');
+          } else {
+            startVent('in_ohca');
+            flash('6秒給氣', '已開啟', 800, 'OHCA_RUNNING');
+          }
         } else if (idx === 1) {
           flash('簡版總覽', 'Demo 略過，請結束案件後看完整總覽', 2000, 'OHCA_RUNNING');
         } else {
@@ -1158,7 +1209,8 @@ const STATES = {
       }
     },
     render: () => {
-      const items = ['6 秒通氣節奏', '案件簡版總覽', '返回 OHCA'];
+      const ventOn = !!ventState && ventState.mode === 'in_ohca';
+      const items = [ventOn ? '關閉6秒給氣提示' : '開啟6秒給氣提示', '案件簡版總覽', '返回 OHCA'];
       const cursor = stateData.cursor;
       screenContent.innerHTML = `
         <div class="menu-list">
@@ -1446,14 +1498,20 @@ const STATES = {
       const ev = stateData.evType;
       const BTN_LABEL = { EPI: 'EPI 鍵', SHOCK: '電擊鍵', MAIN: '主鍵' };
       const confirmBtn = BTN_LABEL[stateData.confirmKey] || `${stateData.confirmKey} 鍵`;
+      // V1 §8.3：Amiodarone 確認畫面樣式（標題大字、主鍵確認突出、不顯示「再按針筒鍵確認」）
+      const isAmio = ev === 'AMIO';
+      const titleStyle = isAmio ? 'font-size:22px' : '';
+      const hintHTML  = isAmio
+        ? `<span style="font-size:14px;color:#fbbf24;font-weight:700">主鍵確認</span><span style="color:#64748b">　│　返回取消</span>`
+        : `再按 ${confirmBtn} 確認　│　返回取消`;
       const bodyText = ev === 'EPI'   ? '確認後啟動 / 重啟訓練倒數'
                      : ev === 'SHOCK' ? '電擊不影響倒數（V1 §15.8）'
-                     :                  'Amiodarone 不影響倒數（V1 §15.9）';
+                     :                  'Amiodarone 不影響倒數（V1 §8.6 / §15.9）';
       overlay.innerHTML = `
         <div class="dialog">
-          <div class="dialog-title">${stateData.label}</div>
+          <div class="dialog-title" style="${titleStyle}">${stateData.label}</div>
           <div class="dialog-body">${bodyText}</div>
-          <div class="dialog-hint">再按 ${confirmBtn} 確認　│　返回取消</div>
+          <div class="dialog-hint">${hintHTML}</div>
         </div>
       `;
       overlay.classList.add('show');
@@ -1474,8 +1532,8 @@ const STATES = {
           // V1 §15.10：Training 補登（Demo 暫未展開）
           flash('Training 補登', 'Demo 暫未展開', 1500, 'TRAINING_RUNNING');
         } else {
-          // V1 §15.9：Amiodarone 二段確認，第二次按主鍵成立
-          go('TRAINING_CONFIRM', { evType: 'AMIO', label: '確認已給 Amiodarone？', confirmKey: 'MAIN' });
+          // V1 §8.3 / §15.9：Amiodarone 確認畫面標題「確認 Amiodarone？」，最終確認鍵為主鍵（不使用針筒鍵）
+          go('TRAINING_CONFIRM', { evType: 'AMIO', label: '確認 Amiodarone？', confirmKey: 'MAIN' });
         }
       }
     },

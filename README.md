@@ -17,6 +17,8 @@
 
 部署於 Cloudflare Pages。建議在手機開啟 Demo 取得最佳互動體驗。
 
+> **Demo 已知簡化**：Training 補登（V1 §15.10）目前僅顯示 `Demo 暫未展開` 提示後返回（`docs/demo/index.html:1474`）；完整補登流程（長按 EPI / 長按電擊 → 接手前 1~5 / 純補登 1~3）依 SoT §15.10 + §9 在韌體 Phase B 實作。
+
 ---
 
 ## 📘 文件結構（Source of Truth 由上至下）
@@ -29,6 +31,8 @@
 | 3 | [`docs/demo/index.html`](docs/demo/index.html) | 手機互動 Demo 原始碼（single file，~1900 行） |
 | 4 | [`tasks/todo.md`](tasks/todo.md) | 開發進度與下一步待辦 |
 | 5 | [`CLAUDE.md`](CLAUDE.md) | 專案約定 |
+| - | [`docs/pcb-outsourcing-guide.md`](docs/pcb-outsourcing-guide.md) | **Phase 4 量產 PCB 外包指南**（外包範圍、台灣管道、7 項準備清單、風險與預算） |
+| - | [`docs/EMS_DoseSync_Button_Icon_Label_Revision.md`](docs/EMS_DoseSync_Button_Icon_Label_Revision.md) | **按鍵圖示標示修正規格**（針筒 / 閃電圖案、外殼工藝注意事項、定案 #483~#487）— 與 V1 SoT §4.1 / §4.1.1 一致，補充工藝細節與同步檢查清單 |
 
 衝突時以較高層為準。`docs/pm-flow-spec.md` 已於 2026-04-27 廢止（被 V1 SoT 取代）。
 

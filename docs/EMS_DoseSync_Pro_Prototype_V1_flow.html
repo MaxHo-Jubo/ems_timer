@@ -217,7 +217,7 @@
     <a href="#sec-6">6. 補登（接手前 / 純補登）</a>
     <a href="#sec-7">7. 案件總覽 + Timeline</a>
     <a href="#sec-8">8. 6 秒通氣節奏</a>
-    <a href="#sec-9">9. OHCA 中切入通氣</a>
+    <a href="#sec-9">9. OHCA 中開啟 6秒通氣恆常顯示</a>
     <a href="#sec-10">10. Training 模式</a>
     <a href="#sec-11">11. 歷史紀錄</a>
     <a href="#sec-12">12. App 單案同步</a>
@@ -409,13 +409,40 @@
         </tr>
       </thead>
       <tbody>
-        <tr><td><strong>EPI（本機）</strong></td><td>EPI 鍵 ×2</td><td>啟動 / 重啟 4 分鐘倒數</td><td>EPI 已紀錄</td></tr>
+        <tr><td><strong>EPI（本機）</strong></td><td>針筒鍵 ×2</td><td>啟動 / 重啟 4 分鐘倒數</td><td>EPI 已紀錄</td></tr>
         <tr><td><strong>電擊（本機）</strong></td><td>電擊鍵 ×2</td><td>不影響 EPI 倒數</td><td>電擊已紀錄</td></tr>
-        <tr><td><strong>Amiodarone</strong></td><td>長按 EPI → 選單 → 主鍵 ×2</td><td>不影響 EPI 倒數</td><td>Amiodarone 已紀錄</td></tr>
+        <tr><td><strong>Amiodarone</strong></td><td>長按針筒鍵 → 選單 → <strong>主鍵確認</strong></td><td>不影響 EPI 倒數</td><td>Amiodarone 已紀錄</td></tr>
       </tbody>
     </table>
     <div class="note note-blue">
       <strong>用詞統一：</strong>系統內統一使用中文「電擊」，不顯示 Shock。
+    </div>
+    <div class="note note-amber" style="margin-top:8px">
+      <strong>V1 §8 Amiodarone 確認方式：</strong>Amiodarone 屬於「EPI / 藥物選單」內的選單事件，最終確認使用<strong>主按鍵</strong>，<strong>不使用針筒圖案鍵</strong>，避免與 EPI 即時給藥確認混淆。確認畫面文字「確認 Amiodarone？」需放大顯示，畫面不得顯示「再按針筒鍵確認」。
+    </div>
+
+    <div class="sub-title" style="margin-top:20px">藥物給藥操作邏輯總表（V1 §8A）</div>
+    <p style="font-size:13px;margin-bottom:12px;color:var(--text-secondary)">針筒圖案鍵為裝置內<strong>唯一給藥入口</strong>。EPI 是唯一採全程針筒鍵二段確認的藥物；其他藥物與補登均由長按進入選單後以<strong>主鍵</strong>確認。</p>
+    <table>
+      <thead>
+        <tr>
+          <th>藥物 / 功能</th>
+          <th>入口</th>
+          <th>最終確認鍵</th>
+          <th>建立時間戳</th>
+          <th>影響 EPI 倒數</th>
+          <th>V1 狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>EPI</strong></td><td>短按針筒鍵</td><td>針筒鍵</td><td>是</td><td>是，啟動 / 重啟倒數</td><td>必做</td></tr>
+        <tr><td><strong>補登 EPI</strong></td><td>長按針筒鍵 → 補登 EPI</td><td>主按鍵</td><td>否，時間欄為 <code>-</code></td><td>否</td><td>必做</td></tr>
+        <tr><td><strong>Amiodarone</strong></td><td>長按針筒鍵 → Amiodarone</td><td>主按鍵</td><td>是</td><td>否</td><td>必做</td></tr>
+        <tr><td><strong>其他藥物</strong></td><td>未來藥物選單</td><td>主按鍵</td><td>是</td><td>否</td><td>未來擴充</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue" style="margin-top:12px">
+      <strong>操作原則口訣：</strong>針筒鍵 = 藥物功能唯一入口｜EPI = 唯一使用針筒鍵完成即時二段確認的藥物｜其他藥物 = 選單選取後由主按鍵確認｜返回鍵 = 取消。
     </div>
   </div>
 </div>
@@ -532,65 +559,121 @@
 </div>
 
 <div class="section">
-  <div class="section-title" id="sec-9"><span class="num">9</span> OHCA 中切入通氣節奏</div>
+  <div class="section-title" id="sec-9"><span class="num">9</span> OHCA 中開啟 6秒通氣恆常顯示</div>
   <div class="card">
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">OHCA 中按返回鍵開啟快速功能選單，可進入通氣節奏，EPI 計時於背景持續。</p>
-
-    <div class="oled-flow">
-      <div class="oled-step">
-        <div class="oled-screen">
-          <div class="oled-header" style="color:#4ade80">OHCA中</div>
-          <div class="oled-time" style="font-size:32px">1</div>
-          <div class="oled-label">6秒通氣節奏</div>
-          <div class="oled-status">EPI 02:35</div>
-        </div>
-        <div class="oled-step-label"><span class="badge badge-teal">通氣 + EPI 倒數</span></div>
-      </div>
-      <div class="oled-arrow">→</div>
-      <div class="oled-step">
-        <div class="oled-screen oled-warning">
-          <div class="oled-header" style="color:var(--amber)">OHCA中</div>
-          <div class="oled-time" style="font-size:32px;color:var(--amber)">3</div>
-          <div class="oled-label">EPI 00:59</div>
-          <div class="oled-status" style="color:var(--amber)">請準備給藥</div>
-        </div>
-        <div class="oled-step-label"><span class="badge badge-amber">剩 1 分鐘</span></div>
-      </div>
-      <div class="oled-arrow">→</div>
-      <div class="oled-step">
-        <div class="oled-screen oled-alarm">
-          <div class="oled-alert">請 給 藥</div>
-          <div class="oled-time" style="font-size:14px">EPINEPHRINE</div>
-          <div class="oled-label" style="color:#ff6b6b">EPI 到期</div>
-        </div>
-        <div class="oled-step-label"><span class="badge badge-red">高優先打斷</span></div>
-        <div class="oled-step-desc">立即停止通氣音<br>跳回 OHCA 警報</div>
-      </div>
-      <div class="oled-arrow">→</div>
-      <div class="oled-step">
-        <div class="oled-screen oled-reset">
-          <div class="oled-header">EPI 已紀錄</div>
-          <div class="oled-time" style="font-size:14px">返回通氣節奏？</div>
-          <div class="oled-label">主鍵=是　返回=否</div>
-        </div>
-        <div class="oled-step-label"><span class="badge badge-green">EPI 完成</span></div>
-        <div class="oled-step-desc">詢問是否返回<br>選「是」從 1 重來</div>
-      </div>
+    <div class="note note-blue" style="margin-bottom:12px">
+      <strong>V1 §14 重大調整：</strong>OHCA 內 6秒通氣<strong>不再為獨立切換畫面</strong>，改為 OHCA 主畫面內的<strong>恆常顯示輔助區塊</strong>。它是子計時器，<strong>不打斷</strong>OHCA 主流程；EPI 給藥、電擊、Amiodarone、補登完成後，6秒通氣區塊仍維持顯示。
     </div>
 
-    <table style="margin-top:16px">
-      <thead><tr><th>按鍵</th><th>OHCA 中通氣畫面行為</th></tr></thead>
+    <div class="sub-title">9.1 兩種使用情境</div>
+    <table>
+      <thead><tr><th style="width:240px">情境</th><th>定義</th></tr></thead>
       <tbody>
-        <tr><td>返回鍵</td><td>直接回 OHCA 主畫面</td></tr>
-        <tr><td>主鍵</td><td>提示「如要離開通氣模式請用返回鍵」</td></tr>
-        <tr><td>EPI 鍵</td><td>提示「請返回 OHCA 處理 EPI」</td></tr>
-        <tr><td>電擊鍵</td><td>可二段確認紀錄電擊（背景節奏不重置）</td></tr>
-        <tr><td>上 / 下鍵</td><td>調整通氣音量</td></tr>
+        <tr><td><strong>主功能表「6秒通氣節奏」</strong></td><td>獨立即時節奏工具（見 §8）</td></tr>
+        <tr><td><strong>OHCA 案件中開啟 6秒通氣</strong></td><td>OHCA 主畫面內的輔助子計時器（恆常顯示，本節定義）</td></tr>
       </tbody>
     </table>
 
-    <div class="note note-red">
-      <strong>EPI 高優先：</strong>EPI 到期時通氣音必須立即停止，跳回 OHCA 警報畫面。必須完成 EPI 二段確認，不可只消音返回通氣。
+    <div class="sub-title" style="margin-top:20px">9.2 OHCA 主畫面恆常顯示（單秒數視窗）</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">採用<strong>單秒數視窗</strong>顯示，不顯示 1～6 整排。秒數每秒循環：1 → 2 → 3 → 4 → 5 → 6 → 1。</p>
+
+    <div class="oled-flow">
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm" style="text-align:left;padding:8px 10px">
+          <div class="oled-header" style="color:#ff6b6b;font-size:11px">OHCA中</div>
+          <div class="oled-time" style="font-size:24px;text-align:center">03:28</div>
+          <div class="oled-label" style="text-align:center">下次給藥</div>
+          <div class="oled-status" style="text-align:center;font-size:11px">EPI 1｜電擊 1</div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #ff6b6b;text-align:center;background:#7f1d1d;border-radius:4px;padding:6px">
+            <div style="font-size:10px;color:#fecaca">6秒給氣｜已開啟</div>
+            <div style="font-size:24px;color:#fff;font-weight:700">1</div>
+          </div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">第 1 秒｜反紅</span></div>
+        <div class="oled-step-desc">畫面反紅<br>加強提示音<br>紅燈閃爍</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen" style="text-align:left;padding:8px 10px">
+          <div class="oled-header" style="color:#4ade80;font-size:11px">OHCA中</div>
+          <div class="oled-time" style="font-size:24px;text-align:center">03:27</div>
+          <div class="oled-label" style="text-align:center">下次給藥</div>
+          <div class="oled-status" style="text-align:center;font-size:11px">EPI 1｜電擊 1</div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #334155;text-align:center;padding:6px">
+            <div style="font-size:10px;color:#94a3b8">6秒給氣｜已開啟</div>
+            <div style="font-size:24px;color:#e2e8f0;font-weight:700">4</div>
+          </div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-teal">第 2~6 秒</span></div>
+        <div class="oled-step-desc">每秒短提示音<br>LED 不閃爍<br>畫面正常</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm" style="text-align:left;padding:8px 10px">
+          <div class="oled-alert" style="font-size:18px">請 給 藥</div>
+          <div class="oled-time" style="font-size:18px;text-align:center;color:#fbbf24">04:00</div>
+          <div class="oled-status" style="text-align:center;font-size:11px;color:#fecaca">EPI 1｜電擊 1</div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #fff;text-align:center;padding:6px">
+            <div style="font-size:10px;color:#fecaca">6秒給氣｜已開啟</div>
+            <div style="font-size:20px;color:#fff;font-weight:700">5</div>
+          </div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">EPI 到期</span></div>
+        <div class="oled-step-desc">EPI 警報最高優先<br>6秒給氣保留下方<br>不蓋過 EPI 警報</div>
+      </div>
+    </div>
+
+    <div class="sub-title" style="margin-top:20px">9.3 秒數提示規則（與獨立功能一致）</div>
+    <table>
+      <thead><tr><th style="width:120px">秒數</th><th>畫面</th><th>提示音</th><th>LED</th></tr></thead>
+      <tbody>
+        <tr><td><strong>第 1 秒</strong></td><td>區塊反紅</td><td>加強提示音（音量 0 時靜音）</td><td>紅燈閃爍（音量 0 仍閃）</td></tr>
+        <tr><td><strong>第 2~6 秒</strong></td><td>正常顯示</td><td>每秒短提示音（音量 0 時靜音）</td><td>不閃爍</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      <strong>音量 0（靜音）：</strong>提示音全關，但畫面反紅與第 1 秒紅燈閃爍仍保留作為視覺提示。秒數視窗仍正常顯示 1～6。
+    </div>
+
+    <div class="sub-title" style="margin-top:20px">9.4 與 OHCA 主流程的關係</div>
+    <table>
+      <thead><tr><th>事件</th><th>6秒通氣區塊行為</th></tr></thead>
+      <tbody>
+        <tr><td>EPI 給藥確認</td><td><strong>仍維持顯示</strong>（不消失、不重置）</td></tr>
+        <tr><td>電擊確認</td><td><strong>仍維持顯示</strong></td></tr>
+        <tr><td>Amiodarone 確認</td><td><strong>仍維持顯示</strong></td></tr>
+        <tr><td>補登完成</td><td><strong>仍維持顯示</strong></td></tr>
+        <tr><td>EPI 倒數重啟</td><td><strong>仍維持顯示</strong></td></tr>
+        <tr><td>EPI 到期警報</td><td>EPI 警報為最高優先顯示「請給藥」；6秒通氣保留下方輔助區塊，<strong>不蓋過警報、不阻止給藥確認</strong></td></tr>
+        <tr><td>OHCA 案件結束</td><td>自動停止</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub-title" style="margin-top:20px">9.5 開啟與關閉</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">OHCA 中按返回鍵開啟「快速功能」，依目前狀態顯示「開啟 / 關閉 6秒給氣提示」：</p>
+    <div class="oled-flow">
+      <div class="oled-step">
+        <div class="oled-screen" style="text-align:left;padding:10px">
+          <div class="oled-header">快速功能</div>
+          <div style="margin-top:6px;font-size:12px;color:#fbbf24">› 開啟6秒給氣提示</div>
+          <div style="font-size:12px;color:#94a3b8">　 案件簡版總覽</div>
+          <div style="font-size:12px;color:#94a3b8">　 返回 OHCA</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-teal">未開啟</span></div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen" style="text-align:left;padding:10px">
+          <div class="oled-header">快速功能</div>
+          <div style="margin-top:6px;font-size:12px;color:#fbbf24">› 關閉6秒給氣提示</div>
+          <div style="font-size:12px;color:#94a3b8">　 案件簡版總覽</div>
+          <div style="font-size:12px;color:#94a3b8">　 返回 OHCA</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">已開啟</span></div>
+      </div>
+    </div>
+    <div class="note note-blue">
+      <strong>開啟後：</strong>6秒通氣區塊固定顯示於 OHCA 主畫面中，直到手動關閉或案件結束。<strong>不寫入 Timeline，不列入案件事件紀錄</strong>。
     </div>
   </div>
 </div>
@@ -852,7 +935,7 @@
     <div class="phase-item phase-pri-2">
       <div class="phase-num">Phase C</div>
       <div class="phase-name">6 秒通氣節奏</div>
-      <div class="phase-tasks">▸ 獨立模式<br>▸ OHCA 中切入<br>▸ EPI 高優先打斷</div>
+      <div class="phase-tasks">▸ 獨立模式<br>▸ OHCA 內恆常顯示輔助區塊<br>▸ 單秒數視窗 + 第 1 秒反紅<br>▸ EPI 警報為最高優先（不打斷區塊）</div>
     </div>
     <div class="phase-item phase-pri-3">
       <div class="phase-num">Phase D</div>
