@@ -202,8 +202,26 @@
 <div class="header">
   <h1>EMS DoseSync Pro</h1>
   <div class="subtitle">院前 OHCA 給藥與事件時間同步輔助裝置 — Prototype V1 行為流程規格</div>
-  <div class="version">v1.0（封版） | 2026-04-27 初版 · 2026-04-28 更新 Training 模式整合規格 | SoT：EMS_DoseSync_Pro_Prototype_V1.md</div>
+  <div class="version">v1.0（封版） | 2026-04-27 初版 · 2026-04-28 Training 整合 · 2026-05-03 §19 擴充預留設計 | SoT：EMS_DoseSync_Pro_Prototype_V1.md</div>
   <a href="demo/" style="display:inline-block;margin-top:14px;padding:8px 18px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.4);border-radius:20px;color:#fff;text-decoration:none;font-size:13px;font-weight:600">📱 互動 Demo（手機版）</a>
+</div>
+
+<div style="background:var(--amber-light);border:2px solid var(--amber);border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;box-shadow:var(--shadow)">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <span style="font-size:20px">⭐</span>
+    <span style="font-size:15px;font-weight:700;color:#92400e">本次新增（2026-05-03）— Prototype V1 擴充預留設計</span>
+  </div>
+  <p style="font-size:13px;color:#78350f;margin-bottom:10px;line-height:1.7">
+    PM 提出 7 項未來擴充保留需求（錄音、CO 偵測、獨立藥物紀錄）。V1 不啟用以下功能，但硬體腳位、外殼空間、資料結構與主功能表架構需保留擴充能力。新增 <strong>§19 擴充預留設計</strong> 章節整合說明：
+  </p>
+  <div style="display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px">
+    <a href="#sec-19-1" style="padding:4px 10px;background:#fff;border:1px solid var(--amber);border-radius:14px;color:#92400e;text-decoration:none;font-weight:600">① 硬體腳位</a>
+    <a href="#sec-19-2" style="padding:4px 10px;background:#fff;border:1px solid var(--amber);border-radius:14px;color:#92400e;text-decoration:none;font-weight:600">② 電源預算</a>
+    <a href="#sec-19-3" style="padding:4px 10px;background:#fff;border:1px solid var(--amber);border-radius:14px;color:#92400e;text-decoration:none;font-weight:600">③ 外殼開孔</a>
+    <a href="#sec-19-4" style="padding:4px 10px;background:#fff;border:1px solid var(--amber);border-radius:14px;color:#92400e;text-decoration:none;font-weight:600">④ 資料格式段位</a>
+    <a href="#sec-19-5" style="padding:4px 10px;background:#fff;border:1px solid var(--amber);border-radius:14px;color:#92400e;text-decoration:none;font-weight:600">⑤ 主功能表入口</a>
+    <a href="#sec-19" style="padding:4px 10px;background:var(--amber);border:1px solid var(--amber);border-radius:14px;color:#fff;text-decoration:none;font-weight:700">→ 完整跳轉 §19</a>
+  </div>
 </div>
 
 <div class="toc">
@@ -227,6 +245,7 @@
     <a href="#sec-16">16. 通訊架構</a>
     <a href="#sec-17">17. 硬體</a>
     <a href="#sec-18">18. 開發階段</a>
+    <a href="#sec-19" style="color:#92400e;font-weight:700">⭐ 19. 擴充預留設計</a>
   </div>
 </div>
 
@@ -278,6 +297,9 @@
         <div class="menu-name">系統設定</div>
         <div class="menu-desc">音量 / 亮度 / 連線<br>裝置資訊</div>
       </div>
+    </div>
+    <div class="note note-blue" style="margin-top:14px">
+      <strong>未來擴充：</strong>主功能表採可擴充 list 結構，V1 封版固定 5 項，未來可新增「CO 狀態」等系統級入口。其他藥物紀錄走長按針筒鍵入口（非主功能表）→ 詳見 <a href="#sec-19-5" style="color:var(--blue);font-weight:600">§19.5 主功能表入口擴充</a>
     </div>
   </div>
 </div>
@@ -916,6 +938,9 @@
     <div class="note">
       <strong>外觀重點：</strong>EPI 鍵在主鍵右上 / 電擊鍵在主鍵左上 / 上下鍵中間有返回鍵 / 左上角預留錄音鍵與麥克風開孔（V1 不啟用）。
     </div>
+    <div class="note note-blue" style="margin-top:12px">
+      <strong>擴充預留：</strong>完整 GPIO 腳位表、CO 感測器候選腳位、外殼開孔規格、電源餘裕計算 → 見 <a href="#sec-19" style="color:var(--blue);font-weight:600">§19 擴充預留設計</a>
+    </div>
   </div>
 </div>
 
@@ -961,6 +986,149 @@
       <div class="phase-num">Phase H</div>
       <div class="phase-name">電源管理</div>
       <div class="phase-tasks">▸ 螢幕常亮<br>▸ 邊充邊用<br>▸ 低電量提示（不強制關機）</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title" id="sec-19" style="border-left-color:var(--amber)"><span class="num" style="background:var(--amber)">19</span> 擴充預留設計（2026-05-03 新增）</div>
+  <div class="card">
+    <p style="font-size:14px;margin-bottom:8px">PM 提出 7 項未來擴充保留需求。V1 不啟用，但硬體腳位、外殼空間、資料結構與主功能表架構需保留擴充能力。對齊 SoT V1 §2.3 / §3.1 / §20.4 / §20.5 / §21.1 / §21.2 / §21.3 與 pm-dev-spec.md §6 event_t 編號段位。</p>
+    <div class="note note-blue">
+      <strong>三套 Phase 編號對照：</strong>Dev-Phase 1~4（開發進度）/ Impl-Phase A~H（韌體子階段，見 §18）/ Prod-Phase（量產階段切換）。完整對照表見 <code>CLAUDE.md</code>。
+    </div>
+
+    <div class="sub-title" id="sec-19-1">19.1 硬體腳位擴充預留</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">對應 PM 需求 ① 錄音鍵 GPIO 預留、② 麥克風 I2S 腳位預留、③ CO 感測器腳位預留</p>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">V1 已啟用腳位</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:left">腳位</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th><th style="padding:8px;border:1px solid var(--border);text-align:left">韌體常數</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">主按鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 4</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_PRIMARY</code></td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">上鍵 / 下鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 5 / 6</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_UP</code> / <code>BTN_DOWN</code></td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">Power 鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 7</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_POWER</code></td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">錄音鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 15</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_RECORD</code>（noop 佔位）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">蜂鳴器</td><td style="padding:6px;border:1px solid var(--border)">GPIO 14</td><td style="padding:6px;border:1px solid var(--border)">PWM out</td><td style="padding:6px;border:1px solid var(--border)"><code>BUZZER_PIN</code></td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">震動馬達</td><td style="padding:6px;border:1px solid var(--border)">GPIO 16</td><td style="padding:6px;border:1px solid var(--border)">Digital out</td><td style="padding:6px;border:1px solid var(--border)"><code>VIBRATION_PIN</code>（<code>ENABLE_VIBRATION=0</code>）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">OLED</td><td style="padding:6px;border:1px solid var(--border)">GPIO 42 / 41</td><td style="padding:6px;border:1px solid var(--border)">I2C (SDA/SCL)</td><td style="padding:6px;border:1px solid var(--border)"><code>I2C_SDA_PIN</code> / <code>I2C_SCL_PIN</code></td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">V1 預留腳位（不啟用）</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:left">腳位</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th><th style="padding:8px;border:1px solid var(--border);text-align:left">啟用條件</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">INMP441 麥克風</td><td style="padding:6px;border:1px solid var(--border)">GPIO 40 / 39 / 38（SCK / WS / SD）</td><td style="padding:6px;border:1px solid var(--border)">I2S</td><td style="padding:6px;border:1px solid var(--border)"><code>ENABLE_MIC_MONITOR=1</code></td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">MicroSD 卡</td><td style="padding:6px;border:1px solid var(--border)">待定（建議 SPI：MOSI/MISO/SCK/CS）</td><td style="padding:6px;border:1px solid var(--border)">SPI</td><td style="padding:6px;border:1px solid var(--border)">錄音功能啟用時</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">CO 感測器候選腳位（型號未定，依介面類型擇一，<u>候選互斥</u>）</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">介面類型</th><th style="padding:8px;border:1px solid var(--border);text-align:left">候選腳位</th><th style="padding:8px;border:1px solid var(--border);text-align:left">備註</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><strong>I2C 共用 OLED bus</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 42 / 41</td><td style="padding:6px;border:1px solid var(--border)">需確認模組 I2C 位址不與 OLED（0x3C）衝突；最省 GPIO</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><strong>獨立 I2C</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 17 / 18</td><td style="padding:6px;border:1px solid var(--border)">避開 SPI flash 區（GPIO 8~13）與 strapping pin</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><strong>UART</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 43 / 44</td><td style="padding:6px;border:1px solid var(--border)">ZE07-CO 等電化學型主流；S3 USB-CDC 替代腳，僅 USB-CDC 不啟用時可用</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><strong>類比 ADC</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 1 / 2 / 3（ADC1）</td><td style="padding:6px;border:1px solid var(--border)">MEMS 半導體型；避免 ADC2 與 WiFi 衝突</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-amber">
+      <strong>互斥提示：</strong>GPIO 1/2/3 同時為 ADC 候選；採 ADC 時，獨立 I2C 與 UART 不可再用 1/2/3。三組候選擇一即可。<br>
+      <strong>禁用腳位：</strong>GPIO 8~13（內建 SPI flash）/ GPIO 19/20（USB D+/D-）/ GPIO 0/45/46（strapping pin）。
+    </div>
+
+    <div class="sub-title" id="sec-19-2">19.2 電源預算與餘裕</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">對應 PM 需求 ④ 感測器與錄音模組的電源餘裕</p>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">V1 模組典型 / 峰值功耗表</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:right">典型電流</th><th style="padding:8px;border:1px solid var(--border);text-align:right">峰值電流</th><th style="padding:8px;border:1px solid var(--border);text-align:left">觸發場景</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">ESP32-S3（BLE active）</td><td style="padding:6px;border:1px solid var(--border);text-align:right">80mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">240mA</td><td style="padding:6px;border:1px solid var(--border)">BLE TX 瞬間</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">2.4 吋 OLED / LCD</td><td style="padding:6px;border:1px solid var(--border);text-align:right">25mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">40mA</td><td style="padding:6px;border:1px solid var(--border)">全亮</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">蜂鳴器（主動式）</td><td style="padding:6px;border:1px solid var(--border);text-align:right">0</td><td style="padding:6px;border:1px solid var(--border);text-align:right">30mA</td><td style="padding:6px;border:1px solid var(--border)">警報響起時</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">震動馬達（1027 硬幣型）</td><td style="padding:6px;border:1px solid var(--border);text-align:right">0</td><td style="padding:6px;border:1px solid var(--border);text-align:right">80mA</td><td style="padding:6px;border:1px solid var(--border)">震動瞬間</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">LED 狀態燈</td><td style="padding:6px;border:1px solid var(--border);text-align:right">5mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">10mA</td><td style="padding:6px;border:1px solid var(--border)">雙色全亮</td></tr>
+        <tr style="background:var(--blue-light);font-weight:700"><td style="padding:6px;border:1px solid var(--border)">V1 小計</td><td style="padding:6px;border:1px solid var(--border);text-align:right">~110mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">~400mA</td><td style="padding:6px;border:1px solid var(--border)">USB-C 直供餘裕約 100mA</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">擴充模組功耗預估（V1 不啟用）</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:right">典型</th><th style="padding:8px;border:1px solid var(--border);text-align:right">峰值</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">INMP441 麥克風</td><td style="padding:6px;border:1px solid var(--border);text-align:right">1.5mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">1.5mA</td><td style="padding:6px;border:1px solid var(--border)">I2S</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">MicroSD（寫入）</td><td style="padding:6px;border:1px solid var(--border);text-align:right">20mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">100mA</td><td style="padding:6px;border:1px solid var(--border)">SPI</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">CO 感測器（電化學型）</td><td style="padding:6px;border:1px solid var(--border);text-align:right">~10mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">~15mA</td><td style="padding:6px;border:1px solid var(--border)">UART/I2C</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">CO 感測器（MEMS 半導體）</td><td style="padding:6px;border:1px solid var(--border);text-align:right">~30mA</td><td style="padding:6px;border:1px solid var(--border);text-align:right">~50mA</td><td style="padding:6px;border:1px solid var(--border)">類比 ADC</td></tr>
+        <tr style="background:var(--red-light)"><td style="padding:6px;border:1px solid var(--border)">CO 感測器（加熱半導體型，禁用）</td><td style="padding:6px;border:1px solid var(--border);text-align:right">150mA+</td><td style="padding:6px;border:1px solid var(--border);text-align:right">180mA+</td><td style="padding:6px;border:1px solid var(--border)">❌ 不建議</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">CO 感測器類型比較（供選型參考）</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">類型</th><th style="padding:8px;border:1px solid var(--border);text-align:left">代表型號</th><th style="padding:8px;border:1px solid var(--border);text-align:left">適用性</th></tr></thead>
+      <tbody>
+        <tr style="background:var(--green-light)"><td style="padding:6px;border:1px solid var(--border)"><strong>電化學型</strong></td><td style="padding:6px;border:1px solid var(--border)">ZE07-CO、CJMCU-4541</td><td style="padding:6px;border:1px solid var(--border)">✅ 推薦：功耗低（~10mA）、介面清晰、預熱秒級</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><strong>MEMS 半導體</strong></td><td style="padding:6px;border:1px solid var(--border)">MiCS-5524</td><td style="padding:6px;border:1px solid var(--border)">🟡 可考慮：功耗中等（~30mA）</td></tr>
+        <tr style="background:var(--red-light)"><td style="padding:6px;border:1px solid var(--border)"><strong>加熱半導體</strong></td><td style="padding:6px;border:1px solid var(--border)">MQ-7、MQ-9</td><td style="padding:6px;border:1px solid var(--border)">❌ 不建議：功耗超 USB-C 上限（150mA+）、預熱 24~48h</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">1000mAh 電池連續使用時數預估</p>
+    <ul style="font-size:13px;padding-left:24px;line-height:1.9;color:var(--text-secondary)">
+      <li>純待機（IDLE，OLED 暗屏）：~30 小時</li>
+      <li>OHCA 案件進行中（OLED 亮 + BLE active + 不時警報）：~8~10 小時</li>
+      <li>邊充邊用：不限時，視 USB-C 來源能力</li>
+    </ul>
+    <div class="note note-amber" style="margin-top:10px">
+      <strong>⚠️ 待 Dev-Phase 1 實測校正。</strong>所有功耗與時數皆為業界典型估算值。V1 + 全擴充模組典型約 145mA、峰值約 510mA，極端場景峰值可能逼近 USB-C host port 5V/500mA 上限，需在韌體層做模組互斥（如錄音時停用 BLE TX）。
+    </div>
+
+    <div class="sub-title" id="sec-19-3">19.3 外殼開孔擴充預留</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">對應 PM 需求 ⑤ 麥克風與 CO 感測器開孔位置</p>
+    <ul style="font-size:13px;padding-left:24px;line-height:1.9">
+      <li><strong>麥克風開孔：</strong>左上角錄音鍵附近，⌀1.0~1.5mm 圓孔，內側貼防塵網</li>
+      <li><strong>CO 感測器進氣孔：</strong>右側或頂部，避開使用者掌心遮擋區，⌀3~5mm 圓孔陣列或長條柵格</li>
+      <li><strong>MicroSD 卡槽（搭配錄音）：</strong>底部或側面，需可單手插拔</li>
+      <li><strong>內部電路擴充空間：</strong>PCB 上方至少預留 5×20mm 區塊給未來感測器子板</li>
+    </ul>
+    <div class="note note-blue" style="margin-top:10px">
+      V1 階段所有擴充開孔可用 3D 列印實作；Prod-Phase 量產階段配合射出成型開模時定型。
+    </div>
+
+    <div class="sub-title" id="sec-19-4">19.4 BLE / Timeline 資料格式擴充段位</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">對應 PM 需求 ⑥ Timeline / App 同步資料格式不寫死</p>
+    <p style="font-size:13px;margin-bottom:10px">沿用既有 NUS + JSON 協定，<code>event_type</code> 改採編號段位規範，<u>0x80~0xFF 保留給未來擴充</u>，App 端解析遇未知 type 須 fallback 不丟棄：</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">編號段位</th><th style="padding:8px;border:1px solid var(--border);text-align:left">用途</th><th style="padding:8px;border:1px solid var(--border);text-align:left">V1 狀態</th></tr></thead>
+      <tbody>
+        <tr style="background:var(--blue-light)"><td style="padding:6px;border:1px solid var(--border)"><code>0x00~0x7F</code></td><td style="padding:6px;border:1px solid var(--border)">V1 核心事件（EPI / 電擊 / Amiodarone / 補登）</td><td style="padding:6px;border:1px solid var(--border)">V1 實作 0x01~0x07</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><code>0x80~0xBF</code></td><td style="padding:6px;border:1px solid var(--border)">未來擴充藥物紀錄（D50W / TXA / Atropine 等）</td><td style="padding:6px;border:1px solid var(--border)">保留</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><code>0xC0~0xDF</code></td><td style="padding:6px;border:1px solid var(--border)">未來擴充感測器事件（CO 警報 / CO 數值記錄）</td><td style="padding:6px;border:1px solid var(--border)">保留</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><code>0xE0~0xEF</code></td><td style="padding:6px;border:1px solid var(--border)">未來擴充錄音相關事件（START / STOP）</td><td style="padding:6px;border:1px solid var(--border)">保留</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)"><code>0xF0~0xFF</code></td><td style="padding:6px;border:1px solid var(--border)">系統事件（如低電量）</td><td style="padding:6px;border:1px solid var(--border)">保留</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      新增事件類型時，於 <code>pm-dev-spec.md §6 event_t</code> 登記後同步更新 App 解析表與 §7 案件總覽顯示規則。
+    </div>
+
+    <div class="sub-title" id="sec-19-5">19.5 主功能表入口擴充</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">對應 PM 需求 ⑦ 主功能表未來可新增「藥物紀錄」或「CO 狀態」入口</p>
+    <p style="font-size:13px;margin-bottom:10px">主功能表採可擴充 list 結構。V1 封版固定 5 項（OHCA 案件 / 6秒通氣節奏 / 訓練模式 / 歷史紀錄 / 系統設定），未來新增項目以上下鍵分頁瀏覽，<u>不重排既有 5 項順序</u>。</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">擴充功能</th><th style="padding:8px;border:1px solid var(--border);text-align:left">入口位置</th><th style="padding:8px;border:1px solid var(--border);text-align:left">依據</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">CO 狀態</td><td style="padding:6px;border:1px solid var(--border)">主功能表新增第 6+ 項</td><td style="padding:6px;border:1px solid var(--border)">SoT §3.1 註記</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">其他藥物紀錄（D50W/TXA 等）</td><td style="padding:6px;border:1px solid var(--border)"><strong>長按針筒圖案鍵 → 藥物紀錄 → 選擇藥物</strong></td><td style="padding:6px;border:1px solid var(--border)">SoT §8A.5 既定路徑（非主功能表入口）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">裝置自我測試</td><td style="padding:6px;border:1px solid var(--border)">主功能表新增第 6+ 項</td><td style="padding:6px;border:1px solid var(--border)">SoT §3.1 註記</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-amber">
+      <strong>避免衝突：</strong>「其他藥物紀錄」走長按針筒鍵入口，<u>不放主功能表</u>，以免與 §8A 藥物給藥功能總定義打架。
     </div>
   </div>
 </div>
