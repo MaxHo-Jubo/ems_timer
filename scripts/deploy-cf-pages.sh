@@ -25,6 +25,9 @@ cp "$ROOT_DIR/docs/EMS_DoseSync_Pro_Prototype_V1_flow.html" "$DIST_DIR/"
 cp "$ROOT_DIR/docs/demo/index.html"                          "$DIST_DIR/demo/"
 cp "$ROOT_DIR/scripts/landing.html"                          "$DIST_DIR/index.html"
 
+# Test Plan: 部署但不在 landing / flow.html 加連結，僅透過直接 URL 訪問
+cp "$ROOT_DIR/docs/EMS_DoseSync_Pro_Test_Plan_V1.html"      "$DIST_DIR/"
+
 echo "▶ Files staged for deploy:"
 find "$DIST_DIR" -type f -print0 | xargs -0 -n1 | sed "s|$DIST_DIR/|  |"
 
