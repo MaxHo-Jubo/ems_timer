@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS DoseSync Pro Prototype V1 — 測試計劃（PM 版）</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --indigo: #6366f1; --indigo-light: #eef2ff;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.65;
+    padding: 16px; max-width: 640px; margin: 0 auto;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  .header {
+    text-align: center; padding: 24px 18px; margin-bottom: 18px;
+    background: linear-gradient(135deg, #1e3a5f, #2563eb);
+    border-radius: 16px; color: #fff;
+  }
+  .header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.5px; }
+  .header .subtitle { font-size: 13px; opacity: 0.9; margin-top: 8px; }
+  .header .version { font-size: 11px; opacity: 0.7; margin-top: 6px; }
+
+  .toc {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px 16px;
+    margin-bottom: 18px; box-shadow: var(--shadow);
+  }
+  .toc-title { font-size: 12px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-wrap: wrap; gap: 6px 10px; font-size: 12px; }
+  .toc-list a { color: var(--blue); text-decoration: none; padding: 3px 8px; background: var(--blue-light); border-radius: 12px; }
+
+  .section { margin-bottom: 24px; scroll-margin-top: 12px; }
+  .section-title {
+    font-size: 17px; font-weight: 700; margin-bottom: 12px;
+    padding-left: 10px; border-left: 4px solid var(--blue);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 26px; background: var(--blue); color: #fff;
+    border-radius: 50%; font-size: 13px; font-weight: 700; flex-shrink: 0;
+  }
+
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow);
+  }
+  .card + .card { margin-top: 12px; }
+
+  /* Pyramid visual */
+  .pyramid { display: flex; flex-direction: column; gap: 6px; align-items: center; padding: 8px 0; }
+  .pyramid-layer {
+    width: 100%; padding: 12px 14px; border-radius: 8px;
+    text-align: center; font-weight: 600; font-size: 13px;
+    border: 2px solid; position: relative;
+  }
+  .pyramid-layer .pl-num {
+    position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+    width: 26px; height: 26px; border-radius: 50%; font-size: 11px;
+    display: flex; align-items: center; justify-content: center; font-weight: 700;
+  }
+  .pyramid-layer .pl-pct {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font-size: 11px; opacity: 0.7;
+  }
+  .pyramid-l1 { width: 100%; background: var(--blue-light); border-color: var(--blue); color: #1e40af; }
+  .pyramid-l1 .pl-num { background: var(--blue); color: #fff; }
+  .pyramid-l2 { width: 88%; background: var(--teal-light); border-color: var(--teal); color: #0f766e; }
+  .pyramid-l2 .pl-num { background: var(--teal); color: #fff; }
+  .pyramid-l3 { width: 70%; background: var(--amber-light); border-color: var(--amber); color: #92400e; }
+  .pyramid-l3 .pl-num { background: var(--amber); color: #fff; }
+  .pyramid-l4 { width: 50%; background: var(--green-light); border-color: var(--green); color: #166534; }
+  .pyramid-l4 .pl-num { background: var(--green); color: #fff; }
+
+  /* Phase grid */
+  .phase-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+  .phase-card {
+    border: 1px solid var(--border); border-left: 4px solid var(--blue);
+    border-radius: 8px; padding: 12px 14px; background: #fff;
+  }
+  .phase-card.phase-a { border-left-color: var(--red); }
+  .phase-card.phase-b { border-left-color: var(--amber); }
+  .phase-card.phase-c { border-left-color: var(--teal); }
+  .phase-card.phase-d { border-left-color: var(--purple); }
+  .phase-card.phase-e { border-left-color: var(--blue); }
+  .phase-card.phase-f { border-left-color: var(--indigo); }
+  .phase-card.phase-g { border-left-color: var(--green); }
+  .phase-card.phase-h { border-left-color: #e11d48; }
+
+  .phase-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .phase-letter {
+    width: 28px; height: 28px; border-radius: 6px; font-weight: 800;
+    display: flex; align-items: center; justify-content: center; font-size: 14px;
+    color: #fff;
+  }
+  .phase-a .phase-letter { background: var(--red); }
+  .phase-b .phase-letter { background: var(--amber); }
+  .phase-c .phase-letter { background: var(--teal); }
+  .phase-d .phase-letter { background: var(--purple); }
+  .phase-e .phase-letter { background: var(--blue); }
+  .phase-f .phase-letter { background: var(--indigo); }
+  .phase-g .phase-letter { background: var(--green); }
+  .phase-h .phase-letter { background: #e11d48; }
+
+  .phase-name { font-weight: 700; font-size: 14px; flex: 1; }
+  .phase-counts { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
+  .count-pill {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    background: #f1f5f9; color: var(--text-secondary); font-weight: 600;
+  }
+  .count-pill strong { color: var(--text); }
+
+  .phase-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.55; }
+
+  /* Test case list */
+  .test-list { list-style: none; padding: 0; }
+  .test-list li {
+    padding: 8px 10px; margin-bottom: 6px; border-radius: 6px;
+    background: #f8fafc; border-left: 3px solid var(--green);
+    font-size: 12px; line-height: 1.55;
+  }
+  .test-list li.edge { background: var(--amber-light); border-left-color: var(--amber); }
+  .test-list li.boundary { background: var(--red-light); border-left-color: var(--red); }
+  .test-list li::before { content: "✓ "; color: var(--green); font-weight: 700; margin-right: 4px; }
+  .test-list li.edge::before { content: "⚠ "; color: var(--amber); }
+  .test-list li.boundary::before { content: "● "; color: var(--red); }
+
+  .case-id { display: inline-block; padding: 1px 6px; background: var(--indigo-light); color: var(--indigo); border-radius: 4px; font-family: "Courier New", monospace; font-size: 11px; font-weight: 700; margin-right: 6px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 12px; margin: 8px 0; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+  th { background: #f8fafc; font-weight: 700; font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; }
+  td.center, th.center { text-align: center; }
+  td.num { font-family: "Courier New", monospace; font-weight: 700; }
+
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-purple { background: var(--purple-light); color: var(--purple); }
+
+  .note {
+    margin-top: 10px; padding: 10px 12px; background: var(--amber-light);
+    border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0;
+    font-size: 12px; color: #92400e; line-height: 1.6;
+  }
+  .note-blue { background: var(--blue-light); border-left-color: var(--blue); color: #1e40af; }
+  .note-red { background: var(--red-light); border-left-color: var(--red); color: #991b1b; }
+  .note-green { background: var(--green-light); border-left-color: var(--green); color: #166534; }
+
+  .sub-title { font-size: 14px; font-weight: 700; margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+
+  /* Procedure card (L3 操作流程) */
+  .proc-card {
+    background: #fff; border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; margin: 8px 0; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  }
+  .proc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .proc-id-tag {
+    background: var(--indigo); color: #fff; font-family: "Courier New", monospace;
+    font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 4px;
+  }
+  .proc-title { font-size: 13px; font-weight: 700; flex: 1; }
+  .proc-row { display: flex; gap: 8px; margin: 4px 0; font-size: 11.5px; line-height: 1.55; }
+  .proc-tag {
+    flex-shrink: 0; min-width: 38px; height: fit-content;
+    padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700;
+    text-align: center; letter-spacing: 0.3px;
+  }
+  .proc-tag.t-pre  { background: #f1f5f9; color: var(--text-secondary); }
+  .proc-tag.t-op   { background: var(--blue-light); color: var(--blue); }
+  .proc-tag.t-exp  { background: var(--amber-light); color: #b45309; }
+  .proc-tag.t-pass { background: var(--green-light); color: #15803d; }
+  .proc-text { flex: 1; color: var(--text); }
+  .proc-text code {
+    background: #0a0a0a; color: #4ade80; padding: 1px 6px; border-radius: 3px;
+    font-family: "Courier New", monospace; font-size: 11px;
+  }
+
+  .timer-box {
+    display: inline-block; padding: 6px 10px; background: #0a0a0a; color: #fff;
+    border-radius: 6px; font-family: "Courier New", monospace; font-weight: 700; font-size: 13px;
+    margin: 2px 4px 2px 0;
+  }
+  .timer-box.warn { color: #fbbf24; }
+  .timer-box.alarm { color: #ef4444; }
+  .timer-box.normal { color: #4ade80; }
+
+  /* Phase timeline diagram */
+  .state-flow {
+    display: flex; flex-direction: column; gap: 4px; margin: 10px 0;
+    font-family: "Courier New", monospace; font-size: 11px;
+  }
+  .state-row {
+    padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border);
+    background: #fff; display: flex; align-items: center; gap: 8px;
+  }
+  .state-name { font-weight: 700; min-width: 100px; }
+  .state-arrow { color: var(--gray); padding: 0 8px; }
+
+  /* Risk table */
+  .risk-row { display: grid; grid-template-columns: 1fr; gap: 4px; margin-bottom: 8px; padding: 10px; background: #fff; border: 1px solid var(--border); border-radius: 6px; }
+  .risk-name { font-weight: 700; font-size: 13px; color: var(--red); }
+  .risk-desc { font-size: 12px; color: var(--text); }
+  .risk-fix { font-size: 11px; color: var(--text-secondary); padding-top: 4px; border-top: 1px dashed var(--border); margin-top: 4px; }
+  .risk-fix::before { content: "✓ 對策："; font-weight: 700; color: var(--green); }
+
+  .footer {
+    text-align: center; padding: 18px 0; font-size: 11px;
+    color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 32px;
+  }
+
+  /* Coverage gauge */
+  .gauge-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12px; }
+  .gauge-label { flex: 1; }
+  .gauge-bar { width: 90px; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+  .gauge-fill { height: 100%; background: linear-gradient(90deg, var(--green), var(--teal)); }
+  .gauge-pct { font-weight: 700; min-width: 38px; text-align: right; font-family: "Courier New", monospace; font-size: 11px; }
+
+  @media (max-width: 480px) {
+    body { padding: 12px; }
+    .header { padding: 20px 14px; }
+    .header h1 { font-size: 19px; }
+    .section-title { font-size: 15px; }
+    .pyramid-layer { font-size: 12px; padding: 10px 12px; }
+    .pyramid-l1 { width: 100%; }
+    .pyramid-l2 { width: 92%; }
+    .pyramid-l3 { width: 76%; }
+    .pyramid-l4 { width: 56%; }
+    table { font-size: 11px; }
+    th, td { padding: 6px 8px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>EMS DoseSync Pro</h1>
+  <div class="subtitle">Prototype V1 — 測試計劃（PM 版）</div>
+  <div class="version">v1.0 初版 · 2026-05-03 · 對齊 SoT V1 + pm-dev-spec v2.0</div>
+</div>
+
+<div class="toc">
+  <div class="toc-title">目錄</div>
+  <div class="toc-list">
+    <a href="#sec-1">1. 測試金字塔</a>
+    <a href="#sec-2">2. Phase 矩陣</a>
+    <a href="#sec-3">3. Phase A</a>
+    <a href="#sec-4">4. Phase B</a>
+    <a href="#sec-5">5. Phase C</a>
+    <a href="#sec-6">6. Phase D</a>
+    <a href="#sec-7">7. Phase E</a>
+    <a href="#sec-8">8. Phase F</a>
+    <a href="#sec-9">9. Phase G</a>
+    <a href="#sec-10">10. Phase H</a>
+    <a href="#sec-11">11. 涵蓋率</a>
+    <a href="#sec-12">12. 風險與排程</a>
+    <a href="#sec-14">13. 與 §22 對應</a>
+  </div>
+</div>
+
+<div class="note note-blue">
+  <strong>📘 文件定位</strong><br>
+  本測試計劃為 V1 韌體從零開工的測試藍本（既有韌體於 Phase A 開工時 throwaway 重寫）。<br>
+  PM 重點章節：<strong>§1 測試金字塔</strong>、<strong>§2 Phase 矩陣</strong>、<strong>§11 涵蓋率</strong>、<strong>§12 風險</strong>、<strong>§13 與 V1 §22 對應</strong>。
+</div>
+
+<!-- ========== §1 測試金字塔 ========== -->
+<div class="section" id="sec-1">
+  <div class="section-title"><span class="num">1</span>測試金字塔（四層架構）</div>
+  <div class="card">
+    <div class="pyramid">
+      <div class="pyramid-layer pyramid-l1">
+        <span class="pl-num">L1</span>
+        單元測試（PlatformIO native + Unity）
+        <span class="pl-pct">≥186 case</span>
+      </div>
+      <div class="pyramid-layer pyramid-l2">
+        <span class="pl-num">L2</span>
+        整合 / 狀態機測試
+        <span class="pl-pct">≥68 case</span>
+      </div>
+      <div class="pyramid-layer pyramid-l3">
+        <span class="pl-num">L3</span>
+        實機煙霧測試（手動 / 半自動）
+        <span class="pl-pct">≥43 case</span>
+      </div>
+      <div class="pyramid-layer pyramid-l4">
+        <span class="pl-num">L4</span>
+        PM 驗收（V1 §22）
+        <span class="pl-pct">全章節</span>
+      </div>
+    </div>
+    <div class="note">
+      <strong>原則：</strong>純邏輯一律抽純函式（注入 <code>now_ms</code>），native 直接覆蓋；狀態機用 transition table 驗；時序敏感（debounce、倒數精度、≤50ms 打斷）必上實機。
+    </div>
+  </div>
+</div>
+
+<!-- ========== §2 Phase 矩陣 ========== -->
+<div class="section" id="sec-2">
+  <div class="section-title"><span class="num">2</span>Phase 測試矩陣</div>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>Phase</th><th class="center">L1</th><th class="center">L2</th><th class="center">L3</th><th>對應 §22</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="badge badge-red">A</span> OHCA + EPI 倒數 + 兩段確認</td><td class="num center">50+</td><td class="num center">15+</td><td class="num center">8+</td><td>22.1</td></tr>
+        <tr><td><span class="badge badge-amber">B</span> 補登 + Amio + 總覽</td><td class="num center">35+</td><td class="num center">12+</td><td class="num center">6+</td><td>22.2/3/4</td></tr>
+        <tr><td><span class="badge badge-teal">C</span> 6 秒通氣節奏</td><td class="num center">25+</td><td class="num center">10+</td><td class="num center">6+</td><td>22.5/6</td></tr>
+        <tr><td><span class="badge badge-purple">D</span> Training</td><td class="num center">20+</td><td class="num center">8+</td><td class="num center">5+</td><td>22.7</td></tr>
+        <tr><td><span class="badge badge-blue">E</span> 持久化 + 歷史</td><td class="num center">18+</td><td class="num center">6+</td><td class="num center">4+</td><td>—</td></tr>
+        <tr><td><span class="badge badge-blue">F</span> App 配對碼同步</td><td class="num center">15+</td><td class="num center">8+</td><td class="num center">4+</td><td>22.8</td></tr>
+        <tr><td><span class="badge badge-green">G</span> 系統設定 + Type-C</td><td class="num center">15+</td><td class="num center">5+</td><td class="num center">4+</td><td>22.x</td></tr>
+        <tr><td><span class="badge badge-red">H</span> 電源管理</td><td class="num center">8+</td><td class="num center">4+</td><td class="num center">6+</td><td>22.9</td></tr>
+        <tr style="background:#f1f5f9;font-weight:700">
+          <td>合計</td><td class="num center">186+</td><td class="num center">68+</td><td class="num center">43+</td><td>全 §22</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========== §3 Phase A ========== -->
+<div class="section" id="sec-3">
+  <div class="section-title"><span class="num">3</span>Phase A — OHCA 核心 + EPI 倒數 + 兩段確認</div>
+
+  <div class="card phase-card phase-a">
+    <div class="phase-head">
+      <div class="phase-letter">A</div>
+      <div class="phase-name">EPI 倒數引擎 <code>decideOhcaOutput()</code></div>
+    </div>
+    <div class="phase-desc">純函式：<code>(phase, since_last_epi_ms, now_ms) → ohca_output_t</code>。覆蓋 5 個 phase × 邊界值。</div>
+
+    <div class="sub-title">Phase 邊界時序</div>
+    <div>
+      <span class="timer-box normal">0:00 倒數 4:00</span>
+      <span class="timer-box warn">3:00 進預警</span>
+      <span class="timer-box alarm">4:00 警報</span>
+      <span class="timer-box alarm">4:05 超時</span>
+    </div>
+
+    <div class="sub-title">關鍵測試案例</div>
+    <ul class="test-list">
+      <li><span class="case-id">A1.1</span>WAIT_FIRST_EPI：since=任意 → 全 false / NULL</li>
+      <li><span class="case-id">A1.2</span>COUNTDOWN: since=180000 → display_remaining=60000，<strong>仍未轉 WARNING</strong></li>
+      <li class="edge"><span class="case-id">A1.3</span>邊界 since=180001 → 應已轉 WARNING（外層狀態機決定）</li>
+      <li><span class="case-id">A1.4</span>WARNING since=180001 / 195001 → 每 15s 短嗶 + 黃慢閃</li>
+      <li class="edge"><span class="case-id">A1.5</span>邊界 since=239999 還在 WARNING；240000 進 ALARMING</li>
+      <li><span class="case-id">A1.6</span>ALARMING：buzz_alarm_continuous + 紅快閃 + 震動 + 畫面閃</li>
+      <li class="edge"><span class="case-id">A1.7</span>邊界 since=245000 還在 ALARMING；245001 轉 OVERTIME</li>
+      <li><span class="case-id">A1.8</span>OVERTIME：display_remaining 改顯示累計時間，每 15s 嗶</li>
+      <li class="boundary"><span class="case-id">A1.9</span>邊界 millis() rollover：task_start=4294967295, now=4 → since=5（uint32 減法 rollover-safe）</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-a">
+    <div class="phase-head">
+      <div class="phase-letter">A</div>
+      <div class="phase-name">兩段確認 <code>twoStepConfirm_press()</code></div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">A2.1</span>第一次按 → armed=true, 回 false</li>
+      <li><span class="case-id">A2.2</span>5s 內第二次按 → 成立, 回 true</li>
+      <li class="edge"><span class="case-id">A2.3</span>邊界 5000ms 整 → 成立（≤ timeout 規範）</li>
+      <li class="edge"><span class="case-id">A2.4</span>邊界 5001ms → 視為新 cycle</li>
+      <li><span class="case-id">A2.5</span>EPI / 電擊 / Amio 各自獨立 instance，互不影響</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-a">
+    <div class="phase-head">
+      <div class="phase-letter">A</div>
+      <div class="phase-name">OHCA 子狀態機 transition</div>
+    </div>
+    <div class="state-flow">
+      <div class="state-row"><span class="state-name">WAIT_FIRST_EPI</span><span class="state-arrow">→</span><span>EPI 二段確認 → COUNTDOWN</span></div>
+      <div class="state-row"><span class="state-name">COUNTDOWN</span><span class="state-arrow">→</span><span>≥180s → WARNING</span></div>
+      <div class="state-row"><span class="state-name">WARNING</span><span class="state-arrow">→</span><span>≥240s → ALARMING</span></div>
+      <div class="state-row"><span class="state-name">ALARMING</span><span class="state-arrow">→</span><span>≥245s → OVERTIME</span></div>
+      <div class="state-row"><span class="state-name">OVERTIME</span><span class="state-arrow">→</span><span>EPI 確認 → COUNTDOWN（重啟）</span></div>
+      <div class="state-row"><span class="state-name">OVERTIME</span><span class="state-arrow">→</span><span>主鍵長按 3s → END_CHECK → LOCKED</span></div>
+    </div>
+    <ul class="test-list">
+      <li class="boundary"><span class="case-id">A3.1</span><strong>EPI 警報期主鍵只消音不建紀錄</strong>（V1 §6.7）</li>
+      <li class="boundary"><span class="case-id">A3.2</span>啟動倒數白名單：僅<strong>本機 EPI</strong>可啟動 / 重啟（V1 §23.2）</li>
+      <li><span class="case-id">A3.3</span>OHCA_LOCKED 後：所有事件鍵 noop</li>
+      <li class="edge"><span class="case-id">A3.4</span>EPI 確認 armed 中 5s 未第二次按 → 取消，回原 phase 不影響倒數</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（A.S1~S8）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S1</span><span class="proc-title">開機到倒數啟動</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">電量 ≥ 50%，未連線 App</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 長按 Power ≥ 2s 開機 → (2) 主功能表短按主鍵進 OHCA → (3) 觀察「案件開始 OHCA」1s 提示 → (4) 短按 EPI 鍵（首次）→ (5) 5s 內再短按 EPI 鍵</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 4 顯示 EPI 確認對話框；步驟 5 後 OLED 切倒數 <code>04:00</code></span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">倒數從 04:00 開始，1s 內進入 03:59</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S2</span><span class="proc-title">倒數精度 ±50ms</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 已啟動倒數</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 啟動碼錶（按下瞬間記錄當下 OLED 倒數值，例 03:50）→ (2) 等待 OLED 顯示 <code>01:00</code> → (3) 立即停碼錶</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">碼錶讀數約 02:50（從 03:50 → 01:00 經過 170s）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">誤差 ≤ ±50ms（169.95~170.05s）</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S3</span><span class="proc-title">1 分鐘預警</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 倒數中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 等待 OLED 顯示 <code>01:00</code> → (2) 連續觀察 60s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">每 15s 短嗶 1 聲（共 4 次）；LED 黃慢閃；OLED 顯示「請準備給藥」</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">60s 內聽到 4 次短嗶，LED 持續黃慢閃</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S4</span><span class="proc-title">EPI 警報</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S3 預警中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">等待倒數歸零（不操作任何按鍵）</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">OLED 顯示「請給藥」、蜂鳴連續發報、LED 紅快閃、震動馬達持續、畫面閃紅</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">連續 5s 高優先警報行為齊全（蜂鳴 + 紅閃 + 震動 + 畫面閃）</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S5</span><span class="proc-title">進入 OVERTIME</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S4 警報已 5s</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">警報滿 5s 後不操作</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">OLED 切換為累計時間，從 <code>+0:05</code> 開始遞增；蜂鳴停止連發</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">OLED 顯示 <code>+0:05</code> 並 1s 內遞增至 <code>+0:06</code></span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S6</span><span class="proc-title">OVERTIME 每 15s 嗶</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S5 OVERTIME 中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">連續觀察 60s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">每 15s 1 聲短嗶（共 4 次）；LED 紅慢閃</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">60s 內聽到 4 次短嗶</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S7</span><span class="proc-title">第二次 EPI 重啟倒數</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S6 OVERTIME 中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按 EPI 鍵首次 → (2) 5s 內再短按 EPI 鍵第二次</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 1 顯示 EPI 確認對話框，警報維持；步驟 2 後 OLED 重置 <code>04:00</code> 倒數</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">OLED 重置 04:00 並開始遞減；累計時間清零</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">A.S8</span><span class="proc-title">結束鎖定</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">任意 phase</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 主鍵<strong>長按 3s</strong> → (2) 結束選單選「完成並結束」→ (3) 短按主鍵確認 → (4) 鎖定後嘗試短按 EPI / 電擊 / Amio 鍵</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 3 後進入 OHCA_SUMMARY；步驟 4 任何按鍵 noop</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">總覽畫面完整；按鍵無響應、無新事件寫入</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §4 Phase B ========== -->
+<div class="section" id="sec-4">
+  <div class="section-title"><span class="num">4</span>Phase B — 補登 + Amiodarone + 案件總覽 + Timeline</div>
+
+  <div class="card phase-card phase-b">
+    <div class="phase-head">
+      <div class="phase-letter">B</div>
+      <div class="phase-name">補登次數與 immutability</div>
+    </div>
+
+    <table>
+      <thead><tr><th>類型</th><th class="center">範圍</th><th>邊界</th></tr></thead>
+      <tbody>
+        <tr><td>接手前 EPI</td><td class="center">1~5</td><td>0 / 6 拒絕</td></tr>
+        <tr><td>接手前電擊</td><td class="center">1~3</td><td>0 / 4 拒絕</td></tr>
+        <tr><td>純補登 EPI</td><td class="center">1~3</td><td>0 / 4 拒絕</td></tr>
+        <tr><td>純補登電擊</td><td class="center">1~3</td><td>0 / 4 拒絕</td></tr>
+      </tbody>
+    </table>
+
+    <ul class="test-list">
+      <li class="boundary"><span class="case-id">B1.1</span>補登成立後不可刪除 / 修改 / 撤銷（V1 §9.7）</li>
+      <li><span class="case-id">B1.2</span>actual_time_null=true，timestamp_ms=recorded_at</li>
+      <li><span class="case-id">B1.3</span>Timeline 顯示「-」不顯示時間</li>
+      <li class="boundary"><span class="case-id">B1.4</span><strong>補登不啟動 EPI 倒數</strong>：接手前 EPI ×5 → 倒數仍未啟動</li>
+      <li><span class="case-id">B1.5</span>OHCA_LOCKED 後拒絕新增補登</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-b">
+    <div class="phase-head">
+      <div class="phase-letter">B</div>
+      <div class="phase-name">Amiodarone 兩段確認</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">B2.1</span>EPI armed 時按 Amio → 兩者各自 armed（獨立 instance）</li>
+      <li><span class="case-id">B2.2</span>Amio 確認成立 → <strong>不</strong>重啟 EPI 倒數</li>
+      <li class="edge"><span class="case-id">B2.3</span>ALARMING 中 Amio 確認 → Amio 紀錄成立、ALARMING 持續</li>
+      <li><span class="case-id">B2.4</span>Amio 入口：EPI 鍵長按 ≥1000ms → 藥物選單</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-b">
+    <div class="phase-head">
+      <div class="phase-letter">B</div>
+      <div class="phase-name">案件總覽 <code>ohca_case_summary_t</code></div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">B3.1</span>epi_total = local + pre_handover + pure_supp</li>
+      <li><span class="case-id">B3.2</span>last_shock_local_ms 不顯示「第一次本機電擊」</li>
+      <li class="edge"><span class="case-id">B3.3</span>邊界：本機 EPI=0 → first/last_epi_local_ms=0</li>
+      <li class="edge"><span class="case-id">B3.4</span>邊界：僅補登無本機 → total &gt; 0 但 first/last=0</li>
+      <li><span class="case-id">B3.5</span>Timeline 補登事件依 recorded_at 排序，時間欄「-」</li>
+      <li><span class="case-id">B3.6</span>補登 count&gt;1 顯示「補登 EPI ×3」</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（B.S1~S6）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">B.S1</span><span class="proc-title">補登不啟動倒數</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA WAIT_FIRST_EPI（尚未做本機 EPI）</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) <strong>長按 EPI 鍵 ≥ 1s</strong> 進藥物選單 → (2) 選「接手前 EPI」→ (3) 上下鍵選次數 <code>3</code> → (4) 短按主鍵首次確認 → (5) 5s 內再短按主鍵第二次確認</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">寫入 3 筆接手前 EPI；OLED <strong>仍顯示「待本機 EPI」</strong></span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">倒數未啟動；總覽 epi_pre_handover=3、epi_local=0</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">B.S2</span><span class="proc-title">補登不可變</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">B.S1 已寫入 3 筆補登</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進案件總覽 / Timeline → (2) 嘗試對該補登事件按刪除 / 修改任何鍵</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">UI 不提供刪除選項；工程後門觸發 → 韌體拒絕</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">補登筆數仍為 3，無法被修改 / 撤銷 / 刪除</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">B.S3</span><span class="proc-title">Amio 不重啟倒數</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 已啟動 OHCA_COUNTDOWN（剩約 02:30）</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) <strong>長按 EPI 鍵 ≥ 1s</strong> 進藥物選單 → (2) 選「Amiodarone」→ (3) 短按主鍵首次確認 → (4) 5s 內再短按主鍵第二次確認 → (5) 觀察倒數秒數</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">寫入 Amio + 蜂鳴成功音 1 聲；倒數秒數<strong>連續遞減</strong>未跳動</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">倒數時間軸無重啟；amio_total +1</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">B.S4</span><span class="proc-title">結束前檢查 → 補登 → 再結束</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_OVERTIME 中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 主鍵<strong>長按 3s</strong> → (2) 選「前往補登」→ (3) 長按電擊鍵 → 補登「純補登電擊 ×1」→ 二次確認 → (4) 主鍵長按 3s → (5) 選「完成並結束」→ 短按主鍵確認</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 5 後 LOCKED</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">總覽 shock_pure_supp=1，案件鎖定後不可新增</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">B.S5</span><span class="proc-title">總覽數值對應</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">B.S4 完成（含 1 次本機 EPI、3 次接手前 EPI、1 次純補登電擊、1 次 Amio）</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進 OHCA_SUMMARY → (2) 比對總覽欄位 → (3) 切到 Timeline → (4) 計數每類事件</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">epi_total=4 (local 1 + pre_handover 3)、shock_total=1、amio_total=1</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">總覽欄位與 Timeline 計數完全一致</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">B.S6</span><span class="proc-title">Timeline 補登時間「-」</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">B.S5 同案件</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">進入 Timeline 視覺檢查</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">本機 EPI / Amio 顯示精確時間；接手前 EPI ×3 與純補登電擊 ×1 時間欄顯示「-」</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">所有補登事件時間欄為「-」，actual_time_null=true 標記正確</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §5 Phase C ========== -->
+<div class="section" id="sec-5">
+  <div class="section-title"><span class="num">5</span>Phase C — 6 秒通氣節奏</div>
+
+  <div class="card phase-card phase-c">
+    <div class="phase-head">
+      <div class="phase-letter">C</div>
+      <div class="phase-name">獨立模式（V1 §13）</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">C1.1</span>1→6→1 循環不停止</li>
+      <li><span class="case-id">C1.2</span>秒 1：加強提示音 + LED 紅閃 + 畫面反紅</li>
+      <li><span class="case-id">C1.3</span>秒 2~6：短提示音、LED 不閃</li>
+      <li class="boundary"><span class="case-id">C1.4</span>通氣音量=0：蜂鳴關閉、<strong>畫面反紅 + LED 紅閃保留</strong></li>
+      <li><span class="case-id">C1.5</span>通氣音量 NVS key 與系統音量分開（系統音量正常）</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-c">
+    <div class="phase-head">
+      <div class="phase-letter">C</div>
+      <div class="phase-name">OHCA 中切入 + EPI 高優先打斷</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">C2.1</span>OHCA_COUNTDOWN → 返回鍵 → 快速功能 → vent overlay</li>
+      <li><span class="case-id">C2.2</span>EPI 倒數背景持續，畫面顯示 EPI MM:SS 小提示</li>
+      <li class="boundary"><span class="case-id">C2.3</span><strong>EPI ALARMING 觸發 → vent ≤50ms 立即靜音</strong>（V1 §14.3）</li>
+      <li><span class="case-id">C2.4</span>強制切到 OHCA_ALARM_SCREEN，必須完成 EPI 確認</li>
+      <li><span class="case-id">C2.5</span>EPI 確認後彈出「返回通氣節奏？」</li>
+      <li class="edge"><span class="case-id">C2.6</span>邊界：ALARMING 中按返回鍵 → 不允許離開</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-c">
+    <div class="phase-head">
+      <div class="phase-letter">C</div>
+      <div class="phase-name">OHCA 內 6 秒通氣恆常顯示（V1 §14）</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">C3.1</span>EPI / 電擊 / Amio / 補登確認後，6 秒區塊仍維持顯示</li>
+      <li class="boundary"><span class="case-id">C3.2</span>EPI ALARMING 時 6 秒區塊<strong>不蓋過</strong>「請給藥」警報</li>
+      <li><span class="case-id">C3.3</span>OHCA 結束（LOCKED）→ 6 秒自動停止</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（C.S1~S6）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S1</span><span class="proc-title">獨立模式 60s 觀察</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">主功能表</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 上下鍵選「6 秒通氣節奏」→ (2) 短按主鍵進入 → (3) 連續觀察 60s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">每秒切換 1→2→...→6→1；秒 1 加強提示音 + LED 紅閃 + 畫面反紅；秒 2~6 短提示音</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">60s 內看到 10 個完整循環</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S2</span><span class="proc-title">通氣音量 = 0 靜音</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">系統設定中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 通氣音量調至 <code>0</code> → (2) 返回主功能表 → (3) 進 6 秒通氣節奏 → (4) 觀察 12s（2 個循環）</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">蜂鳴<strong>完全靜音</strong>；秒 1 畫面反紅 + LED 紅閃<strong>仍保留</strong>；秒 2~6 數字顯示但無聲</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">無蜂鳴；視覺提示正常</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S3</span><span class="proc-title">OHCA 切入 vent，倒數背景持續</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 已啟動倒數，剩約 03:00</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按返回鍵 → (2) 快速功能選「6 秒通氣」→ (3) 觀察右上角 <code>EPI MM:SS</code> 小提示 → (4) 60s 後按返回離開 vent</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 3 小提示秒數連續遞減；步驟 4 回 OHCA 主畫面，倒數約 02:00</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">倒數時間軸不中斷、不暫停</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S4</span><span class="proc-title">EPI 高優先打斷 ≤ 50ms</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN 剩 00:01；已切入 vent overlay</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 啟動高速攝影（120fps+）對準 OLED 與蜂鳴器 → (2) 等待倒數歸零觸發 ALARMING → (3) 攝影分析從 ALARMING 觸發到 vent 蜂鳴停止的 frame 數</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">vent 蜂鳴在 ALARMING 觸發後 ≤ 6 frames（120fps × 50ms）內停止；UI 強制切到 OHCA_ALARM_SCREEN</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">靜音延遲 ≤ 50ms</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S5</span><span class="proc-title">完成 EPI 後詢問返回 vent</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">C.S4 在 ALARM_SCREEN</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按 EPI 鍵首次 → (2) 5s 內再短按 EPI 鍵第二次 → (3) 觀察詢問對話框</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 2 後 OLED 跳出「返回通氣節奏？」對話框；選「是」→ 回 vent overlay；選「否」→ 回 OHCA 主畫面</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">兩條路徑皆能正確切換，倒數重啟為 04:00</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S6</span><span class="proc-title">6 秒恆常顯示不蓋警報</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN，已開啟 6 秒恆常顯示</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 確認主畫面下方有 6 秒節奏小區塊 → (2) 等待倒數歸零進 ALARMING → (3) 觀察畫面布局</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">「請給藥」覆蓋上半部，6 秒區塊保留下方但不阻礙警報訊息</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">「請給藥」清晰可見、6 秒節奏未消失但不蓋過警報</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §6 Phase D ========== -->
+<div class="section" id="sec-6">
+  <div class="section-title"><span class="num">6</span>Phase D — Training 模式</div>
+
+  <div class="card phase-card phase-d">
+    <div class="phase-head">
+      <div class="phase-letter">D</div>
+      <div class="phase-name">參數化 OHCA 核心狀態機</div>
+    </div>
+    <table>
+      <thead><tr><th>倒數</th><th>1 分鐘預警</th><th>ALARMING 起算</th></tr></thead>
+      <tbody>
+        <tr><td>30s</td><td>不提供</td><td>30s 到</td></tr>
+        <tr><td>1m</td><td>不提供</td><td>60s 到</td></tr>
+        <tr><td>4m</td><td>標準（同 OHCA）</td><td>240s 到</td></tr>
+      </tbody>
+    </table>
+    <ul class="test-list">
+      <li class="edge"><span class="case-id">D1.1</span>30s 倒數：since=15000 不觸發任何預警</li>
+      <li class="edge"><span class="case-id">D1.2</span>1m 倒數：since=30000 不觸發任何預警</li>
+      <li><span class="case-id">D1.3</span>4m 倒數預警邏輯與 OHCA 完全一致</li>
+      <li><span class="case-id">D1.4</span>case_mode=Training 參數：history_limit=20、allow_device_delete=true、show_training_label=true</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-d">
+    <div class="phase-head">
+      <div class="phase-letter">D</div>
+      <div class="phase-name">Training 獨有功能</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">D2.1</span>「重置」僅 Training 提供（OHCA 無）</li>
+      <li><span class="case-id">D2.2</span>結束 → 保存 / 不保存選擇</li>
+      <li><span class="case-id">D2.3</span>保存 → Training 區（FIFO 20，不混入 OHCA 列表）</li>
+      <li><span class="case-id">D2.4</span>Training 補登邏輯與 OHCA 一致（同 ems_supp）</li>
+      <li><span class="case-id">D2.5</span>裝置端可單筆刪除 Training</li>
+      <li><span class="case-id">D2.6</span>全程「訓練模式」浮水印（不被警報蓋過）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（D.S1~S6）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">D.S1</span><span class="proc-title">Training 30s 浮水印</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">主功能表</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進「訓練模式」→ (2) 選 30s → (3) 啟動倒數 → (4) 全程觀察</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">OLED 全程顯示半透明斜紋「訓練模式」浮水印</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">浮水印於 IDLE / COUNTDOWN / ALARMING / OVERTIME 全部畫面均存在</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">D.S2</span><span class="proc-title">1m 倒數無預警</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">D.S1 流程但選 1m</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 啟動 1m 倒數 → (2) 等待 OLED 顯示 <code>00:30</code> → (3) 從 30s 觀察至 0s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">倒數 00:30 至 00:00 期間<strong>無短嗶 / 無黃慢閃</strong>；僅 0:00 觸發 ALARMING</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">30s 期間蜂鳴器靜默、LED 不閃；ALARMING 在 60s 觸發</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">D.S3</span><span class="proc-title">4m 倒數標準預警</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">選 4m</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">等待倒數至 01:00 → 觀察 60s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">行為與 A.S3 完全一致（每 15s 短嗶 + 黃慢閃）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">60s 內聽到 4 次短嗶</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">D.S4</span><span class="proc-title">結束保存</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">D.S1 倒數中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 主鍵長按 3s → 結束選單 → (2) 選「結束訓練」→ (3) 「保存 / 不保存」對話框 → (4) 選「保存」</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 4 後寫入 Training 區一筆</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">Training 列表筆數 +1</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">D.S5</span><span class="proc-title">Training / OHCA 列表分離</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">歷史紀錄至少各有 1 筆 OHCA + 1 筆 Training</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進「歷史紀錄」→ (2) 切換 OHCA 與 Training 列表 → (3) 比對筆數</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">兩列表互不混；OHCA 不出現 Training 浮水印 case，反之亦然</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">兩列表互不影響，數量分別正確</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">D.S6</span><span class="proc-title">Training 裝置端刪除</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">Training 列表至少 1 筆</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進入該筆 Training → (2) 選「刪除」→ (3) 二次確認 → (4) 返回列表</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 4 後該筆消失，列表筆數 -1</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">刪除成功；OHCA 列表無「刪除」選項</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §7 Phase E ========== -->
+<div class="section" id="sec-7">
+  <div class="section-title"><span class="num">7</span>Phase E — 持久化 + 歷史紀錄</div>
+
+  <div class="card phase-card phase-e">
+    <div class="phase-head">
+      <div class="phase-letter">E</div>
+      <div class="phase-name">LittleFS partition 規劃</div>
+    </div>
+    <table>
+      <thead><tr><th>區域</th><th class="center">上限</th><th>策略</th></tr></thead>
+      <tbody>
+        <tr><td>/cases/ohca/</td><td class="center">50</td><td>FIFO</td></tr>
+        <tr><td>/cases/training/</td><td class="center">20</td><td>FIFO</td></tr>
+        <tr><td>/config/system.json</td><td class="center">1</td><td>覆寫</td></tr>
+        <tr><td>/config/device_name.txt</td><td class="center">1</td><td>覆寫</td></tr>
+        <tr><td>/sync_state.json</td><td class="center">1</td><td>索引</td></tr>
+      </tbody>
+    </table>
+    <ul class="test-list">
+      <li><span class="case-id">E1.1</span>寫滿 50 → 第 51 筆 → 最舊一筆刪除（依檔名 timestamp）</li>
+      <li><span class="case-id">E1.2</span>同 case_id 寫入 → 覆寫不新增</li>
+      <li class="boundary"><span class="case-id">E1.3</span>atomic write：write tmp → fsync → rename，避免毀損</li>
+      <li><span class="case-id">E1.4</span>已鎖定 case 重啟後可從歷史列表讀取</li>
+      <li class="edge"><span class="case-id">E1.5</span>邊界：寫入中拔電 → 重啟檢查最後一筆完整性，不完整則丟棄</li>
+      <li class="edge"><span class="case-id">E1.6</span>邊界：LittleFS 滿 → 回傳錯誤 + UI 「儲存失敗」</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（E.S1~S3）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">E.S1</span><span class="proc-title">FIFO 50 筆覆蓋</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">清空 /cases/ohca/（透過 Type-C 工具或燒錄空 partition）</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 連續完成 50 筆短 OHCA → (2) 進歷史列表確認 50 筆 → (3) 完成第 51 筆 → (4) 進歷史列表 → (5) 完成第 52 筆 → (6) 再進列表</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 4 列表 50 筆，case#1 已被 case#51 取代；步驟 6 case#2 也被 case#52 取代</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">列表始終 ≤ 50 筆，FIFO 順序正確</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">E.S2</span><span class="proc-title">拔電後重啟資料保留</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 啟動 OHCA 並至少完成 1 次 EPI 確認 + 1 次電擊</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) OHCA 進行中（不結束、不鎖定）直接拔 USB-C 等待裝置斷電 → (2) 重新插上 USB-C / 開機 → (3) 進歷史列表查看</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 3 該未鎖定 case 仍存在；事件清單包含步驟 1 的 EPI 與電擊</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">事件不丟失；檔案完整可讀（無毀損）</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">E.S3</span><span class="proc-title">系統設定持久化</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">恢復預設設定（亮度 3 / 系統音量 3 / 通氣音量 3）</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 設定亮度 5、系統音量 1、通氣音量 0 → (2) 長按 Power 關機 → (3) 重新開機 → (4) 進系統設定查看</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 4 三個設定值與步驟 1 一致</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">NVS 寫入正確、重啟後保留</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §8 Phase F ========== -->
+<div class="section" id="sec-8">
+  <div class="section-title"><span class="num">8</span>Phase F — App 配對碼同步</div>
+
+  <div class="card phase-card phase-f">
+    <div class="phase-head">
+      <div class="phase-letter">F</div>
+      <div class="phase-name">配對碼產生與 TTL</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">F1.1</span>4 位數 0000~9999 隨機產生</li>
+      <li class="edge"><span class="case-id">F1.2</span>邊界：0001 / 0010 顯示 4 位完整（前導 0）</li>
+      <li><span class="case-id">F1.3</span>TTL 120s：t0+119s 有效，t0+121s 失效</li>
+      <li class="edge"><span class="case-id">F1.4</span>邊界：t0+120000ms 整 → 失效（&lt; 120s 才有效）</li>
+      <li><span class="case-id">F1.5</span>配對成功後配對碼立即作廢</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-f">
+    <div class="phase-head">
+      <div class="phase-letter">F</div>
+      <div class="phase-name">同步流程與去重</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">F2.1</span>NUS+JSON payload schema 完整</li>
+      <li class="boundary"><span class="case-id">F2.2</span>App 端依 case_id (UUID v4) 去重，重複同步覆蓋</li>
+      <li><span class="case-id">F2.3</span>傳輸中斷 → 整筆重傳，不做片段續傳（V1 §23.4）</li>
+      <li><span class="case-id">F2.4</span>同步成功 → sync_state.json 紀錄 synced_to_app=true</li>
+      <li><span class="case-id">F2.5</span>已同步 case 仍允許再次同步（覆蓋 App 端）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（F.S1~S5）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">F.S1</span><span class="proc-title">配對成功（119s 內）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">裝置已鎖定 1 筆 OHCA 案件；App 已安裝、未連線</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 裝置進案件總覽 → 選「同步至 App」→ OLED 顯示 4 位配對碼（如 <code>4827</code>）→ 紀錄 t0 → (2) App 點「掃描裝置」→ 選到該裝置 → (3) 100s 後輸入配對碼 → (4) 確認連線</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 4 後 App 顯示「同步成功」、案件出現在 App 列表</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">120s 內配對成功；裝置 sync_state.json 標記 synced_to_app=true</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">F.S2</span><span class="proc-title">配對碼逾時失效</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">F.S1 流程</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 裝置產生配對碼 → 紀錄 t0 → (2) 等待 121s → (3) App 輸入配對碼</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 3 拒絕，App 顯示「配對碼已失效」；裝置端要求重新產生</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">120s 後配對碼確實失效，無法配對</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">F.S3</span><span class="proc-title">中斷重傳整筆</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">裝置鎖定 1 筆大型案件（≥ 20 events）；F.S1 已配對成功</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 開始同步 → 在傳輸進度約 50% 時 → (2) 強制關閉 App / 將手機飛航 → (3) 等待 5s → (4) 重啟 App / 關閉飛航 → 重新連線 → (5) 重新觸發同步</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 5 整筆重傳（非從 50% 接續）；App 端依 case_id 覆蓋而非新增</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">App 列表只有 1 筆該 case_id；events 完整 = 裝置端事件數</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">F.S4</span><span class="proc-title">同 case 重複同步去重</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">F.S3 已成功同步該 case</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 在裝置端對同一 case 再次點「同步至 App」→ (2) 完成配對與同步流程 → (3) 檢查 App 列表</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">App 列表仍只有 1 筆（case_id 相同 → 覆蓋更新而非新增）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">列表筆數 = 同步前筆數（去重生效）</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">F.S5</span><span class="proc-title">App 端刪除不影響裝置</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">F.S4 同步完成</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 在 App 內刪除該 case → 二次確認 → (2) 進裝置端歷史列表查看</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 2 裝置端該 case 仍存在；裝置 sync_state 維持 synced_to_app=true</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">裝置端列表筆數不減；可從裝置端再同步至 App 重新出現</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §9 Phase G ========== -->
+<div class="section" id="sec-9">
+  <div class="section-title"><span class="num">9</span>Phase G — 系統設定 + Type-C 工具</div>
+
+  <div class="card phase-card phase-g">
+    <div class="phase-head">
+      <div class="phase-letter">G</div>
+      <div class="phase-name">NVS 設定與恢復預設</div>
+    </div>
+    <table>
+      <thead><tr><th>設定</th><th class="center">範圍</th><th class="center">預設</th><th>邊界</th></tr></thead>
+      <tbody>
+        <tr><td>螢幕亮度</td><td class="center">1~5</td><td class="center">3</td><td>0/6 拒絕</td></tr>
+        <tr><td>系統音量</td><td class="center">1~5</td><td class="center">3</td><td><strong>0 拒絕</strong></td></tr>
+        <tr><td>通氣音量</td><td class="center">0~5</td><td class="center">3</td><td>0=靜音允許、6 拒絕</td></tr>
+      </tbody>
+    </table>
+    <ul class="test-list">
+      <li class="boundary"><span class="case-id">G1.1</span><strong>系統音量不可 0</strong>（V1 §23.6）</li>
+      <li><span class="case-id">G1.2</span>恢復預設清除：3 個音量 / 亮度設定</li>
+      <li><span class="case-id">G1.3</span>恢復預設<strong>不清</strong>：裝置名稱 / 案件 / Training / 同步狀態（V1 §19.6）</li>
+      <li class="edge"><span class="case-id">G1.4</span>邊界：UTF-8 多位元組裝置名稱正確存取</li>
+    </ul>
+  </div>
+
+  <div class="card phase-card phase-g">
+    <div class="phase-head">
+      <div class="phase-letter">G</div>
+      <div class="phase-name">Type-C 管理工具（USB CDC）</div>
+    </div>
+    <ul class="test-list">
+      <li><span class="case-id">G2.1</span>列出 OHCA 50 + Training 20 上限</li>
+      <li><span class="case-id">G2.2</span>匯出 CSV / JSON 欄位完整</li>
+      <li><span class="case-id">G2.3</span>二次確認後清除案件區</li>
+      <li class="boundary"><span class="case-id">G2.4</span>工具<strong>不提供</strong>修改既有案件 API（V1 §18.3）</li>
+      <li><span class="case-id">G2.5</span>連線中不影響 OHCA 進行</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（G.S1~S6）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">G.S1</span><span class="proc-title">系統音量 NVS 持久化</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">開機後預設音量 3</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進系統設定 → 系統音量調至 5 → (2) 短按 EPI 鍵試聽確認音 → (3) 長按 Power 關機 → (4) 重新開機 → (5) 進系統設定查看</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 2 確認音明顯較大聲；步驟 5 顯示音量值仍為 5</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">NVS 正確保留；體感音量分級明確</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">G.S2</span><span class="proc-title">通氣音量 0 靜音</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">G.S1 開機完成</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進系統設定 → 通氣音量調至 0 → (2) 進「6 秒通氣節奏」→ (3) 觀察 12s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">通氣模式蜂鳴<strong>全靜音</strong>；秒 1 反紅 + LED 紅閃保留</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">無蜂鳴；視覺提示正常</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">G.S3</span><span class="proc-title">系統音量不可 = 0</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">開機完成</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進系統設定 → 嘗試將系統音量調至 0</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">UI 滑桿最低停在 1，無法達 0；工程後門強塞 0 → 韌體拒絕並回 1</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">系統音量範圍實際為 1~5</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">G.S4</span><span class="proc-title">恢復預設不清案件</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">歷史列表 ≥ 5 筆 OHCA、設定值非預設</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 進系統設定 → 「恢復預設值」→ 二次確認 → (2) 進系統設定查看 → (3) 進歷史列表 → (4) 進系統設定 → 「裝置名稱」</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 2 三個音量 / 亮度回 3；步驟 3 案件數量不變；步驟 4 裝置名稱保留</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">清除範圍精確（僅清音量 / 亮度），其餘保留</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">G.S5</span><span class="proc-title">App 寫入裝置名稱</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">F.S1 已配對成功</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) App 端編輯裝置名稱為「安康91」→ 寫入 → (2) 裝置端進系統設定 → 裝置名稱 → (3) 長按 Power 關機 → 重啟 → (4) 進系統設定查看</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 2 顯示「安康91」；步驟 4 仍顯示「安康91」（重啟保留）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">UTF-8 中文正確存取；重啟保留</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">G.S6</span><span class="proc-title">Type-C 工具列案件並清除</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">歷史列表有 ≥ 3 筆 OHCA</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) USB-C 連電腦 → 開 Type-C 工具 → (2) 點「列案件」→ (3) 選一筆匯出 CSV → 開 CSV 檢查欄位 → (4) 點「清除全部」→ 二次確認 → (5) 裝置端進歷史列表</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 2 列出全部案件；步驟 3 CSV 欄位完整（event_id / type / timestamp / elapsed / count）；步驟 5 列表為空</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">流程完整；清除後系統設定 / 裝置名稱保留</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §10 Phase H ========== -->
+<div class="section" id="sec-10">
+  <div class="section-title"><span class="num">10</span>Phase H — 電源管理</div>
+
+  <div class="card phase-card phase-h">
+    <div class="phase-head">
+      <div class="phase-letter">H</div>
+      <div class="phase-name">螢幕常亮 + 邊充邊用</div>
+    </div>
+    <ul class="test-list">
+      <li class="boundary"><span class="case-id">H1.1</span>OHCA / 通氣 / Training → <strong>螢幕禁止 sleep</strong>（V1 §20）</li>
+      <li><span class="case-id">H1.2</span>案件中插上 USB-C → 充電 + 使用</li>
+      <li><span class="case-id">H1.3</span>案件中拔下 USB-C → 改吃電池、案件不中斷</li>
+      <li class="edge"><span class="case-id">H1.4</span>邊界：插拔瞬間不觸發 reset</li>
+      <li class="edge"><span class="case-id">H1.5</span>峰值電流 ≤ USB-C 5V/500mA 上限</li>
+      <li><span class="case-id">H1.6</span>低電量：圖示閃爍、不發聲、不強制關機</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="sub-title">L3 實機煙霧操作流程（H.S1~S6）</div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">H.S1</span><span class="proc-title">OHCA 螢幕常亮 30 分鐘</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 啟動倒數，倒數結束後反覆做 EPI 二段確認重啟倒數</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 持續放置 30 分鐘不操作（倒數 / 警報 / OVERTIME 反覆）→ (2) 全程觀察 OLED</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">30 分鐘內螢幕<strong>從未</strong> sleep / dim / 黑屏</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">OLED 持續顯示 OHCA 畫面</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">H.S2</span><span class="proc-title">OHCA 中插拔 USB-C ×3</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 啟動倒數（剩約 03:00）；接 USB-C 供電</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 拔下 USB-C（改吃電池）→ 觀察 5s → (2) 插回 USB-C → 觀察 5s → (3) 重複步驟 1~2 兩次（共拔插 3 次）→ (4) 比對倒數時間</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">每次插拔過程中倒數<strong>連續遞減</strong>、無 reset；蜂鳴 / 警報行為不中斷</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">步驟 4 倒數時間 = 起始時間 − 拔插總耗時；裝置未重啟</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">H.S3</span><span class="proc-title">低電量提醒</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">電池電量 ≤ 低電量門檻（如 ≤ 20%）；案件進行中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 觀察 OLED 角落電量圖示 → (2) 等待 60s 確認行為</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">電量圖示閃爍；<strong>蜂鳴不發聲</strong>；案件不被強制結束</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">圖示視覺提示 + 無干擾警報音；案件可繼續</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">H.S4</span><span class="proc-title">邊充邊用 1 小時</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">電量 ≤ 50%，接 USB-C</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 啟動 OHCA 倒數 + 6 秒通氣恆常顯示 → (2) 持續 1 小時 → (3) 用紅外線測溫槍量測電池表面溫度</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">1 小時後溫度 &lt; 45°C（TP4056 自動降流保護）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">未過熱、充電仍進行</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">H.S5</span><span class="proc-title">螢幕常亮續航 8h</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">1000mAh 電池滿電（充至 4.2V）；不接 USB-C</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 啟動 OHCA 倒數 + 反覆 EPI 確認 → (2) 連續執行至自動關機</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">續航 ≥ 8 小時</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">連續使用達 8 小時門檻</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">H.S6</span><span class="proc-title">連續開關機 50 次</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">電量 ≥ 80%</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 長按 Power 開機 → 等待 5s → (2) 長按 Power 關機 → 等待 3s → (3) 重複步驟 1~2 共 50 個循環 → (4) 開機後檢查歷史列表</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">50 次後仍可正常開機；歷史列表完整可讀</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">無 brick、NVS 與 LittleFS 無毀損</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========== §11 涵蓋率 ========== -->
+<div class="section" id="sec-11">
+  <div class="section-title"><span class="num">11</span>涵蓋率目標與品質門</div>
+
+  <div class="card">
+    <div class="sub-title">涵蓋率目標</div>
+    <div class="gauge-row">
+      <div class="gauge-label">L1 純函式（Phase A 倒數 / 兩段確認 / 補登 / 總覽）</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:100%"></div></div>
+      <div class="gauge-pct">100%</div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-label">L1 純函式（其他 Phase）</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:90%"></div></div>
+      <div class="gauge-pct">≥90%</div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-label">L2 狀態機 transition coverage</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:100%"></div></div>
+      <div class="gauge-pct">100%</div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-label">L3 實機煙霧（每 Phase）</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:100%"></div></div>
+      <div class="gauge-pct">全 PASS</div>
+    </div>
+    <div class="gauge-row">
+      <div class="gauge-label">L4 PM 驗收（V1 §22）</div>
+      <div class="gauge-bar"><div class="gauge-fill" style="width:100%"></div></div>
+      <div class="gauge-pct">全章節</div>
+    </div>
+
+    <div class="sub-title">品質門（每 Phase 完工標準）</div>
+    <ul class="test-list">
+      <li>L1 全綠 + 涵蓋率達標</li>
+      <li>L2 狀態機 transition 全綠</li>
+      <li>L3 煙霧測試全部 PASS（簽收清單）</li>
+      <li>對應的 V1 §22 章節驗收 PASS</li>
+      <li>無已知 P0 / P1 bug</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ========== §12 風險 ========== -->
+<div class="section" id="sec-12">
+  <div class="section-title"><span class="num">12</span>高風險區與排程</div>
+
+  <div class="card">
+    <div class="sub-title">高風險區（必驗）</div>
+
+    <div class="risk-row">
+      <div class="risk-name">⚠ EPI 倒數精度 ±50ms</div>
+      <div class="risk-desc">RTOS 下不易保證；任何延遲影響救護現場 4 分鐘節奏。</div>
+      <div class="risk-fix">獨立 FreeRTOS task + 高優先級；L3 用碼錶與 OLED 對拍</div>
+    </div>
+
+    <div class="risk-row">
+      <div class="risk-name">⚠ EPI 高優先打斷通氣（≤50ms 靜音）</div>
+      <div class="risk-desc">vent overlay → ALARMING 切換延遲超標會誤導救護人員。</div>
+      <div class="risk-fix">vent task 低優先；L3 高速攝影驗證</div>
+    </div>
+
+    <div class="risk-row">
+      <div class="risk-name">⚠ 補登資料不可變</div>
+      <div class="risk-desc">UI 層誤觸或工程繞過會破壞紀錄可信度（V1 §9.7 / §23.3）。</div>
+      <div class="risk-fix">韌體層拒絕 API；L1 釘住「補登成立後嘗試修改」一定 fail</div>
+    </div>
+
+    <div class="risk-row">
+      <div class="risk-name">⚠ LittleFS 寫入中拔電 → 檔案毀損</div>
+      <div class="risk-desc">案件資料丟失或讀取失敗。</div>
+      <div class="risk-fix">atomic rename + fsync；L3 拔電壓力測試 50 次</div>
+    </div>
+
+    <div class="risk-row">
+      <div class="risk-name">⚠ BLE 中斷重傳狀態不一致</div>
+      <div class="risk-desc">App 端可能重複收錄同案件。</div>
+      <div class="risk-fix">整筆重傳 + Case ID 去重；L2 mock 中斷模擬</div>
+    </div>
+
+    <div class="risk-row">
+      <div class="risk-name">⚠ 系統音量不可靜音</div>
+      <div class="risk-desc">UI 滑桿越界導致 0 音量會錯失警報（V1 §23.6）。</div>
+      <div class="risk-fix">韌體層拒絕 0；L1 釘住</div>
+    </div>
+
+    <div class="risk-row">
+      <div class="risk-name">⚠ millis() rollover（49.7 天後）</div>
+      <div class="risk-desc">uint32 wrap 後計時錯誤。</div>
+      <div class="risk-fix">所有時間運算用 uint32 減法（rollover-safe）；L1 釘住 wrap-around case</div>
+    </div>
+
+    <div class="sub-title">排程估算（總計約 92h）</div>
+    <table>
+      <thead><tr><th>Phase</th><th class="center">L1</th><th class="center">L2</th><th class="center">L3</th><th class="center">小計</th></tr></thead>
+      <tbody>
+        <tr><td>A</td><td class="num center">8h</td><td class="num center">4h</td><td class="num center">4h</td><td class="num center"><strong>16h</strong></td></tr>
+        <tr><td>B</td><td class="num center">6h</td><td class="num center">3h</td><td class="num center">3h</td><td class="num center">12h</td></tr>
+        <tr><td>C</td><td class="num center">5h</td><td class="num center">3h</td><td class="num center">3h</td><td class="num center">11h</td></tr>
+        <tr><td>D</td><td class="num center">4h</td><td class="num center">2h</td><td class="num center">2h</td><td class="num center">8h</td></tr>
+        <tr><td>E</td><td class="num center">5h</td><td class="num center">4h</td><td class="num center">3h</td><td class="num center">12h</td></tr>
+        <tr><td>F</td><td class="num center">5h</td><td class="num center">4h</td><td class="num center">3h</td><td class="num center">12h</td></tr>
+        <tr><td>G</td><td class="num center">4h</td><td class="num center">2h</td><td class="num center">2h</td><td class="num center">8h</td></tr>
+        <tr><td>H</td><td class="num center">3h</td><td class="num center">2h</td><td class="num center">4h</td><td class="num center">9h</td></tr>
+        <tr><td>基礎設施</td><td colspan="3" class="center">native env / Unity / mock</td><td class="num center">4h</td></tr>
+        <tr style="background:#f1f5f9;font-weight:700"><td>合計</td><td colspan="3"></td><td class="num center">~92h</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ========== §13 與 V1 §22 對應 ========== -->
+<div class="section" id="sec-14">
+  <div class="section-title"><span class="num">13</span>與 V1 SoT §22 驗收對應</div>
+  <div class="card">
+    <table>
+      <thead><tr><th>V1 §22 章節</th><th class="center">Phase</th><th>本計劃</th></tr></thead>
+      <tbody>
+        <tr><td>22.1 OHCA 基本流程</td><td class="center"><span class="badge badge-red">A</span></td><td>§3.4 A.S1~S8</td></tr>
+        <tr><td>22.2 電擊測試</td><td class="center"><span class="badge badge-amber">B</span></td><td>§4.6</td></tr>
+        <tr><td>22.3 Amiodarone</td><td class="center"><span class="badge badge-amber">B</span></td><td>§4.6 B.S3</td></tr>
+        <tr><td>22.4 補登測試</td><td class="center"><span class="badge badge-amber">B</span></td><td>§4.6 B.S1/S2/S4</td></tr>
+        <tr><td>22.5 6秒通氣節奏</td><td class="center"><span class="badge badge-teal">C</span></td><td>§5.4 C.S1~S2</td></tr>
+        <tr><td>22.6 OHCA 中 6秒恆常顯示</td><td class="center"><span class="badge badge-teal">C</span></td><td>§5.4 C.S6</td></tr>
+        <tr><td>22.7 Training 測試</td><td class="center"><span class="badge badge-purple">D</span></td><td>§6.7 D.S1~S6</td></tr>
+        <tr><td>22.8 App 同步</td><td class="center"><span class="badge badge-blue">F</span></td><td>§8.5 F.S1~S5</td></tr>
+        <tr><td>22.9 電源測試</td><td class="center"><span class="badge badge-red">H</span></td><td>§10.5 H.S1~S6</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-green">
+      <strong>✓ 完整對應</strong>：V1 §22 所有測試章節皆有對應的本計劃 L3 實機案例 + L1/L2 自動化驗證底層邏輯。PM 驗收前 L1~L3 必須全綠。
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  EMS DoseSync Pro Prototype V1 — 測試計劃 v1.0 · 2026-05-03<br>
+  完整內容（含 L1/L2 case 細節）見 <code>EMS_DoseSync_Pro_Test_Plan_V1.md</code>
+</div>
+
+</body>
+</html>
