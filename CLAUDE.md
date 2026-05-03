@@ -59,18 +59,32 @@
 - **App**: 待定（React Native / Flutter / 原生）
 - **通訊協定**: BLE GATT
 
+## Phase 編號對照表
+
+專案內共三套 Phase 編號並存，各自含意不同。為避免混淆，後續文件統一加前綴：
+
+| 前綴 | 含意 | 編號範圍 | 出處 |
+|------|------|---------|------|
+| **Dev-Phase** | 開發進度時間軸（硬體 + 韌體 + App 整體里程碑） | 1 / 1.5 / 2 / 3 / 4 | 本檔「## 開發階段」 |
+| **Impl-Phase** | 韌體實作子階段（功能模組實作順序） | A / B / C / D / E / F / G / H | `README.md` + `docs/pm-dev-spec.md §四` |
+| **Prod-Phase** | 量產階段切換時機（電源拓樸、外殼定型等硬體封版決策） | 單一階段（量產） | 本檔「## 電源供應規劃」+ SoT V1 §20.4.4 |
+
+> 📌 三套互不對映。例如 Dev-Phase 4「整合測試與優化」與 Prod-Phase「量產」是兩件事；Impl-Phase A~H 在 Dev-Phase 2~3 內逐步完成。
+
+> 📌 既有文件（SoT V1、pm-dev-spec、incremental-impl-plan、README）內的 Phase 編號暫保留原樣，新增/修改文件時使用前綴。歷史 commit 與既有對話紀錄不回填。
+
 ## 開發階段
 
-- [x] Phase 1: 硬體原型 — ESP32-S3 + 8 按鈕 + OLED + 蜂鳴器（2026-04-17 驗收通過）
-- [ ] Phase 1.5: INMP441 麥克風重試（換新模組後啟用 `ENABLE_MIC_MONITOR`）
-- [ ] Phase 2: BLE 通訊 — 裝置與手機配對、數據傳輸
-- [ ] Phase 3: 手機 App — 接收數據、顯示時間軸 + 升級硬體 RTC（DS3231）
-- [ ] Phase 4: 整合測試與優化
+- [x] Dev-Phase 1: 硬體原型 — ESP32-S3 + 8 按鈕 + OLED + 蜂鳴器（2026-04-17 驗收通過）
+- [ ] Dev-Phase 1.5: INMP441 麥克風重試（換新模組後啟用 `ENABLE_MIC_MONITOR`）
+- [ ] Dev-Phase 2: BLE 通訊 — 裝置與手機配對、數據傳輸
+- [ ] Dev-Phase 3: 手機 App — 接收數據、顯示時間軸 + 升級硬體 RTC（DS3231）
+- [ ] Dev-Phase 4: 整合測試與優化
 
-## Phase 2 設計決策（2026-04-18）
+## Dev-Phase 2 設計決策（2026-04-18）
 
 ### 按鈕互動
-- 採單行程按鈕（single-action）：一次下降緣 = 一筆事件，Phase 1 的 debounce 邏輯可直接沿用。
+- 採單行程按鈕（single-action）：一次下降緣 = 一筆事件，Dev-Phase 1 的 debounce 邏輯可直接沿用。
 - 按鈕事件名稱後期會全改，目前配置以驗證可行性為主。
 
 ### 資料模型（統一）
@@ -83,26 +97,32 @@ EmsEvent { event_type: uint8, timestamp: uint64 (epoch ms), elapsed_ms: uint32 }
 - Session 開機自動產生，首次按鈕按下鎖定 `session_start_ms`，不做手動切換。
 
 ### BLE 協議
-- Phase 2 採 Nordic UART Service (NUS) + JSON（先求通，不求省電）。
+- Dev-Phase 2 採 Nordic UART Service (NUS) + JSON（先求通，不求省電）。
 - 後期 App 穩定後，若要省頻寬/功耗再切自訂 GATT。
 
 ### 時間同步
-- **Phase 2**：App 連線時下發 epoch ms（軟體對時，免硬體成本）。
-- **Phase 3**：升級 DS3231 RTC 模組（I2C，與 OLED 共用 bus）— 離線不失憶、救護現場免等 App 連線、晶振精度 ±2ppm 符合醫療紀錄可信度要求。
+- **Dev-Phase 2**：App 連線時下發 epoch ms（軟體對時，免硬體成本）。
+- **Dev-Phase 3**：升級 DS3231 RTC 模組（I2C，與 OLED 共用 bus）— 離線不失憶、救護現場免等 App 連線、晶振精度 ±2ppm 符合醫療紀錄可信度要求。
 
 ### 按鈕功能擴展計畫（未來）
 - **開關電源功能**：特定按鈕長按 → 軟關機/啟動（進入 deep sleep 或重置）。
 - **選擇模組功能**：按鈕在不同模式下可有不同語意（例如「CPR 模式」下 8 顆按鈕定義與「注射模式」不同）。
-- 目前 Phase 1/2 先不實作，按鈕配置以驗證可行性為主，結構上保留擴展空間（`event_type` 可擴增，不限於 8 種）。
+- 目前 Dev-Phase 1/2 先不實作，按鈕配置以驗證可行性為主，結構上保留擴展空間（`event_type` 可擴增，不限於 8 種）。
 
 ## 電源供應規劃
 
-### Phase 2~3 開發階段
+### Dev-Phase 2~3 開發階段
 - 採 USB Type-C 直供（最簡單、無電池安全問題）。
+
+### Prod-Phase 量產階段（封版方向）
+- 切換到 3.7V 鋰電池 1000mAh + TP4056 充電 IC + 升壓 IC + 單節保護板。
+- 對齊 SoT V1 §20.4 充放電拓樸與 §21.1 主要硬體清單。
+- 功耗預算與 1000mAh 連續使用時數預估見 SoT V1 §20.4，待 Dev-Phase 1 實測校正。
+- 擴充模組（INMP441/MicroSD/CO 感測器）功耗預留見 SoT V1 §20.5；CO 感測器禁用加熱半導體型（MQ-7/MQ-9）。
 
 ### 候選方案備忘
 - **方案 E — 乾電池供電**（AA × 3 或 × 4 + LDO）
   - **優點**：便利商店買得到、無充電設計、救護車備料簡單、沒電即換新。
   - **缺點**：容量低（鹼性 ~2500mAh 但放電曲線差）、體積重量大、環保壓力。
   - **適用**：極端可靠性場景（例如偏遠救護站無法穩定充電）。
-- 其他方案（18650 / LiPo / USB-C + 內置電池 / Power Bank）Phase 4 做外殼時再依實測耗電決定。
+- 其他方案（18650 / LiPo / USB-C + 內置電池 / Power Bank）Prod-Phase 做外殼時再依實測耗電決定。

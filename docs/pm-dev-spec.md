@@ -179,13 +179,33 @@ V1 §9。
 
 ```c
 typedef enum {
-  EVT_EPI_LOCAL,        // 本機 EPI（有時間戳）
-  EVT_SHOCK_LOCAL,      // 本機電擊（有時間戳）
-  EVT_AMIODARONE,
-  EVT_EPI_PRE_HANDOVER, // 接手前 EPI（無時間戳）
-  EVT_EPI_PURE_SUPP,    // 純補登 EPI（無時間戳）
-  EVT_SHOCK_PRE_HANDOVER,
-  EVT_SHOCK_PURE_SUPP,
+  // ===== 0x00~0x7F：V1 核心事件段位（封版固定） =====
+  EVT_EPI_LOCAL          = 0x01,  // 本機 EPI（有時間戳）
+  EVT_SHOCK_LOCAL        = 0x02,  // 本機電擊（有時間戳）
+  EVT_AMIODARONE         = 0x03,
+  EVT_EPI_PRE_HANDOVER   = 0x04,  // 接手前 EPI（無時間戳）
+  EVT_EPI_PURE_SUPP      = 0x05,  // 純補登 EPI（無時間戳）
+  EVT_SHOCK_PRE_HANDOVER = 0x06,
+  EVT_SHOCK_PURE_SUPP    = 0x07,
+
+  // ===== 0x80~0xBF：未來擴充藥物紀錄段位（V1 §8A.5） =====
+  // EVT_DRUG_D50W       = 0x80,
+  // EVT_DRUG_TXA        = 0x81,
+  // EVT_DRUG_ATROPINE   = 0x82,
+  // ...
+
+  // ===== 0xC0~0xDF：未來擴充感測器事件段位 =====
+  // EVT_CO_ALERT        = 0xC0,  // CO 濃度警報
+  // EVT_CO_READING      = 0xC1,  // CO 數值定期記錄
+  // ...
+
+  // ===== 0xE0~0xEF：未來擴充錄音相關事件段位 =====
+  // EVT_RECORD_START    = 0xE0,
+  // EVT_RECORD_STOP     = 0xE1,
+  // ...
+
+  // ===== 0xF0~0xFF：保留給系統事件 =====
+  // EVT_SYS_LOW_BATTERY = 0xF0,
 } ems_event_type_t;
 
 typedef struct {
@@ -199,6 +219,12 @@ typedef struct {
 ```
 
 **補登成立後韌體層拒絕修改 / 撤銷 / 刪除**（V1 §9.7）。
+
+**event_type 編號段位規範：**
+- V1 韌體只實作 0x01~0x07 核心段位
+- 0x80~0xFF 為擴充保留段位，App 端解析時遇到未知 type 應 fallback 為「未支援事件」並保留原始 byte，不可丟棄
+- BLE NUS JSON 與 LittleFS `/sessions/*.json` 序列化時，type 欄位輸出為十進位整數（如 `"type": 1`），App 端依編號段位判讀
+- 新增事件類型時，於本表登記後同步更新 App 解析表與 V1 §11/§17 案件總覽顯示規則
 
 ---
 
