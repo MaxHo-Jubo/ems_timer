@@ -158,8 +158,8 @@
     position: relative; overflow: hidden;
   }
   .btn:active { transform: scale(0.95); }
-  .btn-epi   { background-color: #b91c1c; }
-  .btn-shock { background-color: #d97706; }
+  .btn-epi   { background-color: #b91c1c; font-size: 22px; line-height: 1; }
+  .btn-shock { background-color: #d97706; font-size: 22px; line-height: 1; }
   .btn-back  { background-color: #475569; }
   .btn-up    { background-color: #475569; }
   .btn-down  { background-color: #475569; }
@@ -219,9 +219,9 @@
 
   <div id="buttons">
     <div class="btn-row">
-      <button class="btn btn-shock" data-btn="SHOCK">電擊</button>
-      <button class="btn btn-up"    data-btn="UP">▲</button>
-      <button class="btn btn-epi"   data-btn="EPI">EPI</button>
+      <button class="btn btn-shock" data-btn="SHOCK" aria-label="電擊鍵">⚡</button>
+      <button class="btn btn-up"    data-btn="UP" aria-label="上鍵">▲</button>
+      <button class="btn btn-epi"   data-btn="EPI" aria-label="EPI 鍵">💉</button>
     </div>
     <div class="btn-row">
       <button class="btn btn-back"  data-btn="BACK">返回</button>
