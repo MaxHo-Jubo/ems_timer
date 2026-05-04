@@ -206,6 +206,26 @@
   <a href="demo/" style="display:inline-block;margin-top:14px;padding:8px 18px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.4);border-radius:20px;color:#fff;text-decoration:none;font-size:13px;font-weight:600">📱 互動 Demo（手機版）</a>
 </div>
 
+<div style="background:#dbeafe;border:2px solid #3b82f6;border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;box-shadow:var(--shadow)">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <span style="font-size:20px">📌</span>
+    <span style="font-size:15px;font-weight:700;color:#1e40af">本次新增（2026-05-04）— GPIO 腳位分配總表</span>
+  </div>
+  <p style="font-size:13px;color:#1e3a8a;margin-bottom:10px;line-height:1.7">
+    建立 GPIO 分配單一真相來源（SSOT），同步 SoT V1 §21.3 與 flow.html。涵蓋 8 按鍵分配（依 §4.1 封版）、顯示/錄音/擴充策略、互斥約束、ESP32-S3 禁用區。完整 SSOT 文件：<code>docs/gpio-allocation.md</code>。新增 <strong>§20 GPIO 腳位分配總表</strong> 章節：
+  </p>
+  <div style="display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px">
+    <a href="#sec-20-1" style="padding:4px 10px;background:#fff;border:1px solid #3b82f6;border-radius:14px;color:#1e40af;text-decoration:none;font-weight:600">① 按鍵腳位</a>
+    <a href="#sec-20-2" style="padding:4px 10px;background:#fff;border:1px solid #3b82f6;border-radius:14px;color:#1e40af;text-decoration:none;font-weight:600">② 顯示</a>
+    <a href="#sec-20-3" style="padding:4px 10px;background:#fff;border:1px solid #3b82f6;border-radius:14px;color:#1e40af;text-decoration:none;font-weight:600">③ 提醒輸出</a>
+    <a href="#sec-20-4" style="padding:4px 10px;background:#fff;border:1px solid #3b82f6;border-radius:14px;color:#1e40af;text-decoration:none;font-weight:600">④ 錄音</a>
+    <a href="#sec-20-5" style="padding:4px 10px;background:#fff;border:1px solid #3b82f6;border-radius:14px;color:#1e40af;text-decoration:none;font-weight:600">⑤ 擴充預留</a>
+    <a href="#sec-20-6" style="padding:4px 10px;background:#fff;border:1px solid #3b82f6;border-radius:14px;color:#1e40af;text-decoration:none;font-weight:600">⑥ 互斥約束</a>
+    <a href="#sec-20-7" style="padding:4px 10px;background:#fff;border:1px solid #3b82f6;border-radius:14px;color:#1e40af;text-decoration:none;font-weight:600">⑦ 禁用區</a>
+    <a href="#sec-20" style="padding:4px 10px;background:#3b82f6;border:1px solid #3b82f6;border-radius:14px;color:#fff;text-decoration:none;font-weight:700">→ 完整跳轉 §20</a>
+  </div>
+</div>
+
 <div style="background:var(--amber-light);border:2px solid var(--amber);border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;box-shadow:var(--shadow)">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
     <span style="font-size:20px">⭐</span>
@@ -246,6 +266,7 @@
     <a href="#sec-17">17. 硬體</a>
     <a href="#sec-18">18. 開發階段</a>
     <a href="#sec-19" style="color:#92400e;font-weight:700">⭐ 19. 擴充預留設計</a>
+    <a href="#sec-20" style="color:#1e40af;font-weight:700">📌 20. GPIO 腳位分配總表</a>
   </div>
 </div>
 
@@ -1138,9 +1159,135 @@
   </div>
 </div>
 
+<div class="section">
+  <div class="section-title" id="sec-20" style="border-left-color:#3b82f6"><span class="num" style="background:#3b82f6">20</span> GPIO 腳位分配總表（2026-05-04 新增）</div>
+  <div class="card">
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">
+      📌 GPIO 分配以 <code>docs/gpio-allocation.md</code> 為單一真相來源（SSOT）。本章為 flow.html 視角的快照，內容需與 SSOT 對齊。
+    </p>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:14px">
+      <strong>目標硬體：</strong>ESP32-S3 GOOUUU 開發板（標準 N8 模組，非 octal PSRAM 版）
+    </p>
+
+    <div class="sub-title" id="sec-20-1">20.1 按鍵腳位（依 SoT V1 §4.1，8 鍵封版）</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">SoT 名稱</th><th style="padding:8px;border:1px solid var(--border);text-align:left">韌體常數</th><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">韌體狀態</th><th style="padding:8px;border:1px solid var(--border);text-align:left">物理</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">主按鍵</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_PRIMARY</code></td><td style="padding:6px;border:1px solid var(--border)">4</td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">上鍵</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_UP</code></td><td style="padding:6px;border:1px solid var(--border)">5</td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">下鍵</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_DOWN</code></td><td style="padding:6px;border:1px solid var(--border)">6</td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">Power 鍵</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_POWER</code></td><td style="padding:6px;border:1px solid var(--border)">7</td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">錄音鍵</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_RECORD</code></td><td style="padding:6px;border:1px solid var(--border)">15</td><td style="padding:6px;border:1px solid var(--border)">⚠️ 韌體佔位（INMP441 到貨啟用）</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">返回鍵</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_BACK</code></td><td style="padding:6px;border:1px solid var(--border)">16</td><td style="padding:6px;border:1px solid var(--border)">❌ Impl-Phase B 待補</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">EPI 鍵（針筒圖案）</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_EPI</code></td><td style="padding:6px;border:1px solid var(--border)">17</td><td style="padding:6px;border:1px solid var(--border)">❌ Impl-Phase B 待補</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">電擊鍵（閃電圖案）</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_SHOCK</code></td><td style="padding:6px;border:1px solid var(--border)">18</td><td style="padding:6px;border:1px solid var(--border)">❌ Impl-Phase B 待補</td><td style="padding:6px;border:1px solid var(--border)">✅</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      <strong>重要：</strong>GPIO 16/17/18 已封給按鍵（返回 / EPI / 電擊）。原規劃為「獨立 I2C 候選」之 GPIO 17/18 已無效，CO 感測器擴充必須改用其他腳位（見 §20.5）。
+    </div>
+
+    <div class="sub-title" id="sec-20-2">20.2 顯示</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">用途</th><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:left">狀態</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">OLED SDA</td><td style="padding:6px;border:1px solid var(--border)">42</td><td style="padding:6px;border:1px solid var(--border)">I2C</td><td style="padding:6px;border:1px solid var(--border)">SSD1306 0.96"</td><td style="padding:6px;border:1px solid var(--border)">✅ 啟用</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">OLED SCL</td><td style="padding:6px;border:1px solid var(--border)">41</td><td style="padding:6px;border:1px solid var(--border)">I2C</td><td style="padding:6px;border:1px solid var(--border)">SSD1306 0.96"</td><td style="padding:6px;border:1px solid var(--border)">✅ 啟用</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      若採用 <code>tft-migration-plan.md</code> 升級 2.4" TFT，OLED 拆除，GPIO 41/42 釋出可作其他 I2C 用途（如 DS3231 RTC）。TFT SPI 腳位見 §20.5。
+    </div>
+
+    <div class="sub-title" id="sec-20-3">20.3 提醒輸出</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">用途</th><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:left">狀態</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">蜂鳴器 PWM</td><td style="padding:6px;border:1px solid var(--border)">14</td><td style="padding:6px;border:1px solid var(--border)">主動式蜂鳴器</td><td style="padding:6px;border:1px solid var(--border)">✅ 啟用</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">震動馬達</td><td style="padding:6px;border:1px solid var(--border)">21</td><td style="padding:6px;border:1px solid var(--border)">S8050 NPN + 1kΩ 基極</td><td style="padding:6px;border:1px solid var(--border)">⚠️ <code>ENABLE_VIBRATION=0</code>；原 GPIO 16 已封給返回鍵</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub-title" id="sec-20-4">20.4 錄音（Dev-Phase 1.5 待啟用）</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">用途</th><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:left">狀態</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">I2S SCK</td><td style="padding:6px;border:1px solid var(--border)">40</td><td style="padding:6px;border:1px solid var(--border)">I2S</td><td style="padding:6px;border:1px solid var(--border)">INMP441 麥克風</td><td style="padding:6px;border:1px solid var(--border)">⚠️ 接線 / <code>ENABLE_MIC_MONITOR=0</code></td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">I2S WS</td><td style="padding:6px;border:1px solid var(--border)">39</td><td style="padding:6px;border:1px solid var(--border)">I2S</td><td style="padding:6px;border:1px solid var(--border)">INMP441 麥克風</td><td style="padding:6px;border:1px solid var(--border)">⚠️ 同上</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">I2S SD</td><td style="padding:6px;border:1px solid var(--border)">38</td><td style="padding:6px;border:1px solid var(--border)">I2S</td><td style="padding:6px;border:1px solid var(--border)">INMP441 麥克風</td><td style="padding:6px;border:1px solid var(--border)">⚠️ 同上</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">MicroSD SCK / MOSI / MISO</td><td style="padding:6px;border:1px solid var(--border)">36 / 35 / 37</td><td style="padding:6px;border:1px solid var(--border)">SPI</td><td style="padding:6px;border:1px solid var(--border)">與 TFT 共用</td><td style="padding:6px;border:1px solid var(--border)">❌ 待選型</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">MicroSD CS</td><td style="padding:6px;border:1px solid var(--border)">2（ADC1_CH1，二擇一）</td><td style="padding:6px;border:1px solid var(--border)">SPI</td><td style="padding:6px;border:1px solid var(--border)">獨立 CS</td><td style="padding:6px;border:1px solid var(--border)">❌ 待選型</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub-title" id="sec-20-5">20.5 擴充預留腳位</div>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">ESP32-S3 N8 模組可用 GPIO 盤點</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">分類</th><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">備註</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">已用（14 支）</td><td style="padding:6px;border:1px solid var(--border)">4, 5, 6, 7, 14, 15, 16, 17, 18, 38, 39, 40, 41, 42</td><td style="padding:6px;border:1px solid var(--border)">按鍵 / 蜂鳴 / I2S / OLED</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">可用空閒（11 支）</td><td style="padding:6px;border:1px solid var(--border)">1, 2, 3（ADC1）/ 21 / 35, 36, 37 / 43, 44 / 47, 48</td><td style="padding:6px;border:1px solid var(--border)">35~37 在 N16R8 octal PSRAM 模組會被佔用，務必確認模組型號</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">TFT SPI bus 腳位（取代 tft-migration-plan.md 舊版 GPIO 9~13）</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">用途</th><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">備註</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">SPI SCK</td><td style="padding:6px;border:1px solid var(--border)">36</td><td style="padding:6px;border:1px solid var(--border)">TFT + MicroSD 共用</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">SPI MOSI</td><td style="padding:6px;border:1px solid var(--border)">35</td><td style="padding:6px;border:1px solid var(--border)">TFT + MicroSD 共用</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">SPI MISO</td><td style="padding:6px;border:1px solid var(--border)">37</td><td style="padding:6px;border:1px solid var(--border)">MicroSD 需要，TFT 純寫入不需要</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">TFT CS</td><td style="padding:6px;border:1px solid var(--border)">21</td><td style="padding:6px;border:1px solid var(--border)">獨立</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">TFT DC</td><td style="padding:6px;border:1px solid var(--border)">48</td><td style="padding:6px;border:1px solid var(--border)">Data/Command 切換</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">TFT RST</td><td style="padding:6px;border:1px solid var(--border)">47</td><td style="padding:6px;border:1px solid var(--border)">Hardware reset</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">TFT BL</td><td style="padding:6px;border:1px solid var(--border)">3.3V 直供 / GPIO 1（PWM 調亮度）</td><td style="padding:6px;border:1px solid var(--border)">PWM 會占用 ADC1_CH0</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">CO 感測器擴充腳位（取代舊版 GPIO 17/18 獨立 I2C）</p>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">候選方案</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">備註</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">電化學型 + I2C</td><td style="padding:6px;border:1px solid var(--border)">SDA / SCL</td><td style="padding:6px;border:1px solid var(--border)">與 OLED 共用 42 / 41</td><td style="padding:6px;border:1px solid var(--border)">I2C 多裝置 bus</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">電化學型 + UART</td><td style="padding:6px;border:1px solid var(--border)">TX / RX</td><td style="padding:6px;border:1px solid var(--border)">43 / 44</td><td style="padding:6px;border:1px solid var(--border)">必須放棄 USB-CDC Serial Monitor</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">MEMS 半導體型 + ADC</td><td style="padding:6px;border:1px solid var(--border)">類比輸入</td><td style="padding:6px;border:1px solid var(--border)">1 / 2 / 3 擇一</td><td style="padding:6px;border:1px solid var(--border)">與 TFT 背光、MicroSD CS 互斥</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">加熱半導體型（MQ-7/MQ-9）</td><td style="padding:6px;border:1px solid var(--border)">—</td><td style="padding:6px;border:1px solid var(--border)">🚫 禁用</td><td style="padding:6px;border:1px solid var(--border)">功耗超出 USB-C 供電上限</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub-title" id="sec-20-6">20.6 互斥約束總覽</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">衝突組合</th><th style="padding:8px;border:1px solid var(--border);text-align:left">互斥原因</th><th style="padding:8px;border:1px solid var(--border);text-align:left">解法</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">TFT BL（PWM）vs CO 感測器 ADC</td><td style="padding:6px;border:1px solid var(--border)">都搶 GPIO 1 / 2 / 3</td><td style="padding:6px;border:1px solid var(--border)">二擇一；TFT BL 可接 3.3V 常亮，省下 GPIO</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">MicroSD CS vs USB-CDC Serial</td><td style="padding:6px;border:1px solid var(--border)">GPIO 43 / 44 衝突</td><td style="padding:6px;border:1px solid var(--border)">量產不需 USB-CDC 時切換</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">獨立 I2C vs 按鍵 16 / 17 / 18</td><td style="padding:6px;border:1px solid var(--border)">物理腳位衝突</td><td style="padding:6px;border:1px solid var(--border)">按鍵已封版，獨立 I2C 改與 OLED bus 共用</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">GPIO 35 / 36 / 37 vs N16R8 octal PSRAM</td><td style="padding:6px;border:1px solid var(--border)">模組型號限制</td><td style="padding:6px;border:1px solid var(--border)">採購務必選 N8 / N16 非 octal 版</td></tr>
+      </tbody>
+    </table>
+
+    <div class="sub-title" id="sec-20-7">20.7 ESP32-S3 禁用區（不可作 I/O）</div>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">GPIO</th><th style="padding:8px;border:1px solid var(--border);text-align:left">原因</th></tr></thead>
+      <tbody>
+        <tr><td style="padding:6px;border:1px solid var(--border)">0, 45, 46</td><td style="padding:6px;border:1px solid var(--border)">strapping pin（啟動行為敏感）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">8 ~ 13</td><td style="padding:6px;border:1px solid var(--border)">內建 SPI flash</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">19, 20</td><td style="padding:6px;border:1px solid var(--border)">USB D- / D+</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">26 ~ 32</td><td style="padding:6px;border:1px solid var(--border)">SPI flash bonding pads（依模組型號可能可用，保守禁用）</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note note-blue">
+      <strong>📌 完整擴充策略與互斥約束：</strong>見 <code>docs/gpio-allocation.md</code> 第 5 節與第 6 節。<br>
+      <strong>🔄 變更歷程：</strong>見 <code>docs/gpio-allocation.md</code> 第 8 節。
+    </div>
+  </div>
+</div>
+
 <div class="footer">
   EMS DoseSync Pro — Prototype V1 行為流程規格 v1.0<br>
-  SoT：<code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> ｜ 工程實作：<code>docs/pm-dev-spec.md</code>
+  SoT：<code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> ｜ 工程實作：<code>docs/pm-dev-spec.md</code> ｜ GPIO SSOT：<code>docs/gpio-allocation.md</code>
 </div>
 
 </body>
