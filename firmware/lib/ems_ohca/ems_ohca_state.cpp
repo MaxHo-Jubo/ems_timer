@@ -1,0 +1,119 @@
+// EMS DoseSync Pro — Phase A: OHCA 子狀態機實作
+// 對應 header：ems_ohca_state.h
+#include "ems_ohca_state.h"
+
+namespace ems {
+
+ohca_phase_t mapStateToPhase(ohca_state_t s) {
+    switch (s) {
+        case OHCA_STATE_WAIT_FIRST_EPI: return OHCA_PHASE_WAIT_FIRST_EPI;
+        case OHCA_STATE_COUNTDOWN:      return OHCA_PHASE_COUNTDOWN;
+        case OHCA_STATE_WARNING:        return OHCA_PHASE_WARNING;
+        case OHCA_STATE_ALARMING:       return OHCA_PHASE_ALARMING;
+        case OHCA_STATE_OVERTIME:       return OHCA_PHASE_OVERTIME;
+        // 其他 state（MAIN_MENU / START_FLASH / END_CHECK / LOCKED / SUMMARY）
+        // 與 EPI 計時無關，回傳 WAIT_FIRST_EPI 視為「無計時推進」
+        default: return OHCA_PHASE_WAIT_FIRST_EPI;
+    }
+}
+
+ohca_state_t mapPhaseToState(ohca_phase_t p) {
+    switch (p) {
+        case OHCA_PHASE_WAIT_FIRST_EPI: return OHCA_STATE_WAIT_FIRST_EPI;
+        case OHCA_PHASE_COUNTDOWN:      return OHCA_STATE_COUNTDOWN;
+        case OHCA_PHASE_WARNING:        return OHCA_STATE_WARNING;
+        case OHCA_PHASE_ALARMING:       return OHCA_STATE_ALARMING;
+        case OHCA_PHASE_OVERTIME:       return OHCA_STATE_OVERTIME;
+    }
+    return OHCA_STATE_WAIT_FIRST_EPI;
+}
+
+ohca_state_t nextOhcaState(ohca_state_t current,
+                           ohca_event_t event,
+                           uint32_t     since_last_epi_ms) {
+    // STEP 01: LOCKED 拒絕所有事件，但允許翻頁到 SUMMARY
+    if (current == OHCA_STATE_LOCKED) {
+        if (event == OHCA_EVT_TO_SUMMARY) {
+            return OHCA_STATE_SUMMARY;
+        }
+        return OHCA_STATE_LOCKED;
+    }
+
+    // STEP 02: SUMMARY 為終端狀態（V1 不提供回退）
+    if (current == OHCA_STATE_SUMMARY) {
+        return OHCA_STATE_SUMMARY;
+    }
+
+    // STEP 03: 啟動倒數白名單（§23.2）
+    //   電擊 / Amio 確認絕對不重啟倒數，無論在哪個 state
+    if (event == OHCA_EVT_SHOCK_CONFIRMED || event == OHCA_EVT_AMIO_CONFIRMED) {
+        return current;
+    }
+
+    // STEP 04: 各 state 個別 transition
+    switch (current) {
+        // STEP 04.01: MAIN_MENU
+        case OHCA_STATE_MAIN_MENU:
+            if (event == OHCA_EVT_MAIN_BTN_SHORT) {
+                return OHCA_STATE_START_FLASH;
+            }
+            return current;
+
+        // STEP 04.02: START_FLASH（1s 提示，自動轉 WAIT_FIRST_EPI）
+        case OHCA_STATE_START_FLASH:
+            if (event == OHCA_EVT_FLASH_TIMEOUT) {
+                return OHCA_STATE_WAIT_FIRST_EPI;
+            }
+            return current;
+
+        // STEP 04.03: WAIT_FIRST_EPI（待第一次本機 EPI）
+        case OHCA_STATE_WAIT_FIRST_EPI:
+            if (event == OHCA_EVT_EPI_CONFIRMED) {
+                return OHCA_STATE_COUNTDOWN;
+            }
+            return current;  // TIMER_TICK 不推進；其他事件 noop
+
+        // STEP 04.04: 倒數 group（COUNTDOWN / WARNING / ALARMING / OVERTIME）
+        case OHCA_STATE_COUNTDOWN:
+        case OHCA_STATE_WARNING:
+        case OHCA_STATE_ALARMING:
+        case OHCA_STATE_OVERTIME:
+            // STEP 04.04.01: 本機 EPI 確認 → 重啟倒數（caller 須將 since 重置為 0）
+            if (event == OHCA_EVT_EPI_CONFIRMED) {
+                return OHCA_STATE_COUNTDOWN;
+            }
+            // STEP 04.04.02: 計時推進 → delegate 至 advanceOhcaPhase
+            if (event == OHCA_EVT_TIMER_TICK) {
+                ohca_phase_t cur_phase  = mapStateToPhase(current);
+                ohca_phase_t next_phase = advanceOhcaPhase(cur_phase, since_last_epi_ms);
+                return mapPhaseToState(next_phase);
+            }
+            // STEP 04.04.03: OVERTIME 中主鍵長按 3s → 結束前檢查
+            if (event == OHCA_EVT_MAIN_BTN_LONG_3S && current == OHCA_STATE_OVERTIME) {
+                return OHCA_STATE_END_CHECK;
+            }
+            // STEP 04.04.04: ALARMING / OVERTIME 主鍵短按 → noop（消音由外部處理）
+            // STEP 04.04.05: 其他事件 noop
+            return current;
+
+        // STEP 04.05: END_CHECK（結束前檢查）
+        case OHCA_STATE_END_CHECK:
+            if (event == OHCA_EVT_END_CONFIRM) {
+                return OHCA_STATE_LOCKED;
+            }
+            if (event == OHCA_EVT_END_CANCEL) {
+                // V1 簡化：END_CHECK 僅由 OVERTIME 進入，取消即回 OVERTIME
+                return OHCA_STATE_OVERTIME;
+            }
+            // STEP 04.05.01: 本機 EPI 確認可在 END_CHECK 中重啟倒數（不應該被 END_CHECK 卡住）
+            if (event == OHCA_EVT_EPI_CONFIRMED) {
+                return OHCA_STATE_COUNTDOWN;
+            }
+            return current;
+
+        default:
+            return current;
+    }
+}
+
+} // namespace ems
