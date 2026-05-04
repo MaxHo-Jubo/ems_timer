@@ -32,7 +32,7 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Adafruit_SH110X.h>
 
 #include "ems_ohca_state.h"
 #include "ems_ohca_countdown.h"
@@ -246,7 +246,7 @@ static bool     btnLongFired[BTN_COUNT]     = { false };
 // OLED + 蜂鳴 / 反色 SM
 // ============================================================
 
-Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET_PIN);
+Adafruit_SH1106G display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET_PIN);
 
 // 蜂鳴器：脈衝模式（pulses=255 視為連續直到 stop）
 static uint8_t  beepPulsesRemaining = 0;
@@ -340,8 +340,8 @@ void setup() {
 
     // STEP 03: OLED 初始化
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-    if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
-        Serial.println("[FAIL] SSD1306 not found");
+    if (!display.begin(OLED_I2C_ADDR, /* reset= */ true)) {
+        Serial.println("[FAIL] SH1106 not found");
     }
     display.clearDisplay();
     display.display();
@@ -1241,18 +1241,18 @@ void updateDisplay() {
 
 void drawMainMenu() {
     display.setTextSize(1);
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setCursor(0, 0);
     display.println("EMS DoseSync Pro");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
         int y = 14 + i * 10;
         if (i == mainMenuCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 10, SSD1306_WHITE);
-            display.setTextColor(SSD1306_BLACK);
+            display.fillRect(0, y - 1, OLED_WIDTH, 10, SH110X_WHITE);
+            display.setTextColor(SH110X_BLACK);
         } else {
-            display.setTextColor(SSD1306_WHITE);
+            display.setTextColor(SH110X_WHITE);
         }
         display.setCursor(4, y);
         display.print(MAIN_MENU_LABELS[i]);
@@ -1260,18 +1260,18 @@ void drawMainMenu() {
 }
 
 void drawOhcaStartFlash() {
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(2);
     display.setCursor(8, 24);
     display.println("Start OHCA");
 }
 
 void drawOhcaWaitFirstEpi() {
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("OHCA Case");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
     display.setTextSize(2);
     display.setCursor(8, 24);
     display.println("Press EPI");
@@ -1281,11 +1281,11 @@ void drawOhcaWaitFirstEpi() {
 }
 
 void drawOhcaCountdownCommon(const char* label, uint32_t time_ms, bool show_overtime) {
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.print(label);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     // 時間 mm:ss 大字顯示
     uint32_t total_sec = time_ms / 1000;
@@ -1319,38 +1319,38 @@ void drawOhcaCountdownCommon(const char* label, uint32_t time_ms, bool show_over
 }
 
 void drawOhcaEndCheck() {
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("End Check");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
     display.setCursor(4, 18);
     display.println("Confirm end of case?");
 
     // 兩個選項
     int y_confirm = 36, y_cancel = 50;
     if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
-        display.fillRect(0, y_confirm - 1, OLED_WIDTH, 10, SSD1306_WHITE);
-        display.setTextColor(SSD1306_BLACK);
+        display.fillRect(0, y_confirm - 1, OLED_WIDTH, 10, SH110X_WHITE);
+        display.setTextColor(SH110X_BLACK);
     }
     display.setCursor(4, y_confirm);
     display.print("> Confirm end");
 
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     if (endCheckCursor == END_CHECK_CURSOR_CANCEL) {
-        display.fillRect(0, y_cancel - 1, OLED_WIDTH, 10, SSD1306_WHITE);
-        display.setTextColor(SSD1306_BLACK);
+        display.fillRect(0, y_cancel - 1, OLED_WIDTH, 10, SH110X_WHITE);
+        display.setTextColor(SH110X_BLACK);
     }
     display.setCursor(4, y_cancel);
     display.print("> Back to case");
 }
 
 void drawOhcaLocked() {
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("LOCKED");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
     display.setTextSize(2);
     display.setCursor(8, 22);
     display.println("Case End");
@@ -1367,11 +1367,11 @@ void drawOhcaSummary() {
     ohca_case_summary_t s;
     caseSummary_build(&s, events, eventCount, /*case_start*/ 0, /*case_end*/ 0);
 
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("Summary | OHCA");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     display.setCursor(0, 14);
     display.print("EPI Total: ");
@@ -1402,19 +1402,19 @@ void drawOhcaSummary() {
 
 void drawTwoStepArmedOverlay(const char* what) {
     // 在底部畫一條反色提示條
-    display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SSD1306_WHITE);
-    display.setTextColor(SSD1306_BLACK);
+    display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
+    display.setTextColor(SH110X_BLACK);
     display.setTextSize(1);
     display.setCursor(2, OLED_HEIGHT - 10);
     display.print(what);
 }
 
 void drawPlaceholder(const char* title, const char* phase) {
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println(title);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
     display.setTextSize(2);
     display.setCursor(0, 22);
     display.print(phase);
@@ -1432,26 +1432,26 @@ void drawPlaceholder(const char* title, const char* phase) {
 /** 藥物選單（V1 §9.2） */
 void drawDrugMenu() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("Drug Menu");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     const char* labels[2] = { "Backfill EPI", "Amiodarone" };
     for (uint8_t i = 0; i < 2; i++) {
         int y = 18 + i * 12;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SSD1306_WHITE);
-            display.setTextColor(SSD1306_BLACK);
+            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
+            display.setTextColor(SH110X_BLACK);
         } else {
-            display.setTextColor(SSD1306_WHITE);
+            display.setTextColor(SH110X_WHITE);
         }
         display.setCursor(4, y);
         display.print("> ");
         display.print(labels[i]);
     }
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setCursor(0, 56);
     display.println("[Back] cancel");
 }
@@ -1459,27 +1459,27 @@ void drawDrugMenu() {
 /** 補登類型選擇（接手前 / 純補登） */
 void drawBackfillType() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println(backfillCategory == BACKFILL_CAT_EPI ? "Backfill EPI"
                                                          : "Backfill Shock");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     const char* labels[2] = { "Pre-handover", "Pure backfill" };
     for (uint8_t i = 0; i < 2; i++) {
         int y = 18 + i * 12;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SSD1306_WHITE);
-            display.setTextColor(SSD1306_BLACK);
+            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
+            display.setTextColor(SH110X_BLACK);
         } else {
-            display.setTextColor(SSD1306_WHITE);
+            display.setTextColor(SH110X_WHITE);
         }
         display.setCursor(4, y);
         display.print("> ");
         display.print(labels[i]);
     }
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setCursor(0, 56);
     display.println("[Back] cancel");
 }
@@ -1487,7 +1487,7 @@ void drawBackfillType() {
 /** 補登次數選擇（V1 §9.6） */
 void drawBackfillCount() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     const char* typeLabel =
@@ -1496,7 +1496,7 @@ void drawBackfillCount() {
         (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "PreHandover Shk" :
                                                              "Pure Supp Shk";
     display.println(typeLabel);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     display.setCursor(0, 18);
     display.print("Count: ");
@@ -1517,11 +1517,11 @@ void drawBackfillCount() {
 /** 補登確認對話框（V1 §9.4） */
 void drawBackfillConfirm() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("Confirm backfill?");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     const char* shortLabel =
         (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
@@ -1545,11 +1545,11 @@ void drawBackfillConfirm() {
 /** 補登成功提示（2s 後自動消失，V1 §9.5） */
 void drawBackfillSuccess() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("Backfill OK");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     const char* shortLabel =
         (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
@@ -1571,11 +1571,11 @@ void drawBackfillSuccess() {
 /** Amiodarone 兩段確認 */
 void drawAmioConfirmPrompt() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("Amiodarone");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     display.setTextSize(2);
     display.setCursor(8, 22);
@@ -1583,8 +1583,8 @@ void drawAmioConfirmPrompt() {
 
     display.setTextSize(1);
     if (showAmioArmedPrompt) {
-        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SSD1306_WHITE);
-        display.setTextColor(SSD1306_BLACK);
+        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
+        display.setTextColor(SH110X_BLACK);
         display.setCursor(2, OLED_HEIGHT - 10);
         display.print("Press [Main] again");
     } else {
@@ -1596,11 +1596,11 @@ void drawAmioConfirmPrompt() {
 /** Timeline 子畫面（V1 §11.5） */
 void drawTimeline() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("Timeline");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     if (eventCount == 0) {
         display.setCursor(0, 24);
@@ -1660,14 +1660,14 @@ void drawTimeline() {
 /** 獨立 6 秒通氣節奏主畫面（V1 §13.4） */
 void drawVentStandalone() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.print("6sec Vent  Vol:");
     display.print(ventVolume);
     display.print("/");
     display.print(VENT_VOLUME_MAX);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     // 大字顯示當前秒數
     uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
@@ -1681,8 +1681,8 @@ void drawVentStandalone() {
     // 底部提示
     display.setTextSize(1);
     if (ventBackHintShown) {
-        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SSD1306_WHITE);
-        display.setTextColor(SSD1306_BLACK);
+        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
+        display.setTextColor(SH110X_BLACK);
         display.setCursor(2, OLED_HEIGHT - 10);
         display.print("Long-press [Main] to end");
     } else {
@@ -1694,11 +1694,11 @@ void drawVentStandalone() {
 /** 獨立 vent 結束確認對話框（V1 §13.8） */
 void drawVentEndCheck() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("End vent rhythm?");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     display.setTextSize(2);
     display.setCursor(8, 22);
@@ -1712,11 +1712,11 @@ void drawVentEndCheck() {
 /** 快速功能選單（V1 §14.8 + §9 OHCA 中按返回鍵） */
 void drawQuickMenu() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
     display.println("Quick Menu");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
     const char* labels[2] = {
         ohcaVentOverlayEnabled ? "Disable 6s vent" : "Enable 6s vent",
@@ -1725,16 +1725,16 @@ void drawQuickMenu() {
     for (uint8_t i = 0; i < 2; i++) {
         int y = 18 + i * 12;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SSD1306_WHITE);
-            display.setTextColor(SSD1306_BLACK);
+            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
+            display.setTextColor(SH110X_BLACK);
         } else {
-            display.setTextColor(SSD1306_WHITE);
+            display.setTextColor(SH110X_WHITE);
         }
         display.setCursor(4, y);
         display.print("> ");
         display.print(labels[i]);
     }
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setCursor(0, 56);
     display.println("[Main]OK [Bk]close");
 }
@@ -1746,7 +1746,7 @@ void drawOhcaVentOverlay(int y_top) {
     uint8_t num = (uint8_t)beat + 1;
 
     // 標籤 + 單秒數
-    display.setTextColor(SSD1306_WHITE);
+    display.setTextColor(SH110X_WHITE);
     display.setTextSize(1);
     display.setCursor(0, y_top);
     display.print("6s vent ON  ");

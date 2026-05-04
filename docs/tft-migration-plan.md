@@ -87,8 +87,8 @@ MicroSD 模組與 TFT 共用 SCK / MOSI，再加 MISO + 獨立 CS：
 
 | 項目 | 變更內容 |
 |------|---------|
-| 函式庫 | `Adafruit_SSD1306` + `Adafruit_GFX` → **`TFT_eSPI`**（推薦，ESP32 最佳化） |
-| 初始化 | `display.begin(SSD1306_SWITCHCAPVCC, 0x3C)` → `tft.init()` + `tft.setRotation()` |
+| 函式庫 | `Adafruit_SH110X` + `Adafruit_GFX` → **`TFT_eSPI`**（推薦，ESP32 最佳化） |
+| 初始化 | `display.begin(0x3C, true)` → `tft.init()` + `tft.setRotation()` |
 | 繪圖 API | `display.drawPixel/drawLine/print` → `tft.drawPixel/drawLine/drawString`（API 類似但函式名不同） |
 | 字型 | SSD1306 內建 5x7 → TFT_eSPI 提供多種字型 + Free Fonts（救護現場可選大字型如 24pt 以上） |
 | 色彩 | 單色 → RGB565（16-bit），可用顏色區分倒數狀態（綠/黃/紅） |
@@ -98,7 +98,7 @@ MicroSD 模組與 TFT 共用 SCK / MOSI，再加 MISO + 獨立 CS：
 **影響範圍**：
 - `firmware/src/main.cpp`：所有 `display.xxx()` 呼叫需改寫
 - `firmware/lib/`：若有自訂 OLED 顯示模組，需重構為 TFT 版本
-- `platformio.ini`：移除 `adafruit/Adafruit SSD1306`，新增 `bodmer/TFT_eSPI`
+- `platformio.ini`：移除 `adafruit/Adafruit SH110X`，新增 `bodmer/TFT_eSPI`
 
 ### 4.2 硬體層
 
@@ -165,9 +165,9 @@ MicroSD 模組與 TFT 共用 SCK / MOSI，再加 MISO + 獨立 CS：
 ## 6. 回滾方案
 
 若 TFT 實測不符預期（如功耗過高、刷新延遲、字型不清），可保留 OLED 配置：
-- 韌體：保留 SSD1306 分支於 git tag `v1-oled-baseline`
+- 韌體：當前 main 已切換為 SH110X driver；若需回到 0.96" SSD1306 baseline，從 git 歷史取回
 - 硬體：GPIO 41/42 仍保留 I2C 走線，OLED 模組不丟棄
-- 替代升級路徑：考慮 1.3" SH1106 OLED（128×64，比 0.96" 大 70%，功耗仍低）
+- 中繼方案：1.2~1.3" SH1106 OLED（128×64，比 0.96" 大 70%，功耗仍低，SH110X driver 已驗證可用）
 
 ---
 
