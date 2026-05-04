@@ -179,3 +179,4 @@ MicroSD 模組與 TFT 共用 SCK / MOSI，再加 MISO + 獨立 CS：
 - [ ] 選定款式後更新 SoT V1 對應章節
 - [ ] 韌體分支 `feat/tft-migration` 開發新顯示驅動
 - [ ] 重新計算 1000mAh 電池續航，決定是否升級電池容量
+- [ ] **顯示器 init 失敗處理**：當前 `display.begin()` 失敗僅 `Serial.println` 後 fall-through，後續 `display.xxx()` 每幀對 I2C bus 拋 NACK 拖慢 main loop（救護現場螢幕死機=裝置失能但無感警示）。換 TFT 時連同新 driver 設計 fatal handler：retry 3 次仍失敗 → buzzer 連續發報 + halt loop（pre-existing issue，2026-05-04 silent-failure 審查發現，刻意延後至 driver 重寫時一併處理）
