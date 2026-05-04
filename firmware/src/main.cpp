@@ -37,6 +37,8 @@
 #include "ems_ohca_state.h"
 #include "ems_ohca_countdown.h"
 #include "ems_two_step_confirm.h"
+#include "ems_supp_model.h"
+#include "ems_case_summary.h"
 
 using namespace ems;
 
@@ -90,7 +92,23 @@ static const uint8_t BTN_SHOCK   = 7;
 /** Debounce / 短按 / 長按時間（ms） */
 static const uint16_t DEBOUNCE_MS         = 80;
 static const uint16_t SHORT_PRESS_MAX_MS  = 1500;
-static const uint16_t LONG_3S_PRESS_MS    = 3000;  // OHCA OVERTIME 結束前檢查觸發
+
+/**
+ * 各按鈕的長按 threshold（ms）；0 = 該按鈕不支援長按
+ *   BTN_PRIMARY 3000ms：OHCA OVERTIME → END_CHECK
+ *   BTN_EPI     1000ms：藥物選單入口（Phase B）
+ *   BTN_SHOCK   1000ms：電擊補登選單入口（Phase B）
+ */
+static const uint16_t LONG_PRESS_MS_PER_BTN[8] = {
+    3000,  // BTN_PRIMARY
+    0,     // BTN_UP
+    0,     // BTN_DOWN
+    0,     // BTN_POWER
+    0,     // BTN_RECORD
+    0,     // BTN_BACK
+    1000,  // BTN_EPI
+    1000,  // BTN_SHOCK
+};
 
 // ============================================================
 // 全域狀態機（pm-dev-spec §2）
@@ -131,28 +149,60 @@ static uint32_t     caseStartMs       = 0;     // case 開始 millis()
 /** START_FLASH 階段顯示 1s */
 static const uint32_t START_FLASH_DURATION_MS = 1000;
 
-/** 兩段確認 instances */
+/** 兩段確認 instances（EPI / 電擊 / Amio 各自獨立） */
 static two_step_confirm_t epiConfirm;
 static two_step_confirm_t shockConfirm;
+static two_step_confirm_t amioConfirm;
 
 /** 兩段確認 armed 提示視窗 */
-static bool     showEpiArmedPrompt   = false;
-static uint32_t epiArmedPromptStart  = 0;
-static bool     showShockArmedPrompt = false;
+static bool     showEpiArmedPrompt    = false;
+static uint32_t epiArmedPromptStart   = 0;
+static bool     showShockArmedPrompt  = false;
 static uint32_t shockArmedPromptStart = 0;
+static bool     showAmioArmedPrompt   = false;
+static uint32_t amioArmedPromptStart  = 0;
 static const uint32_t ARMED_PROMPT_MS = 5000;
 
 // ============================================================
-// 事件紀錄（簡單陣列，Phase E 才做持久化）
+// 事件紀錄（升級為 ems_event_t，對齊 pm-dev-spec §6）
+// Phase E 才做持久化；Phase B 仍為 in-memory
 // ============================================================
 
-struct OhcaEvent {
-    uint8_t  type;        // 1=EPI, 2=Shock
-    uint32_t elapsed_ms;  // 自 case 開始
-};
 static const uint16_t MAX_EVENTS = 50;
-static OhcaEvent events[MAX_EVENTS];
-static uint16_t  eventCount = 0;
+static ems_event_t events[MAX_EVENTS];
+static uint16_t    eventCount   = 0;
+static uint32_t    nextEventId  = 1;  // 案件內流水號，從 1 起
+
+// ============================================================
+// Phase B 子流程狀態機（補登 / Amio / Timeline）
+// ============================================================
+
+enum OhcaSubState : uint8_t {
+    SUBSTATE_NONE                  = 0,  // 無子流程，主畫面
+    SUBSTATE_DRUG_MENU             = 1,  // 長按 EPI 鍵進入：補登 EPI / Amiodarone
+    SUBSTATE_BACKFILL_TYPE         = 2,  // 接手前 / 純補登 二選一
+    SUBSTATE_BACKFILL_COUNT        = 3,  // 次數選擇 1~5 或 1~3
+    SUBSTATE_BACKFILL_CONFIRM      = 4,  // 「確認補登？... 成立後不可撤銷」
+    SUBSTATE_BACKFILL_SUCCESS      = 5,  // 「補登成功」顯示 2s
+    SUBSTATE_AMIO_CONFIRM          = 6,  // Amio 兩段確認
+    SUBSTATE_TIMELINE              = 7,  // Timeline 子畫面（從 SUMMARY 進入）
+};
+static OhcaSubState ohcaSubState = SUBSTATE_NONE;
+
+/** 補登流程暫存：類別（EPI / 電擊）與類型（接手前 / 純補登）與次數 */
+enum BackfillCategory : uint8_t {
+    BACKFILL_CAT_EPI   = 0,
+    BACKFILL_CAT_SHOCK = 1,
+};
+static BackfillCategory backfillCategory   = BACKFILL_CAT_EPI;
+static supp_type_t      backfillSuppType   = SUPP_TYPE_EPI_PRE_HANDOVER;
+static uint8_t          backfillCursor     = 0;  // 子選單 cursor
+static uint8_t          backfillCount      = 1;  // 1..suppCountMax
+static uint32_t         backfillSuccessShownMs = 0;  // 顯示「成功」起點
+static const uint32_t   BACKFILL_SUCCESS_MS = 2000;
+
+/** Timeline 子畫面 scroll offset */
+static uint16_t timelineScrollOffset = 0;
 
 // ============================================================
 // END_CHECK 與 SUMMARY 子狀態
@@ -173,7 +223,7 @@ static uint16_t summaryScrollOffset = 0;
 static uint8_t  lastBtnState[BTN_COUNT];
 static uint32_t lastPressMs[BTN_COUNT]      = { 0 };
 static uint32_t btnPressStartMs[BTN_COUNT]  = { 0 };
-static bool     btnLong3sFired[BTN_COUNT]   = { false };
+static bool     btnLongFired[BTN_COUNT]     = { false };
 
 // ============================================================
 // OLED + 蜂鳴 / 反色 SM
@@ -205,10 +255,14 @@ static const uint32_t DISPLAY_UPDATE_INTERVAL_MS = 200;
 
 void handleButtons();
 void onShortPress(uint8_t btnIdx);
-void onLong3sPress(uint8_t btnIdx);
+void onLongPress(uint8_t btnIdx);
 void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms);
 void updateOhcaTick();
-void recordEvent(uint8_t type);
+void recordLocalEvent(ems_event_type_t type);
+void recordSuppEvent(supp_type_t supp_type, uint8_t count);
+void enterDrugMenu();
+void enterShockBackfillMenu();
+void resetSubState();
 void enterMainMenu();
 void exitOhcaCase();
 
@@ -229,6 +283,13 @@ void drawOhcaLocked();
 void drawOhcaSummary();
 void drawTwoStepArmedOverlay(const char* what);
 void drawPlaceholder(const char* title, const char* phase);
+void drawDrugMenu();
+void drawBackfillType();
+void drawBackfillCount();
+void drawBackfillConfirm();
+void drawBackfillSuccess();
+void drawAmioConfirmPrompt();
+void drawTimeline();
 
 // ============================================================
 // setup() / loop()
@@ -278,6 +339,7 @@ void loop() {
     uint32_t now = millis();
     twoStepConfirm_tick(&epiConfirm,   now);
     twoStepConfirm_tick(&shockConfirm, now);
+    twoStepConfirm_tick(&amioConfirm,  now);
 
     // STEP 01: armed 提示 5s 自動消失
     if (showEpiArmedPrompt && now - epiArmedPromptStart >= ARMED_PROMPT_MS) {
@@ -285,6 +347,15 @@ void loop() {
     }
     if (showShockArmedPrompt && now - shockArmedPromptStart >= ARMED_PROMPT_MS) {
         showShockArmedPrompt = false;
+    }
+    if (showAmioArmedPrompt && now - amioArmedPromptStart >= ARMED_PROMPT_MS) {
+        showAmioArmedPrompt = false;
+    }
+
+    // STEP 02: 補登成功提示 2s 後自動回主畫面
+    if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS &&
+        now - backfillSuccessShownMs >= BACKFILL_SUCCESS_MS) {
+        resetSubState();
     }
 
     updateBeepMachine();
@@ -311,12 +382,12 @@ void handleButtons() {
                 // STEP 01.01: 按下（press start）
                 if (now - lastPressMs[i] >= DEBOUNCE_MS) {
                     btnPressStartMs[i] = now;
-                    btnLong3sFired[i]  = false;
+                    btnLongFired[i]  = false;
                     lastPressMs[i]     = now;
                 }
             } else {
                 // STEP 01.02: 放開（release）
-                if (btnPressStartMs[i] > 0 && !btnLong3sFired[i]) {
+                if (btnPressStartMs[i] > 0 && !btnLongFired[i]) {
                     uint32_t held = now - btnPressStartMs[i];
                     if (held < SHORT_PRESS_MAX_MS) {
                         onShortPress(i);
@@ -326,11 +397,13 @@ void handleButtons() {
             }
             lastBtnState[i] = cur;
         } else {
-            // STEP 02: 按住中 — 檢查長按 3s 觸發（fire on threshold）
-            if (cur == LOW && btnPressStartMs[i] > 0 && !btnLong3sFired[i]) {
-                if (now - btnPressStartMs[i] >= LONG_3S_PRESS_MS) {
-                    btnLong3sFired[i] = true;
-                    onLong3sPress(i);
+            // STEP 02: 按住中 — 依該按鈕 threshold 觸發長按（fire on threshold reach）
+            uint16_t threshold = LONG_PRESS_MS_PER_BTN[i];
+            if (threshold > 0 && cur == LOW &&
+                btnPressStartMs[i] > 0 && !btnLongFired[i]) {
+                if (now - btnPressStartMs[i] >= threshold) {
+                    btnLongFired[i] = true;
+                    onLongPress(i);
                 }
             }
         }
@@ -362,9 +435,11 @@ void onShortPress(uint8_t btnIdx) {
                         startFlashStartMs = millis();
                         caseStartMs       = millis();
                         eventCount        = 0;
+                        nextEventId       = 1;
                         ohcaLastEpiMs     = 0;
                         ohcaPrevSinceMs   = 0;
                         alarmMuted        = false;
+                        resetSubState();
                         Serial.println("[OHCA] Case start (START_FLASH)");
                         break;
                     case 1: globalState = GLOBAL_VENT_PLACEHOLDER;     break;
@@ -392,6 +467,135 @@ void onShortPress(uint8_t btnIdx) {
 
     uint32_t now = millis();
 
+    // ===== Phase B sub-state 子流程處理 =====
+    if (ohcaSubState != SUBSTATE_NONE) {
+        // STEP 01: SUCCESS 顯示中：忽略所有按鍵（自動 2s 後消失，由 loop 處理）
+        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS) return;
+
+        // STEP 02: TIMELINE：上下鍵翻頁、返回鍵回 SUMMARY
+        if (ohcaSubState == SUBSTATE_TIMELINE) {
+            if (btnIdx == BTN_UP   && timelineScrollOffset > 0)         timelineScrollOffset--;
+            if (btnIdx == BTN_DOWN && timelineScrollOffset + 4 < eventCount) timelineScrollOffset++;
+            if (btnIdx == BTN_BACK)                                      ohcaSubState = SUBSTATE_NONE;
+            return;
+        }
+
+        // STEP 03: AMIO_CONFIRM：BTN_PRIMARY 兩段確認；返回鍵取消
+        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM) {
+            if (btnIdx == BTN_BACK) {
+                resetSubState();
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                bool ok = twoStepConfirm_press(&amioConfirm, now);
+                if (ok) {
+                    showAmioArmedPrompt = false;
+                    recordLocalEvent(EVT_AMIODARONE);
+                    dispatchOhcaEvent(OHCA_EVT_AMIO_CONFIRMED, 0);  // 不重啟倒數
+                    triggerBeep(1, 80, 0);
+                    Serial.println("[OHCA] Amio confirmed");
+                    resetSubState();
+                } else {
+                    showAmioArmedPrompt  = true;
+                    amioArmedPromptStart = now;
+                }
+            }
+            return;
+        }
+
+        // STEP 04: DRUG_MENU：上下鍵切換「補登 EPI / Amiodarone」；主鍵確認；返回鍵取消
+        if (ohcaSubState == SUBSTATE_DRUG_MENU) {
+            if (btnIdx == BTN_UP || btnIdx == BTN_DOWN) {
+                backfillCursor ^= 1;  // 0 ↔ 1
+                return;
+            }
+            if (btnIdx == BTN_BACK) { resetSubState(); return; }
+            if (btnIdx == BTN_PRIMARY) {
+                if (backfillCursor == 0) {
+                    // STEP 04.01: 進補登 EPI 流程（先選類型）
+                    backfillCategory = BACKFILL_CAT_EPI;
+                    backfillSuppType = SUPP_TYPE_EPI_PRE_HANDOVER;
+                    backfillCursor   = 0;
+                    ohcaSubState     = SUBSTATE_BACKFILL_TYPE;
+                } else {
+                    // STEP 04.02: 進 Amio 兩段確認
+                    twoStepConfirm_init(&amioConfirm, TWO_STEP_DEFAULT_TIMEOUT_MS);
+                    showAmioArmedPrompt = false;
+                    ohcaSubState        = SUBSTATE_AMIO_CONFIRM;
+                }
+            }
+            return;
+        }
+
+        // STEP 05: BACKFILL_TYPE：上下鍵切換「接手前 / 純補登」；主鍵確認；返回鍵取消
+        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE) {
+            if (btnIdx == BTN_UP || btnIdx == BTN_DOWN) {
+                backfillCursor ^= 1;
+                if (backfillCategory == BACKFILL_CAT_EPI) {
+                    backfillSuppType = (backfillCursor == 0)
+                                     ? SUPP_TYPE_EPI_PRE_HANDOVER
+                                     : SUPP_TYPE_EPI_PURE;
+                } else {
+                    backfillSuppType = (backfillCursor == 0)
+                                     ? SUPP_TYPE_SHOCK_PRE_HANDOVER
+                                     : SUPP_TYPE_SHOCK_PURE;
+                }
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                // 從 EPI 入口進來 → 退回 DRUG_MENU；從電擊入口進來 → 退出
+                if (backfillCategory == BACKFILL_CAT_EPI) {
+                    ohcaSubState   = SUBSTATE_DRUG_MENU;
+                    backfillCursor = 0;
+                } else {
+                    resetSubState();
+                }
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                backfillCount = 1;  // 預設 1
+                ohcaSubState  = SUBSTATE_BACKFILL_COUNT;
+                return;
+            }
+            return;
+        }
+
+        // STEP 06: BACKFILL_COUNT：上下鍵增減次數；主鍵 → CONFIRM；返回鍵 → TYPE
+        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT) {
+            uint8_t maxN = suppCountMax(backfillSuppType);
+            if (btnIdx == BTN_UP   && backfillCount < maxN) backfillCount++;
+            if (btnIdx == BTN_DOWN && backfillCount > 1)    backfillCount--;
+            if (btnIdx == BTN_BACK) {
+                ohcaSubState   = SUBSTATE_BACKFILL_TYPE;
+                backfillCursor = 0;
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                ohcaSubState = SUBSTATE_BACKFILL_CONFIRM;
+            }
+            return;
+        }
+
+        // STEP 07: BACKFILL_CONFIRM：主鍵 → 寫入；返回鍵 → 取消回 COUNT
+        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM) {
+            if (btnIdx == BTN_BACK) {
+                ohcaSubState = SUBSTATE_BACKFILL_COUNT;
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                recordSuppEvent(backfillSuppType, backfillCount);
+                triggerBeep(1, 80, 0);
+                ohcaSubState           = SUBSTATE_BACKFILL_SUCCESS;
+                backfillSuccessShownMs = now;
+                Serial.printf("[OHCA] supp recorded: type=%u count=%u\n",
+                              backfillSuppType, backfillCount);
+            }
+            return;
+        }
+        return;
+    }
+
+    // ===== OHCA 主畫面（無 sub-state） =====
     switch (btnIdx) {
         case BTN_PRIMARY:
             // STEP 01: ALARMING/OVERTIME 主鍵 — 消音（不轉 state）
@@ -423,8 +627,10 @@ void onShortPress(uint8_t btnIdx) {
             if (ohcaState == OHCA_STATE_END_CHECK) {
                 endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
                                ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
-            } else if (ohcaState == OHCA_STATE_SUMMARY && summaryScrollOffset > 0) {
-                summaryScrollOffset--;
+            } else if (ohcaState == OHCA_STATE_SUMMARY) {
+                // Phase B: SUMMARY 上鍵 → 進 Timeline 子畫面
+                ohcaSubState         = SUBSTATE_TIMELINE;
+                timelineScrollOffset = 0;
             }
             break;
 
@@ -432,8 +638,9 @@ void onShortPress(uint8_t btnIdx) {
             if (ohcaState == OHCA_STATE_END_CHECK) {
                 endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
                                ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
-            } else if (ohcaState == OHCA_STATE_SUMMARY && summaryScrollOffset + 4 < eventCount) {
-                summaryScrollOffset++;
+            } else if (ohcaState == OHCA_STATE_SUMMARY) {
+                ohcaSubState         = SUBSTATE_TIMELINE;
+                timelineScrollOffset = 0;
             }
             break;
 
@@ -463,7 +670,7 @@ void onShortPress(uint8_t btnIdx) {
                 ohcaPrevSinceMs = 0;
                 alarmMuted      = false;
                 stopBeep();
-                recordEvent(1);
+                recordLocalEvent(EVT_EPI_LOCAL);
                 triggerBeep(1, 80, 0);  // 短確認音
                 Serial.println("[OHCA] EPI confirmed");
             } else {
@@ -480,7 +687,7 @@ void onShortPress(uint8_t btnIdx) {
             if (confirmed) {
                 showShockArmedPrompt = false;
                 dispatchOhcaEvent(OHCA_EVT_SHOCK_CONFIRMED, 0);  // 不重啟倒數
-                recordEvent(2);
+                recordLocalEvent(EVT_SHOCK_LOCAL);
                 triggerBeep(1, 80, 0);
                 Serial.println("[OHCA] Shock confirmed");
             } else {
@@ -502,17 +709,40 @@ void onShortPress(uint8_t btnIdx) {
 // 長按 3s dispatcher（OHCA OVERTIME 結束前檢查觸發）
 // ============================================================
 
-void onLong3sPress(uint8_t btnIdx) {
-    Serial.printf("[BTN] long3s %u (state=%u/%u)\n", btnIdx, globalState, ohcaState);
+void onLongPress(uint8_t btnIdx) {
+    Serial.printf("[BTN] long %u (state=%u/%u/sub=%u)\n",
+                  btnIdx, globalState, ohcaState, ohcaSubState);
 
-    if (btnIdx != BTN_PRIMARY) return;
-    if (globalState != GLOBAL_OHCA) return;
-    if (ohcaState != OHCA_STATE_OVERTIME) return;
+    // STEP 01: 主鍵 3s 長按 — OHCA OVERTIME → END_CHECK
+    if (btnIdx == BTN_PRIMARY) {
+        if (globalState != GLOBAL_OHCA) return;
+        if (ohcaState != OHCA_STATE_OVERTIME) return;
+        if (ohcaSubState != SUBSTATE_NONE) return;  // 子流程中不觸發
 
-    dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
-    endCheckCursor = END_CHECK_CURSOR_CANCEL;  // 預設停在「返回案件」避免誤確認
-    stopBeep();
-    Serial.println("[OHCA] enter END_CHECK");
+        dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
+        endCheckCursor = END_CHECK_CURSOR_CANCEL;
+        stopBeep();
+        Serial.println("[OHCA] enter END_CHECK");
+        return;
+    }
+
+    // STEP 02: EPI 鍵 1s 長按 — 進入藥物選單（Phase B）
+    if (btnIdx == BTN_EPI) {
+        if (globalState != GLOBAL_OHCA) return;
+        if (ohcaState == OHCA_STATE_LOCKED || ohcaState == OHCA_STATE_SUMMARY) return;
+        if (ohcaSubState != SUBSTATE_NONE) return;
+        enterDrugMenu();
+        return;
+    }
+
+    // STEP 03: 電擊鍵 1s 長按 — 進入電擊補登選單（Phase B）
+    if (btnIdx == BTN_SHOCK) {
+        if (globalState != GLOBAL_OHCA) return;
+        if (ohcaState == OHCA_STATE_LOCKED || ohcaState == OHCA_STATE_SUMMARY) return;
+        if (ohcaSubState != SUBSTATE_NONE) return;
+        enterShockBackfillMenu();
+        return;
+    }
 }
 
 // ============================================================
@@ -578,15 +808,61 @@ void updateOhcaTick() {
 // 紀錄事件（Phase A：in-memory only；Phase E 才 LittleFS 持久化）
 // ============================================================
 
-void recordEvent(uint8_t type) {
+/** 紀錄本機即時事件（EVT_EPI_LOCAL / EVT_SHOCK_LOCAL / EVT_AMIODARONE） */
+void recordLocalEvent(ems_event_type_t type) {
     if (eventCount >= MAX_EVENTS) {
         Serial.println("[EVT] full, drop");
         return;
     }
-    uint32_t elapsed = (caseStartMs == 0) ? 0 : (millis() - caseStartMs);
-    events[eventCount].type       = type;
-    events[eventCount].elapsed_ms = elapsed;
+    uint32_t now     = millis();
+    uint32_t elapsed = (caseStartMs == 0) ? 0 : (now - caseStartMs);
+    // Phase A 無 RTC：用 millis() 當 timestamp_ms 佔位（Dev-Phase 3 升 DS3231 後改 epoch）
+    buildLocalEvent(&events[eventCount], nextEventId++, type,
+                    /*timestamp_ms*/ (uint64_t)now, elapsed);
     eventCount++;
+}
+
+/** 紀錄補登事件（接手前 / 純補登 EPI / 電擊） */
+void recordSuppEvent(supp_type_t supp_type, uint8_t count) {
+    if (eventCount >= MAX_EVENTS) {
+        Serial.println("[EVT] full, drop");
+        return;
+    }
+    if (!isSuppCountValid(supp_type, count)) {
+        Serial.printf("[EVT] invalid supp count: type=%u count=%u\n", supp_type, count);
+        return;
+    }
+    uint32_t now     = millis();
+    uint32_t elapsed = (caseStartMs == 0) ? 0 : (now - caseStartMs);
+    buildSuppEvent(&events[eventCount], nextEventId++, supp_type, count,
+                   /*recorded_at_ms*/ (uint64_t)now, elapsed);
+    eventCount++;
+}
+
+/** 重置 Phase B 補登 / Amio sub-state 暫存 */
+void resetSubState() {
+    ohcaSubState           = SUBSTATE_NONE;
+    backfillCursor         = 0;
+    backfillCount          = 1;
+    backfillSuccessShownMs = 0;
+    timelineScrollOffset   = 0;
+    showAmioArmedPrompt    = false;
+}
+
+/** 進入藥物選單（長按 EPI 鍵入口） */
+void enterDrugMenu() {
+    ohcaSubState   = SUBSTATE_DRUG_MENU;
+    backfillCursor = 0;
+    Serial.println("[OHCA] enter DRUG_MENU");
+}
+
+/** 進入電擊補登選單（長按電擊鍵入口） */
+void enterShockBackfillMenu() {
+    ohcaSubState     = SUBSTATE_BACKFILL_TYPE;
+    backfillCategory = BACKFILL_CAT_SHOCK;
+    backfillSuppType = SUPP_TYPE_SHOCK_PRE_HANDOVER;
+    backfillCursor   = 0;
+    Serial.println("[OHCA] enter SHOCK BACKFILL TYPE menu");
 }
 
 // ============================================================
@@ -717,6 +993,15 @@ void updateDisplay() {
     if (globalState == GLOBAL_MAIN_MENU) {
         drawMainMenu();
     } else if (globalState == GLOBAL_OHCA) {
+        // Phase B: sub-state 子流程畫面優先
+        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        display.display(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    display.display(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   display.display(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); display.display(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); display.display(); return; }
+        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); display.display(); return; }
+        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        display.display(); return; }
+
         switch (ohcaState) {
             case OHCA_STATE_START_FLASH:
                 drawOhcaStartFlash();
@@ -843,14 +1128,14 @@ void drawOhcaCountdownCommon(const char* label, uint32_t time_ms, bool show_over
     if (ss < 10) display.print("0");
     display.print(ss);
 
-    // 事件數提示
+    // 事件數提示（含補登 count）
     display.setTextSize(1);
     display.setCursor(0, 54);
     display.print("EPI:");
-    uint8_t epiN = 0, shockN = 0;
+    uint16_t epiN = 0, shockN = 0;
     for (uint16_t i = 0; i < eventCount; i++) {
-        if (events[i].type == 1) epiN++;
-        else if (events[i].type == 2) shockN++;
+        if      (isEpiEvent(&events[i]))   epiN   += events[i].count;
+        else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
     display.print(epiN);
     display.print("  Shk:");
@@ -906,30 +1191,38 @@ void drawOhcaLocked() {
 }
 
 void drawOhcaSummary() {
+    // 用 caseSummary 聚合（V1 §11）
+    ohca_case_summary_t s;
+    caseSummary_build(&s, events, eventCount, /*case_start*/ 0, /*case_end*/ 0);
+
     display.setTextColor(SSD1306_WHITE);
     display.setTextSize(1);
     display.setCursor(0, 0);
-    display.print("Summary  ");
-    display.print(eventCount);
-    display.println(" evts");
+    display.println("Summary | OHCA");
     display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
 
-    // 顯示最多 4 筆，從 summaryScrollOffset 起
-    uint16_t shown = 0;
-    for (uint16_t i = summaryScrollOffset; i < eventCount && shown < 4; i++, shown++) {
-        int y = 14 + shown * 10;
-        display.setCursor(0, y);
-        display.print((i + 1));
-        display.print(". ");
-        display.print(events[i].type == 1 ? "EPI" : (events[i].type == 2 ? "Shk" : "?"));
-        display.print(" @");
-        uint32_t sec = events[i].elapsed_ms / 1000;
-        if (sec / 60 < 10) display.print("0");
-        display.print(sec / 60);
-        display.print(":");
-        if (sec % 60 < 10) display.print("0");
-        display.print(sec % 60);
-    }
+    display.setCursor(0, 14);
+    display.print("EPI Total: ");
+    display.print(s.epi_total);
+    display.setCursor(0, 24);
+    display.print(" L:"); display.print(s.epi_local);
+    display.print(" PH:"); display.print(s.epi_pre_handover);
+    display.print(" PS:"); display.print(s.epi_pure_supp);
+
+    display.setCursor(0, 34);
+    display.print("Shock Total: ");
+    display.print(s.shock_total);
+    display.setCursor(0, 44);
+    display.print(" L:"); display.print(s.shock_local);
+    display.print(" PH:"); display.print(s.shock_pre_handover);
+    display.print(" PS:"); display.print(s.shock_pure_supp);
+
+    display.setCursor(72, 14);
+    display.print("Amio:");
+    display.print(s.amio_total);
+
+    display.setCursor(0, 56);
+    display.print("[Up]Time [Bk]Menu");
 
     display.setCursor(0, 56);
     display.print("[Back] -> Menu");
@@ -958,4 +1251,232 @@ void drawPlaceholder(const char* title, const char* phase) {
     display.println("Not implemented");
     display.setCursor(0, 56);
     display.println("[Back] -> Menu");
+}
+
+// ============================================================
+//  Phase B 顯示函式
+// ============================================================
+
+/** 藥物選單（V1 §9.2） */
+void drawDrugMenu() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Drug Menu");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    const char* labels[2] = { "Backfill EPI", "Amiodarone" };
+    for (uint8_t i = 0; i < 2; i++) {
+        int y = 18 + i * 12;
+        if (i == backfillCursor) {
+            display.fillRect(0, y - 1, OLED_WIDTH, 11, SSD1306_WHITE);
+            display.setTextColor(SSD1306_BLACK);
+        } else {
+            display.setTextColor(SSD1306_WHITE);
+        }
+        display.setCursor(4, y);
+        display.print("> ");
+        display.print(labels[i]);
+    }
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 56);
+    display.println("[Back] cancel");
+}
+
+/** 補登類型選擇（接手前 / 純補登） */
+void drawBackfillType() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println(backfillCategory == BACKFILL_CAT_EPI ? "Backfill EPI"
+                                                         : "Backfill Shock");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    const char* labels[2] = { "Pre-handover", "Pure backfill" };
+    for (uint8_t i = 0; i < 2; i++) {
+        int y = 18 + i * 12;
+        if (i == backfillCursor) {
+            display.fillRect(0, y - 1, OLED_WIDTH, 11, SSD1306_WHITE);
+            display.setTextColor(SSD1306_BLACK);
+        } else {
+            display.setTextColor(SSD1306_WHITE);
+        }
+        display.setCursor(4, y);
+        display.print("> ");
+        display.print(labels[i]);
+    }
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 56);
+    display.println("[Back] cancel");
+}
+
+/** 補登次數選擇（V1 §9.6） */
+void drawBackfillCount() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    const char* typeLabel =
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "PreHandover EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure Supp EPI"   :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "PreHandover Shk" :
+                                                             "Pure Supp Shk";
+    display.println(typeLabel);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    display.setCursor(0, 18);
+    display.print("Count: ");
+    uint8_t maxN = suppCountMax(backfillSuppType);
+    display.print("(1~");
+    display.print(maxN);
+    display.print(")");
+
+    display.setTextSize(3);
+    display.setCursor(48, 30);
+    display.print(backfillCount);
+
+    display.setTextSize(1);
+    display.setCursor(0, 56);
+    display.println("[Up/Dn] [Main]OK [Bk]");
+}
+
+/** 補登確認對話框（V1 §9.4） */
+void drawBackfillConfirm() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Confirm backfill?");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    const char* shortLabel =
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure-EPI"   :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "Pre-Shk" :
+                                                             "Pure-Shk";
+
+    display.setTextSize(2);
+    display.setCursor(8, 16);
+    display.print(shortLabel);
+    display.print(" x");
+    display.print(backfillCount);
+
+    display.setTextSize(1);
+    display.setCursor(0, 38);
+    display.println("Not undoable");
+    display.setCursor(0, 56);
+    display.println("[Main]OK [Bk]cancel");
+}
+
+/** 補登成功提示（2s 後自動消失，V1 §9.5） */
+void drawBackfillSuccess() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Backfill OK");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    const char* shortLabel =
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure-EPI"   :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "Pre-Shk" :
+                                                             "Pure-Shk";
+
+    display.setTextSize(2);
+    display.setCursor(8, 22);
+    display.print(shortLabel);
+    display.print(" x");
+    display.print(backfillCount);
+
+    display.setTextSize(1);
+    display.setCursor(0, 56);
+    display.println("Recorded");
+}
+
+/** Amiodarone 兩段確認 */
+void drawAmioConfirmPrompt() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Amiodarone");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    display.setTextSize(2);
+    display.setCursor(8, 22);
+    display.println("Confirm?");
+
+    display.setTextSize(1);
+    if (showAmioArmedPrompt) {
+        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
+        display.setCursor(2, OLED_HEIGHT - 10);
+        display.print("Press [Main] again");
+    } else {
+        display.setCursor(0, 56);
+        display.println("[Main]confirm [Bk]cancel");
+    }
+}
+
+/** Timeline 子畫面（V1 §11.5） */
+void drawTimeline() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Timeline");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    if (eventCount == 0) {
+        display.setCursor(0, 24);
+        display.println("(no events)");
+        display.setCursor(0, 56);
+        display.println("[Back] -> Summary");
+        return;
+    }
+
+    // 排序索引（純函式 lib）
+    static uint16_t idx[MAX_EVENTS];
+    caseSummary_buildTimeline(idx, events, eventCount);
+
+    // 顯示最多 4 筆
+    uint16_t shown = 0;
+    for (uint16_t i = timelineScrollOffset; i < eventCount && shown < 4; i++, shown++) {
+        int y = 14 + shown * 10;
+        display.setCursor(0, y);
+        const ems_event_t& e = events[idx[i]];
+
+        // 時間欄：本機顯示 mm:ss；補登顯示「-」
+        if (isBackfillEvent(&e)) {
+            display.print("- ");
+        } else {
+            uint32_t sec = e.elapsed_ms / 1000;
+            if (sec / 60 < 10) display.print("0");
+            display.print(sec / 60);
+            display.print(":");
+            if (sec % 60 < 10) display.print("0");
+            display.print(sec % 60);
+            display.print(" ");
+        }
+
+        // 類型 + count（補登 ×N）
+        const char* lbl =
+            e.type == EVT_EPI_LOCAL          ? "EPI" :
+            e.type == EVT_SHOCK_LOCAL        ? "Shk" :
+            e.type == EVT_AMIODARONE         ? "Amio" :
+            e.type == EVT_EPI_PRE_HANDOVER   ? "PreEPI" :
+            e.type == EVT_EPI_PURE_SUPP      ? "PurEPI" :
+            e.type == EVT_SHOCK_PRE_HANDOVER ? "PreShk" :
+            e.type == EVT_SHOCK_PURE_SUPP    ? "PurShk" : "?";
+        display.print(lbl);
+        if (e.count > 1) {
+            display.print("x");
+            display.print(e.count);
+        }
+    }
+    display.setCursor(0, 56);
+    display.println("[Back] -> Summary");
 }
