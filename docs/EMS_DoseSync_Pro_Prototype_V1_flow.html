@@ -1001,17 +1001,21 @@
     <div class="sub-title" id="sec-19-1">19.1 硬體腳位擴充預留</div>
     <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">對應 PM 需求 ① 錄音鍵 GPIO 預留、② 麥克風 I2S 腳位預留、③ CO 感測器腳位預留</p>
 
-    <p style="font-size:13px;font-weight:600;margin-bottom:6px">V1 已啟用腳位</p>
+    <p style="font-size:13px;font-weight:600;margin-bottom:6px">V1 腳位分配</p>
+    <p style="font-size:12px;color:var(--text-secondary);margin-bottom:6px">📌 GPIO 分配以 <code>docs/gpio-allocation.md</code> 為單一真相來源（SSOT）。本表為 SoT V1 視角的快照，內容需與 SSOT 對齊。</p>
     <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">
-      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:left">腳位</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th><th style="padding:8px;border:1px solid var(--border);text-align:left">韌體常數</th></tr></thead>
+      <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">模組</th><th style="padding:8px;border:1px solid var(--border);text-align:left">腳位</th><th style="padding:8px;border:1px solid var(--border);text-align:left">介面</th><th style="padding:8px;border:1px solid var(--border);text-align:left">韌體常數</th><th style="padding:8px;border:1px solid var(--border);text-align:left">狀態</th></tr></thead>
       <tbody>
-        <tr><td style="padding:6px;border:1px solid var(--border)">主按鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 4</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_PRIMARY</code></td></tr>
-        <tr><td style="padding:6px;border:1px solid var(--border)">上鍵 / 下鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 5 / 6</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_UP</code> / <code>BTN_DOWN</code></td></tr>
-        <tr><td style="padding:6px;border:1px solid var(--border)">Power 鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 7</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_POWER</code></td></tr>
-        <tr><td style="padding:6px;border:1px solid var(--border)">錄音鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 15</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_RECORD</code>（noop 佔位）</td></tr>
-        <tr><td style="padding:6px;border:1px solid var(--border)">蜂鳴器</td><td style="padding:6px;border:1px solid var(--border)">GPIO 14</td><td style="padding:6px;border:1px solid var(--border)">PWM out</td><td style="padding:6px;border:1px solid var(--border)"><code>BUZZER_PIN</code></td></tr>
-        <tr><td style="padding:6px;border:1px solid var(--border)">震動馬達</td><td style="padding:6px;border:1px solid var(--border)">GPIO 16</td><td style="padding:6px;border:1px solid var(--border)">Digital out</td><td style="padding:6px;border:1px solid var(--border)"><code>VIBRATION_PIN</code>（<code>ENABLE_VIBRATION=0</code>）</td></tr>
-        <tr><td style="padding:6px;border:1px solid var(--border)">OLED</td><td style="padding:6px;border:1px solid var(--border)">GPIO 42 / 41</td><td style="padding:6px;border:1px solid var(--border)">I2C (SDA/SCL)</td><td style="padding:6px;border:1px solid var(--border)"><code>I2C_SDA_PIN</code> / <code>I2C_SCL_PIN</code></td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">主按鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 4</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_PRIMARY</code></td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">上鍵 / 下鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 5 / 6</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_UP</code> / <code>BTN_DOWN</code></td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">Power 鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 7</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_POWER</code></td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">錄音鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 15</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_RECORD</code>（noop 佔位）</td><td style="padding:6px;border:1px solid var(--border)">⚠️ 物理接線、韌體佔位</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">返回鍵</td><td style="padding:6px;border:1px solid var(--border)">GPIO 16</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_BACK</code></td><td style="padding:6px;border:1px solid var(--border)">❌ 韌體未實作（Impl-Phase B 待補）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">EPI 鍵（針筒圖案）</td><td style="padding:6px;border:1px solid var(--border)">GPIO 17</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_EPI</code></td><td style="padding:6px;border:1px solid var(--border)">❌ 韌體未實作（Impl-Phase B 待補）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">電擊鍵（閃電圖案）</td><td style="padding:6px;border:1px solid var(--border)">GPIO 18</td><td style="padding:6px;border:1px solid var(--border)">Digital input</td><td style="padding:6px;border:1px solid var(--border)"><code>BTN_SHOCK</code></td><td style="padding:6px;border:1px solid var(--border)">❌ 韌體未實作（Impl-Phase B 待補）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">蜂鳴器</td><td style="padding:6px;border:1px solid var(--border)">GPIO 14</td><td style="padding:6px;border:1px solid var(--border)">PWM out</td><td style="padding:6px;border:1px solid var(--border)"><code>BUZZER_PIN</code></td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">震動馬達</td><td style="padding:6px;border:1px solid var(--border)">GPIO 21</td><td style="padding:6px;border:1px solid var(--border)">PWM out</td><td style="padding:6px;border:1px solid var(--border)"><code>VIBRATION_PIN</code>（<code>ENABLE_VIBRATION=0</code>）</td><td style="padding:6px;border:1px solid var(--border)">⚠️ 待硬體與韌體啟用（原 GPIO 16 已封給返回鍵）</td></tr>
+        <tr><td style="padding:6px;border:1px solid var(--border)">OLED</td><td style="padding:6px;border:1px solid var(--border)">GPIO 42 / 41</td><td style="padding:6px;border:1px solid var(--border)">I2C (SDA/SCL)</td><td style="padding:6px;border:1px solid var(--border)"><code>I2C_SDA_PIN</code> / <code>I2C_SCL_PIN</code></td><td style="padding:6px;border:1px solid var(--border)">✅ 已實作</td></tr>
       </tbody>
     </table>
 
@@ -1029,14 +1033,15 @@
       <thead><tr style="background:var(--bg)"><th style="padding:8px;border:1px solid var(--border);text-align:left">介面類型</th><th style="padding:8px;border:1px solid var(--border);text-align:left">候選腳位</th><th style="padding:8px;border:1px solid var(--border);text-align:left">備註</th></tr></thead>
       <tbody>
         <tr><td style="padding:6px;border:1px solid var(--border)"><strong>I2C 共用 OLED bus</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 42 / 41</td><td style="padding:6px;border:1px solid var(--border)">需確認模組 I2C 位址不與 OLED（0x3C）衝突；最省 GPIO</td></tr>
-        <tr><td style="padding:6px;border:1px solid var(--border)"><strong>獨立 I2C</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 17 / 18</td><td style="padding:6px;border:1px solid var(--border)">避開 SPI flash 區（GPIO 8~13）與 strapping pin</td></tr>
         <tr><td style="padding:6px;border:1px solid var(--border)"><strong>UART</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 43 / 44</td><td style="padding:6px;border:1px solid var(--border)">ZE07-CO 等電化學型主流；S3 USB-CDC 替代腳，僅 USB-CDC 不啟用時可用</td></tr>
         <tr><td style="padding:6px;border:1px solid var(--border)"><strong>類比 ADC</strong></td><td style="padding:6px;border:1px solid var(--border)">GPIO 1 / 2 / 3（ADC1）</td><td style="padding:6px;border:1px solid var(--border)">MEMS 半導體型；避免 ADC2 與 WiFi 衝突</td></tr>
       </tbody>
     </table>
     <div class="note note-amber">
-      <strong>互斥提示：</strong>GPIO 1/2/3 同時為 ADC 候選；採 ADC 時，獨立 I2C 與 UART 不可再用 1/2/3。三組候選擇一即可。<br>
-      <strong>禁用腳位：</strong>GPIO 8~13（內建 SPI flash）/ GPIO 19/20（USB D+/D-）/ GPIO 0/45/46（strapping pin）。
+      <strong>獨立 I2C 候選已移除：</strong>原規劃 GPIO 17/18 已封給 EPI 鍵與電擊鍵（見 §4.1）。CO 感測器 I2C 走 OLED 共用 bus 即可。<br>
+      <strong>互斥提示：</strong>GPIO 1/2/3 同時為 ADC 候選；採 ADC 時，UART 不可再用 1/2/3。<br>
+      <strong>禁用腳位：</strong>GPIO 8~13（內建 SPI flash）/ GPIO 19/20（USB D+/D-）/ GPIO 0/45/46（strapping pin）。<br>
+      <strong>📌 完整擴充策略：</strong>見 <code>docs/gpio-allocation.md</code> 第 5 節與第 6 節。
     </div>
 
     <div class="sub-title" id="sec-19-2">19.2 電源預算與餘裕</div>

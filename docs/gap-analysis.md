@@ -22,7 +22,7 @@
 | BLE 架構 | **兩台 EMS Timer 硬體互聯**（PM 2026-04-23 拍板）— 主機 Central 掃描副機 Peripheral + GATT 4 Service | 裝置為 Peripheral；**無主副機架構**；使用 NUS + JSON 單一 service | 🔴 大（Phase 3 實作主副機互聯） |
 | 電源鍵功能 | 短按螢幕亮滅 / 長按關機 | 僅 log 輸出（noop） | 🟡 中（硬體到位後可補） |
 | 錄音鍵功能 | **PM 2026-04-23 確認只有錄音鍵，無靜音鍵** — INMP441 錄音用 | BTN_RECORD 佔位（Phase 1.5 換模組後啟用） | 🟢 定義對齊；待 INMP441 到貨啟用 |
-| 震動馬達 | PM §4.3 要求震動提醒 | 硬體預留 GPIO 16 + `ENABLE_VIBRATION=0`；**OLED 整螢幕反色 200ms** 作視覺替代 | 🟡 中（硬體到貨後啟用） |
+| 震動馬達 | PM §4.3 要求震動提醒 | 硬體預留 GPIO 21 + `ENABLE_VIBRATION=0`（原 GPIO 16 已封給返回鍵，見 [`gpio-allocation.md`](gpio-allocation.md)）；**OLED 整螢幕反色 200ms** 作視覺替代 | 🟡 中（硬體到貨後啟用） |
 | RTOS | FreeRTOS 8 task | Arduino loop 單執行緒 | 🟡 中（可延後） |
 | 電源管理 | Li-ion + TP4056 + light sleep | USB-C 直供，無電源管理 | 🟡 中（硬體層） |
 | RTC | 硬體 RTC（PM §4.8 要求 RTC 校正） | 軟體 epoch offset（BLE sync 下發） | 🟡 中（Phase 3 DS3231 升級） |

@@ -2729,18 +2729,23 @@ Prototype 初期可使用 3D 列印外殼。
 
 V1 不啟用以下功能，但 ESP32-S3 GPIO 已預留如下，PCB layout 與韌體常數需保留對應位置：
 
-### 21.3.1 V1 已啟用腳位
+### 21.3.1 V1 腳位分配
 
-| 模組 | 腳位 | 介面 | 韌體常數 |
-|------|------|------|---------|
-| 主按鍵 | GPIO 4 | Digital input | `BTN_PRIMARY` |
-| 上鍵 | GPIO 5 | Digital input | `BTN_UP` |
-| 下鍵 | GPIO 6 | Digital input | `BTN_DOWN` |
-| Power 鍵 | GPIO 7 | Digital input | `BTN_POWER` |
-| 錄音鍵 | GPIO 15 | Digital input | `BTN_RECORD`（noop 佔位） |
-| 蜂鳴器 | GPIO 14 | PWM out | `BUZZER_PIN` |
-| 震動馬達 | GPIO 16 | Digital out | `VIBRATION_PIN`（`ENABLE_VIBRATION=0`） |
-| OLED | GPIO 42 (SDA) / 41 (SCL) | I2C | `I2C_SDA_PIN` / `I2C_SCL_PIN` |
+> 📌 GPIO 分配以 [`docs/gpio-allocation.md`](gpio-allocation.md) 為單一真相來源（SSOT）。本表為 SoT V1 視角的快照，內容需與 SSOT 對齊。
+
+| 模組 | 腳位 | 介面 | 韌體常數 | 狀態 |
+|------|------|------|---------|------|
+| 主按鍵 | GPIO 4 | Digital input | `BTN_PRIMARY` | ✅ 已實作 |
+| 上鍵 | GPIO 5 | Digital input | `BTN_UP` | ✅ 已實作 |
+| 下鍵 | GPIO 6 | Digital input | `BTN_DOWN` | ✅ 已實作 |
+| Power 鍵 | GPIO 7 | Digital input | `BTN_POWER` | ✅ 已實作 |
+| 錄音鍵 | GPIO 15 | Digital input | `BTN_RECORD`（noop 佔位） | ⚠️ 物理接線、韌體佔位（INMP441 到貨後啟用） |
+| 返回鍵 | GPIO 16 | Digital input | `BTN_BACK` | ❌ 物理接線、韌體未實作（Impl-Phase B 待補） |
+| EPI 鍵（針筒圖案） | GPIO 17 | Digital input | `BTN_EPI` | ❌ 物理接線、韌體未實作（Impl-Phase B 待補） |
+| 電擊鍵（閃電圖案） | GPIO 18 | Digital input | `BTN_SHOCK` | ❌ 物理接線、韌體未實作（Impl-Phase B 待補） |
+| 蜂鳴器 | GPIO 14 | PWM out | `BUZZER_PIN` | ✅ 已實作 |
+| 震動馬達 | GPIO 21 | PWM out | `VIBRATION_PIN`（`ENABLE_VIBRATION=0`） | ⚠️ 待硬體與韌體啟用（原 GPIO 16 已封給返回鍵） |
+| OLED | GPIO 42 (SDA) / 41 (SCL) | I2C | `I2C_SDA_PIN` / `I2C_SCL_PIN` | ✅ 已實作 |
 
 ### 21.3.2 V1 預留腳位（不啟用）
 
@@ -2756,13 +2761,16 @@ V1 不指定 CO 感測器型號（見 §20.5.2），依未來選型介面類型�
 | 介面類型 | 候選腳位 | 備註 |
 |---------|---------|------|
 | **I2C 共用 OLED bus** | GPIO 42 / 41 | 需確認 CO 模組 I2C 位址不與 OLED（0x3C）衝突；最省 GPIO 方案 |
-| **獨立 I2C** | GPIO 17 / 18 | 避開 SPI flash 區（GPIO 8~13）與 strapping pin |
 | **UART** | GPIO 43 / 44 | ZE07-CO 等電化學型主流介面；GPIO 43/44 為 S3 預設 USB-CDC 替代腳，僅 USB-CDC 不啟用時可用 |
 | **類比 ADC** | GPIO 1 / 2 / 3（ADC1） | MEMS 半導體型用；避免 ADC2（與 WiFi 衝突） |
 
-> ⚠️ GPIO 1/2/3 同時列於 ADC 候選；若採用 ADC 介面，獨立 I2C 與 UART 不可再用 1/2/3。三組候選擇一即可。
+> ⚠️ **獨立 I2C 候選已移除**：原規劃 GPIO 17/18 已封給 EPI 鍵與電擊鍵（見 §4.1 與 §21.3.1）。CO 感測器 I2C 走 OLED 共用 bus 即可。
+
+> ⚠️ GPIO 1/2/3 同時列於 ADC 候選；若採用 ADC 介面，UART 不可再用 1/2/3。
 
 > 📌 禁用腳位：GPIO 8~13（ESP32-S3 內建 SPI flash）、GPIO 19/20（USB D+/D-）、GPIO 0/45/46（strapping pin，啟動行為敏感）。
+
+> 📌 完整擴充策略與互斥約束見 [`docs/gpio-allocation.md`](gpio-allocation.md) 第 5 節與第 6 節。
 
 ---
 
