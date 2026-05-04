@@ -59,6 +59,60 @@
 - **App**: 待定（React Native / Flutter / 原生）
 - **通訊協定**: BLE GATT
 
+## 硬體腳位規劃
+
+GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一真相來源**（Single Source of Truth）。
+
+- 按鍵命名與分配依 SoT V1 §4.1（8 鍵封版）
+- 擴充策略覆寫 SoT V1 §21.3.3 舊版（CO 感測器候選腳位調整）
+- 其他文件（`main.cpp` 註解、SoT V1 §21.3、`tft-migration-plan.md`）皆需向此文件對齊
+
+### 相關文件
+
+| 文件 | 用途 |
+|------|------|
+| [`docs/gpio-allocation.md`](docs/gpio-allocation.md) | **GPIO 分配單一真相來源**（按鍵/顯示/錄音/擴充/互斥約束/對齊狀態） |
+| [`docs/tft-migration-plan.md`](docs/tft-migration-plan.md) | 2.4" TFT 升級計劃（GPIO 已對齊 gpio-allocation.md） |
+
+### 韌體與規格落差（Impl-Phase B 必補）
+
+韌體 `main.cpp` 目前僅實作 5 顆按鍵（主/上/下/Power/錄音），SoT V1 §4.1 規定 8 顆，缺：
+
+- 返回鍵（GPIO 16）
+- EPI 鍵（GPIO 17，針筒圖案）
+- 電擊鍵（GPIO 18，閃電圖案）
+
+物理腳位已預留，待 Impl-Phase B 補齊韌體實作（`BTN_COUNT` 從 5 擴 8、新增對應 `BTN_*` 常數與 `onShortPress()` switch case）。
+
+## 韌體交付與燒錄
+
+提供其他工程師快速燒錄環境的 release 包模板（無需安裝 PlatformIO，只需 Python + esptool）。
+
+### 文件索引
+
+| 文件 | 用途 | 給誰看 |
+|------|------|------|
+| [`firmware/release-template/README.txt`](firmware/release-template/README.txt) | 對方燒錄說明（事前準備 + 步驟 + 5 種錯誤排除） | 收 release 包的工程師 |
+| [`firmware/release-template/flash.bat`](firmware/release-template/flash.bat) | Windows 一鍵燒錄腳本（自動偵測 COM Port） | 收 release 包的工程師 |
+| [`firmware/release-template/flash.sh`](firmware/release-template/flash.sh) | macOS / Linux 一鍵燒錄腳本（自動偵測 `cu.usbmodem*` / `ttyUSB*`） | 收 release 包的工程師 |
+| [`firmware/release-template/HOW_TO_BUILD_RELEASE.md`](firmware/release-template/HOW_TO_BUILD_RELEASE.md) | **僅開發者**：打包 release 的 SOP（5 步驟 + 自動化建議） | 專案維護者 |
+
+### 打包流程速查
+
+```bash
+cd firmware
+pio run -e esp32-s3-devkitc-1
+cp .pio/build/esp32-s3-devkitc-1/firmware.bin release-template/
+zip -r ems-timer-firmware-$(date +%Y%m%d).zip release-template/ \
+    -x "release-template/HOW_TO_BUILD_RELEASE.md"
+```
+
+> ⚠️ `-x` 排除 `HOW_TO_BUILD_RELEASE.md`，避免內部 SOP 外流。
+
+### Prod-Phase 量產燒錄策略
+
+量產階段的 4 種燒錄方案（USB 直燒 / Pogo Pin 治具 / PCBA 預燒 / BLE OTA）與選擇建議，後續整理進 [`docs/pcb-outsourcing-guide.md`](docs/pcb-outsourcing-guide.md) 的 PCB 預留要求章節（待補）。
+
 ## Phase 編號對照表
 
 專案內共三套 Phase 編號並存，各自含意不同。為避免混淆，後續文件統一加前綴：
