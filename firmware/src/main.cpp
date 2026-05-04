@@ -39,6 +39,7 @@
 #include "ems_two_step_confirm.h"
 #include "ems_supp_model.h"
 #include "ems_case_summary.h"
+#include "ems_vent_metronome.h"
 
 using namespace ems;
 
@@ -117,7 +118,7 @@ static const uint16_t LONG_PRESS_MS_PER_BTN[8] = {
 enum GlobalState : uint8_t {
     GLOBAL_MAIN_MENU            = 0,
     GLOBAL_OHCA                 = 1,
-    GLOBAL_VENT_PLACEHOLDER     = 2,  // Phase C 待實作
+    GLOBAL_VENT                 = 2,  // Phase C 獨立 6 秒通氣節奏
     GLOBAL_TRAINING_PLACEHOLDER = 3,  // Phase D 待實作
     GLOBAL_HISTORY_PLACEHOLDER  = 4,  // Phase E 待實作
     GLOBAL_SETTINGS_PLACEHOLDER = 5,  // Phase G 待實作
@@ -186,6 +187,7 @@ enum OhcaSubState : uint8_t {
     SUBSTATE_BACKFILL_SUCCESS      = 5,  // 「補登成功」顯示 2s
     SUBSTATE_AMIO_CONFIRM          = 6,  // Amio 兩段確認
     SUBSTATE_TIMELINE              = 7,  // Timeline 子畫面（從 SUMMARY 進入）
+    SUBSTATE_QUICK_MENU            = 8,  // Phase C: OHCA 中按返回鍵進入快速功能選單
 };
 static OhcaSubState ohcaSubState = SUBSTATE_NONE;
 
@@ -203,6 +205,21 @@ static const uint32_t   BACKFILL_SUCCESS_MS = 2000;
 
 /** Timeline 子畫面 scroll offset */
 static uint16_t timelineScrollOffset = 0;
+
+// ============================================================
+// Phase C: 6 秒通氣節奏狀態
+// ============================================================
+
+static uint8_t  ventVolume         = VENT_VOLUME_DEFAULT;  // 通氣音量（Phase G 才做 NVS 持久化）
+static uint32_t ventStartMs        = 0;                    // 進入 vent 模式時的 millis()
+static uint32_t ventPrevSinceMs    = 0;                    // 邊緣偵測用
+static bool     ventEndCheckShown  = false;                // 獨立模式長按 3s 結束確認對話框
+static bool     ventBackHintShown  = false;                // 「請長按主鍵」提示
+static uint32_t ventBackHintStartMs = 0;
+static const uint32_t VENT_BACK_HINT_MS = 2000;
+
+/** OHCA 內 6 秒通氣輔助區塊開關（V1 §14.8） */
+static bool ohcaVentOverlayEnabled = false;
 
 // ============================================================
 // END_CHECK 與 SUMMARY 子狀態
@@ -263,6 +280,12 @@ void recordSuppEvent(supp_type_t supp_type, uint8_t count);
 void enterDrugMenu();
 void enterShockBackfillMenu();
 void resetSubState();
+void updateVentTick();
+void applyVentOutput(const vent_output_t& out);
+void drawVentStandalone();
+void drawVentEndCheck();
+void drawQuickMenu();
+void drawOhcaVentOverlay(int y_top);
 void enterMainMenu();
 void exitOhcaCase();
 
@@ -335,6 +358,7 @@ void setup() {
 void loop() {
     handleButtons();
     updateOhcaTick();
+    updateVentTick();
 
     uint32_t now = millis();
     twoStepConfirm_tick(&epiConfirm,   now);
@@ -356,6 +380,11 @@ void loop() {
     if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS &&
         now - backfillSuccessShownMs >= BACKFILL_SUCCESS_MS) {
         resetSubState();
+    }
+
+    // STEP 03: vent 返回鍵提示 2s 自動消失
+    if (ventBackHintShown && now - ventBackHintStartMs >= VENT_BACK_HINT_MS) {
+        ventBackHintShown = false;
     }
 
     updateBeepMachine();
@@ -442,7 +471,14 @@ void onShortPress(uint8_t btnIdx) {
                         resetSubState();
                         Serial.println("[OHCA] Case start (START_FLASH)");
                         break;
-                    case 1: globalState = GLOBAL_VENT_PLACEHOLDER;     break;
+                    case 1:  // 6 秒通氣節奏（獨立模式）
+                        globalState        = GLOBAL_VENT;
+                        ventStartMs        = millis();
+                        ventPrevSinceMs    = 0;
+                        ventEndCheckShown  = false;
+                        ventBackHintShown  = false;
+                        Serial.println("[VENT] enter standalone");
+                        break;
                     case 2: globalState = GLOBAL_TRAINING_PLACEHOLDER; break;
                     case 3: globalState = GLOBAL_HISTORY_PLACEHOLDER;  break;
                     case 4: globalState = GLOBAL_SETTINGS_PLACEHOLDER; break;
@@ -454,8 +490,44 @@ void onShortPress(uint8_t btnIdx) {
         return;
     }
 
+    // ===== Phase C: GLOBAL_VENT 獨立模式（V1 §13）=====
+    if (globalState == GLOBAL_VENT) {
+        uint32_t now = millis();
+        // STEP 01: 結束確認對話框中
+        if (ventEndCheckShown) {
+            if (btnIdx == BTN_PRIMARY) {
+                Serial.println("[VENT] standalone end confirmed");
+                stopBeep();
+                ventEndCheckShown = false;
+                enterMainMenu();
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                ventEndCheckShown = false;
+                return;
+            }
+            return;
+        }
+        // STEP 02: 主畫面按鍵
+        if (btnIdx == BTN_UP) {
+            ventVolume = clampVentVolume((int16_t)ventVolume + 1);
+            return;
+        }
+        if (btnIdx == BTN_DOWN) {
+            ventVolume = clampVentVolume((int16_t)ventVolume - 1);
+            return;
+        }
+        if (btnIdx == BTN_BACK) {
+            // V1 §13.8：返回鍵不直接結束 → 提示「請長按主鍵」
+            ventBackHintShown   = true;
+            ventBackHintStartMs = now;
+            return;
+        }
+        return;
+    }
+
     // ===== Phase X 佔位畫面：返回鍵回主功能表 =====
-    if (globalState >= GLOBAL_VENT_PLACEHOLDER && globalState <= GLOBAL_SETTINGS_PLACEHOLDER) {
+    if (globalState >= GLOBAL_TRAINING_PLACEHOLDER && globalState <= GLOBAL_SETTINGS_PLACEHOLDER) {
         if (btnIdx == BTN_BACK) {
             enterMainMenu();
         }
@@ -467,10 +539,36 @@ void onShortPress(uint8_t btnIdx) {
 
     uint32_t now = millis();
 
-    // ===== Phase B sub-state 子流程處理 =====
+    // ===== Phase B/C sub-state 子流程處理 =====
     if (ohcaSubState != SUBSTATE_NONE) {
         // STEP 01: SUCCESS 顯示中：忽略所有按鍵（自動 2s 後消失，由 loop 處理）
         if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS) return;
+
+        // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口）
+        if (ohcaSubState == SUBSTATE_QUICK_MENU) {
+            // 兩項：[0] toggle 6 秒給氣  [1] 返回 OHCA
+            if (btnIdx == BTN_UP || btnIdx == BTN_DOWN) {
+                backfillCursor ^= 1;  // 借用 backfillCursor 當選單 cursor
+                return;
+            }
+            if (btnIdx == BTN_BACK) { resetSubState(); return; }
+            if (btnIdx == BTN_PRIMARY) {
+                if (backfillCursor == 0) {
+                    // STEP 01.5.1: toggle 6 秒給氣（V1 §14.8）
+                    ohcaVentOverlayEnabled = !ohcaVentOverlayEnabled;
+                    if (ohcaVentOverlayEnabled) {
+                        ventStartMs     = millis();
+                        ventPrevSinceMs = 0;
+                    } else {
+                        stopBeep();
+                    }
+                    Serial.printf("[OHCA] vent overlay = %d\n", ohcaVentOverlayEnabled);
+                }
+                resetSubState();
+                return;
+            }
+            return;
+        }
 
         // STEP 02: TIMELINE：上下鍵翻頁、返回鍵回 SUMMARY
         if (ohcaSubState == SUBSTATE_TIMELINE) {
@@ -655,6 +753,17 @@ void onShortPress(uint8_t btnIdx) {
                 dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
                 return;
             }
+            // STEP 03: Phase C — 案件進行中（非 ALARMING）按返回鍵 → 快速功能選單
+            //   ALARMING 中不允許離開警報（V1 §14.7 / Test Plan §5.2.2）
+            if (ohcaState == OHCA_STATE_WAIT_FIRST_EPI ||
+                ohcaState == OHCA_STATE_COUNTDOWN     ||
+                ohcaState == OHCA_STATE_WARNING       ||
+                ohcaState == OHCA_STATE_OVERTIME) {
+                ohcaSubState   = SUBSTATE_QUICK_MENU;
+                backfillCursor = 0;
+                Serial.println("[OHCA] enter QUICK_MENU");
+                return;
+            }
             break;
 
         case BTN_EPI: {
@@ -713,16 +822,25 @@ void onLongPress(uint8_t btnIdx) {
     Serial.printf("[BTN] long %u (state=%u/%u/sub=%u)\n",
                   btnIdx, globalState, ohcaState, ohcaSubState);
 
-    // STEP 01: 主鍵 3s 長按 — OHCA OVERTIME → END_CHECK
+    // STEP 01: 主鍵 3s 長按
     if (btnIdx == BTN_PRIMARY) {
-        if (globalState != GLOBAL_OHCA) return;
-        if (ohcaState != OHCA_STATE_OVERTIME) return;
-        if (ohcaSubState != SUBSTATE_NONE) return;  // 子流程中不觸發
-
-        dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
-        endCheckCursor = END_CHECK_CURSOR_CANCEL;
-        stopBeep();
-        Serial.println("[OHCA] enter END_CHECK");
+        // STEP 01.01: GLOBAL_VENT 獨立模式 → 結束確認對話框（V1 §13.8）
+        if (globalState == GLOBAL_VENT && !ventEndCheckShown) {
+            ventEndCheckShown = true;
+            stopBeep();
+            Serial.println("[VENT] standalone end check");
+            return;
+        }
+        // STEP 01.02: GLOBAL_OHCA OVERTIME → END_CHECK
+        if (globalState == GLOBAL_OHCA &&
+            ohcaState == OHCA_STATE_OVERTIME &&
+            ohcaSubState == SUBSTATE_NONE) {
+            dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
+            endCheckCursor = END_CHECK_CURSOR_CANCEL;
+            stopBeep();
+            Serial.println("[OHCA] enter END_CHECK");
+            return;
+        }
         return;
     }
 
@@ -866,6 +984,49 @@ void enterShockBackfillMenu() {
 }
 
 // ============================================================
+//  Phase C: 6 秒通氣節奏 tick + output applier
+// ============================================================
+
+/** 套用 vent 輸出至蜂鳴 + 反色（不負責顯示文字，由 draw 函式畫秒數） */
+void applyVentOutput(const vent_output_t& out) {
+    if (out.buzz_emphasis) {
+        // 第 1 拍：強提示 (250ms on)
+        triggerBeep(1, 250, 0);
+    } else if (out.buzz_short) {
+        // 第 2~6 拍：短提示 (60ms on)
+        triggerBeep(1, 60, 0);
+    }
+    if (out.screen_invert_red) {
+        triggerOledFlash(OLED_FLASH_MS);  // 重複觸發會被 oledInverted guard 擋掉
+    }
+}
+
+/**
+ * Tick 驅動 vent 輸出
+ * - GLOBAL_VENT 獨立模式：永遠跑；ventEndCheckShown 中暫停
+ * - GLOBAL_OHCA + ohcaVentOverlayEnabled：跑；ALARMING 時靜音（vol=0 effect）
+ *   pm-dev-spec §7.2 / V1 §14.7：EPI 高優先打斷 → vent 立即靜音
+ */
+void updateVentTick() {
+    bool standalone = (globalState == GLOBAL_VENT) && !ventEndCheckShown;
+    bool ohcaOverlay = (globalState == GLOBAL_OHCA) && ohcaVentOverlayEnabled;
+    if (!standalone && !ohcaOverlay) return;
+
+    uint32_t now   = millis();
+    uint32_t since = (ventStartMs == 0) ? 0 : (now - ventStartMs);
+
+    // ALARMING 時 vent 靜音（vol=0 即可達成「buzz 全關 + 視覺保留」）
+    uint8_t effectiveVol = ventVolume;
+    if (ohcaOverlay && ohcaState == OHCA_STATE_ALARMING) {
+        effectiveVol = 0;
+    }
+
+    vent_output_t out = decideVentOutput(ventPrevSinceMs, since, effectiveVol);
+    applyVentOutput(out);
+    ventPrevSinceMs = since;
+}
+
+// ============================================================
 // 退出 OHCA case（從 SUMMARY 返回主功能表）
 // ============================================================
 
@@ -994,6 +1155,7 @@ void updateDisplay() {
         drawMainMenu();
     } else if (globalState == GLOBAL_OHCA) {
         // Phase B: sub-state 子流程畫面優先
+        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.display(); return; }
         if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        display.display(); return; }
         if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    display.display(); return; }
         if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   display.display(); return; }
@@ -1050,12 +1212,22 @@ void updateDisplay() {
                 break;
         }
 
+        // overlay：6 秒通氣輔助區塊（V1 §14；不蓋 ALARMING 訊息）
+        if (ohcaVentOverlayEnabled &&
+            ohcaState != OHCA_STATE_START_FLASH &&
+            ohcaState != OHCA_STATE_END_CHECK   &&
+            ohcaState != OHCA_STATE_LOCKED      &&
+            ohcaState != OHCA_STATE_SUMMARY) {
+            drawOhcaVentOverlay(/*y_top*/ 44);
+        }
+
         // overlay：兩段確認 armed 提示
         if (showEpiArmedPrompt) drawTwoStepArmedOverlay("EPI? press again");
         else if (showShockArmedPrompt) drawTwoStepArmedOverlay("Shock? press again");
 
-    } else if (globalState == GLOBAL_VENT_PLACEHOLDER) {
-        drawPlaceholder("6sec Vent", "Phase C");
+    } else if (globalState == GLOBAL_VENT) {
+        if (ventEndCheckShown) drawVentEndCheck();
+        else                    drawVentStandalone();
     } else if (globalState == GLOBAL_TRAINING_PLACEHOLDER) {
         drawPlaceholder("Training", "Phase D");
     } else if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
@@ -1479,4 +1651,108 @@ void drawTimeline() {
     }
     display.setCursor(0, 56);
     display.println("[Back] -> Summary");
+}
+
+// ============================================================
+//  Phase C 顯示函式
+// ============================================================
+
+/** 獨立 6 秒通氣節奏主畫面（V1 §13.4） */
+void drawVentStandalone() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("6sec Vent  Vol:");
+    display.print(ventVolume);
+    display.print("/");
+    display.print(VENT_VOLUME_MAX);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    // 大字顯示當前秒數
+    uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
+    vent_beat_t beat = computeVentBeat(since);
+    uint8_t num = (uint8_t)beat + 1;
+
+    display.setTextSize(5);
+    display.setCursor(48, 18);
+    display.print(num);
+
+    // 底部提示
+    display.setTextSize(1);
+    if (ventBackHintShown) {
+        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
+        display.setCursor(2, OLED_HEIGHT - 10);
+        display.print("Long-press [Main] to end");
+    } else {
+        display.setCursor(0, 56);
+        display.print("[Up/Dn]vol [Main]3s end");
+    }
+}
+
+/** 獨立 vent 結束確認對話框（V1 §13.8） */
+void drawVentEndCheck() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("End vent rhythm?");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    display.setTextSize(2);
+    display.setCursor(8, 22);
+    display.println("Confirm?");
+
+    display.setTextSize(1);
+    display.setCursor(0, 56);
+    display.println("[Main]OK [Bk]cancel");
+}
+
+/** 快速功能選單（V1 §14.8 + §9 OHCA 中按返回鍵） */
+void drawQuickMenu() {
+    display.clearDisplay();
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("Quick Menu");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    const char* labels[2] = {
+        ohcaVentOverlayEnabled ? "Disable 6s vent" : "Enable 6s vent",
+        "Back to OHCA",
+    };
+    for (uint8_t i = 0; i < 2; i++) {
+        int y = 18 + i * 12;
+        if (i == backfillCursor) {
+            display.fillRect(0, y - 1, OLED_WIDTH, 11, SSD1306_WHITE);
+            display.setTextColor(SSD1306_BLACK);
+        } else {
+            display.setTextColor(SSD1306_WHITE);
+        }
+        display.setCursor(4, y);
+        display.print("> ");
+        display.print(labels[i]);
+    }
+    display.setTextColor(SSD1306_WHITE);
+    display.setCursor(0, 56);
+    display.println("[Main]OK [Bk]close");
+}
+
+/** OHCA 內 6 秒通氣輔助區塊（V1 §14.3 單秒數視窗） */
+void drawOhcaVentOverlay(int y_top) {
+    uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
+    vent_beat_t beat = computeVentBeat(since);
+    uint8_t num = (uint8_t)beat + 1;
+
+    // 標籤 + 單秒數
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, y_top);
+    display.print("6s vent ON  ");
+
+    // 大字單秒數（往右排）
+    display.setTextSize(2);
+    display.setCursor(80, y_top - 2);
+    display.print(num);
 }
