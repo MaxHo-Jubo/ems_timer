@@ -74,15 +74,17 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 | [`docs/gpio-allocation.md`](docs/gpio-allocation.md) | **GPIO 分配單一真相來源**（按鍵/顯示/錄音/擴充/互斥約束/對齊狀態） |
 | [`docs/tft-migration-plan.md`](docs/tft-migration-plan.md) | 2.4" TFT 升級計劃（GPIO 已對齊 gpio-allocation.md） |
 
-### 韌體與規格落差（Impl-Phase B 必補）
+### 韌體與規格對齊狀態
 
-韌體 `main.cpp` 目前僅實作 5 顆按鍵（主/上/下/Power/錄音），SoT V1 §4.1 規定 8 顆，缺：
+✅ **已對齊**（Impl-Phase A 完成，2026-05-04）：
+- 8 按鍵全部接線：主/上/下/Power/錄音/返回/EPI/電擊
+- 震動馬達 GPIO 21（原 GPIO 16 已封給返回鍵）
+- 舊 lib（`ems_countdown` / `ems_vent`）依 pm-dev-spec §五已廢止
+- 主功能表 5 項（OHCA case 入口可進，其他顯示「Phase X 待實作」）
+- OHCA 子狀態機 + EPI 倒數 + 兩段確認串接完成
+- 95 unit tests 全綠 + 韌體編譯通過（Flash 8.9% / RAM 6%）
 
-- 返回鍵（GPIO 16）
-- EPI 鍵（GPIO 17，針筒圖案）
-- 電擊鍵（GPIO 18，閃電圖案）
-
-物理腳位已預留，待 Impl-Phase B 補齊韌體實作（`BTN_COUNT` 從 5 擴 8、新增對應 `BTN_*` 常數與 `onShortPress()` switch case）。
+⏳ **待實作**：見 `docs/pm-dev-spec.md §四 Phase B~H`
 
 ## 韌體交付與燒錄
 

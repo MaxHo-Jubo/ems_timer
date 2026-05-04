@@ -1,1917 +1,961 @@
 /**
- * EMS Timer — Phase 2 韌體（2A~2E + 3A）
+ * EMS Timer — Phase A 韌體：OHCA 核心
  *
- * 2026-04-22 升級：
- *   2A: 5 鍵重配置（主鍵/左上下/右電源/左上角錄音 noop）
- *   2B: 狀態機 IDLE / RUNNING / PAUSE / END
- *   2C: EmsEvent struct 擴充（event_id/source/mode/sync_flag/extra_data，MAX_EVENTS=100）
- *   2D: 4 種模式選單 + 給藥模式 240 秒倒數提醒
- *   2E: BLE JSON 格式更新（含所有新欄位）
- *   3A: LittleFS 持久儲存（任務結束寫 /sessions/<task_id>.json）
+ * SoT 對齊：
+ *   - docs/EMS_DoseSync_Pro_Prototype_V1.md §3 主功能表 / §5~§11 OHCA
+ *   - docs/pm-dev-spec.md §3~§5（OHCA 子狀態機 / EPI 倒數 / 兩段確認）
+ *   - docs/gpio-allocation.md（GPIO 分配 SSOT）
  *
- * 接線（ESP32-S3 GOOUUU 開發板）：
- *   BTN_PRIMARY（紅色大鍵）→ GPIO 4
- *   BTN_UP（左側上鍵）      → GPIO 5
- *   BTN_DOWN（左側下鍵）    → GPIO 6
- *   BTN_POWER（右側電源鍵） → GPIO 7
- *   BTN_RECORD（左上角鍵）  → GPIO 15
- *   蜂鳴器                  → GPIO 14
- *   OLED SDA/SCL            → GPIO 42/41
- *   INMP441 SCK/WS/SD       → GPIO 40/39/38（Phase 1.5，disabled）
+ * Phase A 範圍（pm-dev-spec §四）：
+ *   ✅ 主功能表 5 項（Phase A 僅實作 OHCA case 入口；其他顯示「Phase X 待實作」）
+ *   ✅ OHCA 子狀態機（10 態，delegate 至 lib/ems_ohca）
+ *   ✅ EPI 4 分鐘倒數引擎（純函式 lib，TIMER_TICK 驅動）
+ *   ✅ EPI / 電擊兩段確認（5s timeout）
+ *   ✅ 三模態輸出：蜂鳴（短嗍 / 連續發報）/ OLED 反色（震動視覺替代）/ 震動（佔位）
+ *   ❌ 補登 / Amio（Phase B）
+ *   ❌ 6 秒通氣節奏（Phase C）
+ *   ❌ Training（Phase D）
+ *   ❌ 持久化 / 歷史紀錄（Phase E）
+ *   ❌ BLE 同步（Phase F）
+ *   ❌ 系統設定（Phase G）
+ *   ❌ 電源管理（Phase H）
+ *
+ * 接線（gpio-allocation.md）：
+ *   主按鍵    → GPIO 4   返回鍵    → GPIO 16
+ *   上鍵      → GPIO 5   EPI 鍵    → GPIO 17
+ *   下鍵      → GPIO 6   電擊鍵    → GPIO 18
+ *   Power 鍵  → GPIO 7   蜂鳴器    → GPIO 14
+ *   錄音鍵    → GPIO 15  震動馬達  → GPIO 21（佔位，ENABLE_VIBRATION=0）
+ *   OLED      → GPIO 42 (SDA) / 41 (SCL)
  */
 
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-#include <ArduinoJson.h>
-#include <LittleFS.h>
-#include <esp_sleep.h>
 
-// 純邏輯函式（抽出至 lib/ems_logic 供 native 測試覆蓋）
-#include "ems_time.h"
-#include "ems_vent.h"
-#include "ems_countdown.h"
+#include "ems_ohca_state.h"
+#include "ems_ohca_countdown.h"
+#include "ems_two_step_confirm.h"
 
-/** Phase 1.5：INMP441 麥克風，換新模組後改 1 */
-#define ENABLE_MIC_MONITOR 0
-
-#if ENABLE_MIC_MONITOR
-#include <driver/i2s.h>
-#endif
-
-/** Phase 2D：震動馬達（1027 硬幣馬達），硬體到貨後改 1，確認腳位後設定 VIBRATION_PIN */
-#define ENABLE_VIBRATION 0
+using namespace ems;
 
 // ============================================================
-// 硬體常數
+// 硬體常數（gpio-allocation.md）
 // ============================================================
 
 /** OLED 解析度 */
 static const uint8_t OLED_WIDTH     = 128;
 static const uint8_t OLED_HEIGHT    = 64;
-
-/** SSD1306 不需硬體 reset 設 -1 */
 static const int8_t  OLED_RESET_PIN = -1;
-
-/** SSD1306 預設 I2C 位址 */
 static const uint8_t OLED_I2C_ADDR  = 0x3C;
-
-/** I2C 腳位（S3 右側） */
 static const uint8_t I2C_SDA_PIN    = 42;
 static const uint8_t I2C_SCL_PIN    = 41;
 
 /** 蜂鳴器 GPIO */
 static const uint8_t BUZZER_PIN     = 14;
 
+/** 震動馬達 GPIO（gpio-allocation.md：原 GPIO 16 已封給返回鍵） */
+#define ENABLE_VIBRATION 0
 #if ENABLE_VIBRATION
-/** 震動馬達 GPIO（S8050 NPN 基極，透過 1kΩ 接 GPIO） */
-static const uint8_t  VIBRATION_PIN = 16;
-/** 單次震動持續時間（ms） */
-static const uint16_t VIBRATION_MS  = 500;
-#endif
-
-#if ENABLE_MIC_MONITOR
-static const i2s_port_t I2S_PORT    = I2S_NUM_0;
-static const uint8_t    I2S_WS_PIN  = 39;
-static const uint8_t    I2S_SCK_PIN = 40;
-static const uint8_t    I2S_SD_PIN  = 38;
+static const uint8_t VIBRATION_PIN = 21;
 #endif
 
 // ============================================================
-// 擴充預留腳位（V1 不啟用，對齊 SoT V1 §21.3）
-// ============================================================
-//
-// CO 感測器候選腳位（型號未定，依介面類型擇一，候選互斥）：
-//   - I2C 共用 OLED bus：GPIO 42 (SDA) / 41 (SCL)
-//                         需確認模組 I2C 位址不與 OLED 0x3C 衝突
-//   - 獨立 I2C：GPIO 17 / 18
-//   - UART：GPIO 43 / 44（S3 預設 USB-CDC 替代腳，僅 USB-CDC 不啟用時可用）
-//   - 類比 ADC：GPIO 1 / 2 / 3（ADC1，避免 ADC2 與 WiFi 衝突）
-//
-// ⚠️ GPIO 1/2/3 同時為 ADC 候選；採 ADC 時，獨立 I2C 與 UART 不可再用 1/2/3。
-//
-// MicroSD 卡（搭配錄音功能，腳位待錄音規格定型）：
-//   - 建議 SPI：MOSI/MISO/SCK/CS（避開 GPIO 8~13 內建 SPI flash）
-//
-// 電源餘裕約束（對齊 SoT V1 §20.4 / §20.5）：
-//   - USB-C host port 上限：5V / 500mA
-//   - V1 已用峰值：~400mA（ESP32-S3 BLE TX + OLED + 蜂鳴器 + 震動 + LED）
-//   - 擴充模組加總典型需 < 100mA，否則需電池供電拓樸支援
-//   - CO 感測器禁用加熱半導體型（MQ-7/MQ-9，150mA+ 超標）
-//
-// 禁用腳位：
-//   - GPIO 8~13：ESP32-S3 內建 SPI flash
-//   - GPIO 19/20：USB D+/D-
-//   - GPIO 0/45/46：strapping pin（啟動行為敏感）
-//
-// ============================================================
-// 按鈕配置（5 鍵，2A）
+// 8 按鍵配置（依 SoT V1 §4.1 + gpio-allocation.md）
 // ============================================================
 
-/** 主動按鈕數量（右 BTN6-8 GPIO 16/17/18 停用） */
-static const uint8_t BTN_COUNT = 5;
-
-/** 各按鈕 GPIO（INPUT_PULLUP，按下接 GND） */
-static const uint8_t BTN_PINS[BTN_COUNT] = { 4, 5, 6, 7, 15 };
+static const uint8_t BTN_COUNT = 8;
+static const uint8_t BTN_PINS[BTN_COUNT] = {
+    4,   // 主按鍵
+    5,   // 上鍵
+    6,   // 下鍵
+    7,   // Power 鍵
+    15,  // 錄音鍵（noop 佔位）
+    16,  // 返回鍵
+    17,  // EPI 鍵（針筒圖案）
+    18,  // 電擊鍵（閃電圖案）
+};
 
 /** 按鈕索引語意 */
-static const uint8_t BTN_PRIMARY = 0;  // 正下方紅色大鍵：短按記錄、長按任務控制
-static const uint8_t BTN_UP      = 1;  // 左側上鍵：模式選單上一項
-static const uint8_t BTN_DOWN    = 2;  // 左側下鍵：模式選單下一項
-static const uint8_t BTN_POWER   = 3;  // 右側電源鍵：短按喚醒、長按關機（noop 佔位）
-static const uint8_t BTN_RECORD  = 4;  // 左上角錄音鍵：noop 佔位（INMP441 到貨後啟用）
+static const uint8_t BTN_PRIMARY = 0;
+static const uint8_t BTN_UP      = 1;
+static const uint8_t BTN_DOWN    = 2;
+static const uint8_t BTN_POWER   = 3;
+static const uint8_t BTN_RECORD  = 4;
+static const uint8_t BTN_BACK    = 5;
+static const uint8_t BTN_EPI     = 6;
+static const uint8_t BTN_SHOCK   = 7;
 
-/** Debounce 時間（ms） */
-static const uint16_t DEBOUNCE_MS = 80;
-
-/** 短按上限：< 1500ms = 短按 */
-static const uint16_t SHORT_PRESS_MAX_MS = 1500;
-
-/** 長按下限：2000ms ≤ t < 5000ms = 長按（放開時才結算，避免 5s 超長按觸發前誤轉狀態） */
-static const uint16_t LONG_PRESS_MIN_MS  = 2000;
-
-/** 超長按下限：≥ 5000ms = 超長按（持續按住期間立即 fire，RUNNING/PAUSE → END） */
-static const uint16_t VERY_LONG_PRESS_MIN_MS = 5000;
+/** Debounce / 短按 / 長按時間（ms） */
+static const uint16_t DEBOUNCE_MS         = 80;
+static const uint16_t SHORT_PRESS_MAX_MS  = 1500;
+static const uint16_t LONG_3S_PRESS_MS    = 3000;  // OHCA OVERTIME 結束前檢查觸發
 
 // ============================================================
-// 狀態機（2B）
+// 全域狀態機（pm-dev-spec §2）
 // ============================================================
 
-enum DeviceState : uint8_t {
-    STATE_IDLE    = 0,  // 待機：等待長按主鍵啟動任務
-    STATE_RUNNING = 1,  // 執行中：計時 + 事件記錄
-    STATE_PAUSE   = 2,  // 暫停：計時保留，等待繼續或結束
-    STATE_END     = 3,  // 結束：儲存後自動回 IDLE
+enum GlobalState : uint8_t {
+    GLOBAL_MAIN_MENU            = 0,
+    GLOBAL_OHCA                 = 1,
+    GLOBAL_VENT_PLACEHOLDER     = 2,  // Phase C 待實作
+    GLOBAL_TRAINING_PLACEHOLDER = 3,  // Phase D 待實作
+    GLOBAL_HISTORY_PLACEHOLDER  = 4,  // Phase E 待實作
+    GLOBAL_SETTINGS_PLACEHOLDER = 5,  // Phase G 待實作
 };
+static GlobalState globalState = GLOBAL_MAIN_MENU;
 
-// ============================================================
-// 操作模式（2D）
-// ============================================================
-
-enum OperationMode : uint8_t {
-    MODE_MED      = 0,  // 給藥模式（預設）：240s 倒數提醒
-    MODE_VENT     = 1,  // 通氣模式：記錄通氣事件
-    MODE_CUSTOM   = 2,  // 自訂模式（Phase 3 設定功能）
-    MODE_SETTINGS = 3,  // 設定模式（Phase 3 實作）
+/** 主功能表 5 項（SoT V1 §3.1） */
+static const uint8_t MAIN_MENU_COUNT = 5;
+static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
+    "OHCA Case",
+    "6sec Vent",
+    "Training",
+    "History",
+    "Settings",
 };
-
-static const uint8_t MODE_COUNT = 4;
-
-/** 模式顯示標籤 */
-static const char* MODE_LABELS[MODE_COUNT] = { "MED", "VENT", "CUST", "SET" };
+static uint8_t mainMenuCursor = 0;
 
 // ============================================================
-// 事件資料結構（2C）
+// OHCA 子狀態（delegate 至 lib/ems_ohca）
 // ============================================================
 
-/** 單次出勤可記錄的事件上限（從 30 擴充到 100，100 × ~36B = 3.6KB，S3 512KB SRAM 無壓力） */
-static const uint16_t MAX_EVENTS = 100;
+static ohca_state_t ohcaState         = OHCA_STATE_MAIN_MENU;
+static uint32_t     ohcaLastEpiMs     = 0;     // 上次 EPI 確認的 millis()
+static uint32_t     ohcaPrevSinceMs   = 0;     // 上一輪 since 值（給邊緣偵測）
+static uint32_t     startFlashStartMs = 0;     // START_FLASH 1s 計時
+static bool         alarmMuted        = false; // ALARMING/OVERTIME 是否已被消音
+static uint32_t     caseStartMs       = 0;     // case 開始 millis()
 
-/** 事件類型 */
-enum EventType : uint8_t {
-    EVT_MEDICATION   = 0,  // 給藥（MODE_MED 主鍵短按）
-    EVT_VENTILATION  = 1,  // 通氣（MODE_VENT 主鍵短按）
-    EVT_CUSTOM       = 2,  // 自訂（其他模式主鍵短按）
-    EVT_TASK_START   = 3,  // 任務開始（系統自動）
-    EVT_TASK_PAUSE   = 4,  // 任務暫停（系統自動）
-    EVT_TASK_RESUME  = 5,  // 任務繼續（系統自動）
-    EVT_TASK_END     = 6,  // 任務結束（系統自動）
+/** START_FLASH 階段顯示 1s */
+static const uint32_t START_FLASH_DURATION_MS = 1000;
+
+/** 兩段確認 instances */
+static two_step_confirm_t epiConfirm;
+static two_step_confirm_t shockConfirm;
+
+/** 兩段確認 armed 提示視窗 */
+static bool     showEpiArmedPrompt   = false;
+static uint32_t epiArmedPromptStart  = 0;
+static bool     showShockArmedPrompt = false;
+static uint32_t shockArmedPromptStart = 0;
+static const uint32_t ARMED_PROMPT_MS = 5000;
+
+// ============================================================
+// 事件紀錄（簡單陣列，Phase E 才做持久化）
+// ============================================================
+
+struct OhcaEvent {
+    uint8_t  type;        // 1=EPI, 2=Shock
+    uint32_t elapsed_ms;  // 自 case 開始
 };
+static const uint16_t MAX_EVENTS = 50;
+static OhcaEvent events[MAX_EVENTS];
+static uint16_t  eventCount = 0;
 
-/** 事件來源 */
-static const uint8_t SRC_BUTTON = 0;  // 使用者按鍵
-static const uint8_t SRC_SYSTEM = 1;  // 系統自動
+// ============================================================
+// END_CHECK 與 SUMMARY 子狀態
+// ============================================================
 
-/**
- * 擴充後的事件紀錄（2C 規格）
- * 記憶體：36 bytes × 100 = 3.6KB
- */
-struct EmsEvent {
-    uint32_t event_id;        // 流水號，任務內從 1 開始自增
-    uint64_t timestamp;       // epoch ms（絕對時間，需 BLE sync 校準）
-    uint32_t elapsed_ms;      // 從任務開始的毫秒數（已扣除暫停時間）
-    uint8_t  event_type;      // 事件類型（EventType）
-    uint8_t  source;          // 來源（SRC_BUTTON / SRC_SYSTEM）
-    uint8_t  mode;            // 當下操作模式（OperationMode）
-    uint8_t  sync_flag;       // 0=未同步, 1=BLE 已同步
-    char     extra_data[16];  // 備註（null-terminated string，縮短為 16 bytes 省記憶體）
+enum EndCheckCursor : uint8_t {
+    END_CHECK_CURSOR_CONFIRM = 0,
+    END_CHECK_CURSOR_CANCEL  = 1,
 };
+static EndCheckCursor endCheckCursor = END_CHECK_CURSOR_CANCEL;
+
+static uint16_t summaryScrollOffset = 0;
 
 // ============================================================
-// BLE NUS 常數
+// 按鈕狀態
 // ============================================================
 
-/** Nordic UART Service UUID */
-static const char* NUS_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
-static const char* NUS_RX_UUID      = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
-static const char* NUS_TX_UUID      = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
-
-/** 廣播名稱 */
-static const char* BLE_DEVICE_NAME  = "EMS Timer";
-
-/** 單次 Notify 最大 bytes */
-static const size_t BLE_TX_BUF_SIZE = 256;
-
-/** dump 逐筆間隔（ms，避免 BLE stack 壅塞） */
-static const uint16_t DUMP_ITEM_INTERVAL_MS = 10;
+static uint8_t  lastBtnState[BTN_COUNT];
+static uint32_t lastPressMs[BTN_COUNT]      = { 0 };
+static uint32_t btnPressStartMs[BTN_COUNT]  = { 0 };
+static bool     btnLong3sFired[BTN_COUNT]   = { false };
 
 // ============================================================
-// 提醒常數
+// OLED + 蜂鳴 / 反色 SM
 // ============================================================
 
-/** 給藥模式倒數時長（ms） */
-static const uint32_t MED_COUNTDOWN_MS = 240UL * 1000;
-
-/**
- * ALARMING 階段連續發報的 pulse 間隔（ms）
- *
- * PM 規格（pm-flow-spec v1.4 §2）：ALARMING 階段「連續發報直到按主鍵解除」，
- * 取代原每 30 秒週期提醒。1500ms 對應 3-pulse 序列（200ms on + 200ms off × 3
- * = 1.4s + 0.1s 間隙），使用者感知連續。
- */
-static const uint32_t MED_ALARM_PULSE_MS = 1500;
-
-/** OLED 閃爍週期（ms） */
-static const uint32_t FLASH_PERIOD_MS = 500;
-
-/** OLED 整螢幕反色閃爍時長（ms，取代震動作為強提醒視覺回饋） */
-static const uint16_t OLED_INVERT_FLASH_MS = 200;
-
-/** END 狀態顯示時長：任務結束畫面停留多久後自動回 IDLE（ms） */
-static const uint32_t END_DISPLAY_MS = 2000;
-
-/** OLED 節流更新間隔（ms） */
-static const uint32_t DISPLAY_UPDATE_INTERVAL_MS = 250;
-
-/** 倒數到時：嗶 3 聲 × 200ms on / 200ms off */
-static const uint8_t  EXPIRE_BEEP_PULSES = 3;
-static const uint16_t EXPIRE_BEEP_ON_MS  = 200;
-static const uint16_t EXPIRE_BEEP_OFF_MS = 200;
-
-/** 短確認音：嗶 1 聲 × 80ms */
-static const uint8_t  SHORT_BEEP_PULSES = 1;
-static const uint16_t SHORT_BEEP_ON_MS  = 80;
-
-/** 倒數剩餘 1 分鐘中途警示（ms） */
-static const uint32_t MED_1MIN_WARNING_MS = 60UL * 1000;
-
-/** 1 分鐘警示：2 短嗶，比區間提醒強一點 */
-static const uint8_t  MIN1_BEEP_PULSES = 2;
-static const uint16_t MIN1_BEEP_ON_MS  = 150;
-static const uint16_t MIN1_BEEP_OFF_MS = 100;
-
-// --- 單純給藥（獨立時間戳）藥物選單 ---
-/** 可記錄的藥物列表（extra_data 欄位使用，不影響 4 分鐘倒數） */
-static const char* const DRUG_NAMES[] = {
-    "Amiodarone", "TXA", "D50", "Atropine", "Adenosine", "Naloxone"
-};
-static const uint8_t DRUG_COUNT = 6;  // 同步 DRUG_NAMES 長度
-
-/** 藥物選單無操作自動關閉（ms） */
-static const uint32_t DRUG_MENU_TIMEOUT_MS = 8000;
-
-// ============================================================
-// 全域物件與狀態
-// ============================================================
-
-/** SSD1306 OLED 顯示器物件 */
 Adafruit_SSD1306 display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET_PIN);
 
-// --- 按鈕狀態 ---
-static uint8_t  lastBtnState[BTN_COUNT];
-static uint32_t lastPressMs[BTN_COUNT]        = { 0 };  // 用於 debounce 的上次有效按下時間
-static uint32_t btnPressStartMs[BTN_COUNT]    = { 0 };  // 0 = 未按；> 0 = 按下時刻
-static bool     btnLongFired[BTN_COUNT]       = { false };  // 本次按下是否已觸發長按（fire-on-release）
-static bool     btnVeryLongFired[BTN_COUNT]   = { false };  // 本次按下是否已觸發超長按（達 5s 即刻 fire，END 觸發用）
-
-// --- 裝置狀態機 ---
-static DeviceState   deviceState = STATE_IDLE;
-static OperationMode currentMode = MODE_MED;
-
-// --- 任務計時 ---
-static uint32_t taskStartMs      = 0;   // 任務開始時的 millis()
-static uint64_t taskId           = 0;   // 任務 ID（epoch ms，BLE sync 後準確）
-static uint64_t sessionEpochOffset = 0; // epoch ms offset（BLE sync 校準）
-
-// --- 暫停計時 ---
-static uint32_t pauseStartMs  = 0;   // 當前暫停段的起點 millis()
-static uint32_t totalPausedMs = 0;   // 本次任務累計暫停毫秒
-
-// --- 事件陣列 ---
-static EmsEvent events[MAX_EVENTS];
-static uint16_t eventCount  = 0;
-static uint32_t nextEventId = 1;  // 任務內流水號，從 1 開始
-
-// --- 給藥倒數（MODE_MED）---
-static uint32_t medCountdownStartMs       = 0;      // 倒數起點 millis()（0 = 尚未啟動）
-static bool     medReminderActive         = false;  // 倒數到時後的強提醒狀態
-static uint32_t lastReminderBeepMs        = 0;      // 上次重複提醒的 millis()
-static bool     medOneMinWarningTriggered = false;  // 剩餘 1 分鐘中途警示是否已觸發
-
-// --- 通氣節拍器（MODE_VENT）---
-static uint32_t lastVentTickMs = 0;  // 上次 6 秒節拍 millis()（0 = 未啟動 / 剛恢復 → 下次進 VENT+RUNNING 立即 fire 第一聲）
-
-// --- 單純給藥選單（藥物獨立時間戳）---
-static bool     drugMenuOpen   = false;  // 藥物子選單是否開啟
-static uint8_t  drugMenuCursor = 0;      // 目前游標（DRUG_NAMES 索引）
-static uint32_t drugMenuOpenMs = 0;      // 選單開啟時間（超時判斷）
-
-// --- 蜂鳴器非 blocking SM ---
+// 蜂鳴器：脈衝模式（pulses=255 視為連續直到 stop）
 static uint8_t  beepPulsesRemaining = 0;
 static uint32_t beepNextToggleMs    = 0;
 static bool     beepActive          = false;
 static uint16_t beepOnMs            = 0;
 static uint16_t beepOffMs           = 0;
+static bool     buzzContinuous      = false;  // 連續發報模式中（ALARMING）
 
-// --- OLED 整螢幕反色閃爍 SM（取代震動的強提醒視覺效果） ---
-// 使用 start + duration 而非 end time 避免 millis() 接近 UINT32_MAX 時的 overflow
-static bool     oledInverted        = false;  // 目前是否處於反色狀態
-static uint32_t oledInvertStartMs   = 0;      // 反色起點（每次觸發更新）
-static uint16_t oledInvertDurationMs = 0;     // 反色持續時長（ms）
+// OLED 反色閃爍 SM
+static bool     oledInverted          = false;
+static uint32_t oledInvertStartMs     = 0;
+static uint16_t oledInvertDurationMs  = 0;
+static const uint16_t OLED_FLASH_MS   = 200;
 
-// --- OLED 節流 ---
+// 顯示節流
 static uint32_t lastDisplayUpdateMs = 0;
-
-// --- BLE ---
-static BLEServer*         bleServer      = nullptr;
-static BLECharacteristic* bleTxChar      = nullptr;
-static BLECharacteristic* bleRxChar      = nullptr;
-static bool               bleConnected   = false;
-static bool               bleWasConnected = false;
-
-/**
- * BLE RX pending 佇列（single slot）
- * onWrite callback 跑在 BLE GATT task，在 callback 內呼叫 notify / delay 會導致斷線。
- * 只 copy 進 buffer + 設 flag，main loop 再處理。
- */
-static const size_t PENDING_CMD_BUF_SIZE = 256;
-static char          pendingCmdBuf[PENDING_CMD_BUF_SIZE];
-static size_t        pendingCmdLen   = 0;
-static volatile bool pendingCmdReady = false;
-
-/** LittleFS 可用旗標（mount 失敗時為 false，saveSession 跳過） */
-static bool fsAvailable = false;
-
-#if ENABLE_MIC_MONITOR
-static int32_t  i2sBuffer[256];
-static uint32_t lastMicPrintMs = 0;
-#endif
+static const uint32_t DISPLAY_UPDATE_INTERVAL_MS = 200;
 
 // ============================================================
 // 函式宣告
 // ============================================================
 
 void handleButtons();
-void checkLongPresses();
 void onShortPress(uint8_t btnIdx);
-void onLongPress(uint8_t btnIdx);
-void onVeryLongPress(uint8_t btnIdx);
-void switchMode(int8_t delta);
-void transitionState(DeviceState newState);
-void recordEvent(uint8_t eventType, uint8_t source, const char* extra = "");
-uint32_t getTaskElapsedMs();
-
-void startMedCountdown();
-void updateMedCountdown();
-void updateVentMetronome();
+void onLong3sPress(uint8_t btnIdx);
+void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms);
+void updateOhcaTick();
+void recordEvent(uint8_t type);
+void enterMainMenu();
+void exitOhcaCase();
 
 void triggerBeep(uint8_t pulses, uint16_t onMs, uint16_t offMs);
+void stopBeep();
 void updateBeepMachine();
-
 void triggerOledFlash(uint16_t durationMs);
 void updateOledFlashMachine();
-
-#if ENABLE_VIBRATION
-void triggerVibration();
-#endif
+void applyOhcaOutput(const ohca_output_t& out);
 
 void updateDisplay();
-void drawIdleScreen();
-void drawRunningScreen();
-void drawPauseScreen();
-void drawEndScreen();
-void drawDrugMenuScreen();
-
-void setupBLE();
-void sendJson(JsonDocument& doc);
-void sendHello();
-void sendDump();
-void handleRxCommand(const std::string& msg);
-void updateBleAdvertising();
-
-void setupLittleFS();
-void saveSession();
-
-#if ENABLE_MIC_MONITOR
-void setupI2S();
-#endif
+void drawMainMenu();
+void drawOhcaStartFlash();
+void drawOhcaWaitFirstEpi();
+void drawOhcaCountdownCommon(const char* label, uint32_t remaining_ms, bool show_overtime);
+void drawOhcaEndCheck();
+void drawOhcaLocked();
+void drawOhcaSummary();
+void drawTwoStepArmedOverlay(const char* what);
+void drawPlaceholder(const char* title, const char* phase);
 
 // ============================================================
-// BLE Callbacks
+// setup() / loop()
 // ============================================================
 
-/**
- * BLE 伺服器連線/斷線 callback
- */
-class EmsServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer* server) override {
-        bleConnected = true;
-        Serial.println("[BLE] client connected");
-    }
-    void onDisconnect(BLEServer* server) override {
-        bleConnected = false;
-        Serial.println("[BLE] client disconnected");
-    }
-};
-
-/**
- * BLE RX characteristic Write callback：App 下發命令時觸發
- */
-class EmsRxCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic* c) override {
-        // STEP 01: 取出命令，忽略空訊息或 buffer 尚未消化完的情形
-        std::string value = c->getValue();
-        if (value.empty() || pendingCmdReady) {
-            return;
-        }
-        // STEP 02: 複製到 pending buffer（禁止在此 thread 呼叫 notify / delay）
-        size_t len = value.length();
-        if (len >= PENDING_CMD_BUF_SIZE) {
-            len = PENDING_CMD_BUF_SIZE - 1;
-        }
-        memcpy(pendingCmdBuf, value.data(), len);
-        pendingCmdBuf[len] = '\0';
-        pendingCmdLen      = len;
-        pendingCmdReady    = true;
-    }
-};
-
-// ============================================================
-// setup
-// ============================================================
-
-/**
- * 硬體初始化：GPIO、OLED、BLE、LittleFS
- */
 void setup() {
-    // STEP 01: 序列埠（等待 USB CDC 重枚舉）
     Serial.begin(115200);
-    delay(3000);
-    Serial.println("[EMS Timer] Phase 2 (2A~2E+3A) boot");
+    delay(50);
+    Serial.println("[BOOT] EMS Timer Phase A");
 
-    // STEP 02: 蜂鳴器 GPIO
+    // STEP 01: 蜂鳴器
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
 
 #if ENABLE_VIBRATION
-    // STEP 02.01: 震動馬達 GPIO
     pinMode(VIBRATION_PIN, OUTPUT);
     digitalWrite(VIBRATION_PIN, LOW);
 #endif
 
-    // STEP 03: 按鈕初始化（INPUT_PULLUP，讀取開機初值避免誤觸）
+    // STEP 02: 8 按鍵 INPUT_PULLUP
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
         pinMode(BTN_PINS[i], INPUT_PULLUP);
         lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
 
-    // STEP 04: I2C bus
+    // STEP 03: OLED 初始化
     Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-
-    // STEP 05: OLED 初始化
     if (!display.begin(SSD1306_SWITCHCAPVCC, OLED_I2C_ADDR)) {
-        Serial.println("[ERROR] OLED init failed. Check SDA=42, SCL=41.");
-        while (true) {
-            delay(1000);
-        }
+        Serial.println("[FAIL] SSD1306 not found");
     }
+    display.clearDisplay();
+    display.display();
 
-    // STEP 06: 開機嗶 2 聲確認蜂鳴器可用
-    for (uint8_t i = 0; i < 2; i++) {
-        digitalWrite(BUZZER_PIN, HIGH);
-        delay(150);
-        digitalWrite(BUZZER_PIN, LOW);
-        delay(150);
-    }
+    // STEP 04: 兩段確認 init
+    twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
+    twoStepConfirm_init(&shockConfirm, TWO_STEP_DEFAULT_TIMEOUT_MS);
 
-    // STEP 07: LittleFS（掛載 + 掃描未同步 session）
-    setupLittleFS();
-
-    // STEP 08: 顯示待機畫面
-    drawIdleScreen();
-
-    // STEP 09: BLE NUS 初始化 + 廣播
-    setupBLE();
-
-#if ENABLE_MIC_MONITOR
-    // STEP 10: INMP441 I2S 麥克風（Phase 1.5）
-    setupI2S();
-#endif
-
-    Serial.println("[EMS Timer] Ready. Long-press main button to start task.");
+    // STEP 05: 初始顯示
+    updateDisplay();
+    Serial.println("[READY] MainMenu");
 }
 
-// ============================================================
-// loop
-// ============================================================
-
-/**
- * 主迴圈：按鈕 → 長按檢查 → 給藥倒數 → 蜂鳴器 SM → BLE → OLED
- */
 void loop() {
-    // STEP 01: 偵測按鈕事件（短按/長按）
     handleButtons();
-    checkLongPresses();
+    updateOhcaTick();
 
-    // STEP 02: 給藥倒數（MODE_MED + STATE_RUNNING 才有效）
-    updateMedCountdown();
+    uint32_t now = millis();
+    twoStepConfirm_tick(&epiConfirm,   now);
+    twoStepConfirm_tick(&shockConfirm, now);
 
-    // STEP 02.02: 通氣節拍器（MODE_VENT + STATE_RUNNING 才有效，每 6 秒 BEEP）
-    updateVentMetronome();
-
-    // STEP 02.01: 藥物選單超時自動關閉
-    if (drugMenuOpen && (millis() - drugMenuOpenMs >= DRUG_MENU_TIMEOUT_MS)) {
-        drugMenuOpen = false;
-        Serial.println("[DRUG] menu timeout");
+    // STEP 01: armed 提示 5s 自動消失
+    if (showEpiArmedPrompt && now - epiArmedPromptStart >= ARMED_PROMPT_MS) {
+        showEpiArmedPrompt = false;
+    }
+    if (showShockArmedPrompt && now - shockArmedPromptStart >= ARMED_PROMPT_MS) {
+        showShockArmedPrompt = false;
     }
 
-    // STEP 03: 蜂鳴器非 blocking SM
     updateBeepMachine();
-
-    // STEP 03.01: OLED 反色閃爍非 blocking SM
     updateOledFlashMachine();
 
-    // STEP 04: BLE 廣播生命週期管理
-    updateBleAdvertising();
-
-    // STEP 05: 處理 App 下發的 pending 命令
-    if (pendingCmdReady) {
-        std::string cmd(pendingCmdBuf, pendingCmdLen);
-        pendingCmdReady = false;
-        handleRxCommand(cmd);
-    }
-
-    // STEP 06: END 狀態滿 2 秒後自動回 IDLE
-    //   切換瞬間清除所有按鍵 btnPressStartMs，讓 release 時邏輯跳過（btnPressStartMs==0）
-    //   使用者仍按著 toggle 不會因下降緣重入（lastBtnState 仍為 LOW）
-    static uint32_t endEnteredMs = 0;
-    if (deviceState == STATE_END) {
-        if (endEnteredMs == 0) {
-            endEnteredMs = millis();
-        } else if (millis() - endEnteredMs >= END_DISPLAY_MS) {
-            // STEP 06.01: 清除所有按鍵持續狀態，避免 END→IDLE 邊界被當下放開誤觸發任何按鍵事件
-            for (uint8_t i = 0; i < BTN_COUNT; i++) {
-                btnPressStartMs[i]  = 0;
-                btnLongFired[i]     = false;
-                btnVeryLongFired[i] = false;
-            }
-            endEnteredMs = 0;
-            transitionState(STATE_IDLE);
-        }
-    } else {
-        endEnteredMs = 0;
-    }
-
-    // STEP 07: 節流更新 OLED（每 250ms）
-    uint32_t now = millis();
     if (now - lastDisplayUpdateMs >= DISPLAY_UPDATE_INTERVAL_MS) {
         lastDisplayUpdateMs = now;
         updateDisplay();
     }
-
-#if ENABLE_MIC_MONITOR
-    // STEP 08: Phase 1.5 麥克風峰值監控
-    if (now - lastMicPrintMs >= 250) {
-        lastMicPrintMs = now;
-        size_t bytesRead = 0;
-        i2s_read(I2S_PORT, i2sBuffer, sizeof(i2sBuffer), &bytesRead, portMAX_DELAY);
-        int32_t peak = 0;
-        uint16_t samplesRead = bytesRead / sizeof(int32_t);
-        for (uint16_t j = 0; j < samplesRead; j++) {
-            int32_t s = i2sBuffer[j] >> 8;
-            if (s < 0) { s = -s; }
-            if (s > peak) { peak = s; }
-        }
-        Serial.print("[MIC] peak=");
-        Serial.println(peak);
-    }
-#endif
 }
 
 // ============================================================
-// 按鈕處理（2A）
+// 按鈕處理：邊緣偵測 + debounce + 短按 / 長按 3s
 // ============================================================
 
-/**
- * 輪詢 5 顆按鈕：偵測下降緣（記錄起點）和上升緣（放開結算）
- *
- * 按鍵分派（fire-on-release 模式，2026-04-23 PM 兩段式長按決議）：
- *   - held < 1500ms                → onShortPress（短按）
- *   - 1500ms ≤ held < 2000ms        → GRAY 灰色地帶，忽略
- *   - 2000ms ≤ held < 5000ms        → onLongPress（長按，放開才 fire，避免 5s 前中間轉狀態）
- *   - held ≥ 5000ms                → onVeryLongPress 已於 checkLongPresses 即時 fire，放開 noop
- */
 void handleButtons() {
+    uint32_t now = millis();
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
-        uint8_t  currentState = digitalRead(BTN_PINS[i]);
-        uint32_t now          = millis();
+        uint8_t cur = digitalRead(BTN_PINS[i]);
 
-        // STEP 01: 下降緣（HIGH → LOW，按下）— debounce 過濾
-        if (lastBtnState[i] == HIGH && currentState == LOW) {
-            if (now - lastPressMs[i] >= DEBOUNCE_MS) {
-                lastPressMs[i]       = now;
-                btnPressStartMs[i]   = now;   // 記錄按下時刻
-                btnLongFired[i]      = false;
-                btnVeryLongFired[i]  = false;
-                Serial.printf("[BTN %u] PRESS @ %ums\n", i, now);
+        if (cur != lastBtnState[i]) {
+            // STEP 01: 邊緣事件
+            if (cur == LOW) {
+                // STEP 01.01: 按下（press start）
+                if (now - lastPressMs[i] >= DEBOUNCE_MS) {
+                    btnPressStartMs[i] = now;
+                    btnLong3sFired[i]  = false;
+                    lastPressMs[i]     = now;
+                }
             } else {
-                Serial.printf("[BTN %u] debounce reject (%ums since last)\n",
-                              i, (uint32_t)(now - lastPressMs[i]));
+                // STEP 01.02: 放開（release）
+                if (btnPressStartMs[i] > 0 && !btnLong3sFired[i]) {
+                    uint32_t held = now - btnPressStartMs[i];
+                    if (held < SHORT_PRESS_MAX_MS) {
+                        onShortPress(i);
+                    }
+                }
+                btnPressStartMs[i] = 0;
             }
-        }
-
-        // STEP 02: 上升緣（LOW → HIGH，放開）— 結算 short / long / gray
-        if (lastBtnState[i] == LOW && currentState == HIGH) {
-            if (btnPressStartMs[i] > 0) {
-                uint32_t held = now - btnPressStartMs[i];
-                if (btnVeryLongFired[i]) {
-                    // STEP 02.01: 5s 超長按已於 checkLongPresses 觸發過 END，放開 noop
-                    Serial.printf("[BTN %u] RELEASE held=%ums (very-long already fired)\n",
-                                  i, held);
-                } else if (deviceState == STATE_END) {
-                    // STEP 02.02: END 期間不處理任何按鍵語意（仍印 log 便於 debug）
-                    Serial.printf("[BTN %u] RELEASE held=%ums (END ignored)\n", i, held);
-                } else if (held < SHORT_PRESS_MAX_MS) {
-                    // STEP 02.03: 短按
-                    Serial.printf("[BTN %u] RELEASE held=%ums -> SHORT\n", i, held);
-                    onShortPress(i);
-                } else if (held >= LONG_PRESS_MIN_MS && held < VERY_LONG_PRESS_MIN_MS) {
-                    // STEP 02.04: 長按（2s-5s）放開時結算
-                    btnLongFired[i] = true;
-                    Serial.printf("[BTN %u] RELEASE held=%ums -> LONG\n", i, held);
-                    onLongPress(i);
-                } else {
-                    // STEP 02.05: 1500-2000ms 灰色地帶 → 忽略
-                    Serial.printf("[BTN %u] RELEASE held=%ums -> GRAY (ignored)\n",
-                                  i, held);
+            lastBtnState[i] = cur;
+        } else {
+            // STEP 02: 按住中 — 檢查長按 3s 觸發（fire on threshold）
+            if (cur == LOW && btnPressStartMs[i] > 0 && !btnLong3sFired[i]) {
+                if (now - btnPressStartMs[i] >= LONG_3S_PRESS_MS) {
+                    btnLong3sFired[i] = true;
+                    onLong3sPress(i);
                 }
             }
-            // STEP 02.06: 重置按下狀態
-            btnPressStartMs[i]  = 0;
-            btnLongFired[i]     = false;
-            btnVeryLongFired[i] = false;
         }
-
-        lastBtnState[i] = currentState;
     }
 }
 
-/**
- * 主迴圈每次呼叫，偵測持續按住 5s 以上 → 立即觸發超長按（RUNNING/PAUSE → END）
- *
- * 長按（2s-5s）改為 fire-on-release 模式，此函式只負責 5s 超長按的即時 fire，
- * 確保使用者按到 5s 時立刻結束任務，不用等放開。
- */
-void checkLongPresses() {
-    // STEP 01: END 狀態期間忽略所有超長按觸發（等待使用者放開 + 自動回 IDLE）
-    if (deviceState == STATE_END) {
+// ============================================================
+// 短按 dispatcher
+// ============================================================
+
+void onShortPress(uint8_t btnIdx) {
+    Serial.printf("[BTN] short %u (state=%u/%u)\n", btnIdx, globalState, ohcaState);
+
+    // ===== 主功能表 =====
+    if (globalState == GLOBAL_MAIN_MENU) {
+        switch (btnIdx) {
+            case BTN_UP:
+                mainMenuCursor = (mainMenuCursor + MAIN_MENU_COUNT - 1) % MAIN_MENU_COUNT;
+                break;
+            case BTN_DOWN:
+                mainMenuCursor = (mainMenuCursor + 1) % MAIN_MENU_COUNT;
+                break;
+            case BTN_PRIMARY:
+                // STEP 01: 進入對應子模組
+                switch (mainMenuCursor) {
+                    case 0:  // OHCA Case
+                        globalState = GLOBAL_OHCA;
+                        dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, 0);
+                        startFlashStartMs = millis();
+                        caseStartMs       = millis();
+                        eventCount        = 0;
+                        ohcaLastEpiMs     = 0;
+                        ohcaPrevSinceMs   = 0;
+                        alarmMuted        = false;
+                        Serial.println("[OHCA] Case start (START_FLASH)");
+                        break;
+                    case 1: globalState = GLOBAL_VENT_PLACEHOLDER;     break;
+                    case 2: globalState = GLOBAL_TRAINING_PLACEHOLDER; break;
+                    case 3: globalState = GLOBAL_HISTORY_PLACEHOLDER;  break;
+                    case 4: globalState = GLOBAL_SETTINGS_PLACEHOLDER; break;
+                }
+                break;
+            default:
+                break;
+        }
         return;
     }
+
+    // ===== Phase X 佔位畫面：返回鍵回主功能表 =====
+    if (globalState >= GLOBAL_VENT_PLACEHOLDER && globalState <= GLOBAL_SETTINGS_PLACEHOLDER) {
+        if (btnIdx == BTN_BACK) {
+            enterMainMenu();
+        }
+        return;
+    }
+
+    // ===== OHCA 模式 =====
+    if (globalState != GLOBAL_OHCA) return;
+
     uint32_t now = millis();
-    // STEP 02: 逐顆按鍵檢查是否到超長按門檻
-    for (uint8_t i = 0; i < BTN_COUNT; i++) {
-        // STEP 02.01: 已觸發或尚未按下 → 跳過
-        if (btnPressStartMs[i] == 0 || btnVeryLongFired[i]) {
-            continue;
-        }
-        // STEP 02.02: 到達超長按門檻（5s）→ 立即觸發一次
-        if (now - btnPressStartMs[i] >= VERY_LONG_PRESS_MIN_MS) {
-            btnVeryLongFired[i] = true;
-            Serial.printf("[BTN %u] VERY_LONG fired (held=%ums)\n",
-                          i, (uint32_t)(now - btnPressStartMs[i]));
-            onVeryLongPress(i);
-        }
-    }
-}
 
-// ============================================================
-// 按鍵語意（2A + 2B + 2D）
-// ============================================================
-
-/**
- * 切換操作模式 helper（消除 BTN_UP / BTN_DOWN 邏輯重複）
- * 含 MED countdown 進出場管理：切離 MED 清倒數狀態，切入 MED + RUNNING 重啟倒數
- * @param delta 方向：-1 = UP（反向循環），+1 = DOWN（正向循環）
- */
-void switchMode(int8_t delta) {
-    // STEP 01: 保存舊模式、計算新模式（+ MODE_COUNT 避免負數取模）
-    OperationMode oldMode = currentMode;
-    currentMode = (OperationMode)(((int)currentMode + MODE_COUNT + delta) % MODE_COUNT);
-
-    // STEP 02: 回饋
-    Serial.print("[MODE] → ");
-    Serial.println(MODE_LABELS[currentMode]);
-    triggerBeep(SHORT_BEEP_PULSES, 60, 0);
-
-    // STEP 03: 切離 MED → 清除倒數狀態
-    if (oldMode == MODE_MED && currentMode != MODE_MED) {
-        medCountdownStartMs       = 0;
-        medReminderActive         = false;
-        medOneMinWarningTriggered = false;
-    }
-    // STEP 04: 切入 MED 且任務進行中 → 重啟倒數
-    if (currentMode == MODE_MED && oldMode != MODE_MED &&
-        deviceState == STATE_RUNNING) {
-        startMedCountdown();
-    }
-}
-
-/**
- * 短按事件處理（< 1500ms，放開時觸發）
- * @param btnIdx 按鈕索引（BTN_PRIMARY 等）
- */
-void onShortPress(uint8_t btnIdx) {
     switch (btnIdx) {
         case BTN_PRIMARY:
-            // STEP 01: 主鍵短按語意依狀態分派
-            if (deviceState == STATE_RUNNING) {
-                if (currentMode == MODE_MED) {
-                    if (medReminderActive) {
-                        // STEP 01.01: 強提醒中 → 給藥確認（EPINEPHRINE），重置倒數
-                        medReminderActive = false;
-                        recordEvent(EVT_MEDICATION, SRC_BUTTON, "epi");
-                        startMedCountdown();
-                        triggerBeep(SHORT_BEEP_PULSES, SHORT_BEEP_ON_MS, 0);
-                    } else if (drugMenuOpen) {
-                        // STEP 01.02: 藥物選單開啟中 → 確認記錄所選藥物（獨立時間戳，不重置倒數）
-                        recordEvent(EVT_MEDICATION, SRC_BUTTON, DRUG_NAMES[drugMenuCursor]);
-                        drugMenuOpen = false;
-                        triggerBeep(SHORT_BEEP_PULSES, SHORT_BEEP_ON_MS, 0);
-                        Serial.print("[DRUG] recorded: ");
-                        Serial.println(DRUG_NAMES[drugMenuCursor]);
-                    } else {
-                        // STEP 01.03: 無提醒、無選單 → 開啟藥物子選單
-                        drugMenuOpen   = true;
-                        drugMenuCursor = 0;
-                        drugMenuOpenMs = millis();
-                        triggerBeep(SHORT_BEEP_PULSES, 60, 0);
-                        Serial.println("[DRUG] menu opened");
-                    }
-                } else if (currentMode == MODE_VENT) {
-                    // STEP 01.04: 通氣模式 → 記錄通氣事件
-                    recordEvent(EVT_VENTILATION, SRC_BUTTON);
-                    triggerBeep(SHORT_BEEP_PULSES, SHORT_BEEP_ON_MS, 0);
-                } else {
-                    // STEP 01.05: 其他模式 → 記錄自訂事件
-                    recordEvent(EVT_CUSTOM, SRC_BUTTON);
-                    triggerBeep(SHORT_BEEP_PULSES, SHORT_BEEP_ON_MS, 0);
-                }
+            // STEP 01: ALARMING/OVERTIME 主鍵 — 消音（不轉 state）
+            if (ohcaState == OHCA_STATE_ALARMING || ohcaState == OHCA_STATE_OVERTIME) {
+                alarmMuted = true;
+                stopBeep();
+                Serial.println("[OHCA] alarm muted");
+                return;
             }
-            // STEP 01.06: PAUSE / IDLE / END 狀態下主鍵短按 noop
-            //   PAUSE→RUNNING 改由長按 ≥ 2s 觸發（2026-04-23 PM 決議）
+            // STEP 02: END_CHECK 主鍵 — 依 cursor 行為
+            if (ohcaState == OHCA_STATE_END_CHECK) {
+                if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
+                    dispatchOhcaEvent(OHCA_EVT_END_CONFIRM, 0);
+                    Serial.println("[OHCA] case LOCKED");
+                } else {
+                    dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
+                }
+                return;
+            }
+            // STEP 03: LOCKED 主鍵 — 翻 SUMMARY
+            if (ohcaState == OHCA_STATE_LOCKED) {
+                dispatchOhcaEvent(OHCA_EVT_TO_SUMMARY, 0);
+                summaryScrollOffset = 0;
+                return;
+            }
             break;
 
         case BTN_UP:
-            // STEP 02: 上鍵 — 藥物選單開啟時導覽，否則切換模式
-            if (drugMenuOpen) {
-                // STEP 02.01: 藥物選單上一項
-                drugMenuCursor = (drugMenuCursor + DRUG_COUNT - 1) % DRUG_COUNT;
-                drugMenuOpenMs = millis();  // 重置超時
-            } else if (deviceState == STATE_IDLE || deviceState == STATE_RUNNING) {
-                // STEP 02.02: 模式切換 -1（MED → SET → CUST → VENT → MED 反向）
-                switchMode(-1);
+            if (ohcaState == OHCA_STATE_END_CHECK) {
+                endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
+                               ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
+            } else if (ohcaState == OHCA_STATE_SUMMARY && summaryScrollOffset > 0) {
+                summaryScrollOffset--;
             }
             break;
 
         case BTN_DOWN:
-            // STEP 03: 下鍵 — 藥物選單開啟時導覽，否則切換模式
-            if (drugMenuOpen) {
-                // STEP 03.01: 藥物選單下一項
-                drugMenuCursor = (drugMenuCursor + 1) % DRUG_COUNT;
-                drugMenuOpenMs = millis();
-            } else if (deviceState == STATE_IDLE || deviceState == STATE_RUNNING) {
-                // STEP 03.02: 模式切換 +1（MED → VENT → CUST → SET → MED 正向）
-                switchMode(+1);
+            if (ohcaState == OHCA_STATE_END_CHECK) {
+                endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
+                               ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
+            } else if (ohcaState == OHCA_STATE_SUMMARY && summaryScrollOffset + 4 < eventCount) {
+                summaryScrollOffset++;
             }
             break;
+
+        case BTN_BACK:
+            // STEP 01: SUMMARY 返回主功能表
+            if (ohcaState == OHCA_STATE_SUMMARY) {
+                exitOhcaCase();
+                return;
+            }
+            // STEP 02: END_CHECK 返回鍵 = 取消
+            if (ohcaState == OHCA_STATE_END_CHECK) {
+                dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
+                return;
+            }
+            break;
+
+        case BTN_EPI: {
+            // STEP 01: LOCKED 拒絕
+            if (ohcaState == OHCA_STATE_LOCKED || ohcaState == OHCA_STATE_SUMMARY) return;
+            // STEP 02: 兩段確認
+            bool confirmed = twoStepConfirm_press(&epiConfirm, now);
+            if (confirmed) {
+                showEpiArmedPrompt = false;
+                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                dispatchOhcaEvent(OHCA_EVT_EPI_CONFIRMED, since);
+                ohcaLastEpiMs   = now;
+                ohcaPrevSinceMs = 0;
+                alarmMuted      = false;
+                stopBeep();
+                recordEvent(1);
+                triggerBeep(1, 80, 0);  // 短確認音
+                Serial.println("[OHCA] EPI confirmed");
+            } else {
+                showEpiArmedPrompt   = true;
+                epiArmedPromptStart  = now;
+                Serial.println("[OHCA] EPI armed (please re-press)");
+            }
+            break;
+        }
+
+        case BTN_SHOCK: {
+            if (ohcaState == OHCA_STATE_LOCKED || ohcaState == OHCA_STATE_SUMMARY) return;
+            bool confirmed = twoStepConfirm_press(&shockConfirm, now);
+            if (confirmed) {
+                showShockArmedPrompt = false;
+                dispatchOhcaEvent(OHCA_EVT_SHOCK_CONFIRMED, 0);  // 不重啟倒數
+                recordEvent(2);
+                triggerBeep(1, 80, 0);
+                Serial.println("[OHCA] Shock confirmed");
+            } else {
+                showShockArmedPrompt   = true;
+                shockArmedPromptStart  = now;
+                Serial.println("[OHCA] Shock armed (please re-press)");
+            }
+            break;
+        }
 
         case BTN_POWER:
-            // STEP 04: 電源鍵短按 → 螢幕喚醒（Phase 3 補強）
-            Serial.println("[POWER] short press - screen wake (noop)");
-            break;
-
         case BTN_RECORD:
-            // STEP 05: 錄音鍵短按 → noop 佔位
-            Serial.println("[RECORD] short press - noop (INMP441 pending)");
-            break;
-
-        default:
+            // Phase H / Phase 1.5 — noop
             break;
     }
 }
 
-/**
- * 長按事件處理（2s ≤ held < 5s，放開時才 fire — 避免 5s 超長按觸發前誤轉狀態）
- *
- * 2026-04-23 PM 決議：長按 2s 用於 IDLE↔RUNNING↔PAUSE 循環，不含 END。
- * PAUSE→END 改由超長按 5s（見 onVeryLongPress）觸發。
- *
- * @param btnIdx 按鈕索引
- */
-void onLongPress(uint8_t btnIdx) {
-    switch (btnIdx) {
-        case BTN_PRIMARY:
-            // STEP 01: 主鍵長按 → IDLE↔RUNNING↔PAUSE 狀態循環
-            if (deviceState == STATE_IDLE) {
-                transitionState(STATE_RUNNING);
-            } else if (deviceState == STATE_RUNNING) {
-                transitionState(STATE_PAUSE);
-            } else if (deviceState == STATE_PAUSE) {
-                transitionState(STATE_RUNNING);
+// ============================================================
+// 長按 3s dispatcher（OHCA OVERTIME 結束前檢查觸發）
+// ============================================================
+
+void onLong3sPress(uint8_t btnIdx) {
+    Serial.printf("[BTN] long3s %u (state=%u/%u)\n", btnIdx, globalState, ohcaState);
+
+    if (btnIdx != BTN_PRIMARY) return;
+    if (globalState != GLOBAL_OHCA) return;
+    if (ohcaState != OHCA_STATE_OVERTIME) return;
+
+    dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
+    endCheckCursor = END_CHECK_CURSOR_CANCEL;  // 預設停在「返回案件」避免誤確認
+    stopBeep();
+    Serial.println("[OHCA] enter END_CHECK");
+}
+
+// ============================================================
+// OHCA event dispatcher（包裝 nextOhcaState）
+// ============================================================
+
+void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
+    ohca_state_t prev = ohcaState;
+    ohcaState = nextOhcaState(prev, event, since_ms);
+    if (ohcaState != prev) {
+        Serial.printf("[OHCA] %u -> %u (evt=%u)\n", prev, ohcaState, event);
+    }
+}
+
+// ============================================================
+// OHCA tick driver：START_FLASH timeout + COUNTDOWN/.../OVERTIME 推進
+// ============================================================
+
+void updateOhcaTick() {
+    if (globalState != GLOBAL_OHCA) return;
+    uint32_t now = millis();
+
+    // STEP 01: START_FLASH 1s timeout
+    if (ohcaState == OHCA_STATE_START_FLASH) {
+        if (now - startFlashStartMs >= START_FLASH_DURATION_MS) {
+            dispatchOhcaEvent(OHCA_EVT_FLASH_TIMEOUT, 0);
+        }
+        return;
+    }
+
+    // STEP 02: 倒數 group — 計算 since 並 dispatch TIMER_TICK + 套用輸出
+    if (ohcaState == OHCA_STATE_COUNTDOWN  ||
+        ohcaState == OHCA_STATE_WARNING    ||
+        ohcaState == OHCA_STATE_ALARMING   ||
+        ohcaState == OHCA_STATE_OVERTIME) {
+
+        uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+
+        // STEP 02.01: 取出當前 phase，推進 phase
+        ohca_phase_t curPhase = mapStateToPhase(ohcaState);
+        ohca_phase_t newPhase = advanceOhcaPhase(curPhase, since);
+
+        // STEP 02.02: 計算輸出（含邊緣偵測）
+        ohca_output_t out = decideOhcaOutput(newPhase, ohcaPrevSinceMs, since);
+        applyOhcaOutput(out);
+
+        // STEP 02.03: 同步狀態機
+        ohca_state_t mapped = mapPhaseToState(newPhase);
+        if (mapped != ohcaState) {
+            Serial.printf("[OHCA] phase auto: %u -> %u (since=%u)\n",
+                          ohcaState, mapped, since);
+            ohcaState = mapped;
+            // STEP 02.04: 進入新 phase 重置消音標記（讓新階段提示能再出現）
+            if (mapped == OHCA_STATE_OVERTIME) {
+                alarmMuted = false;  // OVERTIME 的 15s 短嗍不應被舊 mute 擋掉
             }
-            break;
-
-        case BTN_POWER:
-            // STEP 02: 電源鍵長按 → 關機（noop 佔位，避免 toggle switch 誤觸）
-            Serial.println("[POWER] long press - shutdown (noop)");
-            // esp_deep_sleep_start();  // 確認安全後啟用
-            break;
-
-        case BTN_RECORD:
-            // STEP 03: 錄音鍵長按 → 開始/停止錄音（INMP441 + SD 卡，Phase 1.5 模組到貨後啟用）
-            Serial.println("[RECORD] long press - record toggle (noop)");
-            break;
-
-        default:
-            break;
-    }
-}
-
-/**
- * 超長按事件處理（held ≥ 5000ms，持續按住期間立即 fire，不等放開）
- *
- * 2026-04-23 PM 決議：超長按 5s 直接結束任務（RUNNING 或 PAUSE → END → IDLE），
- * 兩段式長按設計避免救護現場意外中斷進行中的任務。
- *
- * @param btnIdx 按鈕索引
- */
-void onVeryLongPress(uint8_t btnIdx) {
-    switch (btnIdx) {
-        case BTN_PRIMARY:
-            // STEP 01: 主鍵超長按 → 結束任務（RUNNING 或 PAUSE → END）
-            if (deviceState == STATE_RUNNING || deviceState == STATE_PAUSE) {
-                transitionState(STATE_END);
-            }
-            // STEP 02: IDLE / END 狀態下超長按 noop（避免誤觸）
-            break;
-
-        default:
-            // 其他按鍵目前無超長按行為
-            break;
+        }
+        ohcaPrevSinceMs = since;
     }
 }
 
 // ============================================================
-// 狀態機（2B）
+// 紀錄事件（Phase A：in-memory only；Phase E 才 LittleFS 持久化）
 // ============================================================
 
-/**
- * 執行狀態轉換：記錄任務事件、更新計時、儲存資料
- * @param newState 目標狀態
- */
-void transitionState(DeviceState newState) {
-    Serial.print("[STATE] ");
-    Serial.print(deviceState);
-    Serial.print(" → ");
-    Serial.println(newState);
-
-    switch (newState) {
-        case STATE_RUNNING:
-            if (deviceState == STATE_IDLE) {
-                // STEP 01: IDLE → RUNNING：建立新任務
-                taskStartMs   = millis();
-                totalPausedMs = 0;
-                eventCount    = 0;
-                nextEventId   = 1;
-                taskId        = sessionEpochOffset + (uint64_t)taskStartMs;
-                recordEvent(EVT_TASK_START, SRC_SYSTEM);
-                // 給藥模式立即啟動 240s 倒數
-                if (currentMode == MODE_MED) {
-                    startMedCountdown();
-                }
-                triggerBeep(2, 100, 100);
-                Serial.print("[TASK] started id=");
-                Serial.println((unsigned long)(taskId / 1000UL));
-            } else if (deviceState == STATE_PAUSE) {
-                // STEP 02: PAUSE → RUNNING：繼續任務，補正暫停時間
-                uint32_t pausedDuration = millis() - pauseStartMs;
-                totalPausedMs += pausedDuration;
-                // 補正給藥倒數起點（加回暫停時間）
-                if (currentMode == MODE_MED && medCountdownStartMs > 0) {
-                    medCountdownStartMs += pausedDuration;
-                }
-                recordEvent(EVT_TASK_RESUME, SRC_SYSTEM);
-                triggerBeep(1, 100, 0);
-            }
-            break;
-
-        case STATE_PAUSE:
-            // STEP 03: RUNNING → PAUSE：記錄暫停時刻，關閉藥物選單
-            pauseStartMs = millis();
-            drugMenuOpen = false;
-            recordEvent(EVT_TASK_PAUSE, SRC_SYSTEM);
-            triggerBeep(2, 200, 100);
-            break;
-
-        case STATE_END:
-            // STEP 04: PAUSE → END：結束任務並持久儲存
-            totalPausedMs += millis() - pauseStartMs;
-            drugMenuOpen        = false;
-            recordEvent(EVT_TASK_END, SRC_SYSTEM);
-            saveSession();
-            medReminderActive   = false;
-            medCountdownStartMs = 0;
-            triggerBeep(EXPIRE_BEEP_PULSES, EXPIRE_BEEP_ON_MS, EXPIRE_BEEP_OFF_MS);
-            Serial.println("[TASK] ended, session saved");
-            break;
-
-        case STATE_IDLE:
-            // STEP 05: → IDLE：清空任務狀態（由 END 自動觸發）
-            eventCount    = 0;
-            nextEventId   = 1;
-            taskId        = 0;
-            taskStartMs   = 0;
-            totalPausedMs = 0;
-            break;
-
-        default:
-            break;
-    }
-
-    deviceState = newState;
-}
-
-// ============================================================
-// 事件記錄（2C）
-// ============================================================
-
-/**
- * 記錄一筆事件到 events[] 陣列
- * @param eventType 事件類型（EventType）
- * @param source    來源（SRC_BUTTON / SRC_SYSTEM）
- * @param extra     備註字串（最多 15 字元，超過自動截斷）
- */
-void recordEvent(uint8_t eventType, uint8_t source, const char* extra) {
-    // STEP 01: 容量上限檢查
+void recordEvent(uint8_t type) {
     if (eventCount >= MAX_EVENTS) {
-        Serial.println("[WARN] events[] full, drop");
+        Serial.println("[EVT] full, drop");
         return;
     }
-
-    // STEP 02: 計算時間
-    uint32_t now     = millis();
-    uint32_t elapsed = (taskStartMs > 0) ? (now - taskStartMs - totalPausedMs) : 0;
-    uint64_t ts      = sessionEpochOffset + (uint64_t)now;
-
-    // STEP 03: 填入欄位
-    EmsEvent& e = events[eventCount];
-    e.event_id  = nextEventId++;
-    e.timestamp = ts;
-    e.elapsed_ms = elapsed;
-    e.event_type = eventType;
-    e.source     = source;
-    e.mode       = (uint8_t)currentMode;
-    e.sync_flag  = 0;
-    strncpy(e.extra_data, extra, sizeof(e.extra_data) - 1);
-    e.extra_data[sizeof(e.extra_data) - 1] = '\0';
+    uint32_t elapsed = (caseStartMs == 0) ? 0 : (millis() - caseStartMs);
+    events[eventCount].type       = type;
+    events[eventCount].elapsed_ms = elapsed;
     eventCount++;
-
-    Serial.print("[EVT] id=");
-    Serial.print(e.event_id);
-    Serial.print(" type=");
-    Serial.print(eventType);
-    Serial.print(" el=");
-    Serial.print(elapsed);
-    Serial.println("ms");
 }
 
 // ============================================================
-// 計時輔助
+// 退出 OHCA case（從 SUMMARY 返回主功能表）
 // ============================================================
 
-/**
- * 取得本次任務的有效已進行時間（已扣除所有暫停）
- * @return elapsed ms；尚未開始任務時回傳 0
- */
-uint32_t getTaskElapsedMs() {
-    // Thin wrapper：委派給 lib/ems_logic/ems_time.h 的純函式（便於 native 測試覆蓋）
-    return ems::computeTaskElapsedMs(
-        millis(),
-        taskStartMs,
-        pauseStartMs,
-        totalPausedMs,
-        (uint8_t)deviceState
-    );
+void enterMainMenu() {
+    globalState = GLOBAL_MAIN_MENU;
+}
+
+void exitOhcaCase() {
+    enterMainMenu();
+    ohcaState           = OHCA_STATE_MAIN_MENU;
+    ohcaLastEpiMs       = 0;
+    ohcaPrevSinceMs     = 0;
+    eventCount          = 0;
+    summaryScrollOffset = 0;
+    alarmMuted          = false;
+    stopBeep();
 }
 
 // ============================================================
-// 給藥倒數（2D）
+// 蜂鳴器非 blocking SM
+// pulses = 255 視為「連續」（直到 stopBeep）
 // ============================================================
 
-/**
- * 啟動或重置 240 秒給藥倒數
- * 主鍵短按確認給藥後呼叫，以及 IDLE→RUNNING 時呼叫
- */
-void startMedCountdown() {
-    medCountdownStartMs       = millis();
-    medReminderActive         = false;
-    lastReminderBeepMs        = 0;
-    medOneMinWarningTriggered = false;
-    Serial.println("[MED] 240s countdown start/reset");
-}
-
-/**
- * 每個 loop 呼叫：處理給藥倒數三階段（COUNTING / WARNING / ALARMING）
- *
- * 決策委派給純函式 ems::decideMedCountdownAction()（ems_countdown.h，
- * 單元測試覆蓋 20+ 個 case）；本函式僅負責 guard + side effect
- * （triggerBeep / triggerOledFlash / triggerVibration / recordEvent）。
- *
- * 對應 PM 規格：
- *   pm-dev-spec.md §4.2 — 三階段倒數、ALARMING 連續發報（取代每 30s 週期）
- *   pm-flow-spec.md §2  — 給藥倒數提醒流程（OHCA）
- */
-void updateMedCountdown() {
-    // STEP 01: 只在 RUNNING + MED 模式 + 已啟動倒數時有效
-    if (deviceState != STATE_RUNNING ||
-        currentMode  != MODE_MED    ||
-        medCountdownStartMs == 0) {
-        return;
-    }
-
-    // STEP 02: 純函式決策（階段 + 三旗標）
-    uint32_t now = millis();
-    ems::MedCountdownAction action = ems::decideMedCountdownAction(
-        now,
-        medCountdownStartMs,
-        medReminderActive,
-        medOneMinWarningTriggered,
-        lastReminderBeepMs,
-        MED_COUNTDOWN_MS,
-        MED_1MIN_WARNING_MS,
-        MED_ALARM_PULSE_MS);
-
-    // STEP 03: WARNING 進入警示（一次性，1 分鐘前觸發）
-    if (action.fireWarn1Min) {
-        medOneMinWarningTriggered = true;
-        triggerBeep(MIN1_BEEP_PULSES, MIN1_BEEP_ON_MS, MIN1_BEEP_OFF_MS);
-        Serial.println("[MED] WARNING phase: 1-min remaining");
-    }
-
-    // STEP 04: 首次到時 → 進入 ALARMING 階段
-    if (action.fireReminderStart) {
-        medReminderActive  = true;
-        lastReminderBeepMs = now;
-        recordEvent(EVT_MEDICATION, SRC_SYSTEM, "reminder");
-        triggerBeep(EXPIRE_BEEP_PULSES, EXPIRE_BEEP_ON_MS, EXPIRE_BEEP_OFF_MS);
-        triggerOledFlash(OLED_INVERT_FLASH_MS);
-#if ENABLE_VIBRATION
-        triggerVibration();
-#endif
-        Serial.println("[MED] ALARMING start: continuous until main-button dismiss");
-        return;
-    }
-
-    // STEP 05: ALARMING 階段連續 pulse（每 MED_ALARM_PULSE_MS）
-    //   直到按主鍵解除（onShortPress BTN_PRIMARY 會清 medReminderActive 並重置倒數）
-    if (action.fireAlarmingPulse) {
-        lastReminderBeepMs = now;
-        triggerBeep(EXPIRE_BEEP_PULSES, EXPIRE_BEEP_ON_MS, EXPIRE_BEEP_OFF_MS);
-        triggerOledFlash(OLED_INVERT_FLASH_MS);
-#if ENABLE_VIBRATION
-        triggerVibration();
-#endif
-    }
-}
-
-/**
- * 通氣節拍器（MODE_VENT + STATE_RUNNING 每 6 秒觸發節拍）
- *
- * 對應 PM 規格：
- *   pm-dev-spec.md §4.2 — 6 秒 CPR 節拍 ±50ms（僅通氣模式啟用）
- *                         每 6 秒觸發「蜂鳴 + 震動 + LED 提示」
- *   pm-flow-spec.md §2  — 節律提醒循環
- *
- * 行為：
- *   - 離開 VENT 模式或 RUNNING 狀態 → 重置 lastVentTickMs = 0，下次回來立即 fire 第一聲
- *   - 節拍決策委派給純函式 decideVentTickAction()（ems_vent.h，單元測試覆蓋）
- *   - fire 時同時觸發：triggerBeep（蜂鳴）+ triggerVibration（震動，ENABLE_VIBRATION）
- *                     + triggerOledFlash（LED 提示的 OLED 替代，實體 status LED 待 Phase 3）
- *   - 不 recordEvent（節拍器純提醒，不污染事件陣列；實際通氣動作由使用者短按主鍵記錄）
- */
-void updateVentMetronome() {
-    // STEP 01: guard — 僅 VENT 模式 + RUNNING 狀態啟用
-    if (currentMode != MODE_VENT || deviceState != STATE_RUNNING) {
-        lastVentTickMs = 0;  // 切離時重置，下次進入會立即 fire 第一聲
-        return;
-    }
-
-    // STEP 02: 純函式決策
-    uint32_t now = millis();
-    ems::VentTickAction action = ems::decideVentTickAction(now, lastVentTickMs);
-
-    // STEP 03: 執行 side effect（蜂鳴 + 震動 + LED 提示 + 更新 lastTickMs）
-    //   PM 規格 pm-flow-spec v1.4 §2：每 6 秒三模態提示
-    if (action.fireBeep) {
-        triggerBeep(SHORT_BEEP_PULSES, SHORT_BEEP_ON_MS, 0);
-#if ENABLE_VIBRATION
-        triggerVibration();
-#endif
-        // LED 提示：實體 status LED 待 Phase 3，目前以 OLED 短暫反色替代
-        triggerOledFlash(OLED_INVERT_FLASH_MS);
-        lastVentTickMs = now;
-    }
-}
-
-// ============================================================
-// 蜂鳴器（非 blocking SM）
-// ============================================================
-
-/**
- * 觸發蜂鳴器脈衝序列（不阻塞 loop）
- * @param pulses 脈衝次數
- * @param onMs   on 時長（ms）
- * @param offMs  off 時長（ms）
- */
 void triggerBeep(uint8_t pulses, uint16_t onMs, uint16_t offMs) {
-    // STEP 01: 每個脈衝 = on + off 各一步
-    beepPulsesRemaining = pulses * 2;
-    beepOnMs  = onMs;
-    beepOffMs = offMs;
-    beepActive        = false;
-    beepNextToggleMs  = millis();
+    beepPulsesRemaining = pulses;
+    beepOnMs            = onMs;
+    beepOffMs           = offMs;
+    beepActive          = true;
+    digitalWrite(BUZZER_PIN, HIGH);
+    beepNextToggleMs    = millis() + onMs;
 }
 
-/**
- * 每個 loop cycle 驅動蜂鳴器 SM 前進一步
- */
+void stopBeep() {
+    beepPulsesRemaining = 0;
+    beepActive          = false;
+    buzzContinuous      = false;
+    digitalWrite(BUZZER_PIN, LOW);
+}
+
 void updateBeepMachine() {
-    // STEP 01: 無待處理脈衝 → 跳過
-    if (beepPulsesRemaining == 0) {
-        return;
-    }
-    // STEP 02: 時間未到 → 跳過
+    if (beepPulsesRemaining == 0 && !beepActive) return;
     uint32_t now = millis();
-    if (now < beepNextToggleMs) {
-        return;
+    if ((int32_t)(now - beepNextToggleMs) < 0) return;
+
+    if (beepActive) {
+        // STEP 01: ON → OFF（pulse 結束）
+        digitalWrite(BUZZER_PIN, LOW);
+        beepActive = false;
+        if (beepPulsesRemaining != 255 && beepPulsesRemaining > 0) {
+            beepPulsesRemaining--;
+        }
+        if (beepPulsesRemaining == 0) return;
+        beepNextToggleMs = now + beepOffMs;
+    } else {
+        // STEP 02: OFF → ON（下一個 pulse 開始）
+        digitalWrite(BUZZER_PIN, HIGH);
+        beepActive       = true;
+        beepNextToggleMs = now + beepOnMs;
     }
-    // STEP 03: 切換 GPIO
-    beepActive = !beepActive;
-    digitalWrite(BUZZER_PIN, beepActive ? HIGH : LOW);
-    beepNextToggleMs = now + (beepActive ? beepOnMs : beepOffMs);
-    beepPulsesRemaining--;
 }
 
 // ============================================================
-// OLED 反色閃爍（非 blocking SM，取代震動的強提醒視覺效果）
+// OLED 反色 SM（震動視覺替代）
 // ============================================================
 
-/**
- * 觸發 OLED 整螢幕反色閃爍一次
- * 非阻塞：反色指令透過 I2C 立即送出，到期由 updateOledFlashMachine() 還原
- * 重複呼叫會從呼叫當下重新計時 durationMs（覆蓋先前起點），適合連續提醒場景
- * 使用 elapsed 比較避免 millis() 接近 UINT32_MAX 時 end-time 加法 overflow
- * @param durationMs 反色持續時長（ms）
- */
 void triggerOledFlash(uint16_t durationMs) {
-    // STEP 01: 未反色 → 切到反色狀態
-    if (!oledInverted) {
-        display.invertDisplay(true);
-        oledInverted = true;
-    }
-    // STEP 02: 記錄起點與時長（每次觸發重新計時）
-    oledInvertStartMs    = millis();
-    oledInvertDurationMs = durationMs;
+    if (oledInverted) return;  // 已在閃 — 不重複觸發
+    oledInverted          = true;
+    oledInvertStartMs     = millis();
+    oledInvertDurationMs  = durationMs;
+    display.invertDisplay(true);
 }
 
-/**
- * 每個 loop cycle 檢查反色是否到期，到期則恢復正常顯示
- * elapsed = millis() - oledInvertStartMs 對 UINT32_MAX 自動 wrap，免 overflow
- */
 void updateOledFlashMachine() {
-    // STEP 01: 未反色 → 跳過
-    if (!oledInverted) {
-        return;
-    }
-    // STEP 02: 到期 → 恢復正常顯示
-    if ((uint32_t)(millis() - oledInvertStartMs) >= oledInvertDurationMs) {
-        display.invertDisplay(false);
+    if (!oledInverted) return;
+    if (millis() - oledInvertStartMs >= oledInvertDurationMs) {
         oledInverted = false;
+        display.invertDisplay(false);
     }
 }
 
+// ============================================================
+// 套用 ohca_output_t 到實際 GPIO
+// ============================================================
+
+void applyOhcaOutput(const ohca_output_t& out) {
+    // STEP 01: 連續發報（ALARMING）
+    if (out.buzz_alarm_continuous && !alarmMuted) {
+        if (!buzzContinuous) {
+            buzzContinuous = true;
+            triggerBeep(255, 200, 100);  // 連續 200ms on / 100ms off
+        }
+    } else if (buzzContinuous) {
+        buzzContinuous = false;
+        stopBeep();
+    }
+
+    // STEP 02: 短嗍（WARNING / OVERTIME 邊緣觸發）
+    if (out.buzz_short && !alarmMuted) {
+        triggerBeep(1, 80, 0);
+    }
+
+    // STEP 03: OLED 閃紅（震動視覺替代）
+    if (out.screen_flash) {
+        triggerOledFlash(OLED_FLASH_MS);
+    }
+
+    // STEP 04: 震動馬達（佔位）
 #if ENABLE_VIBRATION
-/**
- * 觸發震動馬達一次（blocking，VIBRATION_MS ms）
- * 使用 S8050 NPN 電晶體驅動 1027 扁平硬幣馬達
- */
-void triggerVibration() {
-    // STEP 01: 開啟 → 等待 → 關閉
-    digitalWrite(VIBRATION_PIN, HIGH);
-    delay(VIBRATION_MS);
-    digitalWrite(VIBRATION_PIN, LOW);
-}
+    if (out.vibrate) {
+        digitalWrite(VIBRATION_PIN, HIGH);
+        delay(50);
+        digitalWrite(VIBRATION_PIN, LOW);
+    }
 #endif
+}
 
 // ============================================================
-// OLED 顯示（2D + 2B）
+// 顯示繪製
 // ============================================================
 
-/**
- * 依裝置狀態選擇對應畫面
- */
 void updateDisplay() {
-    // STEP 01: 藥物子選單優先顯示（覆蓋主畫面）
-    if (drugMenuOpen) {
-        drawDrugMenuScreen();
-        return;
-    }
-    // STEP 02: 依狀態選擇主畫面
-    switch (deviceState) {
-        case STATE_IDLE:    drawIdleScreen();    break;
-        case STATE_RUNNING: drawRunningScreen(); break;
-        case STATE_PAUSE:   drawPauseScreen();   break;
-        case STATE_END:     drawEndScreen();     break;
-        default:            break;
-    }
-}
-
-/**
- * 待機畫面（STATE_IDLE）
- * 顯示當前模式 + BLE 狀態 + 操作提示
- */
-void drawIdleScreen() {
     display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
 
-    // STEP 01: 標題列
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("EMS Timer   [IDLE]");
-
-    // STEP 02: 分隔線
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
-
-    // STEP 03: 操作提示
-    display.setCursor(0, 15);
-    display.println("Hold main button");
-    display.setCursor(0, 25);
-    display.println("2s to start task");
-
-    // STEP 04: 目前模式
-    display.setCursor(0, 40);
-    display.print("Mode:[");
-    display.print(MODE_LABELS[currentMode]);
-    display.print("] UP/DN switch");
-
-    // STEP 05: BLE 連線狀態
-    display.setCursor(0, 54);
-    display.print(bleConnected ? "BLE: connected" : "BLE: waiting...");
-
-    display.display();
-}
-
-/**
- * 執行中畫面（STATE_RUNNING）
- * MED 模式：大字顯示 240s 倒數；其他模式：顯示任務已進行時間
- */
-void drawRunningScreen() {
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-
-    // STEP 01: 標題列（狀態 + 模式）
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("DoseSync [RUN][");
-    display.print(MODE_LABELS[currentMode]);
-    display.print("]");
-
-    // STEP 02: 分隔線
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
-
-    // STEP 03: 大字計時（MED: 倒數 or GIVE MED 閃爍；其他: 任務elapsed）
-    if (currentMode == MODE_MED && medCountdownStartMs > 0) {
-        if (medReminderActive) {
-            // STEP 03.01: 強提醒閃爍「GIVE MED!」
-            bool flashOn = ((millis() / FLASH_PERIOD_MS) % 2) == 0;
-            if (flashOn) {
-                display.setTextSize(2);
-                display.setCursor(4, 14);
-                display.print("GIVE MED!");
+    if (globalState == GLOBAL_MAIN_MENU) {
+        drawMainMenu();
+    } else if (globalState == GLOBAL_OHCA) {
+        switch (ohcaState) {
+            case OHCA_STATE_START_FLASH:
+                drawOhcaStartFlash();
+                break;
+            case OHCA_STATE_WAIT_FIRST_EPI:
+                drawOhcaWaitFirstEpi();
+                break;
+            case OHCA_STATE_COUNTDOWN: {
+                uint32_t now = millis();
+                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
+                drawOhcaCountdownCommon("EPI Countdown", remain, false);
+                break;
             }
-        } else {
-            // STEP 03.02: 倒數剩餘時間大字
-            uint32_t elapsed = millis() - medCountdownStartMs;
-            uint32_t remainMs = (elapsed >= MED_COUNTDOWN_MS) ? 0 : (MED_COUNTDOWN_MS - elapsed);
-            uint32_t remSec   = remainMs / 1000;
-            char timeStr[8];
-            snprintf(timeStr, sizeof(timeStr), "%02u:%02u",
-                     (uint16_t)(remSec / 60), (uint16_t)(remSec % 60));
-            display.setTextSize(3);
-            int16_t x1, y1;
-            uint16_t w, h;
-            display.getTextBounds(timeStr, 0, 0, &x1, &y1, &w, &h);
-            display.setCursor((OLED_WIDTH - w) / 2, 14);
-            display.print(timeStr);
+            case OHCA_STATE_WARNING: {
+                uint32_t now = millis();
+                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
+                drawOhcaCountdownCommon("Prepare EPI", remain, false);
+                break;
+            }
+            case OHCA_STATE_ALARMING: {
+                uint32_t now = millis();
+                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                uint32_t past = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+                drawOhcaCountdownCommon("GIVE EPI!", past, true);
+                break;
+            }
+            case OHCA_STATE_OVERTIME: {
+                uint32_t now = millis();
+                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                uint32_t past = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+                drawOhcaCountdownCommon("OVERTIME", past, true);
+                break;
+            }
+            case OHCA_STATE_END_CHECK:
+                drawOhcaEndCheck();
+                break;
+            case OHCA_STATE_LOCKED:
+                drawOhcaLocked();
+                break;
+            case OHCA_STATE_SUMMARY:
+                drawOhcaSummary();
+                break;
+            default:
+                break;
         }
-    } else {
-        // STEP 03.03: 非 MED 模式：顯示任務已進行時間
-        uint32_t taskMs  = getTaskElapsedMs();
-        uint32_t taskSec = taskMs / 1000;
-        char timeStr[8];
-        snprintf(timeStr, sizeof(timeStr), "%02u:%02u",
-                 (uint16_t)(taskSec / 60), (uint16_t)(taskSec % 60));
-        display.setTextSize(3);
-        int16_t x1, y1;
-        uint16_t w, h;
-        display.getTextBounds(timeStr, 0, 0, &x1, &y1, &w, &h);
-        display.setCursor((OLED_WIDTH - w) / 2, 14);
-        display.print(timeStr);
-    }
 
-    // STEP 04: 分隔線
-    display.drawLine(0, 40, OLED_WIDTH - 1, 40, SSD1306_WHITE);
+        // overlay：兩段確認 armed 提示
+        if (showEpiArmedPrompt) drawTwoStepArmedOverlay("EPI? press again");
+        else if (showShockArmedPrompt) drawTwoStepArmedOverlay("Shock? press again");
 
-    // STEP 05: 下方左：任務已進行時間（MED 模式才顯示，其他模式顯示事件數）
-    display.setTextSize(1);
-    display.setCursor(0, 43);
-    if (currentMode == MODE_MED && medCountdownStartMs > 0) {
-        uint32_t taskMs  = getTaskElapsedMs();
-        uint32_t taskSec = taskMs / 1000;
-        char taskStr[16];
-        snprintf(taskStr, sizeof(taskStr), "task %02u:%02u",
-                 (uint16_t)(taskSec / 60), (uint16_t)(taskSec % 60));
-        display.print(taskStr);
-    } else {
-        char cntStr[12];
-        snprintf(cntStr, sizeof(cntStr), "evts: %u", eventCount);
-        display.print(cntStr);
-    }
-
-    // STEP 06: 下方：最後一筆事件摘要
-    display.setCursor(0, 54);
-    if (eventCount > 0) {
-        const EmsEvent& last = events[eventCount - 1];
-        const char* typeName = "";
-        switch (last.event_type) {
-            case EVT_MEDICATION:   typeName = "Med";    break;
-            case EVT_VENTILATION:  typeName = "Vent";   break;
-            case EVT_CUSTOM:       typeName = "Cust";   break;
-            case EVT_TASK_START:   typeName = "Start";  break;
-            case EVT_TASK_PAUSE:   typeName = "Pause";  break;
-            case EVT_TASK_RESUME:  typeName = "Resume"; break;
-            case EVT_TASK_END:     typeName = "End";    break;
-            default:               typeName = "?";      break;
-        }
-        uint32_t evtSec = last.elapsed_ms / 1000;
-        char evtStr[22];
-        snprintf(evtStr, sizeof(evtStr), "#%u %s %02u:%02u",
-                 last.event_id, typeName,
-                 (uint16_t)(evtSec / 60), (uint16_t)(evtSec % 60));
-        display.print(evtStr);
-    } else {
-        display.print("No events yet");
+    } else if (globalState == GLOBAL_VENT_PLACEHOLDER) {
+        drawPlaceholder("6sec Vent", "Phase C");
+    } else if (globalState == GLOBAL_TRAINING_PLACEHOLDER) {
+        drawPlaceholder("Training", "Phase D");
+    } else if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
+        drawPlaceholder("History", "Phase E");
+    } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
+        drawPlaceholder("Settings", "Phase G");
     }
 
     display.display();
 }
 
-/**
- * 暫停畫面（STATE_PAUSE）
- * 閃爍 PAUSED + 任務時間 + 按鍵提示
- */
-void drawPauseScreen() {
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-
-    // STEP 01: 標題
+void drawMainMenu() {
     display.setTextSize(1);
+    display.setTextColor(SSD1306_WHITE);
     display.setCursor(0, 0);
-    display.print("DoseSync  [PAUSE]");
-
-    // STEP 02: 分隔線
+    display.println("EMS DoseSync Pro");
     display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
 
-    // STEP 03: PAUSED 閃爍文字
-    bool flashOn = ((millis() / 600) % 2) == 0;
-    if (flashOn) {
-        display.setTextSize(2);
-        display.setCursor(16, 14);
-        display.print("PAUSED");
-    }
-
-    // STEP 04: 分隔線
-    display.drawLine(0, 40, OLED_WIDTH - 1, 40, SSD1306_WHITE);
-
-    // STEP 05: 任務資訊與按鍵提示
-    display.setTextSize(1);
-    display.setCursor(0, 43);
-    uint32_t taskMs  = getTaskElapsedMs();
-    uint32_t taskSec = taskMs / 1000;
-    char infoStr[24];
-    snprintf(infoStr, sizeof(infoStr), "task %02u:%02u | #%u evts",
-             (uint16_t)(taskSec / 60), (uint16_t)(taskSec % 60), eventCount);
-    display.print(infoStr);
-
-    display.setCursor(0, 54);
-    display.print("Sht=Resume Lng=End");
-
-    display.display();
-}
-
-/**
- * 結束畫面（STATE_END）
- * 顯示已儲存訊息，2 秒後自動回 IDLE
- */
-void drawEndScreen() {
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-
-    // STEP 01: 標題
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("DoseSync   [END]");
-
-    // STEP 02: 分隔線
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
-
-    // STEP 03: 完成訊息
-    display.setTextSize(2);
-    display.setCursor(16, 14);
-    display.print("Saved!");
-
-    // STEP 04: 分隔線
-    display.drawLine(0, 40, OLED_WIDTH - 1, 40, SSD1306_WHITE);
-
-    // STEP 05: 事件數量
-    display.setTextSize(1);
-    display.setCursor(0, 43);
-    char info[20];
-    snprintf(info, sizeof(info), "%u events recorded", eventCount);
-    display.print(info);
-
-    display.setCursor(0, 54);
-    display.print("Back to IDLE...");
-
-    display.display();
-}
-
-/**
- * 藥物子選單畫面（單純給藥 - 獨立時間戳）
- *
- * 視窗顯示 3 筆藥物（游標置中），選中項目反白。
- * 主鍵短按：確認記錄；上/下鍵：導覽；8 秒無操作：自動關閉
- *
- * Layout（128×64）：
- *   y=0  : "[單純給藥]"
- *   y=10 : 分隔線
- *   y=13 : item[start]
- *   y=25 : item[start+1]  ← 游標項目
- *   y=37 : item[start+2]
- *   y=50 : 分隔線
- *   y=54 : "OK=主鍵  8s超時"
- */
-void drawDrugMenuScreen() {
-    display.clearDisplay();
-    display.setTextColor(SSD1306_WHITE);
-
-    // STEP 01: 標題列
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("[Single Drug Rec]");
-
-    // STEP 02: 分隔線
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
-
-    // STEP 03: 計算 3 項視窗的起始索引（游標盡量置中）
-    uint8_t viewSize  = 3;
-    uint8_t startIdx;
-    if (DRUG_COUNT <= viewSize) {
-        startIdx = 0;
-    } else if (drugMenuCursor == 0) {
-        startIdx = 0;
-    } else if (drugMenuCursor >= DRUG_COUNT - 1) {
-        startIdx = DRUG_COUNT - viewSize;
-    } else {
-        startIdx = drugMenuCursor - 1;  // 游標在中間那列
-    }
-
-    // STEP 04: 繪製 3 項（每項高 12px，從 y=13 開始）
-    for (uint8_t i = 0; i < viewSize && (startIdx + i) < DRUG_COUNT; i++) {
-        uint8_t itemIdx = startIdx + i;
-        int16_t itemY   = 13 + (int16_t)(i * 12);
-
-        if (itemIdx == drugMenuCursor) {
-            // STEP 04.01: 選中項：反白背景 + 黑色文字
-            display.fillRect(0, itemY - 1, OLED_WIDTH, 10, SSD1306_WHITE);
+    for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
+        int y = 14 + i * 10;
+        if (i == mainMenuCursor) {
+            display.fillRect(0, y - 1, OLED_WIDTH, 10, SSD1306_WHITE);
             display.setTextColor(SSD1306_BLACK);
         } else {
             display.setTextColor(SSD1306_WHITE);
         }
-        display.setCursor(2, itemY);
-        display.print(itemIdx == drugMenuCursor ? ">" : " ");
-        display.print(" ");
-        display.print(DRUG_NAMES[itemIdx]);
+        display.setCursor(4, y);
+        display.print(MAIN_MENU_LABELS[i]);
     }
+}
 
-    // STEP 05: 分隔線 + 底部提示
+void drawOhcaStartFlash() {
     display.setTextColor(SSD1306_WHITE);
-    display.drawLine(0, 50, OLED_WIDTH - 1, 50, SSD1306_WHITE);
+    display.setTextSize(2);
+    display.setCursor(8, 24);
+    display.println("Start OHCA");
+}
+
+void drawOhcaWaitFirstEpi() {
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("OHCA Case");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.setTextSize(2);
+    display.setCursor(8, 24);
+    display.println("Press EPI");
+    display.setTextSize(1);
+    display.setCursor(8, 50);
+    display.println("(2-step confirm)");
+}
+
+void drawOhcaCountdownCommon(const char* label, uint32_t time_ms, bool show_overtime) {
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print(label);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+
+    // 時間 mm:ss 大字顯示
+    uint32_t total_sec = time_ms / 1000;
+    uint32_t mm = total_sec / 60;
+    uint32_t ss = total_sec % 60;
+
+    display.setTextSize(3);
+    display.setCursor(12, 22);
+    if (mm < 10) display.print("0");
+    display.print(mm);
+    display.print(":");
+    if (ss < 10) display.print("0");
+    display.print(ss);
+
+    // 事件數提示
+    display.setTextSize(1);
     display.setCursor(0, 54);
-    display.print("OK=main  8s=cancel");
-
-    display.display();
-}
-
-// ============================================================
-// BLE NUS 通訊（2E）
-// ============================================================
-
-/**
- * 初始化 BLE NUS service 並開始廣播
- */
-void setupBLE() {
-    // STEP 01: 初始化 BLE 裝置並提高 MTU
-    BLEDevice::init(BLE_DEVICE_NAME);
-    BLEDevice::setMTU(517);
-
-    // STEP 02: 建立 GATT Server
-    bleServer = BLEDevice::createServer();
-    bleServer->setCallbacks(new EmsServerCallbacks());
-
-    // STEP 03: 建立 NUS service
-    BLEService* service = bleServer->createService(NUS_SERVICE_UUID);
-
-    // STEP 04: TX characteristic（Device → App，Notify）
-    bleTxChar = service->createCharacteristic(NUS_TX_UUID, BLECharacteristic::PROPERTY_NOTIFY);
-    bleTxChar->addDescriptor(new BLE2902());
-
-    // STEP 05: RX characteristic（App → Device，Write）
-    bleRxChar = service->createCharacteristic(NUS_RX_UUID, BLECharacteristic::PROPERTY_WRITE);
-    bleRxChar->setCallbacks(new EmsRxCallbacks());
-
-    // STEP 06: 啟動 service + 廣播
-    service->start();
-    BLEAdvertising* adv = BLEDevice::getAdvertising();
-    adv->addServiceUUID(NUS_SERVICE_UUID);
-    adv->setScanResponse(true);
-    adv->setMinPreferred(0x06);
-    adv->setMinPreferred(0x12);
-    BLEDevice::startAdvertising();
-
-    Serial.print("[BLE] NUS ready, advertising as '");
-    Serial.print(BLE_DEVICE_NAME);
-    Serial.println("'");
-}
-
-/**
- * 序列化 JSON 並透過 TX Notify 推送給 App
- * @param doc 已填好欄位的 JsonDocument
- */
-void sendJson(JsonDocument& doc) {
-    // STEP 01: 未連線 → 略過
-    if (!bleConnected || bleTxChar == nullptr) {
-        return;
-    }
-    // STEP 02: 序列化（末尾加 '\n' 方便 App 切行解析）
-    char buf[BLE_TX_BUF_SIZE];
-    size_t len = serializeJson(doc, buf, sizeof(buf) - 2);
-    if (len == 0 || len >= sizeof(buf) - 2) {
-        Serial.println("[BLE] serialize overflow, drop");
-        return;
-    }
-    buf[len]     = '\n';
-    buf[len + 1] = '\0';
-    bleTxChar->setValue((uint8_t*)buf, len + 1);
-    bleTxChar->notify();
-}
-
-/**
- * 連線時送出 hello 訊息（含裝置狀態與任務資訊）
- */
-void sendHello() {
-    JsonDocument doc;
-    doc["t"]        = "hello";
-    doc["ver"]      = "phase2c";
-    doc["state"]    = (uint8_t)deviceState;
-    doc["mode"]     = (uint8_t)currentMode;
-    doc["count"]    = eventCount;
-    // task_id 以 epoch 秒表示（uint32_t，到 2106 年不溢位）
-    doc["task_id"]  = (uint32_t)(taskId / 1000UL);
-    sendJson(doc);
-}
-
-/**
- * App 請求時批次回傳所有事件（dump_start → dump_item × N → dump_end）
- * 2E：JSON 欄位包含所有新增欄位，傳完後標記 sync_flag = 1
- */
-void sendDump() {
-    // STEP 01: dump_start
-    {
-        JsonDocument doc;
-        doc["t"]     = "dump_start";
-        doc["count"] = eventCount;
-        sendJson(doc);
-    }
-
-    // STEP 02: 逐筆送出（含 2C 所有新欄位）
+    display.print("EPI:");
+    uint8_t epiN = 0, shockN = 0;
     for (uint16_t i = 0; i < eventCount; i++) {
-        EmsEvent& e = events[i];
-        JsonDocument doc;
-        doc["t"]     = "dump_item";
-        doc["idx"]   = i;
-        doc["id"]    = e.event_id;
-        // timestamp 以 epoch 秒 + ms fraction 分開，避免 64-bit 精度問題
-        doc["ts"]    = (uint32_t)(e.timestamp / 1000UL);
-        doc["ts_ms"] = (uint16_t)(e.timestamp % 1000UL);
-        doc["el"]    = e.elapsed_ms;
-        doc["type"]  = e.event_type;
-        doc["src"]   = e.source;
-        doc["mode"]  = e.mode;
-        doc["sync"]  = e.sync_flag;
-        doc["extra"] = e.extra_data;
-        sendJson(doc);
-        // 傳完後標記已同步
-        e.sync_flag = 1;
-        delay(DUMP_ITEM_INTERVAL_MS);
+        if (events[i].type == 1) epiN++;
+        else if (events[i].type == 2) shockN++;
     }
-
-    // STEP 03: dump_end
-    {
-        JsonDocument doc;
-        doc["t"] = "dump_end";
-        sendJson(doc);
+    display.print(epiN);
+    display.print("  Shk:");
+    display.print(shockN);
+    if (show_overtime) {
+        display.setCursor(96, 54);
+        display.print("OVT");
     }
 }
 
-/**
- * 處理 App 下發的 JSON 命令
- * 支援：sync（對時）、dump（批次讀取）、clear（清空，僅 IDLE 狀態）
- * @param msg App 寫入的原始字串
- */
-void handleRxCommand(const std::string& msg) {
-    // STEP 01: 解析 JSON
-    Serial.print("[BLE] RX: ");
-    Serial.println(msg.c_str());
+void drawOhcaEndCheck() {
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("End Check");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.setCursor(4, 18);
+    display.println("Confirm end of case?");
 
-    JsonDocument doc;
-    if (deserializeJson(doc, msg)) {
-        Serial.println("[BLE] parse error");
-        return;
+    // 兩個選項
+    int y_confirm = 36, y_cancel = 50;
+    if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
+        display.fillRect(0, y_confirm - 1, OLED_WIDTH, 10, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
     }
+    display.setCursor(4, y_confirm);
+    display.print("> Confirm end");
 
-    // STEP 02: 取命令
-    const char* cmd = doc["cmd"];
-    if (cmd == nullptr) {
-        return;
+    display.setTextColor(SSD1306_WHITE);
+    if (endCheckCursor == END_CHECK_CURSOR_CANCEL) {
+        display.fillRect(0, y_cancel - 1, OLED_WIDTH, 10, SSD1306_WHITE);
+        display.setTextColor(SSD1306_BLACK);
     }
-
-    // STEP 03: 分派
-    if (strcmp(cmd, "sync") == 0) {
-        // STEP 03.01: 時間同步 — 計算 epoch offset
-        uint64_t ts = doc["ts"] | (uint64_t)0;
-        if (ts == 0) {
-            Serial.println("[BLE] sync missing ts");
-            return;
-        }
-        sessionEpochOffset = ts - (uint64_t)millis();
-        Serial.print("[BLE] synced epoch_sec=");
-        Serial.println((unsigned long)(ts / 1000UL));
-
-        JsonDocument ack;
-        ack["t"]   = "ack";
-        ack["cmd"] = "sync";
-        sendJson(ack);
-    }
-    else if (strcmp(cmd, "dump") == 0) {
-        // STEP 03.02: 批次讀取所有事件
-        sendDump();
-    }
-    else if (strcmp(cmd, "clear") == 0) {
-        // STEP 03.03: 清空事件陣列（僅 IDLE 狀態允許）
-        if (deviceState != STATE_IDLE) {
-            JsonDocument nack;
-            nack["t"]   = "nack";
-            nack["cmd"] = "clear";
-            nack["err"] = "not idle";
-            sendJson(nack);
-            return;
-        }
-        eventCount  = 0;
-        nextEventId = 1;
-        Serial.println("[BLE] events cleared");
-
-        JsonDocument ack;
-        ack["t"]   = "ack";
-        ack["cmd"] = "clear";
-        sendJson(ack);
-    }
-    else {
-        Serial.print("[BLE] unknown cmd: ");
-        Serial.println(cmd);
-    }
+    display.setCursor(4, y_cancel);
+    display.print("> Back to case");
 }
 
-/**
- * 管理 BLE advertising 生命週期：
- *   連線後送 hello；斷線後重啟廣播
- */
-void updateBleAdvertising() {
-    // STEP 01: 剛連線 → 等 service discovery 完成再送 hello
-    if (bleConnected && !bleWasConnected) {
-        bleWasConnected = true;
-        delay(3000);
-        sendHello();
-        return;
-    }
-    // STEP 02: 剛斷線 → 重啟廣播
-    if (!bleConnected && bleWasConnected) {
-        bleWasConnected = false;
-        delay(100);
-        BLEDevice::startAdvertising();
-        Serial.println("[BLE] advertising restarted");
-    }
+void drawOhcaLocked() {
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println("LOCKED");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.setTextSize(2);
+    display.setCursor(8, 22);
+    display.println("Case End");
+    display.setTextSize(1);
+    display.setCursor(0, 50);
+    display.print("Events: ");
+    display.print(eventCount);
+    display.setCursor(0, 58);
+    display.print("[Main] -> Summary");
 }
 
-// ============================================================
-// LittleFS 持久儲存（3A）
-// ============================================================
+void drawOhcaSummary() {
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.print("Summary  ");
+    display.print(eventCount);
+    display.println(" evts");
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
 
-/**
- * 掛載 LittleFS 並建立 /sessions 目錄；列出未同步 session 檔案
- */
-void setupLittleFS() {
-    // STEP 01: 掛載（format_on_fail=false，保留既有資料）
-    if (!LittleFS.begin(false)) {
-        Serial.println("[FS] mount failed, formatting...");
-        if (!LittleFS.begin(true)) {
-            Serial.println("[FS] format failed, LittleFS disabled");
-            fsAvailable = false;
-            return;
-        }
-    }
-    fsAvailable = true;
-    Serial.println("[FS] LittleFS mounted");
-
-    // STEP 02: 確保 /sessions 目錄存在
-    if (!LittleFS.exists("/sessions")) {
-        LittleFS.mkdir("/sessions");
+    // 顯示最多 4 筆，從 summaryScrollOffset 起
+    uint16_t shown = 0;
+    for (uint16_t i = summaryScrollOffset; i < eventCount && shown < 4; i++, shown++) {
+        int y = 14 + shown * 10;
+        display.setCursor(0, y);
+        display.print((i + 1));
+        display.print(". ");
+        display.print(events[i].type == 1 ? "EPI" : (events[i].type == 2 ? "Shk" : "?"));
+        display.print(" @");
+        uint32_t sec = events[i].elapsed_ms / 1000;
+        if (sec / 60 < 10) display.print("0");
+        display.print(sec / 60);
+        display.print(":");
+        if (sec % 60 < 10) display.print("0");
+        display.print(sec % 60);
     }
 
-    // STEP 03: 掃描並列出未同步 session
-    File dir = LittleFS.open("/sessions");
-    if (!dir || !dir.isDirectory()) {
-        return;
-    }
-    uint8_t count = 0;
-    File f = dir.openNextFile();
-    while (f) {
-        if (!f.isDirectory()) {
-            Serial.print("[FS] unsynced: ");
-            Serial.println(f.name());
-            count++;
-        }
-        f = dir.openNextFile();
-    }
-    if (count > 0) {
-        Serial.print("[FS] ");
-        Serial.print(count);
-        Serial.println(" unsynced session(s)");
-    }
+    display.setCursor(0, 56);
+    display.print("[Back] -> Menu");
 }
 
-/**
- * 任務結束時序列化事件陣列並寫入 /sessions/<epoch_sec>.json
- * 使用 f.print() 串接 JSON，避免大型 buffer 分配問題
- */
-void saveSession() {
-    // STEP 01: LittleFS 不可用或無事件 → 跳過
-    if (!fsAvailable) {
-        Serial.println("[FS] disabled, skip save");
-        return;
-    }
-    if (eventCount == 0) {
-        Serial.println("[FS] no events, skip save");
-        return;
-    }
-
-    // STEP 02: 建立檔名（/sessions/<epoch_sec>.json）
-    uint32_t epochSec = (taskId > 0) ? (uint32_t)(taskId / 1000UL) : (uint32_t)(millis() / 1000UL);
-    char filename[32];
-    snprintf(filename, sizeof(filename), "/sessions/%u.json", epochSec);
-
-    // STEP 03: 開檔（覆寫）
-    File f = LittleFS.open(filename, "w");
-    if (!f) {
-        Serial.print("[FS] open failed: ");
-        Serial.println(filename);
-        return;
-    }
-
-    // STEP 04: 寫入 JSON header
-    f.print("{\"task_id\":");
-    f.print(epochSec);           // epoch 秒（uint32_t）
-    f.print(",\"event_count\":");
-    f.print(eventCount);
-    f.print(",\"events\":[");
-
-    // STEP 05: 逐筆事件串接
-    for (uint16_t i = 0; i < eventCount; i++) {
-        const EmsEvent& e = events[i];
-        if (i > 0) {
-            f.print(",");
-        }
-        f.print("{\"id\":");
-        f.print((unsigned long)e.event_id);
-        f.print(",\"ts\":");
-        f.print((unsigned long)(e.timestamp / 1000UL));  // epoch 秒
-        f.print(",\"ts_ms\":");
-        f.print((unsigned int)(e.timestamp % 1000UL));   // ms 小數
-        f.print(",\"el\":");
-        f.print((unsigned long)e.elapsed_ms);
-        f.print(",\"type\":");
-        f.print((unsigned int)e.event_type);
-        f.print(",\"src\":");
-        f.print((unsigned int)e.source);
-        f.print(",\"mode\":");
-        f.print((unsigned int)e.mode);
-        f.print(",\"sync\":");
-        f.print((unsigned int)e.sync_flag);
-        f.print(",\"extra\":\"");
-        f.print(e.extra_data);
-        f.print("\"}");
-    }
-
-    // STEP 06: 關閉 JSON
-    f.print("]}");
-    f.close();
-
-    Serial.print("[FS] saved: ");
-    Serial.println(filename);
+void drawTwoStepArmedOverlay(const char* what) {
+    // 在底部畫一條反色提示條
+    display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SSD1306_WHITE);
+    display.setTextColor(SSD1306_BLACK);
+    display.setTextSize(1);
+    display.setCursor(2, OLED_HEIGHT - 10);
+    display.print(what);
 }
 
-// ============================================================
-// I2S 麥克風（Phase 1.5 保留）
-// ============================================================
-
-#if ENABLE_MIC_MONITOR
-/**
- * 初始化 INMP441 I2S 麥克風
- * ESP32-S3 legacy driver 的 slot 順序與 ESP32 顛倒：L/R=GND 時用 ONLY_RIGHT
- */
-void setupI2S() {
-    // STEP 01: I2S 設定
-    i2s_config_t i2sConfig = {
-        .mode                 = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX),
-        .sample_rate          = 96000,          // 96k 降低 BCLK jitter
-        .bits_per_sample      = I2S_BITS_PER_SAMPLE_32BIT,
-        .channel_format       = I2S_CHANNEL_FMT_ONLY_RIGHT,  // S3 反直覺設定
-        .communication_format = I2S_COMM_FORMAT_STAND_I2S,
-        .intr_alloc_flags     = ESP_INTR_FLAG_LEVEL1,
-        .dma_buf_count        = 2,
-        .dma_buf_len          = 128,
-        .use_apll             = true,           // APLL 降低 jitter
-        .tx_desc_auto_clear   = false,
-        .fixed_mclk           = 0,
-    };
-
-    // STEP 02: 腳位設定
-    i2s_pin_config_t pinConfig = {
-        .bck_io_num   = I2S_SCK_PIN,
-        .ws_io_num    = I2S_WS_PIN,
-        .data_out_num = I2S_PIN_NO_CHANGE,
-        .data_in_num  = I2S_SD_PIN,
-    };
-
-    // STEP 03: 安裝驅動
-    if (i2s_driver_install(I2S_PORT, &i2sConfig, 0, NULL) != ESP_OK) {
-        Serial.println("[ERROR] I2S install failed");
-        return;
-    }
-
-    // STEP 04: 套用腳位
-    if (i2s_set_pin(I2S_PORT, &pinConfig) != ESP_OK) {
-        Serial.println("[ERROR] I2S set pin failed");
-        return;
-    }
-
-    // STEP 05: 清空 DMA buffer 殘留
-    i2s_zero_dma_buffer(I2S_PORT);
-    Serial.println("[EMS Timer] I2S mic OK @ 96kHz APLL");
+void drawPlaceholder(const char* title, const char* phase) {
+    display.setTextColor(SSD1306_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, 0);
+    display.println(title);
+    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SSD1306_WHITE);
+    display.setTextSize(2);
+    display.setCursor(0, 22);
+    display.print(phase);
+    display.setTextSize(1);
+    display.setCursor(0, 44);
+    display.println("Not implemented");
+    display.setCursor(0, 56);
+    display.println("[Back] -> Menu");
 }
-#endif  // ENABLE_MIC_MONITOR

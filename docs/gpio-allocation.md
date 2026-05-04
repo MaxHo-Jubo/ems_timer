@@ -128,8 +128,8 @@
 
 | 文件 | 同步狀態 | 待修正項目 |
 |------|---------|-----------|
-| `firmware/src/main.cpp` line 90-110 註解 | ❌ 落後 | 「獨立 I2C：GPIO 17 / 18」需改寫；待 Impl-Phase B 韌體實作返回/EPI/電擊鍵時順便更新 |
-| `firmware/src/main.cpp` line 116-127 BTN 定義 | ❌ 落後 | `BTN_COUNT` 從 5 擴為 8，新增 `BTN_BACK` / `BTN_EPI` / `BTN_SHOCK` 與對應 GPIO；Impl-Phase B 必補 |
+| `firmware/src/main.cpp` 8 按鍵定義 | ✅ 已同步（2026-05-04） | Impl-Phase A 重寫；`BTN_COUNT=8`，`BTN_BACK` / `BTN_EPI` / `BTN_SHOCK` 已加入 |
+| `firmware/src/main.cpp` 震動馬達 GPIO | ✅ 已同步（2026-05-04） | `VIBRATION_PIN=21`，原 GPIO 16 釋放給返回鍵 |
 | `docs/EMS_DoseSync_Pro_Prototype_V1.md` §21.3.1 | ✅ 已同步（2026-05-04） | 補上返回/EPI/電擊鍵；震動馬達 GPIO 16 → 21；新增狀態欄 |
 | `docs/EMS_DoseSync_Pro_Prototype_V1.md` §21.3.3 | ✅ 已同步（2026-05-04） | 移除「獨立 I2C：GPIO 17/18」候選 |
 | `docs/EMS_DoseSync_Pro_Prototype_V1_flow.html` | ✅ 已同步（2026-05-04） | 對齊 §21.3.1 與 §21.3.3 |
@@ -146,3 +146,4 @@
 | 2026-05-04 | 建立本文件 | 解決 main.cpp / SoT V1 / tft-migration-plan 三方 GPIO 矛盾 |
 | 2026-05-04 | 確認 SoT §4.1 8 按鍵封版 | GPIO 16/17/18 歸屬返回 / EPI / 電擊鍵 |
 | 2026-05-04 | TFT GPIO 重配 | 原 9~13 與 SPI flash 禁用區衝突，改 35~37 + 21, 47, 48 |
+| 2026-05-04 | Impl-Phase A 韌體對齊 | main.cpp 重寫：`BTN_COUNT=8`、新增 `BTN_BACK/EPI/SHOCK`、震動 GPIO 21；舊 lib `ems_countdown` / `ems_vent` 廢止 |
