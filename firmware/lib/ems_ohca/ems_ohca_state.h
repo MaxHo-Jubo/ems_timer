@@ -54,22 +54,43 @@ ohca_phase_t mapStateToPhase(ohca_state_t s);
 ohca_state_t mapPhaseToState(ohca_phase_t p);  // 反向：advance 完轉回 state
 
 /**
+ * OHCA 案件「進行中」phase 判定。
+ * @param s 待判定的 state
+ * @return true 若 s ∈ { WAIT_FIRST_EPI, COUNTDOWN, WARNING, ALARMING, OVERTIME }
+ *
+ * 用於 SoT V1 §10.1 主鍵長按 3s 入口判斷與 END_CANCEL 還原合法 source 過濾。
+ */
+inline bool isOhcaInProgress(ohca_state_t s) {
+    return s == OHCA_STATE_WAIT_FIRST_EPI ||
+           s == OHCA_STATE_COUNTDOWN      ||
+           s == OHCA_STATE_WARNING        ||
+           s == OHCA_STATE_ALARMING       ||
+           s == OHCA_STATE_OVERTIME;
+}
+
+/**
  * State machine transition（純函式）
  *
  * @param current           當前 state
  * @param event             輸入事件
  * @param since_last_epi_ms 自上次 EPI 確認以來的 ms（僅 TIMER_TICK 使用）
+ * @param end_check_source  END_CHECK 的來源 state；END_CANCEL 時 fallback 用
+ *                          caller 在進 END_CHECK 前應記錄當時的 ohcaState
+ *                          僅當值為合法進行中 phase
+ *                          (WAIT_FIRST_EPI/COUNTDOWN/WARNING/ALARMING/OVERTIME)
+ *                          才會回到該 state；否則 fallback 至 OVERTIME
  * @return 下一個 state（無 transition 時回傳 current）
  *
- * 行為摘要（測試計劃 §3.3）：
+ * 行為摘要（SoT V1 §10.1 / 測試計劃 §3.3）：
  *   MAIN_MENU + MAIN_BTN_SHORT          → START_FLASH
  *   START_FLASH + FLASH_TIMEOUT         → WAIT_FIRST_EPI
  *   WAIT_FIRST_EPI + EPI_CONFIRMED      → COUNTDOWN
  *   COUNTDOWN/WARNING/ALARMING/OVERTIME + EPI_CONFIRMED → COUNTDOWN（重啟）
  *   COUNTDOWN/WARNING/ALARMING/OVERTIME + TIMER_TICK    → 依 since 推進 phase
- *   OVERTIME + MAIN_BTN_LONG_3S         → END_CHECK
+ *   WAIT_FIRST_EPI/COUNTDOWN/WARNING/ALARMING/OVERTIME + MAIN_BTN_LONG_3S
+ *                                       → END_CHECK（SoT V1 §10.1：正式 OHCA 中皆可）
  *   END_CHECK + END_CONFIRM             → LOCKED
- *   END_CHECK + END_CANCEL              → OVERTIME（簡化：END_CHECK 只能來自 OVERTIME）
+ *   END_CHECK + END_CANCEL              → end_check_source（還原到原 phase）
  *   LOCKED + TO_SUMMARY                 → SUMMARY
  *   LOCKED + 其他事件                   → noop（資料不可修改）
  *   ALARMING/OVERTIME + MAIN_BTN_SHORT  → noop（消音由外部處理；不建紀錄）
@@ -77,6 +98,7 @@ ohca_state_t mapPhaseToState(ohca_phase_t p);  // 反向：advance 完轉回 sta
  */
 ohca_state_t nextOhcaState(ohca_state_t current,
                            ohca_event_t event,
-                           uint32_t     since_last_epi_ms);
+                           uint32_t     since_last_epi_ms,
+                           ohca_state_t end_check_source = OHCA_STATE_OVERTIME);
 
 } // namespace ems

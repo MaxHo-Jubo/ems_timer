@@ -96,7 +96,7 @@ static const uint16_t SHORT_PRESS_MAX_MS  = 1500;
 
 /**
  * 各按鈕的長按 threshold（ms）；0 = 該按鈕不支援長按
- *   BTN_PRIMARY 3000ms：OHCA OVERTIME → END_CHECK
+ *   BTN_PRIMARY 3000ms：OHCA 任意進行中 phase → END_CHECK（SoT V1 §10.1）
  *   BTN_EPI     1000ms：藥物選單入口（Phase B）
  *   BTN_SHOCK   1000ms：電擊補登選單入口（Phase B）
  */
@@ -831,15 +831,20 @@ void onLongPress(uint8_t btnIdx) {
             Serial.println("[VENT] standalone end check");
             return;
         }
-        // STEP 01.02: GLOBAL_OHCA OVERTIME → END_CHECK
-        if (globalState == GLOBAL_OHCA &&
-            ohcaState == OHCA_STATE_OVERTIME &&
-            ohcaSubState == SUBSTATE_NONE) {
+        // STEP 01.02: GLOBAL_OHCA 進行中任意 phase → END_CHECK（SoT V1 §10.1）
+        //   排除 START_FLASH / END_CHECK / LOCKED / SUMMARY（A.S8 步驟 4 要求 noop）
+        if (globalState == GLOBAL_OHCA && ohcaSubState == SUBSTATE_NONE &&
+            isOhcaInProgress(ohcaState)) {
             dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
             endCheckCursor = END_CHECK_CURSOR_CANCEL;
             stopBeep();
             Serial.println("[OHCA] enter END_CHECK");
             return;
+        }
+        // STEP 01.03: OHCA 但條件不滿足（substate / 排除清單）— field debug log
+        if (globalState == GLOBAL_OHCA) {
+            Serial.printf("[OHCA] long-press ignored (state=%u sub=%u)\n",
+                          ohcaState, ohcaSubState);
         }
         return;
     }
@@ -868,10 +873,31 @@ void onLongPress(uint8_t btnIdx) {
 // ============================================================
 
 void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
+    // 進 END_CHECK 前的 source state — END_CANCEL 取消時用此還原。
+    // SoT V1 §10.1：source 不一定是 OVERTIME；於此處由 prev 自動 cache，caller 無需感知。
+    static ohca_state_t end_check_source = OHCA_STATE_OVERTIME;
     ohca_state_t prev = ohcaState;
-    ohcaState = nextOhcaState(prev, event, since_ms);
+
+    // STEP 01: 新 OHCA case 起始 dispatch (prev = MAIN_MENU) 時 reset cache
+    //   避免上次出勤殘留的 source 被本次 END_CANCEL 誤用（跨 session 隔離）
+    if (prev == OHCA_STATE_MAIN_MENU) {
+        end_check_source = OHCA_STATE_OVERTIME;
+    }
+
+    // STEP 02: 進 END_CHECK 前 capture 合法 source；非進行中 prev 不寫入 cache
+    if (event == OHCA_EVT_MAIN_BTN_LONG_3S && isOhcaInProgress(prev)) {
+        end_check_source = prev;
+    }
+
+    ohcaState = nextOhcaState(prev, event, since_ms, end_check_source);
     if (ohcaState != prev) {
         Serial.printf("[OHCA] %u -> %u (evt=%u)\n", prev, ohcaState, event);
+    }
+
+    // STEP 03: END_CANCEL 命中無效 source — lib 已 fallback OVERTIME，於此 log 供 field debug
+    if (event == OHCA_EVT_END_CANCEL && !isOhcaInProgress(end_check_source)) {
+        Serial.printf("[OHCA] WARN END_CANCEL invalid source=%u, fallback OVERTIME\n",
+                      end_check_source);
     }
 }
 

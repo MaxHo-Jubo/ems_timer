@@ -30,7 +30,8 @@ ohca_state_t mapPhaseToState(ohca_phase_t p) {
 
 ohca_state_t nextOhcaState(ohca_state_t current,
                            ohca_event_t event,
-                           uint32_t     since_last_epi_ms) {
+                           uint32_t     since_last_epi_ms,
+                           ohca_state_t end_check_source) {
     // STEP 01: LOCKED 拒絕所有事件，但允許翻頁到 SUMMARY
     if (current == OHCA_STATE_LOCKED) {
         if (event == OHCA_EVT_TO_SUMMARY) {
@@ -60,6 +61,7 @@ ohca_state_t nextOhcaState(ohca_state_t current,
             return current;
 
         // STEP 04.02: START_FLASH（1s 提示，自動轉 WAIT_FIRST_EPI）
+        //   過場期間使用者沒機會長按；不接受 MAIN_BTN_LONG_3S
         case OHCA_STATE_START_FLASH:
             if (event == OHCA_EVT_FLASH_TIMEOUT) {
                 return OHCA_STATE_WAIT_FIRST_EPI;
@@ -70,6 +72,10 @@ ohca_state_t nextOhcaState(ohca_state_t current,
         case OHCA_STATE_WAIT_FIRST_EPI:
             if (event == OHCA_EVT_EPI_CONFIRMED) {
                 return OHCA_STATE_COUNTDOWN;
+            }
+            // STEP 04.03.01: 主鍵長按 3s → 結束前檢查（SoT V1 §10.1：正式 OHCA 中皆可）
+            if (event == OHCA_EVT_MAIN_BTN_LONG_3S) {
+                return OHCA_STATE_END_CHECK;
             }
             return current;  // TIMER_TICK 不推進；其他事件 noop
 
@@ -88,12 +94,12 @@ ohca_state_t nextOhcaState(ohca_state_t current,
                 ohca_phase_t next_phase = advanceOhcaPhase(cur_phase, since_last_epi_ms);
                 return mapPhaseToState(next_phase);
             }
-            // STEP 04.04.03: OVERTIME 中主鍵長按 3s → 結束前檢查
-            if (event == OHCA_EVT_MAIN_BTN_LONG_3S && current == OHCA_STATE_OVERTIME) {
+            // STEP 04.04.03: 主鍵長按 3s → 結束前檢查（SoT V1 §10.1：任意進行中 phase）
+            if (event == OHCA_EVT_MAIN_BTN_LONG_3S) {
                 return OHCA_STATE_END_CHECK;
             }
-            // STEP 04.04.04: ALARMING / OVERTIME 主鍵短按 → noop（消音由外部處理）
-            // STEP 04.04.05: 其他事件 noop
+            // STEP 04.04.04: 其他事件（含 MAIN_BTN_SHORT、SHOCK/AMIO 已於 STEP 03 攔截）noop
+            //   ALARMING / OVERTIME 的主鍵短按消音由 caller (main.cpp) 處理蜂鳴器，state 不轉
             return current;
 
         // STEP 04.05: END_CHECK（結束前檢查）
@@ -102,10 +108,13 @@ ohca_state_t nextOhcaState(ohca_state_t current,
                 return OHCA_STATE_LOCKED;
             }
             if (event == OHCA_EVT_END_CANCEL) {
-                // V1 簡化：END_CHECK 僅由 OVERTIME 進入，取消即回 OVERTIME
-                return OHCA_STATE_OVERTIME;
+                // STEP 04.05.01: 還原到 caller 提供的 source state
+                //   非法值 fallback OVERTIME — 確保 END_CANCEL 永遠落在合法進行中 phase
+                //   即使 caller 傳 garbage / 未初始化也不會把案件推進非法 state
+                return isOhcaInProgress(end_check_source) ? end_check_source
+                                                          : OHCA_STATE_OVERTIME;
             }
-            // STEP 04.05.01: 本機 EPI 確認可在 END_CHECK 中重啟倒數（不應該被 END_CHECK 卡住）
+            // STEP 04.05.02: 本機 EPI 確認可在 END_CHECK 中重啟倒數（不應該被 END_CHECK 卡住）
             if (event == OHCA_EVT_EPI_CONFIRMED) {
                 return OHCA_STATE_COUNTDOWN;
             }

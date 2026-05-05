@@ -215,13 +215,58 @@ static void test_summary_is_terminal() {
 }
 
 // ============================================================
-//  END_CHECK 行為
+//  END_CHECK 行為（SoT V1 §10.1：任意進行中 phase 皆可進入）
 // ============================================================
 
-/** END_CHECK + END_CANCEL → OVERTIME（V1 簡化路徑） */
-static void test_end_check_cancel_returns_to_overtime() {
+/** END_CHECK + END_CANCEL，未指定 source → fallback OVERTIME（向後相容預設） */
+static void test_end_check_cancel_default_returns_to_overtime() {
     TEST_ASSERT_EQUAL_INT(OHCA_STATE_OVERTIME,
         nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 300000));
+}
+
+/** END_CHECK + END_CANCEL，source=WAIT_FIRST_EPI → 還原 WAIT_FIRST_EPI */
+static void test_end_check_cancel_restores_wait_first_epi() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_WAIT_FIRST_EPI,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 0,
+                      OHCA_STATE_WAIT_FIRST_EPI));
+}
+
+/** END_CHECK + END_CANCEL，source=COUNTDOWN → 還原 COUNTDOWN */
+static void test_end_check_cancel_restores_countdown() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_COUNTDOWN,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 100000,
+                      OHCA_STATE_COUNTDOWN));
+}
+
+/** END_CHECK + END_CANCEL，source=WARNING → 還原 WARNING */
+static void test_end_check_cancel_restores_warning() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_WARNING,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 200000,
+                      OHCA_STATE_WARNING));
+}
+
+/** END_CHECK + END_CANCEL，source=ALARMING → 還原 ALARMING */
+static void test_end_check_cancel_restores_alarming() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_ALARMING,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 243000,
+                      OHCA_STATE_ALARMING));
+}
+
+/** END_CHECK + END_CANCEL，source=OVERTIME → 還原 OVERTIME */
+static void test_end_check_cancel_restores_overtime() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_OVERTIME,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 300000,
+                      OHCA_STATE_OVERTIME));
+}
+
+/** END_CHECK + END_CANCEL，非法 source（START_FLASH）→ fallback OVERTIME */
+static void test_end_check_cancel_invalid_source_fallback_overtime() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_OVERTIME,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 0,
+                      OHCA_STATE_START_FLASH));
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_OVERTIME,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_END_CANCEL, 0,
+                      OHCA_STATE_LOCKED));
 }
 
 /** END_CHECK 中其他無關事件 → 不變 */
@@ -233,25 +278,54 @@ static void test_end_check_ignores_unrelated_events() {
 }
 
 // ============================================================
-//  END_CHECK 限制：僅 OVERTIME 長按 3s 可進入
+//  END_CHECK 入口：任意進行中 phase 主鍵長按 3s 皆可進入
+//  （SoT V1 §10.1 / Test Plan A.S8 — 修正前限 OVERTIME 的窄義規格）
 // ============================================================
 
-/** COUNTDOWN + 主鍵長按 3s → 不轉 END_CHECK */
-static void test_countdown_long_press_does_not_enter_end_check() {
-    TEST_ASSERT_EQUAL_INT(OHCA_STATE_COUNTDOWN,
+/** WAIT_FIRST_EPI + 主鍵長按 3s → END_CHECK */
+static void test_wait_first_epi_long_press_enters_end_check() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_END_CHECK,
+        nextOhcaState(OHCA_STATE_WAIT_FIRST_EPI, OHCA_EVT_MAIN_BTN_LONG_3S, 0));
+}
+
+/** COUNTDOWN + 主鍵長按 3s → END_CHECK */
+static void test_countdown_long_press_enters_end_check() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_END_CHECK,
         nextOhcaState(OHCA_STATE_COUNTDOWN, OHCA_EVT_MAIN_BTN_LONG_3S, 100000));
 }
 
-/** WARNING + 主鍵長按 3s → 不轉 END_CHECK */
-static void test_warning_long_press_does_not_enter_end_check() {
-    TEST_ASSERT_EQUAL_INT(OHCA_STATE_WARNING,
+/** WARNING + 主鍵長按 3s → END_CHECK */
+static void test_warning_long_press_enters_end_check() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_END_CHECK,
         nextOhcaState(OHCA_STATE_WARNING, OHCA_EVT_MAIN_BTN_LONG_3S, 200000));
 }
 
-/** ALARMING + 主鍵長按 3s → 不轉 END_CHECK（必須先進 OVERTIME） */
-static void test_alarming_long_press_does_not_enter_end_check() {
-    TEST_ASSERT_EQUAL_INT(OHCA_STATE_ALARMING,
+/** ALARMING + 主鍵長按 3s → END_CHECK */
+static void test_alarming_long_press_enters_end_check() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_END_CHECK,
         nextOhcaState(OHCA_STATE_ALARMING, OHCA_EVT_MAIN_BTN_LONG_3S, 243000));
+}
+
+// ============================================================
+//  END_CHECK 排除清單：過場 / 終端狀態長按 3s 維持 noop
+// ============================================================
+
+/** START_FLASH + 主鍵長按 3s → 不轉（過場期間使用者沒機會長按） */
+static void test_start_flash_long_press_noop() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_START_FLASH,
+        nextOhcaState(OHCA_STATE_START_FLASH, OHCA_EVT_MAIN_BTN_LONG_3S, 0));
+}
+
+/** END_CHECK + 主鍵長按 3s → 不變（已在 END_CHECK） */
+static void test_end_check_long_press_noop() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_END_CHECK,
+        nextOhcaState(OHCA_STATE_END_CHECK, OHCA_EVT_MAIN_BTN_LONG_3S, 0));
+}
+
+/** SUMMARY + 主鍵長按 3s → 不變（終端狀態） */
+static void test_summary_long_press_noop() {
+    TEST_ASSERT_EQUAL_INT(OHCA_STATE_SUMMARY,
+        nextOhcaState(OHCA_STATE_SUMMARY, OHCA_EVT_MAIN_BTN_LONG_3S, 0));
 }
 
 // ============================================================
@@ -309,6 +383,24 @@ static void test_map_phase_to_state() {
     TEST_ASSERT_EQUAL_INT(OHCA_STATE_OVERTIME,  mapPhaseToState(OHCA_PHASE_OVERTIME));
 }
 
+/** isOhcaInProgress：5 個進行中 phase 全 true */
+static void test_is_ohca_in_progress_true_set() {
+    TEST_ASSERT_TRUE(isOhcaInProgress(OHCA_STATE_WAIT_FIRST_EPI));
+    TEST_ASSERT_TRUE(isOhcaInProgress(OHCA_STATE_COUNTDOWN));
+    TEST_ASSERT_TRUE(isOhcaInProgress(OHCA_STATE_WARNING));
+    TEST_ASSERT_TRUE(isOhcaInProgress(OHCA_STATE_ALARMING));
+    TEST_ASSERT_TRUE(isOhcaInProgress(OHCA_STATE_OVERTIME));
+}
+
+/** isOhcaInProgress：非進行中 5 個 state 全 false */
+static void test_is_ohca_in_progress_false_set() {
+    TEST_ASSERT_FALSE(isOhcaInProgress(OHCA_STATE_MAIN_MENU));
+    TEST_ASSERT_FALSE(isOhcaInProgress(OHCA_STATE_START_FLASH));
+    TEST_ASSERT_FALSE(isOhcaInProgress(OHCA_STATE_END_CHECK));
+    TEST_ASSERT_FALSE(isOhcaInProgress(OHCA_STATE_LOCKED));
+    TEST_ASSERT_FALSE(isOhcaInProgress(OHCA_STATE_SUMMARY));
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
 
@@ -351,12 +443,26 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_locked_rejects_timer_tick);
     RUN_TEST(test_summary_is_terminal);
 
-    // END_CHECK
-    RUN_TEST(test_end_check_cancel_returns_to_overtime);
+    // END_CHECK 還原
+    RUN_TEST(test_end_check_cancel_default_returns_to_overtime);
+    RUN_TEST(test_end_check_cancel_restores_wait_first_epi);
+    RUN_TEST(test_end_check_cancel_restores_countdown);
+    RUN_TEST(test_end_check_cancel_restores_warning);
+    RUN_TEST(test_end_check_cancel_restores_alarming);
+    RUN_TEST(test_end_check_cancel_restores_overtime);
+    RUN_TEST(test_end_check_cancel_invalid_source_fallback_overtime);
     RUN_TEST(test_end_check_ignores_unrelated_events);
-    RUN_TEST(test_countdown_long_press_does_not_enter_end_check);
-    RUN_TEST(test_warning_long_press_does_not_enter_end_check);
-    RUN_TEST(test_alarming_long_press_does_not_enter_end_check);
+
+    // END_CHECK 入口（任意進行中 phase）
+    RUN_TEST(test_wait_first_epi_long_press_enters_end_check);
+    RUN_TEST(test_countdown_long_press_enters_end_check);
+    RUN_TEST(test_warning_long_press_enters_end_check);
+    RUN_TEST(test_alarming_long_press_enters_end_check);
+
+    // END_CHECK 排除清單
+    RUN_TEST(test_start_flash_long_press_noop);
+    RUN_TEST(test_end_check_long_press_noop);
+    RUN_TEST(test_summary_long_press_noop);
 
     // TIMER_TICK 推進
     RUN_TEST(test_wait_first_epi_timer_tick_does_not_advance);
@@ -368,6 +474,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     // Mapper
     RUN_TEST(test_map_state_to_phase_countdown_group);
     RUN_TEST(test_map_phase_to_state);
+
+    // isOhcaInProgress helper
+    RUN_TEST(test_is_ohca_in_progress_true_set);
+    RUN_TEST(test_is_ohca_in_progress_false_set);
 
     return UNITY_END();
 }

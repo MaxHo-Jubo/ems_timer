@@ -137,7 +137,8 @@
 - ✅ OHCA_WARNING → since ≥ 240000 → OHCA_ALARMING
 - ✅ OHCA_ALARMING → since ≥ 245000 → OHCA_OVERTIME
 - ✅ OHCA_ALARMING / OVERTIME → EPI 二段確認成立 → OHCA_COUNTDOWN（重啟）
-- ✅ OHCA_OVERTIME → 主鍵長按 ≥ 3s → OHCA_END_CHECK
+- ✅ OHCA 進行中任一 phase（WAIT_FIRST_EPI / COUNTDOWN / WARNING / ALARMING / OVERTIME）→ 主鍵長按 ≥ 3s → OHCA_END_CHECK（SoT V1 §10.1：正式 OHCA 中皆可）
+- ✅ OHCA_END_CHECK → 取消 → 還原至進入 END_CHECK 前的 source phase
 - ✅ OHCA_END_CHECK → 確認結束 → OHCA_LOCKED → OHCA_SUMMARY
 
 #### 3.3.2 EPI 到期警報期主鍵行為（V1 §6.7）
@@ -281,10 +282,10 @@
 ### 4.5 結束前檢查（V1 §10）
 
 #### 4.5.1 三選項
-- ✅ OHCA_OVERTIME → 主鍵長按 3s → OHCA_END_CHECK 顯示三選項
+- ✅ OHCA 進行中任一 phase（WAIT_FIRST_EPI / COUNTDOWN / WARNING / ALARMING / OVERTIME）→ 主鍵長按 3s → OHCA_END_CHECK 顯示三選項（SoT V1 §10.1）
 - ✅ 「完成並結束」→ OHCA_LOCKED
 - ✅ 「前往補登」→ 進入補登入口（回原 phase 後可長按 EPI/電擊鍵）
-- ✅ 「返回案件」→ 回原 phase（ALARMING/OVERTIME/COUNTDOWN/WAIT_FIRST_EPI）
+- ✅ 「返回案件」→ 回原 phase（依進入 END_CHECK 前的 source state 還原）
 
 #### 4.5.2 時序保留
 - ✅ 結束前檢查期間 EPI 倒數**繼續累計**（不暫停）
@@ -311,9 +312,9 @@
 - **通過**：倒數時間軸無重啟（不變回 04:00）；amio_total +1
 
 #### B.S4 — 結束前檢查 → 補登 → 再結束
-- **前置**：OHCA_OVERTIME 中
-- **操作**：(1) 主鍵**長按 3s** → 結束選單 → (2) 選「前往補登」→ 回到 OVERTIME → (3) 長按電擊鍵 → 補登「純補登電擊 ×1」→ 二次確認 → (4) 主鍵長按 3s → (5) 選「完成並結束」→ 短按主鍵確認
-- **預期**：步驟 5 後 LOCKED
+- **前置**：OHCA_OVERTIME 中（任意進行中 phase 皆可，本案以 OVERTIME 為示範）
+- **操作**：(1) 主鍵**長按 3s** → 結束選單 → (2) 選「前往補登」→ 回到原 phase（OVERTIME） → (3) 長按電擊鍵 → 補登「純補登電擊 ×1」→ 二次確認 → (4) 主鍵長按 3s → (5) 選「完成並結束」→ 短按主鍵確認
+- **預期**：步驟 5 後 LOCKED；步驟 2「前往補登」/取消會還原至步驟 1 進入 END_CHECK 前的 source phase
 - **通過**：總覽 shock_pure_supp=1，案件鎖定後不可新增
 
 #### B.S5 — 總覽數值對應
