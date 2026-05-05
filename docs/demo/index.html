@@ -569,7 +569,7 @@ function startVent(mode) {
     lastBeatRealMs:   0,
     mode,
     ohcaInterrupted: false,
-    paused:          false,  // V1 §13.11 / §13.12 暫停旗標（in_ohca 模式 §14.10 待補）
+    paused:          false,  // V1 §13.11~§13.13（standalone 主鍵）/ §14.10~§14.11（in_ohca 快速功能）
   };
   ventTickFire();
 }
@@ -606,9 +606,25 @@ function ventTickFire() {
   render();
 }
 
+/** V1 §14.9：依 ventState 動態組裝 OHCA 內快速功能選單 */
+function buildQuickMenuItems() {
+  const ventOn = !!ventState && ventState.mode === 'in_ohca';
+  const paused = ventOn && ventState.paused;
+  const items = [];
+  if (!ventOn) {
+    items.push({ label: '開啟6秒給氣提示', action: 'enable' });
+  } else {
+    items.push({ label: paused ? '繼續6秒給氣' : '暫停6秒給氣', action: paused ? 'resume' : 'pause' });
+    items.push({ label: '關閉6秒給氣提示', action: 'disable' });
+  }
+  items.push({ label: '案件簡版總覽', action: 'summary' });
+  items.push({ label: '返回 OHCA',     action: 'back' });
+  return items;
+}
+
 function ventTick() {
   if (!ventState) return;
-  // V1 §13.12：暫停期間停止秒數循環（standalone 模式生效；in_ohca §14.10 待補）
+  // V1 §13.12 / §14.10：暫停期間停止秒數循環（standalone 與 in_ohca 共用）
   if (ventState.paused) return;
   const realElapsedSinceLastBeat = performance.now() - ventState.lastBeatRealMs;
   // STEP 01: 通氣節拍受 SPEED_MULT 影響（與 EPI 倒數同步加速）
@@ -763,13 +779,20 @@ const STATES = {
       const counters = countLocal();
       // V1 §14：6秒給氣恆常顯示輔助區塊（in_ohca 模式時開啟）
       const ventOn = !!ventState && ventState.mode === 'in_ohca';
+      const ventPaused = ventOn && ventState.paused;
       const ventBeat = ventOn ? ventState.currentBeat : null;
-      const ventOverlayHTML = ventOn ? `
+      // V1 §14.10：暫停狀態畫面「6秒給氣｜已暫停 / 快速功能可繼續」
+      const ventOverlayHTML = ventPaused ? `
+        <div class="scr-vent-overlay">
+          <div class="scr-vent-overlay-label">6秒給氣｜已暫停</div>
+          <div class="scr-vent-overlay-num" style="font-size:18px;color:#fbbf24">快速功能可繼續</div>
+        </div>
+      ` : (ventOn ? `
         <div class="scr-vent-overlay ${ventBeat === 1 ? 'beat-1' : ''}">
           <div class="scr-vent-overlay-label">6秒給氣｜已開啟</div>
           <div class="scr-vent-overlay-num">${ventBeat}</div>
         </div>
-      ` : '';
+      ` : '');
       let inner = '';
       if (phase === 'WAIT_FIRST_EPI') {
         inner = `
@@ -1183,29 +1206,43 @@ const STATES = {
     },
   },
 
-  // ----- OHCA 中按返回 → 快速功能（V1 §14.9 開啟、暫停、繼續與關閉 6秒給氣恆常顯示） -----
+  // ===== buildQuickMenuItems：依 ventState 動態組裝 V1 §14.9 選單 =====
+  // 未開啟：[Enable / Summary / Back]
+  // 已開啟未暫停：[Pause / Disable / Summary / Back]
+  // 已開啟暫停中：[Resume / Disable / Summary / Back]
+  // 注意：JS object literal 中無法直接定義函式，下方 buildQuickMenuItems 在 STATES 物件外宣告
+  // ----- OHCA 中按返回 → 快速功能（V1 §14.9 動態 3/4 項：開啟、暫停、繼續、關閉） -----
   OHCA_QUICK_MENU: {
     onEnter: () => { stateData.cursor = 0; },
     onButton: (btn, kind) => {
-      const ventOn = !!ventState && ventState.mode === 'in_ohca';
-      const items = [ventOn ? '關閉6秒給氣提示' : '開啟6秒給氣提示', '案件簡版總覽', '返回 OHCA'];
+      const items = buildQuickMenuItems();
       if (btn === 'UP')   { stateData.cursor = (stateData.cursor + items.length - 1) % items.length; beep(600, 30, 0.1); render(); }
       if (btn === 'DOWN') { stateData.cursor = (stateData.cursor + 1) % items.length; beep(600, 30, 0.1); render(); }
       if (btn === 'BACK' && kind === 'SHORT') { go('OHCA_RUNNING'); }
       if (btn === 'MAIN' && kind === 'SHORT') {
         beep(1500, 60);
-        const idx = stateData.cursor;
-        if (idx === 0) {
-          // V1 §14.9：toggle 6秒給氣恆常顯示輔助區塊（不再切換到全螢幕通氣畫面）
-          // 註：SoT V4 §14.9 已新增「暫停6秒給氣 / 繼續6秒給氣」選項，demo 暫未實作三段式選單
-          if (ventOn) {
-            stopVent();
-            flash('6秒給氣', '已關閉', 800, 'OHCA_RUNNING');
-          } else {
-            startVent('in_ohca');
-            flash('6秒給氣', '已開啟', 800, 'OHCA_RUNNING');
-          }
-        } else if (idx === 1) {
+        const action = items[stateData.cursor].action;
+        // V1 §14.9：動態執行對應動作
+        if (action === 'enable') {
+          startVent('in_ohca');
+          flash('6秒給氣', '已開啟', 800, 'OHCA_RUNNING');
+        } else if (action === 'pause') {
+          // V1 §14.10：透過快速功能暫停
+          ventState.paused = true;
+          setLed('off');
+          screenEl.classList.remove('flash-vent');
+          flash('6秒給氣', '已暫停', 800, 'OHCA_RUNNING');
+        } else if (action === 'resume') {
+          // V1 §14.11：繼續時秒數重新從 1 開始
+          ventState.paused = false;
+          ventState.currentBeat = 0;
+          ventState.lastBeatRealMs = 0;
+          ventTickFire();
+          flash('6秒給氣', '已繼續', 800, 'OHCA_RUNNING');
+        } else if (action === 'disable') {
+          stopVent();
+          flash('6秒給氣', '已關閉', 800, 'OHCA_RUNNING');
+        } else if (action === 'summary') {
           flash('簡版總覽', 'Demo 略過，請結束案件後看完整總覽', 2000, 'OHCA_RUNNING');
         } else {
           go('OHCA_RUNNING');
@@ -1213,15 +1250,14 @@ const STATES = {
       }
     },
     render: () => {
-      const ventOn = !!ventState && ventState.mode === 'in_ohca';
-      const items = [ventOn ? '關閉6秒給氣提示' : '開啟6秒給氣提示', '案件簡版總覽', '返回 OHCA'];
+      const items = buildQuickMenuItems();
       const cursor = stateData.cursor;
       screenContent.innerHTML = `
         <div class="menu-list">
           <div class="menu-header">快速功能</div>
           ${items.map((it, i) => `
             <div class="menu-item ${i === cursor ? 'selected' : ''}">
-              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
+              <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it.label}
             </div>
           `).join('')}
         </div>
