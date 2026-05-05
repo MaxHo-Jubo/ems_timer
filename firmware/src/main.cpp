@@ -221,6 +221,8 @@ static bool     ventPaused         = false;                // V1 §13.11 / §13.
 
 /** OHCA 內 6 秒通氣輔助區塊開關（V1 §14.9 開啟、暫停、繼續與關閉） */
 static bool ohcaVentOverlayEnabled = false;
+/** V1 §14.10 / §14.11：OHCA 內 6 秒通氣暫停旗標（透過快速功能切換） */
+static bool ohcaVentPaused         = false;
 
 // ============================================================
 // END_CHECK 與 SUMMARY 子狀態
@@ -559,25 +561,52 @@ void onShortPress(uint8_t btnIdx) {
         // STEP 01: SUCCESS 顯示中：忽略所有按鍵（自動 2s 後消失，由 loop 處理）
         if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS) return;
 
-        // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口）
+        // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口；V1 §14.9 動態 2/3 項）
         if (ohcaSubState == SUBSTATE_QUICK_MENU) {
-            // 兩項：[0] toggle 6 秒給氣  [1] 返回 OHCA
-            if (btnIdx == BTN_UP || btnIdx == BTN_DOWN) {
-                backfillCursor ^= 1;  // 借用 backfillCursor 當選單 cursor
+            // V1 §14.9 選項：
+            //   未開啟 (overlay=false)：[0] Enable 6s vent  [1] Back to OHCA
+            //   已開啟 (overlay=true) ：[0] Pause/Resume    [1] Disable 6s vent  [2] Back
+            uint8_t cnt = ohcaVentOverlayEnabled ? 3 : 2;
+            if (btnIdx == BTN_UP) {
+                backfillCursor = (backfillCursor + cnt - 1) % cnt;
+                return;
+            }
+            if (btnIdx == BTN_DOWN) {
+                backfillCursor = (backfillCursor + 1) % cnt;
                 return;
             }
             if (btnIdx == BTN_BACK) { resetSubState(); return; }
             if (btnIdx == BTN_PRIMARY) {
-                if (backfillCursor == 0) {
-                    // STEP 01.5.1: toggle 6 秒給氣（V1 §14.9 開啟、暫停、繼續與關閉）
-                    ohcaVentOverlayEnabled = !ohcaVentOverlayEnabled;
-                    if (ohcaVentOverlayEnabled) {
-                        ventStartMs     = millis();
-                        ventPrevSinceMs = 0;
-                    } else {
-                        stopBeep();
+                if (!ohcaVentOverlayEnabled) {
+                    if (backfillCursor == 0) {
+                        // STEP 01.5.1: Enable 6s vent（V1 §14.9）
+                        ohcaVentOverlayEnabled = true;
+                        ohcaVentPaused         = false;
+                        ventStartMs            = millis();
+                        ventPrevSinceMs        = 0;
+                        Serial.println("[OHCA] vent overlay = ON");
                     }
-                    Serial.printf("[OHCA] vent overlay = %d\n", ohcaVentOverlayEnabled);
+                    // backfillCursor == 1 → Back（resetSubState 即可）
+                } else {
+                    if (backfillCursor == 0) {
+                        // STEP 01.5.2: toggle Pause / Resume（V1 §14.10 暫停 / §14.11 繼續）
+                        ohcaVentPaused = !ohcaVentPaused;
+                        if (!ohcaVentPaused) {
+                            // V1 §14.11：繼續時秒數重新從 1 開始
+                            ventStartMs     = millis();
+                            ventPrevSinceMs = 0;
+                        } else {
+                            stopBeep();
+                        }
+                        Serial.printf("[OHCA] vent paused = %d\n", ohcaVentPaused);
+                    } else if (backfillCursor == 1) {
+                        // STEP 01.5.3: Disable 6s vent（V1 §14.9）
+                        ohcaVentOverlayEnabled = false;
+                        ohcaVentPaused         = false;
+                        stopBeep();
+                        Serial.println("[OHCA] vent overlay = OFF");
+                    }
+                    // backfillCursor == 2 → Back
                 }
                 resetSubState();
                 return;
@@ -1050,7 +1079,7 @@ void applyVentOutput(const vent_output_t& out) {
  */
 void updateVentTick() {
     bool standalone = (globalState == GLOBAL_VENT) && !ventEndCheckShown && !ventPaused;
-    bool ohcaOverlay = (globalState == GLOBAL_OHCA) && ohcaVentOverlayEnabled;
+    bool ohcaOverlay = (globalState == GLOBAL_OHCA) && ohcaVentOverlayEnabled && !ohcaVentPaused;
     if (!standalone && !ohcaOverlay) return;
 
     uint32_t now   = millis();
@@ -1077,12 +1106,14 @@ void enterMainMenu() {
 
 void exitOhcaCase() {
     enterMainMenu();
-    ohcaState           = OHCA_STATE_MAIN_MENU;
-    ohcaLastEpiMs       = 0;
-    ohcaPrevSinceMs     = 0;
-    eventCount          = 0;
-    summaryScrollOffset = 0;
-    alarmMuted          = false;
+    ohcaState              = OHCA_STATE_MAIN_MENU;
+    ohcaLastEpiMs          = 0;
+    ohcaPrevSinceMs        = 0;
+    eventCount             = 0;
+    summaryScrollOffset    = 0;
+    alarmMuted             = false;
+    ohcaVentOverlayEnabled = false;  // V1 §14.12 案件結束 → 6 秒通氣自動停止
+    ohcaVentPaused         = false;
     stopBeep();
 }
 
@@ -1770,11 +1801,20 @@ void drawQuickMenu() {
     display.println("Quick Menu");
     display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
-    const char* labels[2] = {
-        ohcaVentOverlayEnabled ? "Disable 6s vent" : "Enable 6s vent",
-        "Back to OHCA",
-    };
-    for (uint8_t i = 0; i < 2; i++) {
+    // V1 §14.9：動態 2 / 3 項
+    const char* labels[3];
+    uint8_t count;
+    if (!ohcaVentOverlayEnabled) {
+        labels[0] = "Enable 6s vent";
+        labels[1] = "Back to OHCA";
+        count = 2;
+    } else {
+        labels[0] = ohcaVentPaused ? "Resume 6s vent" : "Pause 6s vent";
+        labels[1] = "Disable 6s vent";
+        labels[2] = "Back to OHCA";
+        count = 3;
+    }
+    for (uint8_t i = 0; i < count; i++) {
         int y = 18 + i * 12;
         if (i == backfillCursor) {
             display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
@@ -1791,16 +1831,25 @@ void drawQuickMenu() {
     display.println("[Main]OK [Bk]close");
 }
 
-/** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗） */
+/** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗 / §14.10 暫停狀態） */
 void drawOhcaVentOverlay(int y_top) {
+    display.setTextColor(SH110X_WHITE);
+    display.setTextSize(1);
+    display.setCursor(0, y_top);
+
+    if (ohcaVentPaused) {
+        // V1 §14.10：暫停狀態畫面「6秒給氣｜已暫停 / 快速功能可繼續」
+        display.print("6s vent PAUSED");
+        display.setCursor(0, y_top + 8);
+        display.print("(QuickMenu Resume)");
+        return;
+    }
+
     uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
     vent_beat_t beat = computeVentBeat(since);
     uint8_t num = (uint8_t)beat + 1;
 
     // 標籤 + 單秒數
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, y_top);
     display.print("6s vent ON  ");
 
     // 大字單秒數（往右排）
