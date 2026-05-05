@@ -251,7 +251,7 @@ const EPI_ALARM_INITIAL_MS      = 5_000;
 const EPI_OVERTIME_REMIND_MS    = 15_000;
 /** WARNING 階段每 N ms 短嗶一次 */
 const EPI_WARN_BEEP_MS          = 15_000;
-/** 通氣節奏 1 拍 = 1 秒（依 V1 §13.4） */
+/** 通氣節奏 1 拍 = 1 秒（依 V1 §13.6 執行中畫面） */
 const VENT_BEAT_REAL_MS         = 1_000;
 /** 兩段確認 timeout（首次按下 N ms 內未再按則自動取消） */
 const CONFIRM_TIMEOUT_REAL_MS   = 5_000;
@@ -428,7 +428,7 @@ function render() {
 let ohcaCase = null;
 
 function newOhcaCase() {
-  // V1 §14.9：新案件開始時清除前次殘留的 6秒給氣狀態
+  // V1 §14.12：新案件開始時清除前次殘留的 6秒給氣狀態（案件結束規則）
   stopVent();
   ohcaCase = {
     startedAt:                performance.now(),  // real ms when case started
@@ -584,14 +584,14 @@ function ventTickFire() {
   ventState.currentBeat = (ventState.currentBeat % 6) + 1;
   ventState.lastBeatRealMs = performance.now();
 
-  // V1 §14.7：in_ohca 恆常顯示模式下，若 EPI 處於 ALARMING（請給藥）警報中，
-  // 6秒給氣不蓋過 EPI 警報音，但秒數視窗仍持續更新。
+  // V1 §14.8：in_ohca 恆常顯示模式下，若 EPI 處於 ALARMING（請給藥）警報中，
+  // 6秒給氣不蓋過 EPI 警報音，但秒數視窗仍持續更新（EPI 到期優先權）。
   const ohcaAlarming = ventState.mode === 'in_ohca' && ohcaPhase() === 'ALARMING';
-  // V1 §14.6：in_ohca 模式為輔助區塊，僅更新區塊樣式，不全螢幕反紅
+  // V1 §14.7：in_ohca 模式為輔助區塊，僅更新區塊樣式，不全螢幕反紅（與 OHCA 主流程的關係）
   const fullScreenFlash = ventState.mode === 'standalone';
 
   if (ventState.currentBeat === 1) {
-    // V1 §13.6：通氣音量 = 0 時聲音關閉，但畫面反紅 + LED 紅燈閃保留
+    // V1 §13.10：通氣音量 = 0 時聲音關閉，但畫面反紅 + LED 紅燈閃保留（靜音規則）
     if (!ohcaAlarming) ventBeep(1000, 200, 0.4);
     vibrate(150);
     setLed('vent_pulse');
@@ -612,8 +612,8 @@ function ventTick() {
   if (realElapsedSinceLastBeat * SPEED_MULT >= VENT_BEAT_REAL_MS) {
     ventTickFire();
   }
-  // V1 §14.6：OHCA 內 6秒給氣為輔助子計時器，背景 OHCA EPI tick 仍要跑，
-  // 不再因 EPI 到期打斷（恆常顯示），EPI 警報由 OHCA_RUNNING 主邏輯處理。
+  // V1 §14.7：OHCA 內 6秒給氣為輔助子計時器，背景 OHCA EPI tick 仍要跑，
+  // 不再因 EPI 到期打斷（恆常顯示），EPI 警報由 OHCA_RUNNING 主邏輯處理（與 OHCA 主流程的關係）。
   if (ventState.mode === 'in_ohca') {
     ohcaTick();
   }
@@ -639,7 +639,7 @@ const STATES = {
     onEnter: () => {
       stateData.cursor = stateData.cursor ?? 0;
       stopAlarm(); setLed('off');
-      // V1 §14.9：返回主功能表時清除任何殘留的 6秒給氣狀態
+      // V1 §14.12：返回主功能表時清除任何殘留的 6秒給氣狀態（案件結束規則）
       stopVent();
     },
     onButton: (btn, kind) => {
@@ -1081,7 +1081,7 @@ const STATES = {
       if (kind !== 'SHORT') return;
       if (btn === 'BACK') { go('OHCA_END_CHECK'); return; }
       if (btn === 'MAIN') {
-        // V1 §14.9：OHCA 案件結束後 6秒給氣自動停止
+        // V1 §14.12：OHCA 案件結束後 6秒給氣自動停止（案件結束規則）
         stopVent();
         ohcaCase.locked = true;
         persistOhcaCase();
@@ -1180,7 +1180,7 @@ const STATES = {
     },
   },
 
-  // ----- OHCA 中按返回 → 快速功能（V1 §14.8 toggle 6秒給氣恆常顯示） -----
+  // ----- OHCA 中按返回 → 快速功能（V1 §14.9 開啟、暫停、繼續與關閉 6秒給氣恆常顯示） -----
   OHCA_QUICK_MENU: {
     onEnter: () => { stateData.cursor = 0; },
     onButton: (btn, kind) => {
@@ -1193,7 +1193,8 @@ const STATES = {
         beep(1500, 60);
         const idx = stateData.cursor;
         if (idx === 0) {
-          // V1 §14.8：toggle 6秒給氣恆常顯示輔助區塊（不再切換到全螢幕通氣畫面）
+          // V1 §14.9：toggle 6秒給氣恆常顯示輔助區塊（不再切換到全螢幕通氣畫面）
+          // 註：SoT V4 §14.9 已新增「暫停6秒給氣 / 繼續6秒給氣」選項，demo 暫未實作三段式選單
           if (ventOn) {
             stopVent();
             flash('6秒給氣', '已關閉', 800, 'OHCA_RUNNING');
@@ -1259,7 +1260,7 @@ const STATES = {
         if (stateData.mode === 'standalone') {
           go('VENT_END_CONFIRM');
         } else {
-          // OHCA 中通氣模式長按主鍵：依 V1 §14.5 主鍵不控制通氣，但 demo 允許長按結束
+          // OHCA 中通氣模式長按主鍵：依 V1 §14.9 OHCA 內不使用主鍵短按作為暫停鍵，但 demo 允許長按結束
           stopVent();
           go('OHCA_RUNNING');
         }
@@ -1267,11 +1268,11 @@ const STATES = {
       }
       if (btn === 'BACK' && kind === 'SHORT') {
         if (stateData.mode === 'in_ohca') {
-          // V1 §14.5: 返回鍵直接回 OHCA 主畫面
+          // V1 §14.9: OHCA 內 6秒通氣透過快速功能管理；demo 簡化為返回鍵直接回 OHCA 主畫面
           stopVent();
           go('OHCA_RUNNING');
         } else {
-          // V1 §13.8: 返回鍵不直接結束，提示長按主鍵
+          // V1 §13.15: 執行中按返回鍵不直接結束，提示長按主鍵
           flash('如要結束通氣節奏', '請長按主鍵', 1500, 'VENT_RUNNING', { mode: 'standalone' });
         }
         return;
@@ -1281,7 +1282,7 @@ const STATES = {
         return;
       }
       if (btn === 'SHOCK' && kind === 'SHORT' && stateData.mode === 'in_ohca') {
-        // 通氣中允許電擊（V1 §14.6）；確認流程簡化為直接記錄
+        // 通氣中允許電擊（V1 §14.7 與 OHCA 主流程的關係）；確認流程簡化為直接記錄
         commitShockLocal();
         flash('電擊已紀錄', '', FLASH_DEFAULT_MS, 'VENT_RUNNING', { mode: 'in_ohca' });
         return;
