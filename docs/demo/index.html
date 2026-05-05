@@ -560,7 +560,7 @@ function ohcaTick() {
 // SECTION 6：通氣節奏 controller
 // ============================================================
 
-let ventState = null;  // null = 未啟動；{ startedAt, currentBeat, lastBeatRealMs, mode: 'standalone' | 'in_ohca', ohcaInterrupted }
+let ventState = null;  // null = 未啟動；{ startedAt, currentBeat, lastBeatRealMs, mode: 'standalone' | 'in_ohca', ohcaInterrupted, paused }
 
 function startVent(mode) {
   ventState = {
@@ -569,6 +569,7 @@ function startVent(mode) {
     lastBeatRealMs:   0,
     mode,
     ohcaInterrupted: false,
+    paused:          false,  // V1 §13.11 / §13.12 暫停旗標（in_ohca 模式 §14.10 待補）
   };
   ventTickFire();
 }
@@ -607,6 +608,8 @@ function ventTickFire() {
 
 function ventTick() {
   if (!ventState) return;
+  // V1 §13.12：暫停期間停止秒數循環（standalone 模式生效；in_ohca §14.10 待補）
+  if (ventState.paused) return;
   const realElapsedSinceLastBeat = performance.now() - ventState.lastBeatRealMs;
   // STEP 01: 通氣節拍受 SPEED_MULT 影響（與 EPI 倒數同步加速）
   if (realElapsedSinceLastBeat * SPEED_MULT >= VENT_BEAT_REAL_MS) {
@@ -1243,7 +1246,7 @@ const STATES = {
         <div style="text-align:center">
           <div class="scr-mode">6 秒通氣節奏</div>
           <div class="scr-flash-msg" style="margin-top:24px">按主鍵開始</div>
-          <div class="scr-flash-sub" style="margin-top:12px">通氣音量可由 ▲▼ 調整<br>長按主鍵 ≥ 0.75s 結束</div>
+          <div class="scr-flash-sub" style="margin-top:12px">通氣音量可由 ▲▼ 調整<br>主鍵短按暫停 / 繼續　│　長按 ≥ 0.75s 結束</div>
         </div>
       `;
       overlay.classList.remove('show');
@@ -1264,6 +1267,23 @@ const STATES = {
           stopVent();
           go('OHCA_RUNNING');
         }
+        return;
+      }
+      if (btn === 'MAIN' && kind === 'SHORT' && stateData.mode === 'standalone') {
+        // V1 §13.11 / §13.12：獨立模式主鍵短按 toggle 暫停 / 繼續
+        // §13.13：暫停不需二段確認，誤觸再短按即繼續
+        if (!ventState) return;
+        ventState.paused = !ventState.paused;
+        if (!ventState.paused) {
+          // V1 §13.12：繼續時秒數重新從 1 開始
+          ventState.currentBeat = 0;
+          ventState.lastBeatRealMs = 0;
+          ventTickFire();
+        } else {
+          setLed('off');
+          screenEl.classList.remove('flash-vent');
+        }
+        render();
         return;
       }
       if (btn === 'BACK' && kind === 'SHORT') {
@@ -1291,6 +1311,19 @@ const STATES = {
     render: () => {
       const beat = ventState ? ventState.currentBeat : 1;
       const inOhca = stateData.mode === 'in_ohca';
+      const paused = !!(ventState && ventState.paused);
+      // V1 §13.12 暫停畫面（獨立模式才會走到 paused=true，§14.10 OHCA 內暫停待補）
+      if (paused && !inOhca) {
+        screenContent.innerHTML = `
+          <div style="text-align:center;width:100%;position:relative">
+            <div class="scr-mode">6 秒通氣節奏</div>
+            <div style="font-size:42px;color:#fbbf24;margin-top:32px;font-weight:bold">已暫停</div>
+            <div class="scr-flash-sub" style="margin-top:24px">主鍵繼續　│　返回結束</div>
+          </div>
+        `;
+        overlay.classList.remove('show');
+        return;
+      }
       let epiHint = '';
       if (inOhca && ohcaCase) {
         const phase = ohcaPhase();
