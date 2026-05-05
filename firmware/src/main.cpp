@@ -217,6 +217,7 @@ static bool     ventEndCheckShown  = false;                // 獨立模式長按
 static bool     ventBackHintShown  = false;                // 「請長按主鍵」提示
 static uint32_t ventBackHintStartMs = 0;
 static const uint32_t VENT_BACK_HINT_MS = 2000;
+static bool     ventPaused         = false;                // V1 §13.11 / §13.12 獨立 vent 暫停旗標
 
 /** OHCA 內 6 秒通氣輔助區塊開關（V1 §14.9 開啟、暫停、繼續與關閉） */
 static bool ohcaVentOverlayEnabled = false;
@@ -477,6 +478,7 @@ void onShortPress(uint8_t btnIdx) {
                         ventPrevSinceMs    = 0;
                         ventEndCheckShown  = false;
                         ventBackHintShown  = false;
+                        ventPaused         = false;  // V1 §13.5 啟動規則：秒數從 1 開始
                         Serial.println("[VENT] enter standalone");
                         break;
                     case 2: globalState = GLOBAL_TRAINING_PLACEHOLDER; break;
@@ -521,6 +523,19 @@ void onShortPress(uint8_t btnIdx) {
             // V1 §13.15：執行中按返回鍵不直接結束 → 提示「請長按主鍵」
             ventBackHintShown   = true;
             ventBackHintStartMs = now;
+            return;
+        }
+        if (btnIdx == BTN_PRIMARY) {
+            // V1 §13.11 / §13.12：主鍵短按 toggle 暫停/繼續
+            // 繼續時 §13.12 規定秒數重新從 1 開始 → 重置 ventStartMs
+            ventPaused = !ventPaused;
+            if (!ventPaused) {
+                ventStartMs     = now;
+                ventPrevSinceMs = 0;
+            } else {
+                stopBeep();
+            }
+            Serial.printf("[VENT] paused=%d\n", ventPaused);
             return;
         }
         return;
@@ -1034,7 +1049,7 @@ void applyVentOutput(const vent_output_t& out) {
  *   pm-dev-spec §7.2 / V1 §14.8：EPI 高優先打斷 → vent 立即靜音（EPI 到期優先權）
  */
 void updateVentTick() {
-    bool standalone = (globalState == GLOBAL_VENT) && !ventEndCheckShown;
+    bool standalone = (globalState == GLOBAL_VENT) && !ventEndCheckShown && !ventPaused;
     bool ohcaOverlay = (globalState == GLOBAL_OHCA) && ohcaVentOverlayEnabled;
     if (!standalone && !ohcaOverlay) return;
 
@@ -1683,7 +1698,7 @@ void drawTimeline() {
 //  Phase C 顯示函式
 // ============================================================
 
-/** 獨立 6 秒通氣節奏主畫面（V1 §13.6 執行中畫面） */
+/** 獨立 6 秒通氣節奏主畫面（V1 §13.6 執行中畫面 / §13.12 暫停畫面） */
 void drawVentStandalone() {
     display.clearDisplay();
     display.setTextColor(SH110X_WHITE);
@@ -1694,6 +1709,17 @@ void drawVentStandalone() {
     display.print("/");
     display.print(VENT_VOLUME_MAX);
     display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+
+    if (ventPaused) {
+        // V1 §13.12 暫停畫面：保留節奏標題，秒數窗位置改顯示 PAUSED
+        display.setTextSize(2);
+        display.setCursor(20, 24);
+        display.print("PAUSED");
+        display.setTextSize(1);
+        display.setCursor(0, 56);
+        display.print("[Main] resume [Bk]end");
+        return;
+    }
 
     // 大字顯示當前秒數
     uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
@@ -1713,7 +1739,7 @@ void drawVentStandalone() {
         display.print("Long-press [Main] to end");
     } else {
         display.setCursor(0, 56);
-        display.print("[Up/Dn]vol [Main]3s end");
+        display.print("[M]pause [M]3s=end");
     }
 }
 
