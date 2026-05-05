@@ -202,14 +202,34 @@
 <div class="header">
   <h1>EMS DoseSync Pro</h1>
   <div class="subtitle">院前 OHCA 給藥與事件時間同步輔助裝置 — Prototype V1 行為流程規格</div>
-  <div class="version">v1.0（封版） | 2026-04-27 初版 · 2026-04-28 Training 整合 · 2026-05-03 §19 擴充預留設計 | SoT：EMS_DoseSync_Pro_Prototype_V1.md</div>
+  <div class="version">v1.0（封版） | 2026-04-27 初版 · 2026-04-28 Training 整合 · 2026-05-03 §19 擴充預留設計 · 2026-05-05 V4 §13/§14 6 秒給氣暫停/繼續封版 | SoT：EMS_DoseSync_Pro_Prototype_V1.md</div>
   <a href="demo/" style="display:inline-block;margin-top:14px;padding:8px 18px;background:rgba(255,255,255,0.18);border:1px solid rgba(255,255,255,0.4);border-radius:20px;color:#fff;text-decoration:none;font-size:13px;font-weight:600">📱 互動 Demo（手機版）</a>
+</div>
+
+<div style="background:#fee2e2;border:2px solid #dc2626;border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;box-shadow:var(--shadow)">
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+    <span style="font-size:20px">🆕</span>
+    <span style="font-size:15px;font-weight:700;color:#991b1b">本次新增（2026-05-05）— SoT V4 §13/§14 6 秒給氣暫停/繼續流程封版</span>
+  </div>
+  <p style="font-size:13px;color:#7f1d1d;margin-bottom:10px;line-height:1.7">
+    SoT V4 重新整理 §13（獨立 6 秒通氣節奏）與 §14（OHCA 內 6 秒通氣）章節編號並新增暫停/繼續流程：
+    <strong>獨立模式 §13.11/§13.12 主按鍵短按暫停 / 繼續，繼續後秒數從 1 重新開始</strong>；
+    <strong>OHCA 內 §14.9/§14.10/§14.11 暫停 / 繼續 / 關閉透過快速功能選單，主按鍵短按不再作為暫停鍵</strong>，
+    避免與 OHCA 警報消音、選單確認衝突。新增 §13.3 / §14.2 6 秒一口核心定義（第 1 秒 = 給氣提示點，2~6 秒 = 等待間隔），
+    §14.8 EPI 警報優先處理（警報音優先 / 視覺秒數可繼續顯示）。本 flow.html 對齊章節：
+  </p>
+  <div style="display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px">
+    <a href="#sec-8" style="padding:4px 10px;background:#fff;border:1px solid #dc2626;border-radius:14px;color:#991b1b;text-decoration:none;font-weight:600">§8 獨立 6 秒通氣（暫停/繼續）</a>
+    <a href="#sec-9" style="padding:4px 10px;background:#fff;border:1px solid #dc2626;border-radius:14px;color:#991b1b;text-decoration:none;font-weight:600">§9 OHCA 內 6 秒通氣（快速功能暫停/繼續）</a>
+    <a href="#sec-9-pause" style="padding:4px 10px;background:#fff;border:1px solid #dc2626;border-radius:14px;color:#991b1b;text-decoration:none;font-weight:600">§9.6 OHCA 暫停狀態</a>
+    <a href="#sec-9-consistency" style="padding:4px 10px;background:#fff;border:1px solid #dc2626;border-radius:14px;color:#991b1b;text-decoration:none;font-weight:600">§9.7 一致性對照</a>
+  </div>
 </div>
 
 <div style="background:#dbeafe;border:2px solid #3b82f6;border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;box-shadow:var(--shadow)">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
     <span style="font-size:20px">📌</span>
-    <span style="font-size:15px;font-weight:700;color:#1e40af">本次新增（2026-05-04）— GPIO 腳位分配總表</span>
+    <span style="font-size:15px;font-weight:700;color:#1e40af">2026-05-04 — GPIO 腳位分配總表</span>
   </div>
   <p style="font-size:13px;color:#1e3a8a;margin-bottom:10px;line-height:1.7">
     建立 GPIO 分配單一真相來源（SSOT），同步 SoT V1 §21.3 與 flow.html。涵蓋 8 按鍵分配（依 §4.1 封版）、顯示/錄音/擴充策略、互斥約束、ESP32-S3 禁用區。完整 SSOT 文件：<code>docs/gpio-allocation.md</code>。新增 <strong>§20 GPIO 腳位分配總表</strong> 章節：
@@ -229,7 +249,7 @@
 <div style="background:var(--amber-light);border:2px solid var(--amber);border-radius:var(--radius);padding:18px 22px;margin-bottom:24px;box-shadow:var(--shadow)">
   <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
     <span style="font-size:20px">⭐</span>
-    <span style="font-size:15px;font-weight:700;color:#92400e">本次新增（2026-05-03）— Prototype V1 擴充預留設計</span>
+    <span style="font-size:15px;font-weight:700;color:#92400e">2026-05-03 — Prototype V1 擴充預留設計</span>
   </div>
   <p style="font-size:13px;color:#78350f;margin-bottom:10px;line-height:1.7">
     PM 提出 7 項未來擴充保留需求（錄音、CO 偵測、獨立藥物紀錄）。V1 不啟用以下功能，但硬體腳位、外殼空間、資料結構與主功能表架構需保留擴充能力。新增 <strong>§19 擴充預留設計</strong> 章節整合說明：
@@ -591,12 +611,62 @@
       </tbody>
     </table>
     <div class="note note-blue">
+      <strong>6 秒一口核心定義（V4 §13.3）：</strong>每 6 秒提示 1 次給氣。第 1 秒 = 給氣提示點（代表此時給一口氣）；第 2~6 秒 = 等待間隔，<strong>不代表給氣、不得在 2~6 秒再次提示</strong>。啟動後秒數從 1 開始，第一個第 1 秒即為第一口給氣提示點（V4 §13.5）。<br>
       <strong>通氣音量 0~5（獨立記憶）：</strong>0 = 靜音時聲音關閉，但畫面反紅與 LED 紅燈閃保留。<br>
       <strong>不建立紀錄：</strong>不寫入 Timeline，不同步 App，不列入歷史紀錄。<br>
       <strong>螢幕常亮 + 邊充邊用：</strong>插拔 Type-C 不中斷節奏。
     </div>
+
+    <div class="sub-title" style="margin-top:20px">8.1 主按鍵短按暫停 / 繼續（V4 §13.11~§13.13）</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">獨立 6 秒通氣節奏執行中，主按鍵短按 = 暫停 / 繼續，不需二段確認以維持即時操作效率。誤觸暫停可立即再短按主鍵繼續。</p>
+    <div class="oled-flow">
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm" style="text-align:center;padding:8px">
+          <div style="font-size:11px;color:#fecaca">6秒給氣</div>
+          <div style="font-size:22px;font-weight:900;color:#fff;margin-top:4px">1</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">執行中｜第 1 秒</span></div>
+        <div class="oled-step-desc">畫面反紅 + 加強提示音 + 紅燈閃爍</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen" style="text-align:center;padding:8px;border-color:var(--amber)">
+          <div style="font-size:10px;color:#fbbf24">6秒給氣</div>
+          <div style="font-size:13px;font-weight:700;color:#fff;margin-top:4px">已暫停</div>
+          <div style="font-size:9px;color:#94a3b8;margin-top:6px">主鍵繼續</div>
+          <div style="font-size:9px;color:#94a3b8">返回結束</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-amber">主鍵短按 → 暫停</span></div>
+        <div class="oled-step-desc">秒數循環停止 / 提示音停止 / LED 停止 / 不寫 Timeline</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm" style="text-align:center;padding:8px">
+          <div style="font-size:11px;color:#fecaca">6秒給氣</div>
+          <div style="font-size:22px;font-weight:900;color:#fff;margin-top:4px">1</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">主鍵短按 → 繼續</span></div>
+        <div class="oled-step-desc">秒數從 1 重新開始<br>新的給氣提示點</div>
+      </div>
+    </div>
+    <table style="margin-top:14px">
+      <thead><tr><th style="width:130px">按鍵</th><th>功能（執行中 / 暫停中）</th></tr></thead>
+      <tbody>
+        <tr><td><strong>上鍵 / 下鍵</strong></td><td>通氣音量 ±1</td></tr>
+        <tr><td><strong>主鍵短按</strong></td><td><strong>暫停 / 繼續</strong>（V4 §13.11，不需二段確認）</td></tr>
+        <tr><td><strong>主鍵長按 3s</strong></td><td>進入結束確認（V4 §13.14，二段確認）</td></tr>
+        <tr><td><strong>返回鍵</strong></td><td>提示「請長按主鍵」，不直接結束（V4 §13.15）</td></tr>
+        <tr><td><strong>EPI / 電擊</strong></td><td>無效，不建立事件紀錄</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-amber" style="margin-top:12px">
+      <strong>誤觸處理（V4 §13.13）：</strong>誤觸主鍵造成暫停可再短按主鍵立即繼續；暫停不需二段確認以維持即時效率。<strong>結束功能必須二段確認</strong>（長按主鍵 3 秒），避免誤觸造成節奏停止。
+    </div>
+
+    <div class="sub-title" style="margin-top:20px">8.2 結束流程</div>
     <div class="note">
-      <strong>結束方式：</strong>長按主鍵 3s 進入「結束通氣節奏？」確認；返回鍵不直接結束（提示「請長按主鍵」）。
+      <strong>結束方式：</strong>長按主鍵 3s 進入「結束通氣節奏？」確認；返回鍵不直接結束（提示「請長按主鍵」）。<br>
+      <strong>暫停狀態下返回鍵：</strong>可回到結束確認提示，但不得直接結束節奏（V4 §13.15）。
     </div>
   </div>
 </div>
@@ -606,6 +676,9 @@
   <div class="card">
     <div class="note note-blue" style="margin-bottom:12px">
       <strong>V1 §14 重大調整：</strong>OHCA 內 6秒通氣<strong>不再為獨立切換畫面</strong>，改為 OHCA 主畫面內的<strong>恆常顯示輔助區塊</strong>。它是子計時器，<strong>不打斷</strong>OHCA 主流程；EPI 給藥、電擊、Amiodarone、補登完成後，6秒通氣區塊仍維持顯示。
+    </div>
+    <div class="note note-red" style="margin-bottom:12px">
+      <strong>V4 §14.9 新增：</strong>OHCA 內 6 秒通氣的<strong>暫停 / 繼續 / 關閉一律透過快速功能選單</strong>，<strong>主按鍵短按不作為暫停鍵</strong>，避免與 OHCA 警報消音、選單確認或案件操作衝突。
     </div>
 
     <div class="sub-title">9.1 兩種使用情境</div>
@@ -692,31 +765,118 @@
       </tbody>
     </table>
 
-    <div class="sub-title" style="margin-top:20px">9.5 開啟與關閉</div>
-    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">OHCA 中按返回鍵開啟「快速功能」，依目前狀態顯示「開啟 / 關閉 6秒給氣提示」：</p>
+    <div class="sub-title" style="margin-top:20px">9.5 開啟、暫停、繼續、關閉（V4 §14.9 三狀態）</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">OHCA 中按返回鍵開啟「快速功能」，依目前狀態顯示三組不同的選單項目：</p>
     <div class="oled-flow">
       <div class="oled-step">
         <div class="oled-screen" style="text-align:left;padding:10px">
           <div class="oled-header">快速功能</div>
-          <div style="margin-top:6px;font-size:12px;color:#fbbf24">› 開啟6秒給氣提示</div>
-          <div style="font-size:12px;color:#94a3b8">　 案件簡版總覽</div>
-          <div style="font-size:12px;color:#94a3b8">　 返回 OHCA</div>
+          <div style="margin-top:6px;font-size:11px;color:#fbbf24">› 開啟6秒給氣提示</div>
+          <div style="font-size:11px;color:#94a3b8">　 案件簡版總覽</div>
+          <div style="font-size:11px;color:#94a3b8">　 返回 OHCA</div>
         </div>
         <div class="oled-step-label"><span class="badge badge-teal">未開啟</span></div>
+        <div class="oled-step-desc">3 項：開啟 / 簡版總覽 / 返回</div>
       </div>
       <div class="oled-arrow">→</div>
       <div class="oled-step">
         <div class="oled-screen" style="text-align:left;padding:10px">
           <div class="oled-header">快速功能</div>
-          <div style="margin-top:6px;font-size:12px;color:#fbbf24">› 關閉6秒給氣提示</div>
-          <div style="font-size:12px;color:#94a3b8">　 案件簡版總覽</div>
-          <div style="font-size:12px;color:#94a3b8">　 返回 OHCA</div>
+          <div style="margin-top:6px;font-size:11px;color:#fbbf24">› 暫停6秒給氣</div>
+          <div style="font-size:11px;color:#94a3b8">　 關閉6秒給氣提示</div>
+          <div style="font-size:11px;color:#94a3b8">　 案件簡版總覽</div>
+          <div style="font-size:11px;color:#94a3b8">　 返回 OHCA</div>
         </div>
-        <div class="oled-step-label"><span class="badge badge-red">已開啟</span></div>
+        <div class="oled-step-label"><span class="badge badge-red">已開啟且執行中</span></div>
+        <div class="oled-step-desc">4 項：暫停 / 關閉 / 簡版總覽 / 返回</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen" style="text-align:left;padding:10px">
+          <div class="oled-header">快速功能</div>
+          <div style="margin-top:6px;font-size:11px;color:#fbbf24">› 繼續6秒給氣</div>
+          <div style="font-size:11px;color:#94a3b8">　 關閉6秒給氣提示</div>
+          <div style="font-size:11px;color:#94a3b8">　 案件簡版總覽</div>
+          <div style="font-size:11px;color:#94a3b8">　 返回 OHCA</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-amber">已暫停</span></div>
+        <div class="oled-step-desc">4 項：繼續 / 關閉 / 簡版總覽 / 返回</div>
       </div>
     </div>
     <div class="note note-blue">
       <strong>開啟後：</strong>6秒通氣區塊固定顯示於 OHCA 主畫面中，直到手動關閉或案件結束。<strong>不寫入 Timeline，不列入案件事件紀錄</strong>。
+    </div>
+    <div class="note note-red" style="margin-top:8px">
+      <strong>OHCA 內主按鍵短按不作為暫停鍵：</strong>避免與 OHCA 警報消音、選單確認或案件操作衝突。暫停 / 繼續 / 關閉一律透過快速功能選單。
+    </div>
+
+    <div class="sub-title" id="sec-9-pause" style="margin-top:20px">9.6 暫停狀態畫面（V4 §14.10 / §14.11）</div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:10px">OHCA 內 6 秒給氣暫停後，主畫面下方仍顯示 6 秒給氣區塊，狀態改為「已暫停」並提示「快速功能可繼續」。透過快速功能選擇「繼續 6 秒給氣」恢復節奏，<strong>恢復時秒數重新從 1 開始</strong>，第 1 秒視為新的給氣提示點，需觸發畫面反紅 + 加強提示音 + 紅燈閃爍。</p>
+    <div class="oled-flow">
+      <div class="oled-step">
+        <div class="oled-screen" style="text-align:left;padding:8px 10px;border-color:var(--amber)">
+          <div class="oled-header" style="color:#fbbf24;font-size:11px">OHCA中</div>
+          <div class="oled-time" style="font-size:24px;text-align:center">03:28</div>
+          <div class="oled-label" style="text-align:center">下次給藥</div>
+          <div class="oled-status" style="text-align:center;font-size:11px">EPI 1｜電擊 1</div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #fbbf24;text-align:center;padding:6px;background:rgba(245,158,11,0.15)">
+            <div style="font-size:10px;color:#fbbf24">6秒給氣｜已暫停</div>
+            <div style="font-size:11px;color:#e2e8f0;font-weight:600;margin-top:2px">快速功能可繼續</div>
+          </div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-amber">暫停狀態</span></div>
+        <div class="oled-step-desc">秒數循環停止<br>提示音 / LED 停止<br>EPI 倒數不受影響</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen" style="text-align:left;padding:10px">
+          <div class="oled-header">快速功能</div>
+          <div style="margin-top:6px;font-size:11px;color:#fbbf24">› 繼續6秒給氣</div>
+          <div style="font-size:11px;color:#94a3b8">　 關閉6秒給氣提示</div>
+          <div style="font-size:11px;color:#94a3b8">　 案件簡版總覽</div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-blue">快速功能 → 繼續</span></div>
+        <div class="oled-step-desc">主鍵確認</div>
+      </div>
+      <div class="oled-arrow">→</div>
+      <div class="oled-step">
+        <div class="oled-screen oled-alarm" style="text-align:left;padding:8px 10px">
+          <div class="oled-header" style="color:#ff6b6b;font-size:11px">OHCA中</div>
+          <div class="oled-time" style="font-size:24px;text-align:center">03:28</div>
+          <div class="oled-label" style="text-align:center">下次給藥</div>
+          <div class="oled-status" style="text-align:center;font-size:11px">EPI 1｜電擊 1</div>
+          <div style="margin-top:8px;padding-top:6px;border-top:1px dashed #ff6b6b;text-align:center;background:#7f1d1d;border-radius:4px;padding:6px">
+            <div style="font-size:10px;color:#fecaca">6秒給氣｜已開啟</div>
+            <div style="font-size:24px;color:#fff;font-weight:700">1</div>
+          </div>
+        </div>
+        <div class="oled-step-label"><span class="badge badge-red">繼續｜秒數從 1</span></div>
+        <div class="oled-step-desc">畫面反紅 + 加強提示音 + 紅燈閃爍</div>
+      </div>
+    </div>
+    <div class="note note-blue">
+      <strong>暫停期間特性（V4 §14.10）：</strong>停止秒數循環 / 停止每秒提示音 / 停止第 1 秒加強提示音 / 停止通氣 LED 閃爍 / <strong>不影響 OHCA EPI 倒數</strong> / 不影響 EPI / 電擊 / Amiodarone / 補登操作 / 不寫入 Timeline / 不列入案件事件紀錄。
+    </div>
+
+    <div class="sub-title" id="sec-9-consistency" style="margin-top:20px">9.7 與獨立 6 秒通氣的一致性對照（V4 §14.13）</div>
+    <table>
+      <thead><tr><th style="width:170px">項目</th><th>獨立 6 秒通氣</th><th>OHCA 內 6 秒通氣</th></tr></thead>
+      <tbody>
+        <tr><td><strong>核心定義</strong></td><td>每 6 秒提示 1 次給氣</td><td>每 6 秒提示 1 次給氣</td></tr>
+        <tr><td><strong>秒數循環</strong></td><td>1～6</td><td>1～6</td></tr>
+        <tr><td><strong>給氣提示點</strong></td><td>第 1 秒</td><td>第 1 秒</td></tr>
+        <tr><td><strong>第 2~6 秒</strong></td><td>等待間隔</td><td>等待間隔</td></tr>
+        <tr><td><strong>顯示方式</strong></td><td>單一目前秒數</td><td>單秒數視窗</td></tr>
+        <tr><td><strong>第 1 秒畫面反紅 / 加強提示音 / 紅燈閃爍</strong></td><td>是</td><td>是</td></tr>
+        <tr><td><strong>第 2~6 秒短提示音 / LED 不閃</strong></td><td>是 / 否</td><td>是 / 否</td></tr>
+        <tr><td><strong>通氣音量</strong></td><td>0~5</td><td>0~5</td></tr>
+        <tr><td><strong>靜音時視覺提示</strong></td><td>保留</td><td>保留</td></tr>
+        <tr style="background:var(--red-light)"><td><strong>暫停 / 繼續</strong></td><td><strong>主鍵短按</strong>（V4 §13.11）</td><td><strong>透過快速功能</strong>（V4 §14.9）</td></tr>
+        <tr style="background:var(--red-light)"><td><strong>繼續後秒數</strong></td><td>從 1 開始</td><td>從 1 開始</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-amber" style="margin-top:10px">
+      <strong>EPI 警報與第 1 秒給氣同時發生（V4 §14.8）：</strong>EPI 警報音優先 / 6 秒通氣視覺秒數可繼續顯示 / 6 秒通氣提示音可暫時被 EPI 警報覆蓋 / 6 秒通氣不得蓋過「請給藥」畫面。
     </div>
   </div>
 </div>
@@ -981,7 +1141,7 @@
     <div class="phase-item phase-pri-2">
       <div class="phase-num">Phase C</div>
       <div class="phase-name">6 秒通氣節奏</div>
-      <div class="phase-tasks">▸ 獨立模式<br>▸ OHCA 內恆常顯示輔助區塊<br>▸ 單秒數視窗 + 第 1 秒反紅<br>▸ EPI 警報為最高優先（不打斷區塊）</div>
+      <div class="phase-tasks">▸ 獨立模式（主鍵短按暫停/繼續，§13.11）<br>▸ OHCA 內恆常顯示輔助區塊<br>▸ 快速功能暫停/繼續/關閉（§14.9）<br>▸ 單秒數視窗 + 第 1 秒反紅<br>▸ EPI 警報為最高優先（§14.8）</div>
     </div>
     <div class="phase-item phase-pri-3">
       <div class="phase-num">Phase D</div>
