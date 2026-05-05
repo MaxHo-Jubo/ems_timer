@@ -310,7 +310,7 @@
       </div>
     </div>
     <div class="note">
-      <strong>原則：</strong>純邏輯一律抽純函式（注入 <code>now_ms</code>），native 直接覆蓋；狀態機用 transition table 驗；時序敏感（debounce、倒數精度、≤50ms 打斷）必上實機。
+      <strong>原則：</strong>純邏輯一律抽純函式（注入 <code>now_ms</code>），native 直接覆蓋；狀態機用 transition table 驗；時序敏感（debounce、倒數精度、EPI 警報優先音訊覆蓋）必上實機。
     </div>
   </div>
 </div>
@@ -326,7 +326,7 @@
       <tbody>
         <tr><td><span class="badge badge-red">A</span> OHCA + EPI 倒數 + 兩段確認</td><td class="num center">50+</td><td class="num center">15+</td><td class="num center">8+</td><td>22.1</td></tr>
         <tr><td><span class="badge badge-amber">B</span> 補登 + Amio + 總覽</td><td class="num center">35+</td><td class="num center">12+</td><td class="num center">6+</td><td>22.2/3/4</td></tr>
-        <tr><td><span class="badge badge-teal">C</span> 6 秒通氣節奏</td><td class="num center">25+</td><td class="num center">10+</td><td class="num center">6+</td><td>22.5/6</td></tr>
+        <tr><td><span class="badge badge-teal">C</span> 6 秒通氣節奏（獨立 + OHCA 內恆常顯示）</td><td class="num center">35+</td><td class="num center">12+</td><td class="num center">13+</td><td>22.5/6</td></tr>
         <tr><td><span class="badge badge-purple">D</span> Training</td><td class="num center">20+</td><td class="num center">8+</td><td class="num center">5+</td><td>22.7</td></tr>
         <tr><td><span class="badge badge-blue">E</span> 持久化 + 歷史</td><td class="num center">18+</td><td class="num center">6+</td><td class="num center">4+</td><td>—</td></tr>
         <tr><td><span class="badge badge-blue">F</span> App 配對碼同步</td><td class="num center">15+</td><td class="num center">8+</td><td class="num center">4+</td><td>22.8</td></tr>
@@ -594,46 +594,63 @@
   <div class="card phase-card phase-c">
     <div class="phase-head">
       <div class="phase-letter">C</div>
-      <div class="phase-name">獨立模式（V1 §13）</div>
+      <div class="phase-name">獨立模式（V1 §13）— 含 V4 §13.11~§13.13 暫停/繼續</div>
     </div>
     <ul class="test-list">
-      <li><span class="case-id">C1.1</span>1→6→1 循環不停止</li>
-      <li><span class="case-id">C1.2</span>秒 1：加強提示音 + LED 紅閃 + 畫面反紅</li>
-      <li><span class="case-id">C1.3</span>秒 2~6：短提示音、LED 不閃</li>
-      <li class="boundary"><span class="case-id">C1.4</span>通氣音量=0：蜂鳴關閉、<strong>畫面反紅 + LED 紅閃保留</strong></li>
-      <li><span class="case-id">C1.5</span>通氣音量 NVS key 與系統音量分開（系統音量正常）</li>
+      <li><span class="case-id">C1.1</span><strong>6 秒一口核心定義</strong>（V4 §13.3）：第 1 秒 = 給氣提示點、第 2~6 秒 = 等待間隔</li>
+      <li><span class="case-id">C1.2</span>啟動秒數從 1 開始，循環 1→2→3→4→5→6→1（V4 §13.5）</li>
+      <li><span class="case-id">C1.3</span>秒 1：加強提示音 + LED 紅閃 + 畫面反紅（V4 §13.7）</li>
+      <li><span class="case-id">C1.4</span>秒 2~6：短提示音、LED 不閃、不代表給氣（V4 §13.8）</li>
+      <li class="boundary"><span class="case-id">C1.5</span>通氣音量=0：蜂鳴關閉、<strong>畫面反紅 + LED 紅閃 + 秒數視窗保留</strong></li>
+      <li><span class="case-id">C1.6</span>通氣音量 NVS key 與系統音量分開（系統音量正常）</li>
+      <li class="boundary"><span class="case-id">C1.7</span><strong>主鍵短按 = 暫停 / 繼續</strong>（V4 §13.11）；不需二段確認</li>
+      <li class="boundary"><span class="case-id">C1.8</span>暫停期間：秒數循環 / 提示音 / LED 全停；<strong>不寫入 Timeline</strong></li>
+      <li class="boundary"><span class="case-id">C1.9</span><strong>恢復後秒數從 1 重新開始</strong>，第 1 秒視為新給氣提示點（V4 §13.12）</li>
+      <li><span class="case-id">C1.10</span>誤觸暫停可立即再短按繼續（V4 §13.13）</li>
+      <li><span class="case-id">C1.11</span>長按主鍵 3s 進結束二段確認（V4 §13.14）</li>
+      <li><span class="case-id">C1.12</span>執行中按返回鍵：提示「請長按主鍵」，<strong>不直接結束</strong>（V4 §13.15）</li>
     </ul>
   </div>
 
   <div class="card phase-card phase-c">
     <div class="phase-head">
       <div class="phase-letter">C</div>
-      <div class="phase-name">OHCA 中切入 + EPI 高優先打斷</div>
+      <div class="phase-name">OHCA 內 6 秒通氣恆常顯示（V1 §14）— V4 重大調整</div>
     </div>
+    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:8px"><strong>V4 §14.1 調整：</strong>OHCA 內 6 秒通氣<strong>不再為 overlay 模式</strong>，改為主畫面內的<strong>恆常顯示輔助子計時器區塊</strong>。</p>
     <ul class="test-list">
-      <li><span class="case-id">C2.1</span>OHCA_COUNTDOWN → 返回鍵 → 快速功能 → vent overlay</li>
-      <li><span class="case-id">C2.2</span>EPI 倒數背景持續，畫面顯示 EPI MM:SS 小提示</li>
-      <li class="boundary"><span class="case-id">C2.3</span><strong>EPI ALARMING 觸發 → vent ≤50ms 立即靜音</strong>（V1 §14.8 EPI 到期優先權）</li>
-      <li><span class="case-id">C2.4</span>強制切到 OHCA_ALARM_SCREEN，必須完成 EPI 確認</li>
-      <li><span class="case-id">C2.5</span>EPI 確認後彈出「返回通氣節奏？」</li>
-      <li class="edge"><span class="case-id">C2.6</span>邊界：ALARMING 中按返回鍵 → 不允許離開</li>
+      <li><span class="case-id">C2.1</span>核心定義與獨立功能一致（V4 §14.2）；單秒數視窗顯示（V4 §14.4）</li>
+      <li><span class="case-id">C2.2</span>EPI 給藥 / 電擊 / Amio / 補登確認後，6 秒區塊<strong>仍維持顯示</strong>（V4 §14.7）</li>
+      <li class="boundary"><span class="case-id">C2.3</span><strong>EPI 警報優先處理</strong>（V4 §14.8）：警報音優先 / 視覺秒數可繼續顯示 / 提示音可被覆蓋 / 不蓋過「請給藥」</li>
+      <li><span class="case-id">C2.4</span><strong>三組快速功能選單</strong>（V4 §14.9）：未開啟 / 已開啟執行中 / 已暫停</li>
+      <li class="boundary"><span class="case-id">C2.5</span><strong>OHCA 內主鍵短按不作暫停</strong>（V4 §14.9 反向）：避免與警報消音、選單確認衝突</li>
+      <li><span class="case-id">C2.6</span>暫停狀態畫面（V4 §14.10）：「6秒給氣｜已暫停 / 快速功能可繼續」+ 不影響 EPI 倒數</li>
+      <li class="boundary"><span class="case-id">C2.7</span><strong>繼續後秒數從 1 開始</strong>（V4 §14.11），第 1 秒新給氣提示點</li>
+      <li><span class="case-id">C2.8</span>OHCA 結束（LOCKED）→ 6 秒自動停止；不寫入 Timeline / 不列入事件紀錄（V4 §14.12）</li>
     </ul>
   </div>
 
   <div class="card phase-card phase-c">
     <div class="phase-head">
       <div class="phase-letter">C</div>
-      <div class="phase-name">OHCA 內 6 秒通氣恆常顯示（V1 §14）</div>
+      <div class="phase-name">獨立 vs OHCA 內一致性對照（V4 §14.13）</div>
     </div>
-    <ul class="test-list">
-      <li><span class="case-id">C3.1</span>EPI / 電擊 / Amio / 補登確認後，6 秒區塊仍維持顯示</li>
-      <li class="boundary"><span class="case-id">C3.2</span>EPI ALARMING 時 6 秒區塊<strong>不蓋過</strong>「請給藥」警報</li>
-      <li><span class="case-id">C3.3</span>OHCA 結束（LOCKED）→ 6 秒自動停止</li>
-    </ul>
+    <table>
+      <thead><tr><th>項目</th><th>獨立 6 秒通氣</th><th>OHCA 內 6 秒通氣</th></tr></thead>
+      <tbody>
+        <tr><td>核心定義</td><td>每 6 秒提示 1 次給氣</td><td>每 6 秒提示 1 次給氣</td></tr>
+        <tr><td>給氣提示點</td><td>第 1 秒</td><td>第 1 秒</td></tr>
+        <tr><td>第 2~6 秒</td><td>等待間隔</td><td>等待間隔</td></tr>
+        <tr><td>顯示方式</td><td>單一目前秒數</td><td>單秒數視窗</td></tr>
+        <tr><td>通氣音量</td><td>0~5</td><td>0~5</td></tr>
+        <tr style="background:var(--red-light)"><td><strong>暫停 / 繼續</strong></td><td><strong>主鍵短按</strong>（§13.11）</td><td><strong>快速功能選單</strong>（§14.9）</td></tr>
+        <tr style="background:var(--red-light)"><td><strong>繼續後秒數</strong></td><td>從 1 開始</td><td>從 1 開始</td></tr>
+      </tbody>
+    </table>
   </div>
 
   <div class="card">
-    <div class="sub-title">L3 實機煙霧操作流程（C.S1~S6）</div>
+    <div class="sub-title">L3 實機煙霧操作流程（C.S1~S13）</div>
 
     <div class="proc-card">
       <div class="proc-head"><span class="proc-id-tag">C.S1</span><span class="proc-title">獨立模式 60s 觀察</span></div>
@@ -652,35 +669,91 @@
     </div>
 
     <div class="proc-card">
-      <div class="proc-head"><span class="proc-id-tag">C.S3</span><span class="proc-title">OHCA 切入 vent，倒數背景持續</span></div>
-      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">A.S1 已啟動倒數，剩約 03:00</span></div>
-      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按返回鍵 → (2) 快速功能選「6 秒通氣」→ (3) 觀察右上角 <code>EPI MM:SS</code> 小提示 → (4) 60s 後按返回離開 vent</span></div>
-      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 3 小提示秒數連續遞減；步驟 4 回 OHCA 主畫面，倒數約 02:00</span></div>
-      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">倒數時間軸不中斷、不暫停</span></div>
+      <div class="proc-head"><span class="proc-id-tag">C.S3</span><span class="proc-title">獨立模式主鍵短按暫停 / 繼續（V4 §13.11 / §13.12）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">主功能表 → 進入「6 秒通氣節奏」並執行至秒 3</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按主鍵 → (2) 觀察暫停畫面 5s → (3) 再短按主鍵 → (4) 觀察恢復後第一個循環</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 1 進入暫停畫面（「6秒給氣 / 已暫停 / 主鍵繼續 / 返回結束」）+ 蜂鳴與 LED 停止；步驟 3 後<strong>秒數從 1 重新開始</strong>，第 1 秒觸發畫面反紅 + 加強提示音 + 紅燈閃爍</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">暫停期間完全靜音；繼續後秒數從 1 而非從暫停時的 3 接續</span></div>
     </div>
 
     <div class="proc-card">
-      <div class="proc-head"><span class="proc-id-tag">C.S4</span><span class="proc-title">EPI 高優先打斷 ≤ 50ms</span></div>
-      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN 剩 00:01；已切入 vent overlay</span></div>
-      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 啟動高速攝影（120fps+）對準 OLED 與蜂鳴器 → (2) 等待倒數歸零觸發 ALARMING → (3) 攝影分析從 ALARMING 觸發到 vent 蜂鳴停止的 frame 數</span></div>
-      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">vent 蜂鳴在 ALARMING 觸發後 ≤ 6 frames（120fps × 50ms）內停止；UI 強制切到 OHCA_ALARM_SCREEN</span></div>
-      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">靜音延遲 ≤ 50ms</span></div>
+      <div class="proc-head"><span class="proc-id-tag">C.S4</span><span class="proc-title">獨立模式誤觸快速暫停 / 繼續（V4 §13.13）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">「6 秒通氣節奏」執行中至秒 4</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按主鍵（誤觸暫停）→ (2) 立即（&lt; 0.5s 內）再短按主鍵 → (3) 連續觀察 12s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">暫停與繼續過渡流暢無延遲；恢復後秒數從 1 開始；無需任何二段確認</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">誤觸恢復時間 &lt; 0.5s；後續循環正常</span></div>
     </div>
 
     <div class="proc-card">
-      <div class="proc-head"><span class="proc-id-tag">C.S5</span><span class="proc-title">完成 EPI 後詢問返回 vent</span></div>
-      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">C.S4 在 ALARM_SCREEN</span></div>
-      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按 EPI 鍵首次 → (2) 5s 內再短按 EPI 鍵第二次 → (3) 觀察詢問對話框</span></div>
-      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 2 後 OLED 跳出「返回通氣節奏？」對話框；選「是」→ 回 vent overlay；選「否」→ 回 OHCA 主畫面</span></div>
-      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">兩條路徑皆能正確切換，倒數重啟為 04:00</span></div>
+      <div class="proc-head"><span class="proc-id-tag">C.S5</span><span class="proc-title">獨立模式長按主鍵 3s 結束二段確認（V4 §13.14 / §13.15）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">「6 秒通氣節奏」執行中或暫停皆可</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 執行中按返回鍵觀察提示 → (2) 長按主鍵 3 秒 → (3) 結束確認畫面按返回鍵取消 → (4) 再長按主鍵 3 秒 → (5) 主鍵確認</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 1 提示「如要結束通氣節奏 請長按主鍵」（不結束）；步驟 5 顯示「通氣節奏 已結束」1 秒 → 回主功能表</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">返回鍵不直接結束；結束需主鍵長按 3s + 二段確認</span></div>
     </div>
 
     <div class="proc-card">
-      <div class="proc-head"><span class="proc-id-tag">C.S6</span><span class="proc-title">6 秒恆常顯示不蓋警報</span></div>
-      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN，已開啟 6 秒恆常顯示</span></div>
-      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 確認主畫面下方有 6 秒節奏小區塊 → (2) 等待倒數歸零進 ALARMING → (3) 觀察畫面布局</span></div>
-      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">「請給藥」覆蓋上半部，6 秒區塊保留下方但不阻礙警報訊息</span></div>
+      <div class="proc-head"><span class="proc-id-tag">C.S6</span><span class="proc-title">6 秒恆常顯示不蓋警報（V4 §14.7 / §14.8）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN，已開啟 6 秒恆常顯示（從快速功能選單）</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 確認主畫面下方有 6 秒節奏單秒數視窗 → (2) 等待倒數歸零進 ALARMING → (3) 觀察畫面布局</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">「請給藥」覆蓋上半部，6 秒區塊保留下方但不阻礙警報訊息；EPI 警報音優先，6 秒提示音可被覆蓋</span></div>
       <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">「請給藥」清晰可見、6 秒節奏未消失但不蓋過警報</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S7</span><span class="proc-title">OHCA 內三組快速功能選單（V4 §14.9）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按返回鍵 → 觀察「未開啟」選單 → (2) 選「開啟 6 秒給氣提示」→ (3) 短按返回鍵 → 觀察「已開啟且執行中」選單 → (4) 選「暫停 6 秒給氣」→ (5) 短按返回鍵 → 觀察「已暫停」選單</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">步驟 1：3 項（開啟 / 簡版總覽 / 返回）；步驟 3：4 項（暫停 / 關閉 / 簡版總覽 / 返回）；步驟 5：4 項（繼續 / 關閉 / 簡版總覽 / 返回）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">三組選單依狀態正確切換，項目數量與名稱完全對齊 V4 §14.9</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S8</span><span class="proc-title">OHCA 內主鍵短按不作暫停（反向測試，V4 §14.9）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN，已開啟 6 秒恆常顯示，6 秒區塊執行中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按主鍵 → (2) 觀察 6 秒區塊狀態</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">6 秒區塊狀態維持「已開啟」，秒數循環不中斷；主鍵短按執行 OHCA 主流程的原本功能但<strong>不影響</strong> 6 秒節奏</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">主鍵短按未觸發 6 秒節奏暫停；秒數循環連續</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S9</span><span class="proc-title">OHCA 內暫停狀態畫面（V4 §14.10）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN，6 秒區塊執行中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按返回鍵 → 快速功能選「暫停 6 秒給氣」→ (2) 觀察主畫面下方 6 秒區塊 5s</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">6 秒區塊狀態改為「6秒給氣｜已暫停 / 快速功能可繼續」；秒數循環 / 提示音 / LED 全停；OHCA EPI 倒數秒數<strong>繼續正常遞減</strong>不受影響</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">暫停顯示正確；EPI 倒數不受影響</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S10</span><span class="proc-title">OHCA 內繼續秒數從 1 開始（V4 §14.11）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">C.S9 暫停狀態</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 短按返回鍵 → 快速功能選「繼續 6 秒給氣」→ (2) 觀察恢復後第一個循環</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">6 秒區塊狀態回到「已開啟」+ <strong>秒數從 1 開始</strong>；第 1 秒觸發畫面反紅 + 加強提示音 + 紅燈閃爍</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">繼續後秒數從 1 而非從暫停時接續</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S11</span><span class="proc-title">OHCA 內事件確認後 6 秒區塊維持顯示（V4 §14.7）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN，6 秒區塊執行中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) EPI 二段確認 → (2) 電擊二段確認 → (3) 長按 EPI → Amiodarone → 主鍵確認 → (4) 長按電擊 → 接手前電擊 ×1 → 主鍵確認</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">四個事件確認後，6 秒區塊<strong>仍維持顯示在主畫面下方</strong>，狀態與秒數循環不重置</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">四次確認後 6 秒區塊均未消失、未重置秒數</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S12</span><span class="proc-title">EPI 警報與第 1 秒給氣同時發生（V4 §14.8）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN 剩 00:01，6 秒區塊執行中（透過韌體 log 對齊第 1 秒到達時間 = ALARMING 觸發時間）</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 等待 ALARMING 觸發 → (2) 觀察螢幕與聲音</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">EPI 警報音優先；6 秒視覺秒數可繼續顯示；6 秒提示音可暫時被 EPI 警報覆蓋；「請給藥」未被 6 秒區塊蓋過</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">EPI 警報優先級正確，6 秒視覺保留但不干擾主警報</span></div>
+    </div>
+
+    <div class="proc-card">
+      <div class="proc-head"><span class="proc-id-tag">C.S13</span><span class="proc-title">案件結束時 6 秒自動停止（V4 §14.12）</span></div>
+      <div class="proc-row"><span class="proc-tag t-pre">前置</span><span class="proc-text">OHCA_COUNTDOWN，6 秒區塊執行中</span></div>
+      <div class="proc-row"><span class="proc-tag t-op">操作</span><span class="proc-text">(1) 長按主鍵 3 秒 → 結束前檢查 → 完成並結束案件 → 主鍵確認 → (2) 觀察案件總覽 + Timeline</span></div>
+      <div class="proc-row"><span class="proc-tag t-exp">預期</span><span class="proc-text">案件 LOCKED 後 6 秒節奏自動停止；Timeline 不含 6 秒節奏事件；案件總覽不顯示 6 秒節奏統計</span></div>
+      <div class="proc-row"><span class="proc-tag t-pass">通過</span><span class="proc-text">6 秒節奏在 LOCKED 後完全停止；事件紀錄純淨</span></div>
     </div>
   </div>
 </div>
@@ -1134,9 +1207,9 @@
     </div>
 
     <div class="risk-row">
-      <div class="risk-name">⚠ EPI 高優先打斷通氣（≤50ms 靜音）</div>
-      <div class="risk-desc">vent overlay → ALARMING 切換延遲超標會誤導救護人員。</div>
-      <div class="risk-fix">vent task 低優先；L3 高速攝影驗證</div>
+      <div class="risk-name">⚠ EPI 警報優先 vs 6 秒給氣音覆蓋（V4 §14.8）</div>
+      <div class="risk-desc">EPI 到期警報音必須優先；6 秒給氣音可暫時被覆蓋；6 秒視覺秒數可繼續顯示但不蓋過「請給藥」畫面。</div>
+      <div class="risk-fix">音訊優先級分層；L3 C.S12 對齊 ALARMING 觸發時間驗證</div>
     </div>
 
     <div class="risk-row">
@@ -1199,8 +1272,8 @@
         <tr><td>22.2 電擊測試</td><td class="center"><span class="badge badge-amber">B</span></td><td>§4.6</td></tr>
         <tr><td>22.3 Amiodarone</td><td class="center"><span class="badge badge-amber">B</span></td><td>§4.6 B.S3</td></tr>
         <tr><td>22.4 補登測試</td><td class="center"><span class="badge badge-amber">B</span></td><td>§4.6 B.S1/S2/S4</td></tr>
-        <tr><td>22.5 6秒通氣節奏</td><td class="center"><span class="badge badge-teal">C</span></td><td>§5.4 C.S1~S2</td></tr>
-        <tr><td>22.6 OHCA 中 6秒恆常顯示</td><td class="center"><span class="badge badge-teal">C</span></td><td>§5.4 C.S6</td></tr>
+        <tr><td>22.5 6秒通氣節奏（含 V4 §13.11 暫停/繼續）</td><td class="center"><span class="badge badge-teal">C</span></td><td>§5.4 C.S1~S5</td></tr>
+        <tr><td>22.6 OHCA 中 6秒恆常顯示（含 V4 §14.9~§14.11 暫停/繼續）</td><td class="center"><span class="badge badge-teal">C</span></td><td>§5.4 C.S6~S13</td></tr>
         <tr><td>22.7 Training 測試</td><td class="center"><span class="badge badge-purple">D</span></td><td>§6.7 D.S1~S6</td></tr>
         <tr><td>22.8 App 同步</td><td class="center"><span class="badge badge-blue">F</span></td><td>§8.5 F.S1~S5</td></tr>
         <tr><td>22.9 電源測試</td><td class="center"><span class="badge badge-red">H</span></td><td>§10.5 H.S1~S6</td></tr>
