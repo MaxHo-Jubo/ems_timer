@@ -218,7 +218,7 @@ static bool     ventBackHintShown  = false;                // 「請長按主鍵
 static uint32_t ventBackHintStartMs = 0;
 static const uint32_t VENT_BACK_HINT_MS = 2000;
 
-/** OHCA 內 6 秒通氣輔助區塊開關（V1 §14.8） */
+/** OHCA 內 6 秒通氣輔助區塊開關（V1 §14.9 開啟、暫停、繼續與關閉） */
 static bool ohcaVentOverlayEnabled = false;
 
 // ============================================================
@@ -518,7 +518,7 @@ void onShortPress(uint8_t btnIdx) {
             return;
         }
         if (btnIdx == BTN_BACK) {
-            // V1 §13.8：返回鍵不直接結束 → 提示「請長按主鍵」
+            // V1 §13.15：執行中按返回鍵不直接結束 → 提示「請長按主鍵」
             ventBackHintShown   = true;
             ventBackHintStartMs = now;
             return;
@@ -554,7 +554,7 @@ void onShortPress(uint8_t btnIdx) {
             if (btnIdx == BTN_BACK) { resetSubState(); return; }
             if (btnIdx == BTN_PRIMARY) {
                 if (backfillCursor == 0) {
-                    // STEP 01.5.1: toggle 6 秒給氣（V1 §14.8）
+                    // STEP 01.5.1: toggle 6 秒給氣（V1 §14.9 開啟、暫停、繼續與關閉）
                     ohcaVentOverlayEnabled = !ohcaVentOverlayEnabled;
                     if (ohcaVentOverlayEnabled) {
                         ventStartMs     = millis();
@@ -754,7 +754,7 @@ void onShortPress(uint8_t btnIdx) {
                 return;
             }
             // STEP 03: Phase C — 案件進行中（非 ALARMING）按返回鍵 → 快速功能選單
-            //   ALARMING 中不允許離開警報（V1 §14.7 / Test Plan §5.2.2）
+            //   ALARMING 中不允許離開警報（V1 §14.8 EPI 到期優先權 / Test Plan §5.2.2）
             if (ohcaState == OHCA_STATE_WAIT_FIRST_EPI ||
                 ohcaState == OHCA_STATE_COUNTDOWN     ||
                 ohcaState == OHCA_STATE_WARNING       ||
@@ -824,7 +824,7 @@ void onLongPress(uint8_t btnIdx) {
 
     // STEP 01: 主鍵 3s 長按
     if (btnIdx == BTN_PRIMARY) {
-        // STEP 01.01: GLOBAL_VENT 獨立模式 → 結束確認對話框（V1 §13.8）
+        // STEP 01.01: GLOBAL_VENT 獨立模式 → 結束確認對話框（V1 §13.14 結束獨立 6 秒通氣節奏）
         if (globalState == GLOBAL_VENT && !ventEndCheckShown) {
             ventEndCheckShown = true;
             stopBeep();
@@ -1031,7 +1031,7 @@ void applyVentOutput(const vent_output_t& out) {
  * Tick 驅動 vent 輸出
  * - GLOBAL_VENT 獨立模式：永遠跑；ventEndCheckShown 中暫停
  * - GLOBAL_OHCA + ohcaVentOverlayEnabled：跑；ALARMING 時靜音（vol=0 effect）
- *   pm-dev-spec §7.2 / V1 §14.7：EPI 高優先打斷 → vent 立即靜音
+ *   pm-dev-spec §7.2 / V1 §14.8：EPI 高優先打斷 → vent 立即靜音（EPI 到期優先權）
  */
 void updateVentTick() {
     bool standalone = (globalState == GLOBAL_VENT) && !ventEndCheckShown;
@@ -1683,7 +1683,7 @@ void drawTimeline() {
 //  Phase C 顯示函式
 // ============================================================
 
-/** 獨立 6 秒通氣節奏主畫面（V1 §13.4） */
+/** 獨立 6 秒通氣節奏主畫面（V1 §13.6 執行中畫面） */
 void drawVentStandalone() {
     display.clearDisplay();
     display.setTextColor(SH110X_WHITE);
@@ -1717,7 +1717,7 @@ void drawVentStandalone() {
     }
 }
 
-/** 獨立 vent 結束確認對話框（V1 §13.8） */
+/** 獨立 vent 結束確認對話框（V1 §13.14 結束獨立 6 秒通氣節奏） */
 void drawVentEndCheck() {
     display.clearDisplay();
     display.setTextColor(SH110X_WHITE);
@@ -1735,7 +1735,7 @@ void drawVentEndCheck() {
     display.println("[Main]OK [Bk]cancel");
 }
 
-/** 快速功能選單（V1 §14.8 + §9 OHCA 中按返回鍵） */
+/** 快速功能選單（V1 §14.9 開啟、暫停、繼續與關閉 + §9 OHCA 中按返回鍵） */
 void drawQuickMenu() {
     display.clearDisplay();
     display.setTextColor(SH110X_WHITE);
@@ -1765,7 +1765,7 @@ void drawQuickMenu() {
     display.println("[Main]OK [Bk]close");
 }
 
-/** OHCA 內 6 秒通氣輔助區塊（V1 §14.3 單秒數視窗） */
+/** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗） */
 void drawOhcaVentOverlay(int y_top) {
     uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
     vent_beat_t beat = computeVentBeat(since);
