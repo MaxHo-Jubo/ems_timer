@@ -124,7 +124,7 @@
 <div class="header">
   <h1>⚡ EMS Timer 電源模組採購與組裝指南</h1>
   <div class="subtitle">3.7V 鋰電池 + TP4056 充電升壓 + 邊充邊用</div>
-  <div class="version">v1.0 · 2026-05-06 · Max Ho</div>
+  <div class="version">v1.1 · 2026-05-06 · Max Ho</div>
 </div>
 
 <div class="meta-box">
@@ -145,7 +145,8 @@
     <a href="#sec-6">6. 故障排除</a>
     <a href="#sec-7">7. 安全提醒</a>
     <a href="#sec-8">8. 後續整合到 SoT</a>
-    <a href="#sec-9">9. 版本紀錄</a>
+    <a href="#sec-9">9. 未來升級路線</a>
+    <a href="#sec-10">10. 版本紀錄</a>
   </div>
 </div>
 
@@ -485,7 +486,220 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
 
 <!-- §9 -->
 <div class="section" id="sec-9">
-  <h2 class="section-title"><span class="num">9</span>版本紀錄</h2>
+  <h2 class="section-title"><span class="num">9</span>未來升級路線（Prod-Phase 候選方案）</h2>
+  <div class="card">
+    <div class="note note-blue">
+      此章節記錄「現行 DIY 方案」之外的兩個整合度更高的商用方案，供未來 Prod-Phase 量產或 DIY 失敗時切換參考。<strong>目前不採購，僅作技術備案。</strong>
+    </div>
+
+    <h3 class="sub-title">9.1 觸發升級的時機</h3>
+    <p>當以下情況之一發生時，建議重新評估升級到 §9.2 / §9.3 方案：</p>
+    <ul class="check-list">
+      <li class="warn">蓮騰板 USB-C 切換時 ESP32 反覆重開機（pass-through 不真實）</li>
+      <li class="warn">進入 Prod-Phase 量產階段（5 ~ 10 台以上）</li>
+      <li class="warn">想在 OLED 顯示電量百分比 / 剩餘時間</li>
+      <li class="warn">同時規劃整合 RTC（Phase 3 DS3231）</li>
+    </ul>
+
+    <h3 class="sub-title">9.2 候選方案 A：Adafruit PowerBoost 1000C</h3>
+    <div class="note note-blue">
+      <strong>官方產品介紹</strong>（節錄自 <a class="link" href="https://www.adafruit.com/product/2465" target="_blank">adafruit.com/product/2465</a>）：<br>
+      <em>"PowerBoost 1000C is the perfect power supply for your portable project! With a built-in <strong>load-sharing battery charger circuit</strong>, you'll be able to keep your power-hungry project running even while recharging the battery! This little DC/DC boost converter module can be powered by any 3.7V LiIon/LiPoly battery, and convert the battery output to 5.2V DC for running your 5V projects."</em>
+    </div>
+
+    <p style="font-weight: 600; margin: 16px 0 8px;">核心規格</p>
+    <table>
+      <thead>
+        <tr><th>項目</th><th>規格</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>充電 IC</td><td>MCP73871（Microchip，工業級）</td></tr>
+        <tr><td>升壓 IC</td><td>TPS61090（TI，工業級）</td></tr>
+        <tr><td>輸入</td><td>Micro USB 5V</td></tr>
+        <tr><td>輸出</td><td><strong>5.2V</strong>（特意做高補償 USB 線損）</td></tr>
+        <tr><td>連續電流</td><td>~1A（內部 switch 2A）</td></tr>
+        <tr><td>充電電流</td><td>1A（可調至 100mA）</td></tr>
+        <tr><td>電池接頭</td><td><strong>JST PH 2.0</strong>（與你目前電池相容）</td></tr>
+        <tr><td>特殊功能</td><td>Load-sharing、低電量偵測 LED、EN pin（軟關機）</td></tr>
+        <tr><td>尺寸 / 重量</td><td>23 × 45 × 10mm / 6g</td></tr>
+        <tr><td>價格</td><td>$19.95（≈ NT$650）+ 國際運費</td></tr>
+        <tr><td>含電池</td><td><span class="badge badge-fail">否，需另購</span></td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-weight: 600; margin: 16px 0 8px; color: #15803d;">優點</p>
+    <ul class="check-list">
+      <li>TPS61090 是 TI 工業級升壓 IC，可靠度遠高於 TP4056 山寨版</li>
+      <li><strong>真正的 load-sharing</strong>（負載與電池分離，切換無 noise）</li>
+      <li>EN pin 可實作軟關機（對應 EMS Timer 規劃中的長按關機功能）</li>
+      <li>JST PH 2.0 接頭與現有電池相容，<strong>升級無需換電池</strong></li>
+    </ul>
+
+    <p style="font-weight: 600; margin: 16px 0 8px; color: var(--red);">缺點</p>
+    <ul class="check-list">
+      <li class="cross">價格約現行方案 3 倍</li>
+      <li class="cross">Micro USB 不是 Type-C（除非買 v2 版）</li>
+      <li class="cross">海外購買，運費 + 等待時間</li>
+    </ul>
+
+    <div class="note note-green">
+      <strong>適用情境：</strong>Prod-Phase 量產首選，或現行方案出現切換 noise 問題時
+    </div>
+
+    <h3 class="sub-title">9.3 候選方案 B：PiSugar 3</h3>
+    <div class="note note-blue">
+      <strong>官方產品介紹</strong>（節錄自 <a class="link" href="https://www.pisugar.com/products/pisugar-3-raspberry-pi-zero-battery" target="_blank">pisugar.com</a>）：<br>
+      <em>"PiSugar 3 is the third generation of PiSugar, Raspberry Pi zero battery series, making Raspberry Pi a portable device. With the on-board RTC, the Raspberry Pi can get the correct time whether it's powered or networked."</em>
+    </div>
+
+    <p style="font-weight: 600; margin: 16px 0 8px;">核心規格</p>
+    <table>
+      <thead>
+        <tr><th>項目</th><th>規格</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>內建電池</td><td><strong>1200mAh LiPo</strong>（可充電鋰聚合物，<span class="badge badge-fail">非水銀電池</span>）</td></tr>
+        <tr><td>輸入</td><td>Type-C / Micro USB 雙介面 5V-3A max</td></tr>
+        <tr><td>輸出</td><td>5V-3A max</td></tr>
+        <tr><td>充電保護</td><td>硬體電池保護電路</td></tr>
+        <tr><td>通訊介面</td><td><strong>I2C</strong>（位址 0x57 / 0x68，可自訂）</td></tr>
+        <tr><td>RTC</td><td>板載 RTC + 寫入保護 + <strong>CR1220 鈕扣電池備份</strong>（不是主電源）</td></tr>
+        <tr><td>特殊功能</td><td>軟關機、防誤觸開關、軟體看門狗、WebUI/APP、OTA 韌體升級</td></tr>
+        <tr><td>形狀</td><td>為 Raspberry Pi Zero（65 × 30mm）設計</td></tr>
+        <tr><td>價格</td><td>$39.99（≈ NT$1,300）+ 國際運費</td></tr>
+        <tr><td>含電池</td><td><span class="badge badge-pass">是，1200mAh 內建</span></td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-weight: 600; margin: 16px 0 8px; color: #15803d;">優點</p>
+    <ul class="check-list">
+      <li><strong>真正一片解決</strong>：充電 + 升壓 + 保護 + RTC + 電量計 + 軟關機</li>
+      <li>I2C 電量計可在 OLED 顯示電量百分比 / 剩餘時間</li>
+      <li>內建 RTC <strong>直接取代 Phase 3 規劃的 DS3231</strong>（一石二鳥）</li>
+      <li>1200mAh 電池容量比現行 1000mAh 略大</li>
+      <li>WebUI / APP 可遠端管理電池狀態</li>
+    </ul>
+
+    <p style="font-weight: 600; margin: 16px 0 8px; color: var(--red);">缺點</p>
+    <ul class="check-list">
+      <li class="cross">價格約現行方案 6 倍</li>
+      <li class="cross">為 Pi Zero 形狀設計，<strong>外殼空間需重新評估</strong>（65 × 30mm × 約 10mm 厚）</li>
+      <li class="cross">I2C 0x57 / 0x68 位址需與其他 I2C 裝置（OLED、未來感測器）協調避開</li>
+      <li class="cross"><strong>板上小鈕扣電池是 RTC 備用</strong>（CR 系列鋰錳，不可充），用完需更換</li>
+    </ul>
+
+    <div class="note note-green">
+      <strong>適用情境：</strong>Prod-Phase 量產且想一次整合 RTC、電量顯示、APP 管理的進階方案
+    </div>
+
+    <h3 class="sub-title">9.4 三方案對照</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>項目</th>
+          <th>現行（蓮騰 + 523450 + DIY）</th>
+          <th>A: PowerBoost 1000C</th>
+          <th>B: PiSugar 3</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>含電池</td>
+          <td><span class="badge badge-fail">否</span></td>
+          <td><span class="badge badge-fail">否</span></td>
+          <td><span class="badge badge-pass">1200mAh 內建</span></td>
+        </tr>
+        <tr>
+          <td>升壓 IC</td>
+          <td>山寨版 SX1308 推測</td>
+          <td>TI TPS61090（工業級）</td>
+          <td>未公開（整合方案）</td>
+        </tr>
+        <tr>
+          <td>Load-sharing</td>
+          <td><span class="badge badge-amber">⚠️ 可能不真實</span></td>
+          <td><span class="badge badge-pass">真實作</span></td>
+          <td><span class="badge badge-pass">UPS 等級</span></td>
+        </tr>
+        <tr>
+          <td>RTC</td>
+          <td><span class="badge badge-fail">需外加 DS3231</span></td>
+          <td><span class="badge badge-fail">無</span></td>
+          <td><span class="badge badge-pass">內建 + 鈕扣備份</span></td>
+        </tr>
+        <tr>
+          <td>I2C 電量計</td>
+          <td><span class="badge badge-fail">無</span></td>
+          <td><span class="badge badge-fail">無</span></td>
+          <td><span class="badge badge-pass">0x57 / 0x68</span></td>
+        </tr>
+        <tr>
+          <td>軟關機</td>
+          <td><span class="badge badge-fail">無</span></td>
+          <td><span class="badge badge-pass">EN pin</span></td>
+          <td><span class="badge badge-pass">按鈕觸發</span></td>
+        </tr>
+        <tr>
+          <td>電池接頭</td>
+          <td>PH2.0 焊盤需自焊母座</td>
+          <td>PH2.0 母座已焊</td>
+          <td>內建免接線</td>
+        </tr>
+        <tr>
+          <td>總成本</td>
+          <td class="price-col"><strong>NT$205</strong></td>
+          <td class="price-col">≈ NT$900+</td>
+          <td class="price-col">≈ NT$1,500</td>
+        </tr>
+        <tr>
+          <td>取得難度</td>
+          <td>蝦皮現貨 1 ~ 3 天</td>
+          <td>海外代購 7 ~ 14 天</td>
+          <td>海外運送 14 ~ 21 天</td>
+        </tr>
+        <tr>
+          <td>適用階段</td>
+          <td>Dev-Phase 2 原型</td>
+          <td>Prod-Phase 量產</td>
+          <td>Prod-Phase + 進階功能</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">9.5 決策建議</h3>
+    <table>
+      <thead>
+        <tr><th>情境</th><th>推薦方案</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>現在（Dev-Phase 2 原型驗證）</strong></td>
+          <td><span class="badge badge-blue">走現行 DIY</span>，沒必要花大錢</td>
+        </tr>
+        <tr>
+          <td>單台原型出現電源穩定度問題</td>
+          <td><span class="badge badge-amber">升級 A</span> PowerBoost 1000C</td>
+        </tr>
+        <tr>
+          <td>Prod-Phase 5 ~ 10 台量產</td>
+          <td><span class="badge badge-amber">升級 A</span>（成本可控、工業級可靠度）</td>
+        </tr>
+        <tr>
+          <td>Prod-Phase + 想要 RTC + 電量顯示 + APP</td>
+          <td><span class="badge badge-purple" style="background: var(--purple-light); color: var(--purple);">升級 B</span> PiSugar 3</td>
+        </tr>
+        <tr>
+          <td>量產 50+ 台</td>
+          <td>自製 PCB 整合 PowerBoost 同等級 IC</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- §10 -->
+<div class="section" id="sec-10">
+  <h2 class="section-title"><span class="num">10</span>版本紀錄</h2>
   <div class="card">
     <table>
       <thead>
@@ -503,13 +717,19 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
           <td>初版建立，採購清單與驗收 SOP</td>
           <td>Max Ho</td>
         </tr>
+        <tr>
+          <td>2026-05-06</td>
+          <td><span class="badge badge-blue">v1.1</span></td>
+          <td>新增 §9 未來升級路線（PowerBoost 1000C / PiSugar 3 候選方案）</td>
+          <td>Max Ho</td>
+        </tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <div class="footer">
-  EMS Timer · 電源模組採購與組裝指南 · v1.0 · 2026-05-06
+  EMS Timer · 電源模組採購與組裝指南 · v1.1 · 2026-05-06
 </div>
 
 </body>
