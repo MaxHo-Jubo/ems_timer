@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS Timer 電源模組採購與組裝指南</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+
+  .header { text-align: center; margin-bottom: 24px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+  .header .version { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+
+  .meta-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 20px; margin-bottom: 16px; box-shadow: var(--shadow);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 20px;
+    font-size: 13px;
+  }
+  .meta-box .meta-label { color: var(--text-secondary); margin-right: 6px; }
+  .meta-box .meta-value { color: var(--text); font-weight: 600; }
+
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .toc-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  .toc-list a { color: var(--blue); text-decoration: none; }
+  .toc-list a:hover { text-decoration: underline; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--blue); display: flex; align-items: center; gap: 8px; scroll-margin-top: 16px; }
+  .section-title .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--blue); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .sub-title { font-size: 15px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num-col { text-align: center; font-weight: 600; color: var(--text-secondary); width: 50px; }
+  td.price-col { text-align: right; font-weight: 600; color: var(--blue); white-space: nowrap; }
+  tr.total-row td { background: var(--blue-light); font-weight: 700; color: var(--blue); border-top: 2px solid var(--blue); }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-pass { background: var(--green-light); color: #15803d; }
+  .badge-fail { background: var(--red-light); color: var(--red); }
+
+  .note { margin-top: 12px; padding: 10px 14px; background: var(--amber-light); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; font-size: 12px; color: #92400e; }
+  .note-blue { background: var(--blue-light); border-left-color: var(--blue); color: #1e40af; }
+  .note-red { background: var(--red-light); border-left-color: var(--red); color: #991b1b; }
+  .note-green { background: var(--green-light); border-left-color: var(--green); color: #15803d; }
+
+  .ascii-flow {
+    font-family: "Courier New", monospace; font-size: 13px; background: #0a0a0a; color: #e2e8f0;
+    padding: 20px; border-radius: 8px; line-height: 1.5; white-space: pre; overflow-x: auto;
+  }
+
+  .check-list { list-style: none; padding: 0; margin: 8px 0; font-size: 13px; }
+  .check-list li { padding: 6px 0 6px 28px; position: relative; }
+  .check-list li::before {
+    content: "✓"; position: absolute; left: 0; top: 6px;
+    color: var(--green); font-weight: 700; font-size: 16px;
+  }
+  .check-list li.warn::before { content: "⚠"; color: var(--amber); }
+  .check-list li.cross::before { content: "✗"; color: var(--red); }
+
+  .bom-card {
+    margin-top: 12px; padding: 14px 18px; background: var(--blue-light);
+    border: 1px dashed var(--blue); border-radius: var(--radius); font-size: 13px;
+  }
+  .bom-card .bom-total { font-size: 18px; font-weight: 700; color: var(--blue); margin-top: 6px; }
+
+  .step-box {
+    margin: 12px 0; padding: 14px 18px; background: var(--bg);
+    border-left: 4px solid var(--blue); border-radius: 0 8px 8px 0; font-size: 13px;
+  }
+  .step-box .step-label { font-weight: 700; color: var(--blue); margin-bottom: 6px; }
+  .step-box ol { margin-left: 18px; }
+  .step-box ol li { margin: 4px 0; }
+
+  code {
+    background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px;
+    font-family: "Courier New", monospace; color: #1e40af;
+  }
+
+  .link { color: var(--blue); text-decoration: none; font-weight: 600; }
+  .link:hover { text-decoration: underline; }
+
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 22px; }
+    .meta-box { grid-template-columns: 1fr; }
+    .ascii-flow { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>⚡ EMS Timer 電源模組採購與組裝指南</h1>
+  <div class="subtitle">3.7V 鋰電池 + TP4056 充電升壓 + 邊充邊用</div>
+  <div class="version">v1.0 · 2026-05-06 · Max Ho</div>
+</div>
+
+<div class="meta-box">
+  <div><span class="meta-label">適用階段：</span><span class="meta-value">Dev-Phase 2 起</span></div>
+  <div><span class="meta-label">建立日期：</span><span class="meta-value">2026-05-06</span></div>
+  <div><span class="meta-label">負責人：</span><span class="meta-value">Max Ho</span></div>
+  <div><span class="meta-label">對應 SoT：</span><span class="meta-value">V1 §20.4 / §21.1</span></div>
+</div>
+
+<div class="toc">
+  <div class="toc-title">目錄</div>
+  <div class="toc-list">
+    <a href="#sec-1">1. 目的</a>
+    <a href="#sec-2">2. 整體架構</a>
+    <a href="#sec-3">3. 採購清單</a>
+    <a href="#sec-4">4. 收貨驗收 SOP</a>
+    <a href="#sec-5">5. 組裝步驟</a>
+    <a href="#sec-6">6. 故障排除</a>
+    <a href="#sec-7">7. 安全提醒</a>
+    <a href="#sec-8">8. 後續整合到 SoT</a>
+    <a href="#sec-9">9. 版本紀錄</a>
+  </div>
+</div>
+
+<!-- §1 -->
+<div class="section" id="sec-1">
+  <h2 class="section-title"><span class="num">1</span>目的</h2>
+  <div class="card">
+    <p>提供 EMS Timer 從「USB-C 直供」過渡到「3.7V 鋰電池 + 充電升壓模組 + 邊充邊用」的具體採購與組裝 SOP，供工程端執行與後續複製。</p>
+  </div>
+</div>
+
+<!-- §2 -->
+<div class="section" id="sec-2">
+  <h2 class="section-title"><span class="num">2</span>整體架構</h2>
+  <div class="card">
+    <pre class="ascii-flow">                    ┌─────────────────┐
+USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
+                    │   模組（聯騰）  │
+                    └────┬──────┬─────┘
+                         │      │
+                  B+/B-  │      │  OUT+/OUT-
+                         ▼      ▼
+              ┌──────────────┐  └──► ESP32-S3 GOOUUU VIN/GND
+              │  PH2.0 母座  │
+              │（焊在板上）  │
+              └──────┬───────┘
+                     │ PH2.0 公頭對接
+                     ▼
+         ┌────────────────────────┐
+         │ 1000mAh LiPo 523450    │
+         │ 3.7V + 內建保護板      │
+         │ （DW01 + 8205A）       │
+         └────────────────────────┘</pre>
+
+    <h3 class="sub-title">核心特性</h3>
+    <ul class="check-list">
+      <li>USB-C 接上時：邊充電邊供電（pass-through）</li>
+      <li>USB-C 拔除時：電池升壓 5V 持續供電 ESP32</li>
+      <li>電池內建保護板：過充 / 過放 / 過流 / 短路全包</li>
+    </ul>
+  </div>
+</div>
+
+<!-- §3 -->
+<div class="section" id="sec-3">
+  <h2 class="section-title"><span class="num">3</span>採購清單</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>品項</th>
+          <th>賣場</th>
+          <th>單價</th>
+          <th>數量</th>
+          <th>小計</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1000mAh 523450 LiPo PH2.0（左紅右黑、含保護板）</td>
+          <td><a class="link" href="https://reurl.cc/R28yZr" target="_blank">Shopee</a></td>
+          <td class="price-col">NT$130</td>
+          <td class="num-col">1</td>
+          <td class="price-col">130</td>
+        </tr>
+        <tr>
+          <td>TP4056 充電升壓模組 Type-C</td>
+          <td><a class="link" href="https://reurl.cc/O6zjZr" target="_blank">聯騰 - Shopee 賣場</a></td>
+          <td class="price-col">NT$25</td>
+          <td class="num-col">2（1 用 1 備）</td>
+          <td class="price-col">50</td>
+        </tr>
+        <tr>
+          <td>JST PH2.0 母座 直插 2P</td>
+          <td>蝦皮搜「PH2.0 母座 2P 直插」</td>
+          <td class="price-col">NT$5</td>
+          <td class="num-col">5</td>
+          <td class="price-col">25</td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="4">總計</td>
+          <td class="price-col">NT$205</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">3.1 規格驗證（已確認）</h3>
+
+    <p style="font-weight: 600; margin-bottom: 8px;">電池</p>
+    <ul class="check-list">
+      <li>容量 1000mAh（對齊 SoT V1 §20.4）</li>
+      <li>JST PH2.0 公頭已壓好</li>
+      <li>內建保護板（黃色 Kapton 膠帶下可見小 PCB 與 DW01/8205A）</li>
+      <li>尺寸 5.2mm × 34mm × 50mm（外殼設計依此預留）</li>
+      <li>極性「左紅右黑」（接頭正面、卡榫朝上時）</li>
+    </ul>
+
+    <p style="font-weight: 600; margin: 16px 0 8px;">充電升壓模組（蓮騰 MTARDTP4056S）</p>
+    <ul class="check-list">
+      <li>TP4056 充電 IC（充電電流預設 1A = 1C）</li>
+      <li>Type-C 輸入</li>
+      <li>內建升壓電路（電感 + 可調電位器，輸出 5V）</li>
+      <li class="warn">規格頁未明確標示輸出電流上限（推測 ~1A，實測為準）</li>
+      <li class="warn">板上無 JST 座，B+/B- 為焊盤</li>
+    </ul>
+  </div>
+</div>
+
+<!-- §4 -->
+<div class="section" id="sec-4">
+  <h2 class="section-title"><span class="num">4</span>收貨驗收 SOP</h2>
+  <div class="card">
+
+    <h3 class="sub-title">4.1 電池驗收（拿到當天執行）</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:50px">步驟</th>
+          <th>動作</th>
+          <th>通過標準</th>
+          <th>不通過處理</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num-col">1</td>
+          <td>三用電表量公頭兩 pin 電壓</td>
+          <td>3.6 ~ 4.2V，紅線正、黑線負</td>
+          <td><span class="badge badge-fail">反接</span> → 退貨</td>
+        </tr>
+        <tr>
+          <td class="num-col">2</td>
+          <td>確認黃膠帶下有保護板小 PCB</td>
+          <td>肉眼可見元件</td>
+          <td><span class="badge badge-fail">無保護板</span> → 退貨</td>
+        </tr>
+        <tr>
+          <td class="num-col">3</td>
+          <td>充飽（接 TP4056 板）後再量</td>
+          <td>≥ 4.18V</td>
+          <td>&lt; 4.0V → 電池老化退貨</td>
+        </tr>
+        <tr>
+          <td class="num-col">4</td>
+          <td>充電過程用 USB 電流計監控</td>
+          <td>累積容量 ≥ 800mAh</td>
+          <td>&lt; 800mAh → 容量衰減退貨</td>
+        </tr>
+        <tr>
+          <td class="num-col">5</td>
+          <td>量電池外觀</td>
+          <td>無鼓脹、無漏液</td>
+          <td>任一異常 → 立即退貨並安全處理</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">4.2 充電升壓模組驗收</h3>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:50px">步驟</th>
+          <th>動作</th>
+          <th>通過標準</th>
+          <th>不通過處理</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num-col">1</td>
+          <td>目視 IC 標示</td>
+          <td>「TC4056A」或「TP4056」字樣可辨識</td>
+          <td>標示模糊 → 換貨</td>
+        </tr>
+        <tr>
+          <td class="num-col">2</td>
+          <td>USB-C 插入 + B+/B- 接電池後</td>
+          <td>紅燈亮（充電中）/ 綠燈亮（充飽）</td>
+          <td>無 LED 反應 → 換貨</td>
+        </tr>
+        <tr>
+          <td class="num-col">3</td>
+          <td>量 OUT+/OUT- 之間電壓（無負載）</td>
+          <td>預設可能 ~5V，可調電位器轉到 <strong>5.0V ± 0.1V</strong></td>
+          <td>調不到 → 換貨</td>
+        </tr>
+        <tr>
+          <td class="num-col">4</td>
+          <td>接假負載（100Ω 電阻）量 OUT 電壓</td>
+          <td>仍維持 4.8 ~ 5.2V</td>
+          <td>大幅下降 → 升壓電流不足</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">4.3 PH2.0 母座驗收</h3>
+    <ul class="check-list">
+      <li>公母對插順暢、卡榫扣得住</li>
+      <li>兩 pin 焊腳間距 2.0mm（用游標卡尺確認）</li>
+    </ul>
+  </div>
+</div>
+
+<!-- §5 -->
+<div class="section" id="sec-5">
+  <h2 class="section-title"><span class="num">5</span>組裝步驟</h2>
+  <div class="card">
+
+    <h3 class="sub-title">5.1 焊接 PH2.0 母座到蓮騰板</h3>
+    <div class="step-box">
+      <ol>
+        <li><strong>決定方向：</strong>母座<strong>卡榫朝外</strong>（朝向板子邊緣），方便插拔</li>
+        <li><strong>對齊 B+/B-：</strong>
+          <ul style="margin-left:18px; margin-top:4px;">
+            <li>電池公頭「左紅右黑」（卡榫朝上看）</li>
+            <li>母座焊到板子上時，<strong>左 pin → B+ 焊盤、右 pin → B- 焊盤</strong></li>
+          </ul>
+        </li>
+        <li><strong>焊接：</strong>先點固一腳調位置，再正式焊兩腳</li>
+        <li><strong>目視檢查：</strong>無短路、無虛焊</li>
+      </ol>
+    </div>
+
+    <h3 class="sub-title">5.2 升壓電壓校正</h3>
+    <div class="step-box">
+      <ol>
+        <li>USB-C 接上 5V（不接電池）</li>
+        <li>三用電表跨在 OUT+ 和 OUT- 之間</li>
+        <li>用小一字起子轉可調電位器，<strong>轉到輸出 5.00V ± 0.05V</strong></li>
+        <li>用熱熔膠或指甲油<strong>鎖住電位器</strong>（防震動移位）</li>
+      </ol>
+    </div>
+
+    <h3 class="sub-title">5.3 接 ESP32-S3</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>蓮騰板</th>
+          <th>ESP32-S3 GOOUUU</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>OUT+</td>
+          <td>VIN（不是 5V pin，視板子標示）</td>
+        </tr>
+        <tr>
+          <td>OUT-</td>
+          <td>GND</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note note-red">⚠️ <strong>千萬不要接到 3V3 pin</strong> — 會燒晶片。</div>
+
+    <h3 class="sub-title">5.4 整合測試</h3>
+    <ul class="check-list">
+      <li><strong>滿電測試：</strong>電池充飽，拔 USB-C → ESP32 正常開機運作 ≥ 30 分鐘</li>
+      <li><strong>耗電測試：</strong>放電到 3.4V → ESP32 仍正常（驗證升壓有效）</li>
+      <li><strong>過放保護測試：</strong>放電到 2.5V → 保護板應自動切斷負載（OUT 電壓歸零），重新接 USB-C 充電後恢復</li>
+      <li><strong>邊充邊用測試：</strong>USB-C 與電池同時接 → ESP32 連續運作不重開機</li>
+    </ul>
+  </div>
+</div>
+
+<!-- §6 -->
+<div class="section" id="sec-6">
+  <h2 class="section-title"><span class="num">6</span>故障排除</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>症狀</th>
+          <th>可能原因</th>
+          <th>排查</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ESP32 一插電池就重開機</td>
+          <td>升壓電壓沒調到 5V，VIN &lt; 4.7V</td>
+          <td>重新校正電位器到 5.0V</td>
+        </tr>
+        <tr>
+          <td>充電指示燈不亮</td>
+          <td>電池極性反、保護板已切斷、TP4056 IC 燒毀</td>
+          <td>量電池電壓、量 B+/B- 是否短路</td>
+        </tr>
+        <tr>
+          <td>充電燈一直紅燈不轉綠</td>
+          <td>充電電流太小（電池容量大）、TP4056 R3 焊盤接觸不良</td>
+          <td>量充電電流，正常 ~1A</td>
+        </tr>
+        <tr>
+          <td>拔 USB-C 後 ESP32 立即斷電</td>
+          <td>升壓功能失效、電池電壓過低觸發保護</td>
+          <td>量 OUT 電壓，量電池電壓</td>
+        </tr>
+        <tr>
+          <td><span class="badge badge-red">電池發熱 / 鼓脹</span></td>
+          <td>過流、內部短路</td>
+          <td><strong>立即拔除、隔離、報廢處理</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- §7 -->
+<div class="section" id="sec-7">
+  <h2 class="section-title"><span class="num">7</span>安全提醒</h2>
+  <div class="card">
+    <div class="note note-red">
+      <strong>LiPo 鋰聚合物電池為危險品</strong>：禁止穿刺、擠壓、丟入火中、短路
+    </div>
+    <ul class="check-list" style="margin-top: 12px;">
+      <li class="warn"><strong>充電時人在場：</strong>首次充電必須在場監控</li>
+      <li class="warn"><strong>儲存環境：</strong>陰涼乾燥處（&lt; 30°C），長期儲存保持 50% 電量</li>
+      <li class="warn"><strong>報廢處理：</strong>用鹽水浸泡 24 小時放電後送電池回收</li>
+    </ul>
+  </div>
+</div>
+
+<!-- §8 -->
+<div class="section" id="sec-8">
+  <h2 class="section-title"><span class="num">8</span>後續整合到 SoT</h2>
+  <div class="card">
+    <p>採購驗證通過後，需更新以下文件：</p>
+    <ul class="check-list" style="margin-top: 12px;">
+      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §20.4.3 補充充電 IC 為「蓮騰 MTARDTP4056S（TP4056 + 升壓二合一）」</li>
+      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §21.1 主要硬體清單新增本電源模組</li>
+      <li><code>docs/pcb-outsourcing-guide.md</code> PCB 預留要求補充 PH2.0 母座焊盤位置</li>
+      <li><code>docs/gpio-allocation.md</code> 確認 VIN 接腳對應正確</li>
+      <li><code>tasks/production-roadmap.md</code> BOM 段落同步更新單價與賣場</li>
+    </ul>
+  </div>
+</div>
+
+<!-- §9 -->
+<div class="section" id="sec-9">
+  <h2 class="section-title"><span class="num">9</span>版本紀錄</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr>
+          <th>日期</th>
+          <th>版本</th>
+          <th>變更</th>
+          <th>作者</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>2026-05-06</td>
+          <td><span class="badge badge-blue">v1.0</span></td>
+          <td>初版建立，採購清單與驗收 SOP</td>
+          <td>Max Ho</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="footer">
+  EMS Timer · 電源模組採購與組裝指南 · v1.0 · 2026-05-06
+</div>
+
+</body>
+</html>

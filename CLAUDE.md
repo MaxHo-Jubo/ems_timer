@@ -167,6 +167,13 @@ EmsEvent { event_type: uint8, timestamp: uint64 (epoch ms), elapsed_ms: uint32 }
 
 ## 電源供應規劃
 
+### 相關文件
+
+| 文件 | 用途 |
+|------|------|
+| [`docs/power-module-purchase.md`](docs/power-module-purchase.md) | **電源模組採購與組裝 SOP**（採購清單、收貨驗收、組裝步驟、故障排除） |
+| [`docs/power-module-purchase.html`](docs/power-module-purchase.html) | 同上 HTML 版（排版對齊 flow.html，方便瀏覽） |
+
 ### Dev-Phase 2~3 開發階段
 - 採 USB Type-C 直供（最簡單、無電池安全問題）。
 

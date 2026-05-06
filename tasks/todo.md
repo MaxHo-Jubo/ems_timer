@@ -194,6 +194,33 @@
 - [ ] 長時間穩定性測試（連續 > 2 小時出勤情境）
 - [ ] 最終驗收
 
+#### 電源模組採購驗收（2026-05-06 立案）
+
+> 詳見 [`docs/power-module-purchase.md`](../docs/power-module-purchase.md)（含 HTML 版 `.html`）
+
+- [ ] **採購下單**
+  - [ ] 1000mAh 523450 LiPo PH2.0（左紅右黑、含保護板）× 1
+  - [ ] TP4056 充電升壓模組 Type-C（蓮騰 MTARDTP4056S）× 2
+  - [ ] JST PH2.0 母座 直插 2P × 5
+- [ ] **收貨驗收**（依 §4 SOP）
+  - [ ] 電池：極性、保護板、充飽電壓、容量、外觀
+  - [ ] 模組：IC 標示、LED 反應、升壓電壓校正、假負載穩定度
+  - [ ] PH2.0 母座：對插順暢、焊腳間距 2.0mm
+- [ ] **組裝**（依 §5 步驟）
+  - [ ] PH2.0 母座焊到蓮騰板 B+/B-
+  - [ ] 升壓電位器校正到 5.00V ± 0.05V，鎖定
+  - [ ] 接 ESP32-S3 GOOUUU VIN/GND
+- [ ] **整合測試**（依 §5.4）
+  - [ ] 滿電拔 USB-C 連續運作 ≥ 30 分鐘
+  - [ ] 放電到 3.4V 仍正常（升壓有效）
+  - [ ] 過放保護觸發測試
+  - [ ] 邊充邊用不重開機
+- [ ] **驗證通過後同步 SoT**（依 §8）
+  - [ ] `docs/EMS_DoseSync_Pro_Prototype_V1.md` §20.4.3 / §21.1
+  - [ ] `docs/pcb-outsourcing-guide.md` PCB 預留要求
+  - [ ] `docs/gpio-allocation.md` VIN 接腳對應
+  - [ ] `tasks/production-roadmap.md` BOM 段落
+
 #### 量產化路線
 採漸進式硬體升級，韌體不需改動：
 
