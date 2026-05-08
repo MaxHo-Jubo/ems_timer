@@ -1575,7 +1575,7 @@ void drawMainMenu() {
     constexpr int16_t MENU_TEXT_PAD  = 24;
     constexpr int16_t MENU_TEXT_OFFSET_Y = 6;  // efont 24px 字在 36px row 內垂直置中
 
-    display.setFont(&fonts::efontCN_24);
+    display.setFont(&fonts::efontTW_24);
     display.setTextSize(1);
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
