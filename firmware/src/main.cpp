@@ -1812,39 +1812,40 @@ void drawOhcaEndCheck() {
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
+/** 對話框共用框架：8/8 margin → 304×224 大框（避免文字觸碰邊框） */
+static void drawDialogFrame(uint16_t borderColor) {
+    display.fillScreen(COLOR_BG);
+    const int16_t margin = 8;
+    const int16_t x = margin;
+    const int16_t y = margin;
+    const int16_t w = SCREEN_W - 2 * margin;   // 304
+    const int16_t h = SCREEN_H - 2 * margin;   // 224
+    display.drawRect(x,     y,     w,     h,     borderColor);
+    display.drawRect(x + 1, y + 1, w - 2, h - 2, borderColor);
+}
+
 /**
  * A7：OHCA_END_CONFIRM 二次確認對話（END_CHECK 選「完成並結束」後彈出）
  * 對齊 demo OHCA_END_CONFIRM render
  */
 void drawOhcaEndConfirmDialog() {
-    // 全螢幕黑底 + 紅色邊框
-    display.fillScreen(COLOR_BG);
-
-    const int16_t margin_x = 16;
-    const int16_t margin_y = 24;
-    const int16_t x = margin_x;
-    const int16_t y = margin_y;
-    const int16_t w = SCREEN_W - 2 * margin_x;
-    const int16_t h = SCREEN_H - 2 * margin_y;
-    display.drawRect(x, y, w, h, COLOR_ACCENT_ALERT);
-    display.drawRect(x + 1, y + 1, w - 2, h - 2, COLOR_ACCENT_ALERT);
+    drawDialogFrame(COLOR_ACCENT_ALERT);
 
     // 標題（紅色，efontTW_24 × 1.5 ≈ 36px）
     display.setFont(&fonts::efontTW_24);
     display.setTextSize(1.5f, 1.5f);
-    drawCenteredText("確認結束案件？", y + 24, COLOR_ACCENT_ALERT);
+    drawCenteredText("確認結束案件？", 36, COLOR_ACCENT_ALERT);
 
-    // 內文
+    // 內文（efontTW_24 × 1.2 ≈ 29px）
     display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("結束後不可修改", y + 100, COLOR_TEXT_MUTED);
+    drawCenteredText("結束後不可修改", 116, COLOR_TEXT_MUTED);
 
-    // 底部分隔線
-    display.drawLine(x + 8, y + h - 36, x + w - 8, y + h - 36, COLOR_TEXT_DIM);
+    // 底部分隔線（在 hint 上方）
+    display.drawLine(20, 184, SCREEN_W - 20, 184, COLOR_TEXT_DIM);
 
     // hint
     display.setTextSize(1);
-    drawCenteredText("主鍵確認　返回取消",
-                     y + h - 24, COLOR_TEXT_DIM);
+    drawCenteredText("主鍵確認　返回取消", 196, COLOR_TEXT_DIM);
 }
 
 /**
@@ -1854,41 +1855,32 @@ void drawOhcaEndConfirmDialog() {
  * @param evType EVT_EPI_LOCAL / EVT_SHOCK_LOCAL（Amio 走 SUBSTATE_AMIO_CONFIRM）
  */
 void drawOhcaConfirmDialog(uint8_t evType) {
-    // 全螢幕黑底 + 琥珀邊框（demo overlay rgba(0,0,0,0.92) + 2px amber）
-    display.fillScreen(COLOR_BG);
+    // 框架（demo overlay rgba(0,0,0,0.92) + 2px amber）
+    drawDialogFrame(COLOR_ACCENT_WARN);
 
-    const int16_t margin_x = 16;
-    const int16_t margin_y = 24;
-    const int16_t x = margin_x;
-    const int16_t y = margin_y;
-    const int16_t w = SCREEN_W - 2 * margin_x;
-    const int16_t h = SCREEN_H - 2 * margin_y;
-    display.drawRect(x, y, w, h, COLOR_ACCENT_WARN);
-    display.drawRect(x + 1, y + 1, w - 2, h - 2, COLOR_ACCENT_WARN);
-
-    // 標題
+    // 標題（efontTW_24 × 1.5 ≈ 36px）
     const char* title = (evType == EVT_EPI_LOCAL)   ? "確認已給 EPI？"
                       : (evType == EVT_SHOCK_LOCAL) ? "確認已電擊？"
                       :                                "確認操作？";
     display.setFont(&fonts::efontTW_24);
     display.setTextSize(1.5f, 1.5f);
-    drawCenteredText(title, y + 24, COLOR_TEXT_PRIMARY);
+    drawCenteredText(title, 28, COLOR_TEXT_PRIMARY);
 
     // 內文兩行（efontTW_24 × 1.2 ≈ 29px）
     display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("確認後將建立時間戳", y + 88, COLOR_TEXT_MUTED);
+    drawCenteredText("確認後將建立時間戳", 92, COLOR_TEXT_MUTED);
     const char* body2 = (evType == EVT_EPI_LOCAL) ? "並重啟 4 分鐘倒數" : "不影響 EPI 倒數";
-    drawCenteredText(body2, y + 124, COLOR_TEXT_MUTED);
+    drawCenteredText(body2, 128, COLOR_TEXT_MUTED);
 
     // 底部分隔線
-    display.drawLine(x + 8, y + h - 36, x + w - 8, y + h - 36, COLOR_TEXT_DIM);
+    display.drawLine(20, 184, SCREEN_W - 20, 184, COLOR_TEXT_DIM);
 
     // hint
     display.setTextSize(1);
     const char* hint = (evType == EVT_EPI_LOCAL)   ? "再按 EPI 鍵確認　返回取消"
                      : (evType == EVT_SHOCK_LOCAL) ? "再按電擊鍵確認　返回取消"
                      :                                "主鍵確認　返回取消";
-    drawCenteredText(hint, y + h - 24, COLOR_TEXT_DIM);
+    drawCenteredText(hint, 196, COLOR_TEXT_DIM);
 }
 
 void drawOhcaLocked() {
