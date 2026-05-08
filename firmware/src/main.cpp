@@ -354,10 +354,17 @@ void drawTimeline();
 // setup() / loop()
 // ============================================================
 
+/** GOOUUU 板上 WS2812 RGB LED 接 GPIO 48；boot 階段可能被訊號 latch 成隨機顏色，主動發 (0,0,0) 關掉。 */
+static const uint8_t WS2812_PIN = 48;
+
 void setup() {
     Serial.begin(115200);
     delay(50);
     Serial.println("[BOOT] EMS Timer Phase A");
+
+    // STEP 00: 關掉板上 WS2812（GPIO 48）。boot bootloader 可能 latch 成白色，必須主動 reset。
+    //   neopixelWrite() 由 esp32-hal-rgb-led 提供（ESP32 Arduino core ≥ 2.0.7 內建）。
+    neopixelWrite(WS2812_PIN, 0, 0, 0);
 
     // STEP 01: 蜂鳴器
     pinMode(BUZZER_PIN, OUTPUT);
