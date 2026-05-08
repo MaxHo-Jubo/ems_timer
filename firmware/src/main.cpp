@@ -429,7 +429,10 @@ void setup() {
     // STEP 03: TFT 初始化（取代舊 SH1106 OLED）
     //   - init() 回傳 void，無 fail handler 介面（Adafruit_ST7789 API 限制）
     //   - invertDisplay(false)：蝦皮 ST7789 紅板 polarity 與 Adafruit 預設相反，必加（見 tft-migration-plan.md §3.5）
+    //   - setSPISpeed(40MHz)：預設 SPI clock 偏慢導致全頁重繪掃描感明顯；拉到 40MHz 整片 push < 8ms 視覺上接近瞬完成。
+    //     麵包板布線品質決定上限；不穩→降 24MHz。
     display.init(TFT_WIDTH, TFT_HEIGHT);
+    display.setSPISpeed(40000000);
     display.setRotation(1);  // 1 = 橫向 320x240
     display.invertDisplay(false);
     display.fillScreen(SH110X_BLACK);
@@ -1679,14 +1682,10 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
     const int16_t time_x = (SCREEN_W - (int16_t)bw) / 2 - bx;
     const int16_t time_y = SCREEN_H / 2 + (int16_t)bh / 2 - OHCA_TIME_VISUAL_UP;
 
-    // erase region：bbox + 2px 邊（getTextBounds 的 bx/by 為 cursor 到 bbox 左上的 offset）
-    const int16_t erase_x = time_x + bx - 2;
-    const int16_t erase_y = time_y + by - 2;
-    const int16_t erase_w = (int16_t)bw + 4;
-    const int16_t erase_h = (int16_t)bh + 4;
-    display.fillRect(erase_x, erase_y, erase_w, erase_h, COLOR_BG);
-
-    display.setTextColor(timeColor);
+    // setTextColor(fg, bg) 讓 GFX 在 drawChar 內合併「fillRect glyph bbox + 畫前景」單步寫，
+    // 避免外層 fillRect 整塊先變黑再畫字的中間態 → 消除掃描感。
+    // 安全前提：FreeMonoBold24pt7b 是 monospace，glyph bbox ≈ xAdvance，相鄰字無 gap 殘留。
+    display.setTextColor(timeColor, COLOR_BG);
     display.setCursor(time_x, time_y);
     display.print(timeStr);
 }
