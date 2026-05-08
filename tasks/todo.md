@@ -71,9 +71,10 @@
 ## 🎨 TFT 整合（Phase A → B 過渡）
 
 > **2026-05-08 立案**：Phase A 已完成（OLED 跑通），TFT smoke test 也跑通（commit `f1a5792`）。下一步把 TFT 整進主韌體，UI 對齊 `docs/demo/index.html`（決策見 memory `project_tft_ui_design_target.md`）。
-> **依賴**：硬體用 ESP32-S3 N16R8、TFT 用 Adafruit_ST7789 + GFX、SPI 走 GPIO 2/3、必加 `invertDisplay(false)` — 全部已 documented 在 `docs/gpio-allocation.md §5.2` 與 `docs/tft-migration-plan.md §3`。
+> **lib 演進**：Step 1 起用 Adafruit_ST7789 + GFX（避開 TFT_eSPI 在 N16R8 init crash）→ Step 2d 換成 **LovyanGFX + DMA**（Adafruit byte-swap CPU 是視覺瓶頸，DMA pushSprite 才能瞬切）。詳見 memory `feedback_lovyangfx_dma_for_tft.md`。
+> **硬體**：ESP32-S3 N16R8、ST7789 蝦皮紅板、SPI GPIO 2/3、DC GPIO 1（避開 GPIO 48 板上 WS2812）、`tft.setRotation(3)`（LGFX 跟 Adafruit 差 180）、panel cfg `invert=false`。
 >
-> **進度（2026-05-08 暫停）**：在 branch `feat/tft-integration` 上，6 commits（93a862a → da188cd → d825bcf）。Step 1 + Step 2a 主功能表 + snapshot 去重 + 按鍵 debounce 修正全部實機驗收通過。下次接 Step 2b（OHCA 倒數畫面）。
+> **進度（2026-05-08 持續中）**：branch `feat/tft-integration` 已 ~12 commits（5b2d009 → 5be48fa）。Step 1 / 2a / 2b / 2c / 2d 全部實機驗收通過。下次接 Step 2 後續其他畫面 + Step 3 字體放大方案（PM 反饋）。
 
 ### Step 1：lib 切換 + 編譯通過（半小時）✅ **已完成 2026-05-08**
 
@@ -105,57 +106,54 @@
 - [x] commit 1d4af9b
 - [x] 另：按鍵 debounce 統一 press/release 門檻（修 TFT 慢渲染期間 bounce 雙觸發）— commit d825bcf
 
-### Step 2c：OHCA 倒數畫面對齊 demo（**下次工作起點**）
+### Step 2c：OHCA 倒數畫面對齊 demo ✅ **已完成 2026-05-08**
 
-> demo 第二螢幕，最高頻使用，layout 工作量最大的畫面。
+- [x] `drawOhcaCountdownCommon` 重排 320×240：頂部 OHCA 綠 badge / 中央大時間 mm:ss / 標籤 / 底部 EPI/Shock 計數
+- [x] state → 顏色：COUNTDOWN=WHITE / WARNING=AMBER / ALARMING=RED 閃爍 / OVERTIME=RED 持續
+- [x] ALARMING flash phase bit 進 snapshot（300ms 半週期切深紅 bg）
+- [x] 字型：`FreeMonoBold24pt7b`（~48px monospace），中央 datum-based 自動置中
+- [x] commits: f39ed89 (init) / 8e428c8 (WaitFirstEpi 對齊) / 4d831ab (partial push 局部 + 殘留清除)
 
-- [ ] `drawOhcaCountdownCommon` 重排為 320×240：
-  - 上方 mode badge "OHCA"（綠 #22c55e）
-  - 大時間倒數中央，monospace 84px（試 `FreeMonoBold24pt7b` 或更大），顏色依 state（白/琥珀/紅）
-  - 標籤文字 "下次給藥/請準備給藥/請給藥" 時間下方 24px
-  - 計數器 "EPI N｜電擊 N" 底部小字 13px 灰色
-- [ ] state → 顏色對照：normal=WHITE / WARNING=AMBER / ALARMING=RED 閃爍 / OVERTIME=RED 持續
-- [ ] alarming flash 動畫：用 `flashScreen` 切深紅再回黑（已有 design token COLOR_FLASH_VENT）
-- [ ] 字型決策：先試 `FreeMonoBold24pt7b`（48px 高），若不夠像 demo 84px 再試更大或自訂
+### Step 2d：LovyanGFX + DMA 全頁切換消掃描感 ✅ **已完成 2026-05-08**
+
+> Adafruit_GFX byte-swap CPU overhead 撐不住，SPI 80MHz 視覺仍卡；換 LovyanGFX 走 DMA 才解。
+
+- [x] platformio.ini：lib_deps 換 `lovyan03/LovyanGFX`，移除 Adafruit_ST7789 + Adafruit_GFX
+- [x] 寫 `LGFX` class（SPI2_HOST + DMA_CH_AUTO + 80MHz + 蝦皮紅板 panel cfg invert=false）
+- [x] `FrameSprite` 繼承 `LGFX_Sprite`，補 SH110X 相容 `clearDisplay()` / `display()` no-op
+- [x] `setPsram(true)` PSRAM 優先 alloc 153KB framebuffer（N16R8 8MB）
+- [x] updateDisplay 結尾 + sub-state early return + partial path 統一 `display.pushSprite(0, 0)` DMA push
+- [x] API 替換：`getTextBounds + setCursor` → `setTextDatum + drawString`；setFont 走 `&fonts::xxx` namespace
+- [x] commits: 9ed9a63 (lib 切換) / 5be48fa (rotation 1→3 修對齊)
+- [x] 實機驗收：所有畫面切換 ~4ms 接近瞬完成、倒數無殘留 ✅
 
 ### Step 2 後續：其他畫面（每塊 1 commit）
 
-> demo 的 layout 是 320×240，原 OLED 是 128×64。每個畫面要重新排版。
+> demo 320×240，原 OLED 128×64。每個畫面要重新排版。Step 2c/2d 已驗證新 layout 流程，剩下走相同 pattern。
 
-- [ ] **OHCA 主畫面 — 待本機 EPI** — `drawOhcaWaitFirstEpi()`
+- [x] **OHCA 主畫面 — 待本機 EPI** — `drawOhcaWaitFirstEpi()`（commit 8e428c8）
+- [x] **EPI 成立 1 秒提示** — `drawOhcaStartFlash()`（commit 8e428c8 + LGFX datum）
 - [ ] **兩段確認畫面**（EPI / SHOCK / Amio）— `drawTwoStepArmedOverlay()`
-- [ ] **EPI 成立 1 秒提示** — `drawOhcaStartFlash()` 等
 - [ ] **案件結束流程畫面** — `drawOhcaEndCheck()` / `drawOhcaLocked()` / `drawOhcaSummary()`
 - [ ] **6 秒通氣**（OHCA 內輔助 + 獨立模式）— `drawOhcaVentOverlay()` / `drawVentStandalone()`
 - [ ] 補登/Amiodarone 等 Phase B 畫面：本階段不做，Phase B 才畫
-- [ ] 移除 OLED_WIDTH/HEIGHT 別名 + TftAdapter 的 clearDisplay 中介（全部畫面重排完後）
+- [ ] 移除 `OLED_WIDTH/HEIGHT` 別名 + 殘留 SH110X_WHITE/BLACK 替換為 COLOR_TEXT_PRIMARY/COLOR_BG（全部畫面重排完後）
 - [ ] 考慮抽出 `firmware/lib/ems_display/ems_display.{h,cpp}` 模組（多畫面穩定後）
 
-### Step 3：畫面對齊（一整天，逐畫面）
+### Step 3：字體放大改進方案（PM 反饋 2026-05-08）
 
-> 優先序：高頻使用先做。每個畫面做完跑一次實機看效果，截圖對照 demo。
+> PM 覺得目前介面字體不夠大（demo 也是）。整體放大策略待討論：放大基準字（size 2→3）、提高大時間字型 pt（24pt→36pt/48pt）、調間距等。
 
-- [ ] **OHCA 主畫面 — 待本機 EPI**（demo 第二螢幕）
-- [ ] **OHCA 倒數畫面 — normal**（demo "下次給藥"）
-- [ ] **OHCA 倒數畫面 — warning**（剩 1 分鐘，琥珀色，demo "請準備給藥"）
-- [ ] **OHCA 倒數畫面 — alarming**（到期 5 秒，紅閃，demo "請給藥"）
-- [ ] **OHCA 倒數畫面 — overtime**（紅色累計時間，demo "請給藥"）
-- [ ] **兩段確認畫面**（EPI / SHOCK）
-- [ ] **EPI 成立 1 秒提示**（"已 EPI"）
-- [ ] **主功能表**（五項，cursor 高亮）
-- [ ] **案件結束流程畫面**
-- [ ] **6 秒通氣（OHCA 內輔助 + 獨立模式）** — Phase C 才會用，此 step 先做骨架
-- [ ] 補登/Amiodarone 等 Phase B 畫面：本 step 不做，留 Phase B
-
-### Step 3：（原 Step 2 後續，已併入上方）
-
-> Step 編號因實際拆解調整，原 Step 3「畫面對齊一整天」拆進 Step 2c 與 Step 2 後續逐項。
+- [ ] 調研：FreeMonoBold36pt7b / 48pt7b 是否在 LGFX `fonts::` namespace 提供
+- [ ] 主功能表標題 / 選項字級往上拉（需重算 36px row height）
+- [ ] OHCA 中央大時間：FreeMonoBold24pt7b → 36pt 或 48pt（demo 84px 對齊參考）
+- [ ] 標籤 / 計數行字級檢討（size 2 是否升 size 3）
 
 ### Step 4：硬體層 + 文件同步（半小時）
 
 - [ ] SoT V1 §21.2 外殼開孔尺寸：0.96" OLED 25×15mm → 2.8" TFT 60×45mm（記得改 §21.2 跟 `flow.html` 對應段）
 - [ ] `CLAUDE.md` 更新：把「OLED」字眼換 TFT 描述
-- [ ] memory `project_oled_sh1106_interim.md` 結案，註記「2026-XX-XX TFT 整合完成，OLED 中繼期結束」
+- [x] memory `project_oled_sh1106_interim.md` 結案（2026-05-08 已更新為「TFT + LGFX 封版」）
 
 ### Step 5：實機驗收
 
