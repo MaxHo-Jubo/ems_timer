@@ -6,8 +6,8 @@
 //   TFT MOSI/SDI → GPIO 2     TFT VCC → 5V (VIN)
 //   TFT SCK      → GPIO 3     TFT GND → GND
 //   TFT CS       → GPIO 21    TFT LED → 3.3V
-//   TFT DC       → GPIO 48    其他腳位（MISO/T_*）不接
-//   TFT RST      → GPIO 47
+//   TFT DC       → GPIO 1     其他腳位（MISO/T_*）不接
+//   TFT RST      → GPIO 47    （DC 原 GPIO 48 與板上 WS2812 衝突，2026-05-08 改 1）
 //
 // 預期：螢幕順序顯示 紅 → 綠 → 藍 → 白底黑字 "EMS TFT OK" + 計數器
 // 雪花/錯亂：driver 換 ILI9341（換 #include 跟建構子）
@@ -19,7 +19,7 @@
 #include <Adafruit_ST7789.h>
 
 constexpr int8_t TFT_CS_PIN   = 21;
-constexpr int8_t TFT_DC_PIN   = 48;
+constexpr int8_t TFT_DC_PIN   = 1;   // 原 48，與板上 WS2812 衝突，2026-05-08 改 1
 constexpr int8_t TFT_RST_PIN  = 47;
 constexpr int8_t TFT_MOSI_PIN = 2;
 constexpr int8_t TFT_SCLK_PIN = 3;
@@ -55,7 +55,7 @@ void setup() {
   delay(SERIAL_INIT_MS);
   Serial.println();
   Serial.println("=== TFT smoke test (Adafruit_ST7789) ===");
-  Serial.println("Pins: MOSI=2 SCK=3 CS=21 DC=48 RST=47 BL=3.3V (N16R8 safe)");
+  Serial.println("Pins: MOSI=2 SCK=3 CS=21 DC=1 RST=47 BL=3.3V (N16R8 safe, DC moved off WS2812)");
 
   // 240x320 @ 2.8" ST7789
   tft.init(240, 320);

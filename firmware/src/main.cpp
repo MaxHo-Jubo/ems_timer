@@ -78,9 +78,9 @@ static const uint16_t TFT_HEIGHT    = 320;
 /** Step 1：保留 OLED_WIDTH/HEIGHT 別名讓既有 layout 程式碼不用改（畫面會擠在左上角，Step 2 重排） */
 static const uint16_t OLED_WIDTH    = 128;
 static const uint16_t OLED_HEIGHT   = 64;
-/** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37） */
+/** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37 + 板上 WS2812 GPIO 48） */
 static const int8_t   TFT_CS_PIN    = 21;
-static const int8_t   TFT_DC_PIN    = 48;
+static const int8_t   TFT_DC_PIN    = 1;   /**< 原 48 → 1：避開板上 WS2812 RGB LED（2026-05-08 實機踩雷） */
 static const int8_t   TFT_RST_PIN   = 47;
 static const int8_t   TFT_MOSI_PIN  = 2;
 static const int8_t   TFT_SCLK_PIN  = 3;
