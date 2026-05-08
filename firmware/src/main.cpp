@@ -250,8 +250,8 @@ static GlobalState globalState = GLOBAL_MAIN_MENU;
 /** 主功能表 5 項（SoT V1 §3.1） */
 static const uint8_t MAIN_MENU_COUNT = 5;
 static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
-    "OHCA 急救",
-    "6 秒給氣",
+    "OHCA 案件",
+    "6 秒通氣節奏",
     "訓練模式",
     "歷史紀錄",
     "系統設定",
@@ -1505,11 +1505,11 @@ void updateDisplay() {
                 if (ohcaState == OHCA_STATE_COUNTDOWN) {
                     drawOhcaCountdownCommon(remain, COLOR_TEXT_PRIMARY, "下次給藥", false);
                 } else if (ohcaState == OHCA_STATE_WARNING) {
-                    drawOhcaCountdownCommon(remain, COLOR_ACCENT_WARN,  "準備給藥", false);
+                    drawOhcaCountdownCommon(remain, COLOR_ACCENT_WARN,  "請準備給藥", false);
                 } else if (ohcaState == OHCA_STATE_ALARMING) {
-                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "請給藥！", alarmingFlashOn);
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "請給藥",     alarmingFlashOn);
                 } else {
-                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "逾時",     false);
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "請給藥",   false);
                 }
                 break;
             }
@@ -1536,8 +1536,8 @@ void updateDisplay() {
         }
 
         // overlay：兩段確認 armed 提示
-        if (showEpiArmedPrompt) drawTwoStepArmedOverlay("EPI？再按一次");
-        else if (showShockArmedPrompt) drawTwoStepArmedOverlay("電擊？再按一次");
+        if (showEpiArmedPrompt) drawTwoStepArmedOverlay("確認已給 EPI？");
+        else if (showShockArmedPrompt) drawTwoStepArmedOverlay("確認已電擊？");
 
     } else if (globalState == GLOBAL_VENT) {
         if (ventEndCheckShown) drawVentEndCheck();
@@ -1599,10 +1599,16 @@ static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
 }
 
 void drawOhcaStartFlash() {
-    // OHCA 案件啟動 1 秒提示：綠色全螢幕「OHCA 啟動」（efontTW_24 × 1.5 ≈ 36px）
+    // OHCA 案件啟動 1 秒提示：對齊 demo flash('案件開始', 'OHCA')
+    // 主：「案件開始」綠色（efontTW_24 × 1.5 ≈ 36px）
     display.setFont(&fonts::efontTW_24);
     display.setTextSize(1.5f, 1.5f);
-    drawCenteredText("OHCA 啟動", SCREEN_H / 2 - 16, COLOR_ACCENT_OK);
+    drawCenteredText("案件開始", SCREEN_H / 2 - 24, COLOR_ACCENT_OK);
+
+    // 副：「OHCA」灰色小字（Font0 size 3，與 OHCA badge 同樣式）
+    display.setFont(&fonts::Font0);
+    display.setTextSize(3);
+    drawCenteredText("OHCA", SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
 }
 
 void drawOhcaWaitFirstEpi() {
@@ -1615,13 +1621,10 @@ void drawOhcaWaitFirstEpi() {
     drawCenteredText("OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
     // 中央大字「待本機 EPI」（efontTW_24 × 1.5 ≈ 36px）
+    // demo OHCA 螢幕無副標，故移除「(按兩次 EPI 確認)」hint
     display.setFont(&fonts::efontTW_24);
     display.setTextSize(1.5f, 1.5f);
     drawCenteredText("待本機 EPI", SCREEN_H / 2 - 16, COLOR_TEXT_MUTED);
-
-    // 副標：兩段確認提示（efontTW_24 size 1 = 24px）
-    display.setTextSize(1);
-    drawCenteredText("(按兩次 EPI 確認)", SCREEN_H / 2 + 32, COLOR_TEXT_DIM);
 
     // 底部 EPI/電擊 計數（與 OHCA 倒數計數行一致）
     uint16_t epiN = 0, shockN = 0;
@@ -1630,7 +1633,7 @@ void drawOhcaWaitFirstEpi() {
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
     char counter[32];
-    snprintf(counter, sizeof(counter), "EPI %u  電擊 %u", epiN, shockN);
+    snprintf(counter, sizeof(counter), "EPI %u｜電擊 %u", epiN, shockN);
     display.setTextSize(1);
     drawCenteredText(counter, SCREEN_H - OHCA_COUNTER_BOTTOM - 6, COLOR_TEXT_DIM);
 }
@@ -1690,7 +1693,7 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
 
     // STEP 06: 底部計數行（bottom-center，efontTW_24 size 1 ≈ 14px ASCII，保持原視覺大小）
     char counter[32];     // UTF-8「電擊」6 byte，buf 從 24 加大避免飽和
-    snprintf(counter, sizeof(counter), "EPI %u  電擊 %u", epiN, shockN);
+    snprintf(counter, sizeof(counter), "EPI %u｜電擊 %u", epiN, shockN);
     display.setFont(&fonts::efontTW_24);
     display.setTextSize(1);
     display.setTextColor(COLOR_TEXT_DIM);
