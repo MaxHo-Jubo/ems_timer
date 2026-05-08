@@ -72,31 +72,64 @@
 
 > **2026-05-08 立案**：Phase A 已完成（OLED 跑通），TFT smoke test 也跑通（commit `f1a5792`）。下一步把 TFT 整進主韌體，UI 對齊 `docs/demo/index.html`（決策見 memory `project_tft_ui_design_target.md`）。
 > **依賴**：硬體用 ESP32-S3 N16R8、TFT 用 Adafruit_ST7789 + GFX、SPI 走 GPIO 2/3、必加 `invertDisplay(false)` — 全部已 documented 在 `docs/gpio-allocation.md §5.2` 與 `docs/tft-migration-plan.md §3`。
+>
+> **進度（2026-05-08 暫停）**：在 branch `feat/tft-integration` 上，6 commits（93a862a → da188cd → d825bcf）。Step 1 + Step 2a 主功能表 + snapshot 去重 + 按鍵 debounce 修正全部實機驗收通過。下次接 Step 2b（OHCA 倒數畫面）。
 
-### Step 1：lib 切換 + 編譯通過（半小時）
+### Step 1：lib 切換 + 編譯通過（半小時）✅ **已完成 2026-05-08**
 
-- [ ] 新 branch：`feat/tft-integration`
-- [ ] `firmware/platformio.ini` `[env:esp32-s3-devkitc-1]`：`lib_deps` 把 `Adafruit SH110X` 換成 `Adafruit ST7735 and ST7789 Library`（`Adafruit GFX Library` 留著）
-- [ ] `firmware/src/main.cpp` 改 include：`<Adafruit_SH110X.h>` → `<Adafruit_ST7789.h>`
-- [ ] `display` 物件改宣告：`Adafruit_SH110X display(...)` → `Adafruit_ST7789 tft(...)`，建構子用 GPIO 2/3/21/47/48 五腳
-- [ ] `display.begin(0x3C, true)` → `tft.init(240, 320); tft.setRotation(1); tft.invertDisplay(false);`
-- [ ] **不改任何 `display.xxx()` 呼叫點**（先讓編譯通過，畫面會錯位但能跑）
-- [ ] `pio run -e esp32-s3-devkitc-1` 編譯通過
-- [ ] 95 unit tests `pio test -e native` 全綠（顯示層改不影響純邏輯）
+- [x] 新 branch：`feat/tft-integration`
+- [x] `firmware/platformio.ini` `[env:esp32-s3-devkitc-1]`：`lib_deps` 把 `Adafruit SH110X` 換成 `Adafruit ST7735 and ST7789 Library`（`Adafruit GFX Library` 留著）
+- [x] `firmware/src/main.cpp` 改 include：`<Adafruit_SH110X.h>` → `<Adafruit_ST7789.h>`
+- [x] `display` 物件改宣告：用 `TftAdapter` 繼承 `Adafruit_ST7789`，補 `clearDisplay()` / `display()` 給舊 SH110X-style 呼叫點 → 1300+ 行 draw code 不需改字面
+- [x] `display.begin(0x3C, true)` → `tft.init(240, 320); tft.setRotation(1); tft.invertDisplay(false);`
+- [x] **不改任何 `display.xxx()` 呼叫點**
+- [x] `pio run -e esp32-s3-devkitc-1` 編譯通過（Flash 8.7%、RAM 6.2%）
+- [x] 188 unit tests `pio test -e native` 全綠（toml 寫的 95 已過時）
+- [x] 實機踩雷 + 修正：
+  - DC GPIO 48 → 1（避開 GOOUUU 板上 WS2812）— commit 5c88c44
+  - WS2812 boot latch 白 → `neopixelWrite(48, 0, 0, 0)` 主動 silence — commit 862b924
+  - 按鍵 GND 公共線鬆動修復（硬體側）
 
-### Step 2：顯示適配層（半天）
+### Step 2a：主功能表對齊 demo + design tokens ✅ **已完成 2026-05-08**
 
-> demo 的 layout 是 320×240，原 OLED 是 128×64。直接 search-replace 會導致字擠在角落。需要全部重新排版。
+- [x] 加 design tokens（COLOR_BG/TEXT_PRIMARY/TEXT_MUTED/ACCENT_OK/WARN/ALERT/FLASH_VENT，RGB565）
+- [x] 加 SCREEN_W=320 / SCREEN_H=240 邏輯解析度常數
+- [x] `drawMainMenu()` 重排：黑底 + 灰色標題 + 5 大字選項 + cursor 白底黑字 highlight
+- [x] 修雙 fillScreen 雙閃 bug
+- [x] commit 5b2d009
 
-- [ ] 抽 `firmware/lib/ems_display/ems_display.{h,cpp}`：封裝畫面繪製函式
-  - `drawMainMenu(items, cursor)` — 對齊 demo §3.1 五項主選單
-  - `drawOhcaWaitFirstEpi(counters)` — 對齊 demo "OHCA / 待本機 EPI / EPI 0｜電擊 0"
-  - `drawOhcaCountdown(timeStr, label, counters, state)` — 對齊 demo §6.4 五狀態（normal / warning / alarming / overtime / overtime_remind）
-  - `drawTwoStepConfirm(label)` — 對齊 demo §6.2 確認畫面
-  - `drawOhcaEnd()` / `drawOhcaLocked()` — 對齊 demo §10
-  - `flashScreen(color, ms)` — 對齊 demo `flash-vent` 整片暗紅閃爍（§13.7 / §14.5.1）
-- [ ] design tokens（顏色 / 字型 / 字級）抽 const，從 demo CSS 提取
-- [ ] 字型：選 Adafruit GFX 的 `Fonts/FreeMonoBold24pt7b`（時間倒數）+ 預設 5x7（標籤）
+### Step 2b：updateDisplay snapshot 去重（解閃爍）✅ **已完成 2026-05-08**
+
+- [x] 加 `DisplaySnapshot` struct + `captureDisplaySnapshot()`：抓 globalState/ohcaState/ohcaSubState/cursor/countdownSec/ventBeat/flags
+- [x] `updateDisplay()` 入口 memcmp 比對，無變化跳過全螢幕重畫
+- [x] commit 1d4af9b
+- [x] 另：按鍵 debounce 統一 press/release 門檻（修 TFT 慢渲染期間 bounce 雙觸發）— commit d825bcf
+
+### Step 2c：OHCA 倒數畫面對齊 demo（**下次工作起點**）
+
+> demo 第二螢幕，最高頻使用，layout 工作量最大的畫面。
+
+- [ ] `drawOhcaCountdownCommon` 重排為 320×240：
+  - 上方 mode badge "OHCA"（綠 #22c55e）
+  - 大時間倒數中央，monospace 84px（試 `FreeMonoBold24pt7b` 或更大），顏色依 state（白/琥珀/紅）
+  - 標籤文字 "下次給藥/請準備給藥/請給藥" 時間下方 24px
+  - 計數器 "EPI N｜電擊 N" 底部小字 13px 灰色
+- [ ] state → 顏色對照：normal=WHITE / WARNING=AMBER / ALARMING=RED 閃爍 / OVERTIME=RED 持續
+- [ ] alarming flash 動畫：用 `flashScreen` 切深紅再回黑（已有 design token COLOR_FLASH_VENT）
+- [ ] 字型決策：先試 `FreeMonoBold24pt7b`（48px 高），若不夠像 demo 84px 再試更大或自訂
+
+### Step 2 後續：其他畫面（每塊 1 commit）
+
+> demo 的 layout 是 320×240，原 OLED 是 128×64。每個畫面要重新排版。
+
+- [ ] **OHCA 主畫面 — 待本機 EPI** — `drawOhcaWaitFirstEpi()`
+- [ ] **兩段確認畫面**（EPI / SHOCK / Amio）— `drawTwoStepArmedOverlay()`
+- [ ] **EPI 成立 1 秒提示** — `drawOhcaStartFlash()` 等
+- [ ] **案件結束流程畫面** — `drawOhcaEndCheck()` / `drawOhcaLocked()` / `drawOhcaSummary()`
+- [ ] **6 秒通氣**（OHCA 內輔助 + 獨立模式）— `drawOhcaVentOverlay()` / `drawVentStandalone()`
+- [ ] 補登/Amiodarone 等 Phase B 畫面：本階段不做，Phase B 才畫
+- [ ] 移除 OLED_WIDTH/HEIGHT 別名 + TftAdapter 的 clearDisplay 中介（全部畫面重排完後）
+- [ ] 考慮抽出 `firmware/lib/ems_display/ems_display.{h,cpp}` 模組（多畫面穩定後）
 
 ### Step 3：畫面對齊（一整天，逐畫面）
 
@@ -113,6 +146,10 @@
 - [ ] **案件結束流程畫面**
 - [ ] **6 秒通氣（OHCA 內輔助 + 獨立模式）** — Phase C 才會用，此 step 先做骨架
 - [ ] 補登/Amiodarone 等 Phase B 畫面：本 step 不做，留 Phase B
+
+### Step 3：（原 Step 2 後續，已併入上方）
+
+> Step 編號因實際拆解調整，原 Step 3「畫面對齊一整天」拆進 Step 2c 與 Step 2 後續逐項。
 
 ### Step 4：硬體層 + 文件同步（半小時）
 
