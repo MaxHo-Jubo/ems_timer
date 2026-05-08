@@ -486,7 +486,7 @@ void setup() {
     //     優先嘗試 PSRAM；fail 退 internal RAM）
     //   - 所有 draw 寫到 display sprite，updateDisplay 結尾 pushSprite DMA 推到 tft
     tft.init();
-    tft.setRotation(1);  // 1 = 橫向 320x240
+    tft.setRotation(3);  // 3 = 橫向 320x240（LGFX 跟 Adafruit_ST7789 rotation index 差 180）
     tft.fillScreen(0x0000);
 
     display.setColorDepth(16);
