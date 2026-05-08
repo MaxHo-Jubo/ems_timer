@@ -72,12 +72,38 @@ public:
 // 硬體常數（gpio-allocation.md §5.2）
 // ============================================================
 
-/** TFT 解析度（rotation=1 橫向後 320×240） */
+/** TFT 解析度（native portrait） */
 static const uint16_t TFT_WIDTH     = 240;
 static const uint16_t TFT_HEIGHT    = 320;
-/** Step 1：保留 OLED_WIDTH/HEIGHT 別名讓既有 layout 程式碼不用改（畫面會擠在左上角，Step 2 重排） */
+/** TFT 邏輯解析度（rotation=1 橫向後使用） */
+static const int16_t  SCREEN_W      = 320;
+static const int16_t  SCREEN_H      = 240;
+/** Step 1 過渡：保留 OLED_WIDTH/HEIGHT 別名讓尚未重排的舊 layout 程式碼仍能編譯（Step 2 逐畫面替換） */
 static const uint16_t OLED_WIDTH    = 128;
 static const uint16_t OLED_HEIGHT   = 64;
+
+// ============================================================
+// 顯示設計 tokens（對齊 docs/demo/index.html）
+// 規格：黑底 + 白主字 + 灰次要 + 急救色（綠/琥珀/紅）+ Courier monospace 大時間
+// 詳見 .claude/.../project_tft_ui_design_target.md
+// ============================================================
+
+/** 背景色：純黑 #000000（demo `body { background: #000 }`） */
+static const uint16_t COLOR_BG          = 0x0000;
+/** 主文字：白 #ffffff */
+static const uint16_t COLOR_TEXT_PRIMARY = 0xFFFF;
+/** 次要資訊：灰 ≈ #94a3b8（demo `.scr-title color`） */
+static const uint16_t COLOR_TEXT_MUTED  = 0x9492;
+/** 暗灰：#64748b（demo `.scr-counter color`） */
+static const uint16_t COLOR_TEXT_DIM    = 0x6B4D;
+/** 執行中綠：≈ #22c55e（demo `.scr-mode color`） */
+static const uint16_t COLOR_ACCENT_OK   = 0x2604;
+/** 警告琥珀：≈ #fbbf24（demo `.scr-time-amber`） */
+static const uint16_t COLOR_ACCENT_WARN = 0xFDE0;
+/** 警報紅：≈ #ef4444（demo `.scr-time-red`） */
+static const uint16_t COLOR_ACCENT_ALERT = 0xEA44;
+/** 暗紅閃爍：#5a0000（demo `flash-vent` 整片暗紅） */
+static const uint16_t COLOR_FLASH_VENT   = 0x5800;
 /** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37 + 板上 WS2812 GPIO 48） */
 static const int8_t   TFT_CS_PIN    = 21;
 static const int8_t   TFT_DC_PIN    = 1;   /**< 原 48 → 1：避開板上 WS2812 RGB LED（2026-05-08 實機踩雷） */
@@ -1352,21 +1378,38 @@ void updateDisplay() {
 }
 
 void drawMainMenu() {
-    display.setTextSize(1);
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 0);
-    display.println("EMS DoseSync Pro");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // 螢幕已由 updateDisplay() 的 clearDisplay() 清為黑底，這裡不重複 fillScreen 避免雙閃。
 
+    // STEP 01: 上方標題列 — "EMS DOSESYNC PRO" 灰字 size 2，y=8
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setCursor(16, 12);
+    display.print("EMS DOSESYNC PRO");
+
+    // STEP 02: 標題下分隔線 y=36，灰色橫貫
+    display.drawLine(16, 36, SCREEN_W - 16, 36, COLOR_TEXT_DIM);
+
+    // STEP 03: 5 個選單項，y=58 起每 36px 一行（總高 180px，剩 50/240 padding 上下分配）
+    //   - cursor 項：白底黑字（demo cursor highlight）
+    //   - 非 cursor：黑底白字
+    //   - text size 3（每字 18×24 px），左 padding 24
+    constexpr int16_t MENU_Y_START   = 58;
+    constexpr int16_t MENU_ROW_H     = 36;
+    constexpr int16_t MENU_TEXT_PAD  = 24;
+    constexpr int16_t MENU_TEXT_SIZE = 3;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 8;  // text 在 row 內垂直置中的偏移
+
+    display.setTextSize(MENU_TEXT_SIZE);
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
-        int y = 14 + i * 10;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == mainMenuCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 10, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            // STEP 03.01: cursor highlight — 白底全寬橫條，黑字
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(MAIN_MENU_LABELS[i]);
     }
 }
