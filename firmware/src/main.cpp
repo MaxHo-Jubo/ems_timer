@@ -454,10 +454,11 @@ void setup() {
     // STEP 03: TFT 初始化（取代舊 SH1106 OLED）
     //   - init() 回傳 void，無 fail handler 介面（Adafruit_ST7789 API 限制）
     //   - invertDisplay(false)：蝦皮 ST7789 紅板 polarity 與 Adafruit 預設相反，必加（見 tft-migration-plan.md §3.5）
-    //   - setSPISpeed(40MHz)：拉 40MHz 整片 push < 8ms。麵包板布線決定上限；不穩→降 24MHz
+    //   - setSPISpeed(80MHz)：ESP32-S3 SPI master 上限，整片 push ~4ms 接近瞬完成；
+    //     麵包板布線品質決定上限，若出花屏 / 隨機像素 → 降 60MHz / 40MHz
     //   - tft 是實體 ST7789 控制；所有 draw 寫到全頁 canvas（display），updateDisplay 結尾一次 push
     tft.init(TFT_WIDTH, TFT_HEIGHT);
-    tft.setSPISpeed(40000000);
+    tft.setSPISpeed(80000000);
     tft.setRotation(1);  // 1 = 橫向 320x240
     tft.invertDisplay(false);
     tft.fillScreen(SH110X_BLACK);
