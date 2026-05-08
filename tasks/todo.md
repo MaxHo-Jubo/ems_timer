@@ -156,15 +156,40 @@
 
 ### 中文支援評估（2026-05-08 PM 詢問）
 
-> demo 用「下次給藥/請準備給藥/請給藥」中文。目前韌體用英文 (Next dose/Prepare EPI/GIVE EPI!)。要不要支援中文待定。
+> demo 用「下次給藥/請準備給藥/請給藥」中文。efontCN/TW 字型 ~600KB Flash 開銷可接受。
 
-- [x] 試 LGFX `fonts::efontCN_24`（24px CJK）— 主選單做 PoC：「OHCA 急救/6 秒給氣/訓練模式/歷史紀錄/系統設定」
-  - Flash 11→27.6%（efontCN_24 fontmap ~600KB），3.3MB 還夠
-  - 編譯通過，待實機驗收 cover 率（commit 待加）
-- [ ] 主選單實機驗收：所有字是否正常顯示，字型清晰度可接受
-- [ ] 缺字評估：擴展到 OHCA 倒數標籤「下次給藥/請準備給藥/請給藥」常用字
-- [ ] 若 efontCN cover 不夠或字型粗細不滿意，採用 vlw 自訂字型（自選繁中字集生成）
-- [ ] 決策：英文保持 / 全 CJK / 雙語切換
+- [x] 主選單 efontCN_24 PoC（commit 3f759d6）→ 缺字（給/氣/訓/練/歷/紀/錄/統/設）→ 換 efontTW_24 解（commit 0ab4060）
+- [x] OHCA 倒數標籤中文化 efontTW_24（commit 9a9575d）：「下次給藥/準備給藥/請給藥！/逾時」
+- [x] STEP 06 計數行漏 setFont(Font0) bug + label gap 48→60 修正（commit 7133d53）
+- [x] 標籤字級 setTextSize(1.2f, 1.2f) ≈ 29px（PM 反饋再大）+ 計數行 Shock→電擊（commit 3ea8ca5）
+- [x] Flash 11→27.6%（efontTW_24 fontmap ~600KB），3.3MB 還夠
+- [ ] **下一個畫面中文化**：drawOhcaWaitFirstEpi（Awaiting EPI → 待本機 EPI / 副標 / 計數）
+- [ ] EndCheck / Locked / Summary / VentStandalone / VentEndCheck / Placeholder 中文化
+- [ ] efontTW_24 字型品質不一致（如「電擊」兩字視覺不平衡）若不可接受 → 採 vlw 自訂字型
+
+### 未跑 review 的 commits（rate limit 恢復後補跑）
+
+依 CLAUDE.md POST-COMMIT-REVIEW，以下 commits 已 commit 未走 5 步驟 review：
+
+```
+3ea8ca5  OHCA 倒數標籤 1.2x + 電擊中文
+7133d53  STEP 06 setFont fix + label gap 60
+9a9575d  OHCA 倒數標籤中文化
+0ab4060  efontCN→efontTW（解繁中缺字）
+3f759d6  主選單 efontCN_24 中文 PoC
+7a85f64  vent 大字 y 下移避撞 Vol
+96ef727  剩餘畫面（EndCheck/Locked/Summary/TwoStepArmed/Vent*/Placeholder）
+e242f37  todo Step 3 字體放大同步
+39b544a  字體放大 1.5x（OHCA 系列已改 layout 畫面）
+b7f9382  todo + memory sync
+5be48fa  setRotation 1→3 修 LGFX vs Adafruit 差 180
+9ed9a63  LovyanGFX + DMA pushSprite
+c2155a4  SPI 80MHz（穩定但 lib overhead 才是視覺瓶頸）
+34838f9  GFXcanvas16 全頁緩衝（被 9ed9a63 取代）
+4d831ab  partial 局部 push + canvas 殘留清除
+b675a45  SPI 40MHz + setTextColor(fg,bg) 試解掃描感
+8e428c8  WaitFirstEpi 對齊新 layout + partial path
+```
 
 ### Step 4：硬體層 + 文件同步（半小時）
 
