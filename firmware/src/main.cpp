@@ -1606,31 +1606,32 @@ void drawOhcaStartFlash() {
 }
 
 void drawOhcaWaitFirstEpi() {
-    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout（PM 反饋字級放大 1.5x）
+    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout（中文化 + 字級 1.2-1.5x）
     // 前置：caller 已 clearDisplay 為黑底
-    display.setFont(&fonts::Font0);
 
-    // 頂部 OHCA 綠 badge（同 drawOhcaCountdownCommon）
+    // 頂部 OHCA 綠 badge（ASCII，default font size 3）
+    display.setFont(&fonts::Font0);
     display.setTextSize(3);
     drawCenteredText("OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    // 中央大字「Awaiting EPI」
-    display.setTextSize(4);
-    drawCenteredText("Awaiting EPI", SCREEN_H / 2 - 16, COLOR_TEXT_MUTED);
+    // 中央大字「待本機 EPI」（efontTW_24 × 1.5 ≈ 36px）
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("待本機 EPI", SCREEN_H / 2 - 16, COLOR_TEXT_MUTED);
 
-    // 副標：兩段確認提示
-    display.setTextSize(2);
-    drawCenteredText("(press EPI x2 to confirm)", SCREEN_H / 2 + 32, COLOR_TEXT_DIM);
+    // 副標：兩段確認提示（efontTW_24 size 1 = 24px）
+    display.setTextSize(1);
+    drawCenteredText("(按兩次 EPI 確認)", SCREEN_H / 2 + 32, COLOR_TEXT_DIM);
 
-    // 底部 EPI/Shock 計數（首次 EPI 前皆為 0，但保持 layout 一致）
+    // 底部 EPI/電擊 計數（與 OHCA 倒數計數行一致）
     uint16_t epiN = 0, shockN = 0;
     for (uint16_t i = 0; i < eventCount; i++) {
         if      (isEpiEvent(&events[i]))   epiN   += events[i].count;
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
-    char counter[24];
-    snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
-    display.setTextSize(2);
+    char counter[32];
+    snprintf(counter, sizeof(counter), "EPI %u  電擊 %u", epiN, shockN);
+    display.setTextSize(1);
     drawCenteredText(counter, SCREEN_H - OHCA_COUNTER_BOTTOM - 6, COLOR_TEXT_DIM);
 }
 
