@@ -33,6 +33,7 @@
 #include <SPI.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
 
 #include "ems_ohca_state.h"
 #include "ems_ohca_countdown.h"
@@ -104,6 +105,18 @@ static const uint16_t COLOR_ACCENT_WARN = 0xFDE0;
 static const uint16_t COLOR_ACCENT_ALERT = 0xEA44;
 /** 暗紅閃爍：#5a0000（demo `flash-vent` 整片暗紅） */
 static const uint16_t COLOR_FLASH_VENT   = 0x5800;
+
+/** OHCA 倒數畫面 layout（drawOhcaCountdownCommon 使用） */
+/** ALARMING 背景閃爍半週期 ms（demo flashRed 0.6s 全週期 / 2） */
+static const uint32_t OHCA_FLASH_HALF_MS  = 300;
+/** 頂部 "OHCA" badge baseline Y（default font size 2，~14px 字高） */
+static const int16_t  OHCA_BADGE_Y        = 14;
+/** 大時間視覺上偏 px（baseline 中心微調，留下方標籤空間） */
+static const int16_t  OHCA_TIME_VISUAL_UP = 8;
+/** 標籤距大時間 baseline 下方 px */
+static const int16_t  OHCA_LABEL_GAP_PX   = 16;
+/** 底部 EPI/Shock 計數行距底邊 px */
+static const int16_t  OHCA_COUNTER_BOTTOM = 18;
 /** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37 + 板上 WS2812 GPIO 48） */
 static const int8_t   TFT_CS_PIN    = 21;
 static const int8_t   TFT_DC_PIN    = 1;   /**< 原 48 → 1：避開板上 WS2812 RGB LED（2026-05-08 實機踩雷） */
@@ -362,7 +375,7 @@ void updateDisplay();
 void drawMainMenu();
 void drawOhcaStartFlash();
 void drawOhcaWaitFirstEpi();
-void drawOhcaCountdownCommon(const char* label, uint32_t remaining_ms, bool show_overtime);
+void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* label, bool flashOn);
 void drawOhcaEndCheck();
 void drawOhcaLocked();
 void drawOhcaSummary();
@@ -1345,6 +1358,13 @@ static DisplaySnapshot captureDisplaySnapshot() {
     if (ventEndCheckShown)      s.flags |= 0x10;
     if (alarmMuted)             s.flags |= 0x20;
     if (ventBackHintShown)      s.flags |= 0x40;
+
+    // ALARMING flash phase：bit 進 snapshot 讓 dedupe 在 ALARMING 期間每半週期觸發一次重繪
+    // （demo flashRed 0.6s 全週期 → OHCA_FLASH_HALF_MS 半週期）
+    const bool alarmingFlashPhase = (globalState == GLOBAL_OHCA)
+                                 && (ohcaState == OHCA_STATE_ALARMING)
+                                 && (((millis() / OHCA_FLASH_HALF_MS) & 1) != 0);
+    if (alarmingFlashPhase) s.flags |= 0x80;
     return s;
 }
 
@@ -1381,32 +1401,25 @@ void updateDisplay() {
             case OHCA_STATE_WAIT_FIRST_EPI:
                 drawOhcaWaitFirstEpi();
                 break;
-            case OHCA_STATE_COUNTDOWN: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
-                drawOhcaCountdownCommon("EPI Countdown", remain, false);
-                break;
-            }
-            case OHCA_STATE_WARNING: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
-                drawOhcaCountdownCommon("Prepare EPI", remain, false);
-                break;
-            }
-            case OHCA_STATE_ALARMING: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t past = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
-                drawOhcaCountdownCommon("GIVE EPI!", past, true);
-                break;
-            }
+            case OHCA_STATE_COUNTDOWN:
+            case OHCA_STATE_WARNING:
+            case OHCA_STATE_ALARMING:
             case OHCA_STATE_OVERTIME: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t past = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
-                drawOhcaCountdownCommon("OVERTIME", past, true);
+                const uint32_t now    = millis();
+                const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                const uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
+                const uint32_t past   = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+                // ALARMING 閃爍開關直接從 snapshot 讀，避免在 render 內二次取樣 millis()
+                const bool alarmingFlashOn = (lastDisplaySnapshot.flags & 0x80) != 0;
+                if (ohcaState == OHCA_STATE_COUNTDOWN) {
+                    drawOhcaCountdownCommon(remain, COLOR_TEXT_PRIMARY, "Next dose",   false);
+                } else if (ohcaState == OHCA_STATE_WARNING) {
+                    drawOhcaCountdownCommon(remain, COLOR_ACCENT_WARN,  "Prepare EPI", false);
+                } else if (ohcaState == OHCA_STATE_ALARMING) {
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "GIVE EPI!",   alarmingFlashOn);
+                } else {
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "OVERTIME",    false);
+                }
                 break;
             }
             case OHCA_STATE_END_CHECK:
@@ -1507,42 +1520,75 @@ void drawOhcaWaitFirstEpi() {
     display.println("(2-step confirm)");
 }
 
-void drawOhcaCountdownCommon(const char* label, uint32_t time_ms, bool show_overtime) {
-    display.setTextColor(SH110X_WHITE);
+/**
+ * OHCA 倒數共用畫面（對齊 docs/demo/index.html OHCA 第二螢幕）。
+ *
+ * 320×240 layout：
+ *   - 頂部 mode badge "OHCA"（綠），baseline y = OHCA_BADGE_Y
+ *   - 中央大時間 mm:ss（FreeMonoBold24pt7b），顏色由 caller 指定
+ *   - 時間下方標籤（default font size 2，灰色）
+ *   - 底部 "EPI N  Shock N"（default font size 1，dim 灰）
+ *   - flashOn=true 時整片背景填 COLOR_FLASH_VENT；flashOn 由 snapshot phase bit 決定（單一真相）
+ *
+ * 前置條件：caller（updateDisplay）已執行 display.clearDisplay() 把畫面填黑。
+ */
+void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* label, bool flashOn) {
+    // STEP 01: 背景 — flashOn 時填深紅，否則保持 caller clear 的黑底
+    if (flashOn) {
+        display.fillScreen(COLOR_FLASH_VENT);
+    }
+
+    int16_t bx, by;       // getTextBounds 回填 bounding box 起點 offset
+    uint16_t bw, bh;      // getTextBounds 回填 bounding box 寬高
+
+    // STEP 02: 頂部 mode badge "OHCA"（綠）
+    display.setFont();  // default 5x7
+    display.setTextSize(2);
+    display.setTextColor(COLOR_ACCENT_OK);
+    display.getTextBounds("OHCA", 0, 0, &bx, &by, &bw, &bh);
+    display.setCursor((SCREEN_W - (int16_t)bw) / 2, OHCA_BADGE_Y);
+    display.print("OHCA");
+
+    // STEP 03: 中央大時間（FreeMonoBold24pt7b，monospace 確保 mm:ss 數字 tick 不左右抖動）
+    char timeStr[8];
+    const uint32_t total_sec = time_ms / 1000;
+    snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu",
+             (unsigned long)(total_sec / 60),
+             (unsigned long)(total_sec % 60));
+
+    display.setFont(&FreeMonoBold24pt7b);
     display.setTextSize(1);
-    display.setCursor(0, 0);
+    display.setTextColor(timeColor);
+    display.getTextBounds(timeStr, 0, 0, &bx, &by, &bw, &bh);
+    // 自訂字型 cursor.y 是 baseline；OHCA_TIME_VISUAL_UP 補上偏給 STEP 04 標籤留空間
+    const int16_t time_x = (SCREEN_W - (int16_t)bw) / 2 - bx;
+    const int16_t time_y = SCREEN_H / 2 + (int16_t)bh / 2 - OHCA_TIME_VISUAL_UP;
+    display.setCursor(time_x, time_y);
+    display.print(timeStr);
+
+    // STEP 04: 時間下方標籤
+    display.setFont();
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.getTextBounds(label, 0, 0, &bx, &by, &bw, &bh);
+    display.setCursor((SCREEN_W - (int16_t)bw) / 2, time_y + OHCA_LABEL_GAP_PX);
     display.print(label);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
 
-    // 時間 mm:ss 大字顯示
-    uint32_t total_sec = time_ms / 1000;
-    uint32_t mm = total_sec / 60;
-    uint32_t ss = total_sec % 60;
-
-    display.setTextSize(3);
-    display.setCursor(12, 22);
-    if (mm < 10) display.print("0");
-    display.print(mm);
-    display.print(":");
-    if (ss < 10) display.print("0");
-    display.print(ss);
-
-    // 事件數提示（含補登 count）
-    display.setTextSize(1);
-    display.setCursor(0, 54);
-    display.print("EPI:");
+    // STEP 05: 累加 EPI / Shock 事件次數（含補登 count）
     uint16_t epiN = 0, shockN = 0;
     for (uint16_t i = 0; i < eventCount; i++) {
         if      (isEpiEvent(&events[i]))   epiN   += events[i].count;
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
-    display.print(epiN);
-    display.print("  Shk:");
-    display.print(shockN);
-    if (show_overtime) {
-        display.setCursor(96, 54);
-        display.print("OVT");
-    }
+
+    // STEP 06: 底部計數行 渲染
+    char counter[24];     // "EPI 65535  Shock 65535\0" = 23 byte
+    snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
+    display.setTextSize(1);
+    display.setTextColor(COLOR_TEXT_DIM);
+    display.getTextBounds(counter, 0, 0, &bx, &by, &bw, &bh);
+    display.setCursor((SCREEN_W - (int16_t)bw) / 2, SCREEN_H - OHCA_COUNTER_BOTTOM);
+    display.print(counter);
 }
 
 void drawOhcaEndCheck() {
