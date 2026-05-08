@@ -481,13 +481,17 @@ void handleButtons() {
 
         if (cur != lastBtnState[i]) {
             // STEP 01: 邊緣事件
+            // STEP 01.00: 統一 debounce — press 與 release 邊緣共用同一個門檻，
+            //   避免 TFT 慢渲染拉長時間窗時 bounce 邊緣穿過原本只擋 press 的防抖造成 double-fire
+            if (now - lastPressMs[i] < DEBOUNCE_MS) {
+                continue;
+            }
+            lastPressMs[i] = now;
+
             if (cur == LOW) {
                 // STEP 01.01: 按下（press start）
-                if (now - lastPressMs[i] >= DEBOUNCE_MS) {
-                    btnPressStartMs[i] = now;
-                    btnLongFired[i]  = false;
-                    lastPressMs[i]     = now;
-                }
+                btnPressStartMs[i] = now;
+                btnLongFired[i]    = false;
             } else {
                 // STEP 01.02: 放開（release）
                 if (btnPressStartMs[i] > 0 && !btnLongFired[i]) {
