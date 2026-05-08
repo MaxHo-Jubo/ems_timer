@@ -2114,7 +2114,7 @@ void drawVentStandalone() {
         return;
     }
 
-    // 中央大字單秒數
+    // 中央大字單秒數（中心 y 略下移，避開頂部 Vol 行）
     uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
     vent_beat_t beat = computeVentBeat(since);
     uint8_t num = (uint8_t)beat + 1;
@@ -2125,7 +2125,7 @@ void drawVentStandalone() {
     display.setTextSize(2);
     display.setTextColor(COLOR_TEXT_PRIMARY);
     display.setTextDatum(textdatum_t::middle_center);
-    display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 - OHCA_TIME_VISUAL_UP);
+    display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 16);
 
     // 底部提示（橫條反色顯示「長按 [Main] 結束」hint 或基本提示）
     display.setFont(&fonts::Font0);
