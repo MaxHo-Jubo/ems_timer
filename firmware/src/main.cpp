@@ -1673,9 +1673,9 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
     display.drawString(timeStr, SCREEN_W / 2, time_y);
 
-    // STEP 04: 時間下方標籤（efontTW_24 繁中 24px size 1）
+    // STEP 04: 時間下方標籤（efontTW_24 繁中 24px × 1.2 ≈ 29px，PM 反饋再大 1.2x）
     display.setFont(&fonts::efontTW_24);
-    display.setTextSize(1);
+    display.setTextSize(1.2f, 1.2f);
     display.setTextColor(COLOR_TEXT_MUTED);
     display.setTextDatum(textdatum_t::top_center);
     display.drawString(label, SCREEN_W / 2, time_y + OHCA_LABEL_GAP_PX);
@@ -1687,11 +1687,11 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
 
-    // STEP 06: 底部計數行（bottom-center datum，PM 反饋字級放大）
-    char counter[24];     // "EPI 65535  Shock 65535\0" = 23 byte
-    snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
-    display.setFont(&fonts::Font0);  // STEP 04 切到 efontTW_24，這裡要切回 default ASCII
-    display.setTextSize(2);
+    // STEP 06: 底部計數行（bottom-center，efontTW_24 size 1 ≈ 14px ASCII，保持原視覺大小）
+    char counter[32];     // UTF-8「電擊」6 byte，buf 從 24 加大避免飽和
+    snprintf(counter, sizeof(counter), "EPI %u  電擊 %u", epiN, shockN);
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
     display.setTextColor(COLOR_TEXT_DIM);
     display.setTextDatum(textdatum_t::bottom_center);
     display.drawString(counter, SCREEN_W / 2, SCREEN_H - OHCA_COUNTER_BOTTOM);
