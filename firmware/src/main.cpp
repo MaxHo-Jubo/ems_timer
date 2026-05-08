@@ -158,7 +158,7 @@ static const int16_t  OHCA_BADGE_Y        = 14;
 /** 大時間視覺上偏 px（middle datum 中心 y = SCREEN_H/2 - VISUAL_UP，留下方標籤空間） */
 static const int16_t  OHCA_TIME_VISUAL_UP = 20;
 /** 標籤距大時間 middle 下方 px（要 > 大時間半高 + padding，否則撞時間 bbox） */
-static const int16_t  OHCA_LABEL_GAP_PX   = 48;
+static const int16_t  OHCA_LABEL_GAP_PX   = 60;
 /** 底部 EPI/Shock 計數行距底邊 px */
 static const int16_t  OHCA_COUNTER_BOTTOM = 18;
 
@@ -1690,6 +1690,7 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     // STEP 06: 底部計數行（bottom-center datum，PM 反饋字級放大）
     char counter[24];     // "EPI 65535  Shock 65535\0" = 23 byte
     snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
+    display.setFont(&fonts::Font0);  // STEP 04 切到 efontTW_24，這裡要切回 default ASCII
     display.setTextSize(2);
     display.setTextColor(COLOR_TEXT_DIM);
     display.setTextDatum(textdatum_t::bottom_center);
