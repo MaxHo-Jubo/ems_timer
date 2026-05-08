@@ -165,9 +165,23 @@
 - [x] Flash 11→27.6%（efontTW_24 fontmap ~600KB），3.3MB 還夠
 - [x] WaitFirstEpi 中文化（待本機 EPI / 按兩次 EPI 確認 / 電擊計數，commit e936caa）
 - [x] 兩段確認 overlay + StartFlash 中文化（EPI/電擊？再按一次 / OHCA 啟動，commit 7ffbf97）
-- [ ] **下次接續從這裡**：EndCheck / Locked / Summary 中文化（drawOhcaEndCheck/Locked/Summary）
-- [ ] VentStandalone / VentEndCheck / VentOverlay（右上角 VENT→通氣）/ Placeholder 中文化
+- [x] 6 項用詞對齊 demo.html（主選單 / 倒數標籤 / 啟動 flash / 兩段確認 / 計數行，commit 61e6899）
+- [x] 4 題決策對齊 demo（OVERTIME→請給藥 / 確認已給 EPI？ / 待 EPI 副標移除 / 啟動 flash 加副行 OHCA，含 commit 61e6899）
+- [x] EndCheck / Locked / Summary 中文化（commit 8fced41）
+- [x] VentStandalone / VentEndCheck / VentOverlay（VENT→通氣）/ Placeholder 中文化（commit 8fced41）
+- [x] Phase B 8 個畫面 320×240 中文化（DrugMenu / Backfill ×4 / Amio / Timeline / QuickMenu，commit 147f2a6）
 - [ ] efontTW_24 字型品質不一致（如「電擊」兩字視覺不平衡）若不可接受 → 採 vlw 自訂字型
+
+### 實機驗收狀態（2026-05-08 進行中）
+
+- [x] **OHCA 主流程已測試 OK**：主選單進入 / 待 EPI / EPI 兩段確認 / 倒數 4 階段 / 兩段確認 overlay 中文 / 計數行
+- [ ] **以下尚待實機驗證**：
+  - EndCheck（結束案件？對話）/ Locked（已鎖定）/ Summary（案件總覽）三畫面中文 layout
+  - 通氣獨立模式（drawVentStandalone 已暫停 / 主鍵繼續 / 結束 hint）
+  - 通氣結束確認（drawVentEndCheck 結束通氣節奏？）
+  - OHCA 內 vent overlay（通氣 N / 通氣暫停）
+  - Placeholder（訓練模式 D 階段 / 歷史紀錄 E 階段 / 系統設定 G 階段）
+  - **Phase B 全部 8 畫面**：DrugMenu / Backfill 4 步驟 / AmioConfirm / Timeline / QuickMenu
 
 ### 未跑 review 的 commits（rate limit 恢復後補跑）
 
@@ -197,14 +211,16 @@ b675a45  SPI 40MHz + setTextColor(fg,bg) 試解掃描感
 
 ### Rate limit 恢復後接續清單（按優先序）
 
-1. **EndCheck/Locked/Summary 中文化**（drawOhcaEndCheck / drawOhcaLocked / drawOhcaSummary）
-2. **VentStandalone / VentEndCheck / VentOverlay 中文化**
-3. **Placeholder 中文化**（"Phase X" → "X 階段"）
-4. **drawOhcaCountdownCommon 的 OHCA badge 是否中文化**（「OHCA」改「急救」？或保留）
-5. **drawMainMenu 標題「EMS DOSESYNC PRO」是否本地化**（決定維持英文 or 改「DoseSync 救護計時器」）
-6. **補跑 19 個 commits 的 5 步驟 review**
-7. **推 origin（GitLab + GitHub backup）**
-8. **完整實機 flow 驗收**（OHCA 全 path + 通氣獨立 + 兩段確認 timeout 等）
+1. ~~EndCheck/Locked/Summary 中文化~~ ✅ commit 8fced41
+2. ~~VentStandalone / VentEndCheck / VentOverlay 中文化~~ ✅ commit 8fced41
+3. ~~Placeholder 中文化~~ ✅ commit 8fced41
+4. **drawOhcaCountdownCommon 的 OHCA badge 是否中文化** — B 不動（demo 仍用英文）
+5. **drawMainMenu 標題「EMS DOSESYNC PRO」是否本地化** — B 不動（demo 也用英文）
+6. ~~Phase B 8 畫面 320×240 中文化~~ ✅ commit 147f2a6
+7. **完整實機 flow 驗收剩餘項目**（見上方「實機驗收狀態」清單）
+8. **demo.html 對齊韌體 320×240 layout + 字級**（PM 反饋需求 2026-05-08）
+9. **補跑 22 個 commits 的 5 步驟 review**
+10. **推 origin（GitLab + GitHub backup）**
 
 ### Step 4：硬體層 + 文件同步（半小時）
 
