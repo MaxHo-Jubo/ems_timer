@@ -385,7 +385,12 @@ static const uint8_t WS2812_PIN = 48;
 
 void setup() {
     Serial.begin(115200);
-    delay(50);
+    // ESP32-S3 USB-CDC 列舉需 1~2 秒，太早 Serial.println 會被吃掉。
+    // 等到 Serial 通了再印，方便除錯。
+    uint32_t serialWaitStart = millis();
+    while (!Serial && (millis() - serialWaitStart) < 3000) {
+        delay(10);
+    }
     Serial.println("[BOOT] EMS Timer Phase A");
 
     // STEP 00: 關掉板上 WS2812（GPIO 48）。boot bootloader 可能 latch 成白色，必須主動 reset。
@@ -1345,6 +1350,9 @@ void updateDisplay() {
     if (memcmp(&now, &lastDisplaySnapshot, sizeof(DisplaySnapshot)) == 0) {
         return;
     }
+    Serial.printf("[REDRAW] gs=%u os=%u sub=%u cur=%u cdSec=%lu vBeat=%u flags=0x%02x\n",
+                  now.globalState, now.ohcaState, now.ohcaSubState, now.mainMenuCursor,
+                  (unsigned long)now.countdownSec, now.ventBeat, now.flags);
     lastDisplaySnapshot = now;
 
     display.clearDisplay();
