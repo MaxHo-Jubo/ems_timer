@@ -376,6 +376,7 @@ void drawMainMenu();
 void drawOhcaStartFlash();
 void drawOhcaWaitFirstEpi();
 void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* label, bool flashOn);
+static void drawOhcaCountdownTimeOnly(uint8_t ohcaState);
 void drawOhcaEndCheck();
 void drawOhcaLocked();
 void drawOhcaSummary();
@@ -1374,6 +1375,32 @@ void updateDisplay() {
     if (memcmp(&now, &lastDisplaySnapshot, sizeof(DisplaySnapshot)) == 0) {
         return;
     }
+
+    // STEP 01: partial update — 倒數每秒只 tick 一格時，整片 fillScreen 會出掃描線閃爍。
+    // 偵測「在 OHCA 倒數同 state 內，僅 countdownSec 改變」→ 只重繪時間區塊，不動 badge/label/counter。
+    // 排除 ALARMING（半週期閃 phase 跟著變，必須走 full path 重畫整片紅 bg）。
+    const bool inCountdownGroup = (now.globalState == GLOBAL_OHCA)
+                               && (now.ohcaState == OHCA_STATE_COUNTDOWN
+                                   || now.ohcaState == OHCA_STATE_WARNING
+                                   || now.ohcaState == OHCA_STATE_OVERTIME)
+                               && (now.ohcaSubState == 0);
+    const bool sameStateAsLast = (now.globalState     == lastDisplaySnapshot.globalState)
+                              && (now.ohcaState       == lastDisplaySnapshot.ohcaState)
+                              && (now.ohcaSubState    == lastDisplaySnapshot.ohcaSubState)
+                              && (now.mainMenuCursor  == lastDisplaySnapshot.mainMenuCursor)
+                              && (now.ventBeat        == lastDisplaySnapshot.ventBeat)
+                              && (now.ventVolume      == lastDisplaySnapshot.ventVolume)
+                              && (now.ventPaused      == lastDisplaySnapshot.ventPaused)
+                              && (now.flags           == lastDisplaySnapshot.flags);
+    if (inCountdownGroup
+        && sameStateAsLast
+        && (now.countdownSec != lastDisplaySnapshot.countdownSec)) {
+        drawOhcaCountdownTimeOnly(now.ohcaState);
+        display.display();
+        lastDisplaySnapshot = now;
+        return;
+    }
+
     Serial.printf("[REDRAW] gs=%u os=%u sub=%u cur=%u cdSec=%lu vBeat=%u flags=0x%02x\n",
                   now.globalState, now.ohcaState, now.ohcaSubState, now.mainMenuCursor,
                   (unsigned long)now.countdownSec, now.ventBeat, now.flags);
@@ -1499,25 +1526,50 @@ void drawMainMenu() {
     }
 }
 
+/** 共用：在 (cx, y) 為中心畫一行水平置中文字（cursor.y = baseline 或 top 視 caller setFont 而定） */
+static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
+    int16_t bx, by;
+    uint16_t bw, bh;
+    display.getTextBounds(text, 0, 0, &bx, &by, &bw, &bh);
+    display.setTextColor(color);
+    display.setCursor((SCREEN_W - (int16_t)bw) / 2 - bx, y);
+    display.print(text);
+}
+
 void drawOhcaStartFlash() {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(2);
-    display.setCursor(8, 24);
-    display.println("Start OHCA");
+    // OHCA 案件啟動 1 秒提示：綠色全螢幕 "Start OHCA"
+    display.setFont();
+    display.setTextSize(3);
+    drawCenteredText("Start OHCA", SCREEN_H / 2 - 12, COLOR_ACCENT_OK);
 }
 
 void drawOhcaWaitFirstEpi() {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("OHCA Case");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout
+    // 前置：caller 已 clearDisplay 為黑底
+    display.setFont();
+
+    // 頂部 OHCA 綠 badge（同 drawOhcaCountdownCommon）
     display.setTextSize(2);
-    display.setCursor(8, 24);
-    display.println("Press EPI");
+    drawCenteredText("OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // 中央大字「Awaiting EPI」（demo 寫「待本機 EPI」灰色 24px；無中文字型，用英文 + size 3 default font）
+    display.setTextSize(3);
+    drawCenteredText("Awaiting EPI", SCREEN_H / 2 - 12, COLOR_TEXT_MUTED);
+
+    // 副標：兩段確認提示
     display.setTextSize(1);
-    display.setCursor(8, 50);
-    display.println("(2-step confirm)");
+    drawCenteredText("(press EPI x2 to confirm)", SCREEN_H / 2 + 24, COLOR_TEXT_DIM);
+
+    // 底部 EPI/Shock 計數（首次 EPI 前皆為 0，但保持 layout 一致）
+    uint16_t epiN = 0, shockN = 0;
+    for (uint16_t i = 0; i < eventCount; i++) {
+        if      (isEpiEvent(&events[i]))   epiN   += events[i].count;
+        else if (isShockEvent(&events[i])) shockN += events[i].count;
+    }
+    char counter[24];
+    snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
+    display.setTextSize(1);
+    drawCenteredText(counter, SCREEN_H - OHCA_COUNTER_BOTTOM, COLOR_TEXT_DIM);
 }
 
 /**
@@ -1589,6 +1641,54 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     display.getTextBounds(counter, 0, 0, &bx, &by, &bw, &bh);
     display.setCursor((SCREEN_W - (int16_t)bw) / 2, SCREEN_H - OHCA_COUNTER_BOTTOM);
     display.print(counter);
+}
+
+/**
+ * OHCA 倒數 partial update — 每秒 tick 只重畫時間區塊，badge / label / counter 不動。
+ *
+ * 解閃爍：避免每秒 fillScreen 整片 320×240 → 掃描線可見。只 fillRect 時間 bbox。
+ * 限定條件由 caller 確保（同 state、僅 countdownSec 變化、非 ALARMING）。
+ */
+static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
+    const uint32_t now    = millis();
+    const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+    const uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
+    const uint32_t past   = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+
+    uint32_t time_ms;
+    uint16_t timeColor;
+    if (ohcaStateForTime == OHCA_STATE_COUNTDOWN) {
+        time_ms = remain; timeColor = COLOR_TEXT_PRIMARY;
+    } else if (ohcaStateForTime == OHCA_STATE_WARNING) {
+        time_ms = remain; timeColor = COLOR_ACCENT_WARN;
+    } else {
+        time_ms = past;   timeColor = COLOR_ACCENT_ALERT;  // OVERTIME
+    }
+
+    char timeStr[8];
+    const uint32_t total_sec = time_ms / 1000;
+    snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu",
+             (unsigned long)(total_sec / 60),
+             (unsigned long)(total_sec % 60));
+
+    display.setFont(&FreeMonoBold24pt7b);
+    display.setTextSize(1);
+    int16_t bx, by;
+    uint16_t bw, bh;
+    display.getTextBounds(timeStr, 0, 0, &bx, &by, &bw, &bh);
+    const int16_t time_x = (SCREEN_W - (int16_t)bw) / 2 - bx;
+    const int16_t time_y = SCREEN_H / 2 + (int16_t)bh / 2 - OHCA_TIME_VISUAL_UP;
+
+    // erase region：bbox + 2px 邊（getTextBounds 的 bx/by 為 cursor 到 bbox 左上的 offset）
+    const int16_t erase_x = time_x + bx - 2;
+    const int16_t erase_y = time_y + by - 2;
+    const int16_t erase_w = (int16_t)bw + 4;
+    const int16_t erase_h = (int16_t)bh + 4;
+    display.fillRect(erase_x, erase_y, erase_w, erase_h, COLOR_BG);
+
+    display.setTextColor(timeColor);
+    display.setCursor(time_x, time_y);
+    display.print(timeStr);
 }
 
 void drawOhcaEndCheck() {
