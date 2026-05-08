@@ -133,6 +133,12 @@ static const int16_t  OHCA_TIME_VISUAL_UP = 8;
 static const int16_t  OHCA_LABEL_GAP_PX   = 16;
 /** 底部 EPI/Shock 計數行距底邊 px */
 static const int16_t  OHCA_COUNTER_BOTTOM = 18;
+
+/** 倒數 partial push bbox（保守覆蓋 FreeMonoBold24pt7b "00:00" 5 chars 區域） */
+static const int16_t  OHCA_TIME_PUSH_X    = 80;
+static const int16_t  OHCA_TIME_PUSH_Y    = 90;
+static const int16_t  OHCA_TIME_PUSH_W    = 160;
+static const int16_t  OHCA_TIME_PUSH_H    = 60;
 /** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37 + 板上 WS2812 GPIO 48） */
 static const int8_t   TFT_CS_PIN    = 21;
 static const int8_t   TFT_DC_PIN    = 1;   /**< 原 48 → 1：避開板上 WS2812 RGB LED（2026-05-08 實機踩雷） */
@@ -1419,7 +1425,15 @@ void updateDisplay() {
         && sameStateAsLast
         && (now.countdownSec != lastDisplaySnapshot.countdownSec)) {
         drawOhcaCountdownTimeOnly(now.ohcaState);
-        tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H);
+        // 只 push 時間 bbox（~14KB / ~3ms @40MHz），徹底消除每秒「整片刷新」掃描感
+        uint16_t *buf = display.getBuffer();
+        tft.startWrite();
+        tft.setAddrWindow(OHCA_TIME_PUSH_X, OHCA_TIME_PUSH_Y, OHCA_TIME_PUSH_W, OHCA_TIME_PUSH_H);
+        for (int16_t row = 0; row < OHCA_TIME_PUSH_H; row++) {
+            tft.writePixels(buf + (OHCA_TIME_PUSH_Y + row) * SCREEN_W + OHCA_TIME_PUSH_X,
+                            OHCA_TIME_PUSH_W);
+        }
+        tft.endWrite();
         lastDisplaySnapshot = now;
         return;
     }
@@ -1695,6 +1709,11 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
              (unsigned long)(total_sec / 60),
              (unsigned long)(total_sec % 60));
 
+    // 先把 partial push 區域的 canvas 全黑（解 advance gap 殘留 — glyph bbox 之外
+    // 的像素 setTextColor(fg,bg) 不會清，每秒寫一次會累積成白塊）
+    display.fillRect(OHCA_TIME_PUSH_X, OHCA_TIME_PUSH_Y,
+                     OHCA_TIME_PUSH_W, OHCA_TIME_PUSH_H, COLOR_BG);
+
     display.setFont(&FreeMonoBold24pt7b);
     display.setTextSize(1);
     int16_t bx, by;
@@ -1703,10 +1722,7 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
     const int16_t time_x = (SCREEN_W - (int16_t)bw) / 2 - bx;
     const int16_t time_y = SCREEN_H / 2 + (int16_t)bh / 2 - OHCA_TIME_VISUAL_UP;
 
-    // setTextColor(fg, bg) 讓 GFX 在 drawChar 內合併「fillRect glyph bbox + 畫前景」單步寫，
-    // 避免外層 fillRect 整塊先變黑再畫字的中間態 → 消除掃描感。
-    // 安全前提：FreeMonoBold24pt7b 是 monospace，glyph bbox ≈ xAdvance，相鄰字無 gap 殘留。
-    display.setTextColor(timeColor, COLOR_BG);
+    display.setTextColor(timeColor);
     display.setCursor(time_x, time_y);
     display.print(timeStr);
 }
