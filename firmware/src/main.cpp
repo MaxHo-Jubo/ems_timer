@@ -31,9 +31,8 @@
 
 #include <Arduino.h>
 #include <SPI.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_ST7789.h>
-#include <Fonts/FreeMonoBold24pt7b.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 
 #include "ems_ohca_state.h"
 #include "ems_ohca_countdown.h"
@@ -56,33 +55,62 @@ using namespace ems;
 #define SH110X_BLACK  0x0000  /**< RGB565 黑色（取代舊 1-bit 0） */
 
 /**
- * Adafruit_ST7789 的薄包裝：補回 SH110X 風格的 clearDisplay() / display() 介面。
- * Step 1 用途：讓既有 1300+ 行 `display.xxx()` 呼叫點不需修改即可編譯通過。
- * Step 2 將以 `ems_display` 模組取代，本 adapter 屆時刪除。
+ * LovyanGFX 硬體配置：ESP32-S3 GP-SPI2 + DMA + ST7789 240×320 panel。
+ * Pin 號碼與 TFT_*_PIN 常數同步（gpio-allocation.md §5.2）。
  */
-class TftAdapter : public Adafruit_ST7789 {
+class LGFX : public lgfx::LGFX_Device {
+    lgfx::Panel_ST7789 _panel;
+    lgfx::Bus_SPI      _bus;
 public:
-    using Adafruit_ST7789::Adafruit_ST7789;
-    /** SH110X 相容：清空畫面（TFT 直接 fillScreen 黑） */
-    void clearDisplay() { fillScreen(SH110X_BLACK); }
-    /** SH110X 相容：buffer flush（TFT 立即寫入，no-op） */
-    void display() { /* ST7789 writes immediately, nothing to flush */ }
+    LGFX(void) {
+        {
+            auto cfg = _bus.config();
+            cfg.spi_host = SPI2_HOST;
+            cfg.spi_mode = 0;
+            cfg.freq_write = 80000000;
+            cfg.freq_read  = 16000000;
+            cfg.spi_3wire  = false;
+            cfg.use_lock   = true;
+            cfg.dma_channel = SPI_DMA_CH_AUTO;
+            cfg.pin_sclk = 3;
+            cfg.pin_mosi = 2;
+            cfg.pin_miso = -1;
+            cfg.pin_dc   = 1;
+            _bus.config(cfg);
+            _panel.setBus(&_bus);
+        }
+        {
+            auto cfg = _panel.config();
+            cfg.pin_cs   = 21;
+            cfg.pin_rst  = 47;
+            cfg.pin_busy = -1;
+            cfg.panel_width  = 240;
+            cfg.panel_height = 320;
+            cfg.offset_x = 0;
+            cfg.offset_y = 0;
+            cfg.offset_rotation = 0;
+            cfg.dummy_read_pixel = 8;
+            cfg.dummy_read_bits  = 1;
+            cfg.readable  = false;
+            cfg.invert    = false;  // 蝦皮紅板 polarity（同 Adafruit_ST7789 invertDisplay(false)）
+            cfg.rgb_order = false;
+            cfg.dlen_16bit = false;
+            cfg.bus_shared = false;
+            _panel.config(cfg);
+        }
+        setPanel(&_panel);
+    }
 };
 
 /**
- * 全頁 RAM 緩衝：所有 draw functions 把畫面合成到 RAM canvas（GFXcanvas16），
- * updateDisplay 結尾以 drawRGBBitmap 一次 push 到 TFT。徹底消滅「fillScreen → 慢
- * 慢出文字」的中間態掃描感。
- *   - RAM 開銷：320×240×2 = 153,600 bytes
- *   - 補 SH110X 相容 display() / clearDisplay() no-op，與舊 1300+ 行呼叫點相容
+ * SH110X 相容包裝：補 clearDisplay() / display() no-op 給 1300+ 行舊呼叫點。
+ * push 由 updateDisplay 結尾透過 pushSprite(&tft, 0, 0) DMA 推到實體 TFT。
  */
-class FrameBuffer : public GFXcanvas16 {
+class FrameSprite : public lgfx::LGFX_Sprite {
 public:
-    using GFXcanvas16::GFXcanvas16;
-    /** SH110X 相容：清 canvas 為黑（取代 fillScreen(SH110X_BLACK)） */
+    FrameSprite(lgfx::LovyanGFX* parent) : LGFX_Sprite(parent) {}
     void clearDisplay() { fillScreen(0x0000); }
-    /** SH110X 相容：no-op（push 由 updateDisplay 結尾統一處理） */
-    void display() { /* push to TFT happens at end of updateDisplay() */ }
+    void display() { /* push handled at updateDisplay end */ }
 };
 
 // ============================================================
@@ -343,10 +371,10 @@ static bool     btnLongFired[BTN_COUNT]     = { false };
 // OLED + 蜂鳴 / 反色 SM
 // ============================================================
 
-/** 實體 TFT 控制（init / SPI / rotation / push bitmap） */
-TftAdapter tft(TFT_CS_PIN, TFT_DC_PIN, TFT_MOSI_PIN, TFT_SCLK_PIN, TFT_RST_PIN);
-/** 全頁 RAM canvas — 所有 draw functions 寫到這裡，updateDisplay 結尾一次 push 到 tft */
-FrameBuffer display(SCREEN_W, SCREEN_H);
+/** 實體 TFT 控制（init / SPI / rotation / DMA push） */
+LGFX tft;
+/** 全頁 RAM sprite — 所有 draw functions 寫到這裡，updateDisplay 結尾 pushSprite DMA 一次推到 tft */
+FrameSprite display(&tft);
 
 // 蜂鳴器：脈衝模式（pulses=255 視為連續直到 stop）
 static uint8_t  beepPulsesRemaining = 0;
@@ -451,18 +479,22 @@ void setup() {
         lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
 
-    // STEP 03: TFT 初始化（取代舊 SH1106 OLED）
-    //   - init() 回傳 void，無 fail handler 介面（Adafruit_ST7789 API 限制）
-    //   - invertDisplay(false)：蝦皮 ST7789 紅板 polarity 與 Adafruit 預設相反，必加（見 tft-migration-plan.md §3.5）
-    //   - setSPISpeed(80MHz)：ESP32-S3 SPI master 上限，整片 push ~4ms 接近瞬完成；
-    //     麵包板布線品質決定上限，若出花屏 / 隨機像素 → 降 60MHz / 40MHz
-    //   - tft 是實體 ST7789 控制；所有 draw 寫到全頁 canvas（display），updateDisplay 結尾一次 push
-    tft.init(TFT_WIDTH, TFT_HEIGHT);
-    tft.setSPISpeed(80000000);
+    // STEP 03: TFT 初始化（LovyanGFX + DMA + sprite buffer）
+    //   - tft.init()：SPI 80MHz @ DMA_CH_AUTO（class LGFX 內 cfg）
+    //   - invert: false（蝦皮紅板 polarity，已寫死於 LGFX panel cfg）
+    //   - display 為全頁 LGFX_Sprite（320×240 @ 16bpp = 153,600 bytes，
+    //     優先嘗試 PSRAM；fail 退 internal RAM）
+    //   - 所有 draw 寫到 display sprite，updateDisplay 結尾 pushSprite DMA 推到 tft
+    tft.init();
     tft.setRotation(1);  // 1 = 橫向 320x240
-    tft.invertDisplay(false);
-    tft.fillScreen(SH110X_BLACK);
-    display.fillScreen(0x0000);  // canvas 起始黑底
+    tft.fillScreen(0x0000);
+
+    display.setColorDepth(16);
+    display.setPsram(true);  // PSRAM 優先（N16R8 8MB），fail 退 internal RAM
+    if (!display.createSprite(SCREEN_W, SCREEN_H)) {
+        Serial.println("[FATAL] sprite createSprite failed");
+    }
+    display.fillScreen(0x0000);
 
     // STEP 04: 兩段確認 init
     twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
@@ -1288,14 +1320,14 @@ void triggerOledFlash(uint16_t durationMs) {
     oledInverted          = true;
     oledInvertStartMs     = millis();
     oledInvertDurationMs  = durationMs;
-    display.invertDisplay(true);
+    tft.invertDisplay(true);
 }
 
 void updateOledFlashMachine() {
     if (!oledInverted) return;
     if (millis() - oledInvertStartMs >= oledInvertDurationMs) {
         oledInverted = false;
-        display.invertDisplay(false);
+        tft.invertDisplay(false);
     }
 }
 
@@ -1426,15 +1458,9 @@ void updateDisplay() {
         && sameStateAsLast
         && (now.countdownSec != lastDisplaySnapshot.countdownSec)) {
         drawOhcaCountdownTimeOnly(now.ohcaState);
-        // 只 push 時間 bbox（~14KB / ~3ms @40MHz），徹底消除每秒「整片刷新」掃描感
-        uint16_t *buf = display.getBuffer();
-        tft.startWrite();
-        tft.setAddrWindow(OHCA_TIME_PUSH_X, OHCA_TIME_PUSH_Y, OHCA_TIME_PUSH_W, OHCA_TIME_PUSH_H);
-        for (int16_t row = 0; row < OHCA_TIME_PUSH_H; row++) {
-            tft.writePixels(buf + (OHCA_TIME_PUSH_Y + row) * SCREEN_W + OHCA_TIME_PUSH_X,
-                            OHCA_TIME_PUSH_W);
-        }
-        tft.endWrite();
+        // LGFX DMA pushSprite 整片 ~4ms @80MHz；sub-region push 雖更短，
+        // 但 DMA 整片視覺已近瞬完成，留簡化邏輯
+        display.pushSprite(0, 0);
         lastDisplaySnapshot = now;
         return;
     }
@@ -1450,14 +1476,14 @@ void updateDisplay() {
         drawMainMenu();
     } else if (globalState == GLOBAL_OHCA) {
         // Phase B: sub-state 子流程畫面優先
-        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
-        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
-        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
-        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        display.pushSprite(0, 0); return; }
 
         switch (ohcaState) {
             case OHCA_STATE_START_FLASH:
@@ -1524,8 +1550,8 @@ void updateDisplay() {
         drawPlaceholder("Settings", "Phase G");
     }
 
-    // STEP 99: 把全頁 canvas 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
-    tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H);
+    // STEP 99: pushSprite DMA 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
+    display.pushSprite(0, 0);
 }
 
 void drawMainMenu() {
@@ -1565,19 +1591,16 @@ void drawMainMenu() {
     }
 }
 
-/** 共用：在 (cx, y) 為中心畫一行水平置中文字（cursor.y = baseline 或 top 視 caller setFont 而定） */
+/** 共用：水平置中文字（top_center datum，y = top 對齊） */
 static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
-    int16_t bx, by;
-    uint16_t bw, bh;
-    display.getTextBounds(text, 0, 0, &bx, &by, &bw, &bh);
     display.setTextColor(color);
-    display.setCursor((SCREEN_W - (int16_t)bw) / 2 - bx, y);
-    display.print(text);
+    display.setTextDatum(textdatum_t::top_center);
+    display.drawString(text, SCREEN_W / 2, y);
 }
 
 void drawOhcaStartFlash() {
     // OHCA 案件啟動 1 秒提示：綠色全螢幕 "Start OHCA"
-    display.setFont();
+    display.setFont(&fonts::Font0);
     display.setTextSize(3);
     drawCenteredText("Start OHCA", SCREEN_H / 2 - 12, COLOR_ACCENT_OK);
 }
@@ -1585,7 +1608,7 @@ void drawOhcaStartFlash() {
 void drawOhcaWaitFirstEpi() {
     // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout
     // 前置：caller 已 clearDisplay 為黑底
-    display.setFont();
+    display.setFont(&fonts::Font0);
 
     // 頂部 OHCA 綠 badge（同 drawOhcaCountdownCommon）
     display.setTextSize(2);
@@ -1629,41 +1652,33 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
         display.fillScreen(COLOR_FLASH_VENT);
     }
 
-    int16_t bx, by;       // getTextBounds 回填 bounding box 起點 offset
-    uint16_t bw, bh;      // getTextBounds 回填 bounding box 寬高
-
-    // STEP 02: 頂部 mode badge "OHCA"（綠）
-    display.setFont();  // default 5x7
+    // STEP 02: 頂部 mode badge "OHCA"（綠 top-center datum）
+    display.setFont(&fonts::Font0);
     display.setTextSize(2);
     display.setTextColor(COLOR_ACCENT_OK);
-    display.getTextBounds("OHCA", 0, 0, &bx, &by, &bw, &bh);
-    display.setCursor((SCREEN_W - (int16_t)bw) / 2, OHCA_BADGE_Y);
-    display.print("OHCA");
+    display.setTextDatum(textdatum_t::top_center);
+    display.drawString("OHCA", SCREEN_W / 2, OHCA_BADGE_Y);
 
-    // STEP 03: 中央大時間（FreeMonoBold24pt7b，monospace 確保 mm:ss 數字 tick 不左右抖動）
+    // STEP 03: 中央大時間（FreeMonoBold24pt7b，middle-center datum 自動置中）
     char timeStr[8];
     const uint32_t total_sec = time_ms / 1000;
     snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu",
              (unsigned long)(total_sec / 60),
              (unsigned long)(total_sec % 60));
 
-    display.setFont(&FreeMonoBold24pt7b);
+    display.setFont(&fonts::FreeMonoBold24pt7b);
     display.setTextSize(1);
     display.setTextColor(timeColor);
-    display.getTextBounds(timeStr, 0, 0, &bx, &by, &bw, &bh);
-    // 自訂字型 cursor.y 是 baseline；OHCA_TIME_VISUAL_UP 補上偏給 STEP 04 標籤留空間
-    const int16_t time_x = (SCREEN_W - (int16_t)bw) / 2 - bx;
-    const int16_t time_y = SCREEN_H / 2 + (int16_t)bh / 2 - OHCA_TIME_VISUAL_UP;
-    display.setCursor(time_x, time_y);
-    display.print(timeStr);
+    display.setTextDatum(textdatum_t::middle_center);
+    const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
+    display.drawString(timeStr, SCREEN_W / 2, time_y);
 
     // STEP 04: 時間下方標籤
-    display.setFont();
+    display.setFont(&fonts::Font0);
     display.setTextSize(2);
     display.setTextColor(COLOR_TEXT_MUTED);
-    display.getTextBounds(label, 0, 0, &bx, &by, &bw, &bh);
-    display.setCursor((SCREEN_W - (int16_t)bw) / 2, time_y + OHCA_LABEL_GAP_PX);
-    display.print(label);
+    display.setTextDatum(textdatum_t::top_center);
+    display.drawString(label, SCREEN_W / 2, time_y + OHCA_LABEL_GAP_PX);
 
     // STEP 05: 累加 EPI / Shock 事件次數（含補登 count）
     uint16_t epiN = 0, shockN = 0;
@@ -1672,14 +1687,13 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
 
-    // STEP 06: 底部計數行 渲染
+    // STEP 06: 底部計數行（bottom-center datum）
     char counter[24];     // "EPI 65535  Shock 65535\0" = 23 byte
     snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
     display.setTextSize(1);
     display.setTextColor(COLOR_TEXT_DIM);
-    display.getTextBounds(counter, 0, 0, &bx, &by, &bw, &bh);
-    display.setCursor((SCREEN_W - (int16_t)bw) / 2, SCREEN_H - OHCA_COUNTER_BOTTOM);
-    display.print(counter);
+    display.setTextDatum(textdatum_t::bottom_center);
+    display.drawString(counter, SCREEN_W / 2, SCREEN_H - OHCA_COUNTER_BOTTOM);
 }
 
 /**
@@ -1715,17 +1729,12 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
     display.fillRect(OHCA_TIME_PUSH_X, OHCA_TIME_PUSH_Y,
                      OHCA_TIME_PUSH_W, OHCA_TIME_PUSH_H, COLOR_BG);
 
-    display.setFont(&FreeMonoBold24pt7b);
+    display.setFont(&fonts::FreeMonoBold24pt7b);
     display.setTextSize(1);
-    int16_t bx, by;
-    uint16_t bw, bh;
-    display.getTextBounds(timeStr, 0, 0, &bx, &by, &bw, &bh);
-    const int16_t time_x = (SCREEN_W - (int16_t)bw) / 2 - bx;
-    const int16_t time_y = SCREEN_H / 2 + (int16_t)bh / 2 - OHCA_TIME_VISUAL_UP;
-
     display.setTextColor(timeColor);
-    display.setCursor(time_x, time_y);
-    display.print(timeStr);
+    display.setTextDatum(textdatum_t::middle_center);
+    const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
+    display.drawString(timeStr, SCREEN_W / 2, time_y);
 }
 
 void drawOhcaEndCheck() {
