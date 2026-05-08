@@ -1874,182 +1874,193 @@ void drawPlaceholder(const char* title, const char* phase) {
 
 /** 藥物選單（V1 §9.2） */
 void drawDrugMenu() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Drug Menu");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // 標題
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("EPI / 藥物選單", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    const char* labels[2] = { "Backfill EPI", "Amiodarone" };
+    // 2 項目
+    const char* labels[2] = { "補登 EPI", "Amiodarone" };
+    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
     for (uint8_t i = 0; i < 2; i++) {
-        int y = 18 + i * 12;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
-        display.print("> ");
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(labels[i]);
     }
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 56);
-    display.println("[Back] cancel");
+
+    drawCenteredText("上下選擇　主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登類型選擇（接手前 / 純補登） */
 void drawBackfillType() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println(backfillCategory == BACKFILL_CAT_EPI ? "Backfill EPI"
-                                                         : "Backfill Shock");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    const char* header = (backfillCategory == BACKFILL_CAT_EPI) ? "補登 EPI" : "電擊補登";
+    drawCenteredText(header, 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    const char* labels[2] = { "Pre-handover", "Pure backfill" };
+    const char* labels[2];
+    if (backfillCategory == BACKFILL_CAT_EPI) {
+        labels[0] = "接手前 EPI"; labels[1] = "純補登 EPI";
+    } else {
+        labels[0] = "接手前電擊"; labels[1] = "純補登電擊";
+    }
+
+    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
     for (uint8_t i = 0; i < 2; i++) {
-        int y = 18 + i * 12;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
-        display.print("> ");
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(labels[i]);
     }
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 56);
-    display.println("[Back] cancel");
+
+    drawCenteredText("上下選擇　主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登次數選擇（V1 §9.6） */
 void drawBackfillCount() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
+    // 標題
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
     const char* typeLabel =
-        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "PreHandover EPI" :
-        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure Supp EPI"   :
-        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "PreHandover Shk" :
-                                                             "Pure Supp Shk";
-    display.println(typeLabel);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "純補登 EPI" :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "接手前電擊" :
+                                                             "純補登電擊";
+    drawCenteredText(typeLabel, 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    display.setCursor(0, 18);
-    display.print("Count: ");
+    // 範圍提示
     uint8_t maxN = suppCountMax(backfillSuppType);
-    display.print("(1~");
-    display.print(maxN);
-    display.print(")");
-
-    display.setTextSize(3);
-    display.setCursor(48, 30);
-    display.print(backfillCount);
-
+    char rangeBuf[32];
+    snprintf(rangeBuf, sizeof(rangeBuf), "次數（1~%u）", maxN);
     display.setTextSize(1);
-    display.setCursor(0, 56);
-    display.println("[Up/Dn] [Main]OK [Bk]");
+    drawCenteredText(rangeBuf, 78, COLOR_TEXT_MUTED);
+
+    // 大數字
+    char numBuf[6];
+    snprintf(numBuf, sizeof(numBuf), "%u", backfillCount);
+    display.setFont(&fonts::FreeMonoBold24pt7b);
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 8);
+
+    // 底部 hint
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
+    drawCenteredText("上下調整　主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登確認對話框（V1 §9.4） */
 void drawBackfillConfirm() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Confirm backfill?");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("確認補登？", 20, COLOR_ACCENT_WARN);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     const char* shortLabel =
-        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
-        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure-EPI"   :
-        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "Pre-Shk" :
-                                                             "Pure-Shk";
-
-    display.setTextSize(2);
-    display.setCursor(8, 16);
-    display.print(shortLabel);
-    display.print(" x");
-    display.print(backfillCount);
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "純補登 EPI" :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "接手前電擊" :
+                                                             "純補登電擊";
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%s ×%u", shortLabel, backfillCount);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(buf, 90, COLOR_TEXT_PRIMARY);
 
     display.setTextSize(1);
-    display.setCursor(0, 38);
-    display.println("Not undoable");
-    display.setCursor(0, 56);
-    display.println("[Main]OK [Bk]cancel");
+    drawCenteredText("成立後不可撤銷", 150, COLOR_TEXT_MUTED);
+
+    drawCenteredText("主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登成功提示（2s 後自動消失，V1 §9.5） */
 void drawBackfillSuccess() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Backfill OK");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("補登成功", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     const char* shortLabel =
-        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
-        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure-EPI"   :
-        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "Pre-Shk" :
-                                                             "Pure-Shk";
-
-    display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.print(shortLabel);
-    display.print(" x");
-    display.print(backfillCount);
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "純補登 EPI" :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "接手前電擊" :
+                                                             "純補登電擊";
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%s ×%u", shortLabel, backfillCount);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(buf, 90, COLOR_TEXT_PRIMARY);
 
     display.setTextSize(1);
-    display.setCursor(0, 56);
-    display.println("Recorded");
+    drawCenteredText("已紀錄", 150, COLOR_TEXT_MUTED);
 }
 
 /** Amiodarone 兩段確認 */
 void drawAmioConfirmPrompt() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Amiodarone");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
-
-    display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.println("Confirm?");
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("確認 Amiodarone？", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     display.setTextSize(1);
+    drawCenteredText("確認後將建立時間戳", 90, COLOR_TEXT_PRIMARY);
+    drawCenteredText("不影響 EPI 倒數",   124, COLOR_TEXT_MUTED);
+
     if (showAmioArmedPrompt) {
-        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
-        display.setCursor(2, OLED_HEIGHT - 10);
-        display.print("Press [Main] again");
+        // 底部琥珀 bar overlay：再按一次主鍵確認
+        const int16_t bar_h = 44;
+        display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
+        display.setFont(&fonts::efontTW_24);
+        display.setTextSize(1.2f, 1.2f);
+        display.setTextColor(COLOR_BG);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString("再按一次主鍵確認", SCREEN_W / 2, SCREEN_H - bar_h / 2);
     } else {
-        display.setCursor(0, 56);
-        display.println("[Main]confirm [Bk]cancel");
+        drawCenteredText("主鍵確認　返回取消",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
     }
 }
 
 /** Timeline 子畫面（V1 §11.5） */
 void drawTimeline() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Timeline");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // 標題
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("事件時間軸", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     if (eventCount == 0) {
-        display.setCursor(0, 24);
-        display.println("(no events)");
-        display.setCursor(0, 56);
-        display.println("[Back] -> Summary");
+        display.setTextSize(1);
+        drawCenteredText("（無事件）", SCREEN_H / 2 - 12, COLOR_TEXT_MUTED);
+        drawCenteredText("返回　總覽",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
         return;
     }
 
@@ -2057,43 +2068,54 @@ void drawTimeline() {
     static uint16_t idx[MAX_EVENTS];
     caseSummary_buildTimeline(idx, events, eventCount);
 
-    // 顯示最多 4 筆
+    // 顯示最多 5 筆，row_h=28
+    constexpr int16_t ROW_Y0  = 70;
+    constexpr int16_t ROW_H   = 28;
+    constexpr int16_t TIME_X  = 24;
+    constexpr int16_t LABEL_X = 110;
+
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
     uint16_t shown = 0;
-    for (uint16_t i = timelineScrollOffset; i < eventCount && shown < 4; i++, shown++) {
-        int y = 14 + shown * 10;
-        display.setCursor(0, y);
+    for (uint16_t i = timelineScrollOffset; i < eventCount && shown < 5; i++, shown++) {
+        const int16_t y = ROW_Y0 + shown * ROW_H;
         const ems_event_t& e = events[idx[i]];
 
-        // 時間欄：本機顯示 mm:ss；補登顯示「-」
-        if (isBackfillEvent(&e)) {
-            display.print("- ");
+        // 時間欄
+        char timeBuf[16];
+        const bool isSupp = isBackfillEvent(&e);
+        if (isSupp) {
+            snprintf(timeBuf, sizeof(timeBuf), "—");
+            display.setTextColor(COLOR_TEXT_DIM);
         } else {
-            uint32_t sec = e.elapsed_ms / 1000;
-            if (sec / 60 < 10) display.print("0");
-            display.print(sec / 60);
-            display.print(":");
-            if (sec % 60 < 10) display.print("0");
-            display.print(sec % 60);
-            display.print(" ");
+            const uint32_t sec = e.elapsed_ms / 1000;
+            snprintf(timeBuf, sizeof(timeBuf), "%02lu:%02lu",
+                     (unsigned long)(sec / 60), (unsigned long)(sec % 60));
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
+        display.setCursor(TIME_X, y);
+        display.print(timeBuf);
 
-        // 類型 + count（補登 ×N）
+        // 類型欄
         const char* lbl =
             e.type == EVT_EPI_LOCAL          ? "EPI" :
-            e.type == EVT_SHOCK_LOCAL        ? "Shk" :
-            e.type == EVT_AMIODARONE         ? "Amio" :
-            e.type == EVT_EPI_PRE_HANDOVER   ? "PreEPI" :
-            e.type == EVT_EPI_PURE_SUPP      ? "PurEPI" :
-            e.type == EVT_SHOCK_PRE_HANDOVER ? "PreShk" :
-            e.type == EVT_SHOCK_PURE_SUPP    ? "PurShk" : "?";
+            e.type == EVT_SHOCK_LOCAL        ? "電擊" :
+            e.type == EVT_AMIODARONE         ? "Amiodarone" :
+            e.type == EVT_EPI_PRE_HANDOVER   ? "接手前 EPI" :
+            e.type == EVT_EPI_PURE_SUPP      ? "純補登 EPI" :
+            e.type == EVT_SHOCK_PRE_HANDOVER ? "接手前電擊" :
+            e.type == EVT_SHOCK_PURE_SUPP    ? "純補登電擊" : "?";
+        display.setTextColor(isSupp ? COLOR_ACCENT_WARN : COLOR_TEXT_PRIMARY);
+        display.setCursor(LABEL_X, y);
         display.print(lbl);
         if (e.count > 1) {
-            display.print("x");
+            display.print(" ×");
             display.print(e.count);
         }
     }
-    display.setCursor(0, 56);
-    display.println("[Back] -> Summary");
+
+    drawCenteredText("返回　總覽",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 // ============================================================
@@ -2169,41 +2191,45 @@ void drawVentEndCheck() {
 
 /** 快速功能選單（V1 §14.9 開啟、暫停、繼續與關閉 + §9 OHCA 中按返回鍵） */
 void drawQuickMenu() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Quick Menu");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("快速功能", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     // V1 §14.9：動態 2 / 3 項
     const char* labels[3];
     uint8_t count;
     if (!ohcaVentOverlayEnabled) {
-        labels[0] = "Enable 6s vent";
-        labels[1] = "Back to OHCA";
+        labels[0] = "開啟 6 秒給氣提示";
+        labels[1] = "返回 OHCA";
         count = 2;
     } else {
-        labels[0] = ohcaVentPaused ? "Resume 6s vent" : "Pause 6s vent";
-        labels[1] = "Disable 6s vent";
-        labels[2] = "Back to OHCA";
+        labels[0] = ohcaVentPaused ? "繼續 6 秒給氣" : "暫停 6 秒給氣";
+        labels[1] = "關閉 6 秒給氣提示";
+        labels[2] = "返回 OHCA";
         count = 3;
     }
+
+    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
     for (uint8_t i = 0; i < count; i++) {
-        int y = 18 + i * 12;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
-        display.print("> ");
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(labels[i]);
     }
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 56);
-    display.println("[Main]OK [Bk]close");
+
+    drawCenteredText("上下選擇　主鍵確認　返回關閉",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗 / §14.10 暫停狀態）
