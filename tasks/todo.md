@@ -163,8 +163,10 @@
 - [x] STEP 06 計數行漏 setFont(Font0) bug + label gap 48→60 修正（commit 7133d53）
 - [x] 標籤字級 setTextSize(1.2f, 1.2f) ≈ 29px（PM 反饋再大）+ 計數行 Shock→電擊（commit 3ea8ca5）
 - [x] Flash 11→27.6%（efontTW_24 fontmap ~600KB），3.3MB 還夠
-- [ ] **下一個畫面中文化**：drawOhcaWaitFirstEpi（Awaiting EPI → 待本機 EPI / 副標 / 計數）
-- [ ] EndCheck / Locked / Summary / VentStandalone / VentEndCheck / Placeholder 中文化
+- [x] WaitFirstEpi 中文化（待本機 EPI / 按兩次 EPI 確認 / 電擊計數，commit e936caa）
+- [x] 兩段確認 overlay + StartFlash 中文化（EPI/電擊？再按一次 / OHCA 啟動，commit 7ffbf97）
+- [ ] **下次接續從這裡**：EndCheck / Locked / Summary 中文化（drawOhcaEndCheck/Locked/Summary）
+- [ ] VentStandalone / VentEndCheck / VentOverlay（右上角 VENT→通氣）/ Placeholder 中文化
 - [ ] efontTW_24 字型品質不一致（如「電擊」兩字視覺不平衡）若不可接受 → 採 vlw 自訂字型
 
 ### 未跑 review 的 commits（rate limit 恢復後補跑）
@@ -172,6 +174,8 @@
 依 CLAUDE.md POST-COMMIT-REVIEW，以下 commits 已 commit 未走 5 步驟 review：
 
 ```
+7ffbf97  兩段確認 overlay + StartFlash 中文化
+e936caa  WaitFirstEpi 中文化（待本機 EPI / 按兩次 EPI 確認 / 電擊）
 3ea8ca5  OHCA 倒數標籤 1.2x + 電擊中文
 7133d53  STEP 06 setFont fix + label gap 60
 9a9575d  OHCA 倒數標籤中文化
@@ -190,6 +194,17 @@ c2155a4  SPI 80MHz（穩定但 lib overhead 才是視覺瓶頸）
 b675a45  SPI 40MHz + setTextColor(fg,bg) 試解掃描感
 8e428c8  WaitFirstEpi 對齊新 layout + partial path
 ```
+
+### Rate limit 恢復後接續清單（按優先序）
+
+1. **EndCheck/Locked/Summary 中文化**（drawOhcaEndCheck / drawOhcaLocked / drawOhcaSummary）
+2. **VentStandalone / VentEndCheck / VentOverlay 中文化**
+3. **Placeholder 中文化**（"Phase X" → "X 階段"）
+4. **drawOhcaCountdownCommon 的 OHCA badge 是否中文化**（「OHCA」改「急救」？或保留）
+5. **drawMainMenu 標題「EMS DOSESYNC PRO」是否本地化**（決定維持英文 or 改「DoseSync 救護計時器」）
+6. **補跑 19 個 commits 的 5 步驟 review**
+7. **推 origin（GitLab + GitHub backup）**
+8. **完整實機 flow 驗收**（OHCA 全 path + 通氣獨立 + 兩段確認 timeout 等）
 
 ### Step 4：硬體層 + 文件同步（半小時）
 
