@@ -1503,13 +1503,13 @@ void updateDisplay() {
                 // ALARMING 閃爍開關直接從 snapshot 讀，避免在 render 內二次取樣 millis()
                 const bool alarmingFlashOn = (lastDisplaySnapshot.flags & 0x80) != 0;
                 if (ohcaState == OHCA_STATE_COUNTDOWN) {
-                    drawOhcaCountdownCommon(remain, COLOR_TEXT_PRIMARY, "Next dose",   false);
+                    drawOhcaCountdownCommon(remain, COLOR_TEXT_PRIMARY, "下次給藥", false);
                 } else if (ohcaState == OHCA_STATE_WARNING) {
-                    drawOhcaCountdownCommon(remain, COLOR_ACCENT_WARN,  "Prepare EPI", false);
+                    drawOhcaCountdownCommon(remain, COLOR_ACCENT_WARN,  "準備給藥", false);
                 } else if (ohcaState == OHCA_STATE_ALARMING) {
-                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "GIVE EPI!",   alarmingFlashOn);
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "請給藥！", alarmingFlashOn);
                 } else {
-                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "OVERTIME",    false);
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "逾時",     false);
                 }
                 break;
             }
@@ -1673,9 +1673,9 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
     display.drawString(timeStr, SCREEN_W / 2, time_y);
 
-    // STEP 04: 時間下方標籤（PM 反饋字級放大）
-    display.setFont(&fonts::Font0);
-    display.setTextSize(3);
+    // STEP 04: 時間下方標籤（efontTW_24 繁中 24px size 1）
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
     display.setTextColor(COLOR_TEXT_MUTED);
     display.setTextDatum(textdatum_t::top_center);
     display.drawString(label, SCREEN_W / 2, time_y + OHCA_LABEL_GAP_PX);
