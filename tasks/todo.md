@@ -213,13 +213,23 @@
 - [ ] 對話內主鍵 → LOCKED；對話內返回 → 退回 END_CHECK 3 項
 - [ ] END_CHECK cursor 1「前往補登」→ 主鍵 → 進入藥物選單（補登 EPI / Amiodarone）
 
-#### Batch 2：Flash 訊息（5 個）⏳ 待做
+#### Batch 2：Flash 訊息（5 個）✅ 已完成
 
-- [ ] A2：「EPI 已紀錄」+「重新倒數 4 分鐘」flash（EPI 確認後）
-- [ ] A3：「電擊已紀錄」flash（電擊確認後）
-- [ ] A4：「Amiodarone 已紀錄」flash
-- [ ] A5：「案件結束並鎖定」+「已存入歷史紀錄」flash（END_CONFIRM 後）
-- [ ] A6：「6秒給氣」+「已開啟/已暫停/已繼續/已關閉」flash
+- [x] **Flash helper 實作**：`triggerFlash(title, subtitle, duration_ms, titleColor)` + drawFlashOverlay + tick timeout + snapshot bit 9 + partial path 排除 modal flags
+- [x] A2：「EPI 已紀錄」+「重新倒數 4 分鐘」（COLOR_ACCENT_OK，1200ms）
+- [x] A3：「電擊已紀錄」（COLOR_ACCENT_OK，1200ms）
+- [x] A4：「Amiodarone 已紀錄」（COLOR_ACCENT_OK，1200ms）
+- [x] A5：「案件結束並鎖定」+「已存入歷史紀錄」（COLOR_ACCENT_ALERT，1200ms）
+- [x] A6：「6 秒給氣」+「已開啟/已繼續/已暫停/已關閉」（800ms）
+
+#### Batch 2 待實機測試項目
+
+- [x] A2 — EPI 確認後 flash「EPI 已紀錄」+「重新倒數 4 分鐘」
+- [ ] A3 — 電擊確認後 flash「電擊已紀錄」
+- [ ] A4 — 長按 EPI → Amiodarone → 確認後 flash「Amiodarone 已紀錄」
+- [ ] A5 — END_CHECK 完成並結束 → END_CONFIRM → 主鍵 → flash「案件結束並鎖定」+「已存入歷史紀錄」
+- [ ] A6 — OHCA 內按返回 → QuickMenu 4 個動作對應 flash（已開啟/已繼續/已暫停/已關閉）
+- [x] partial update 已排除 modal flags，dialog/flash 不會被倒數時間穿透
 
 #### Batch 3：次要補完 ⏳ 待做
 

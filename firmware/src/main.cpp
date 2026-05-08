@@ -362,6 +362,20 @@ static bool endConfirmShown = false;
 static uint16_t summaryScrollOffset = 0;
 
 // ============================================================
+// Flash overlay（demo 對齊：1.2s 全螢幕過場提示）
+// ============================================================
+struct FlashState {
+    bool     active;
+    uint32_t startMs;
+    uint16_t durationMs;
+    char     title[40];
+    char     subtitle[40];
+    uint16_t titleColor;
+};
+static FlashState flashState = {};
+static const uint16_t FLASH_DEFAULT_MS = 1200;
+
+// ============================================================
 // 按鈕狀態
 // ============================================================
 
@@ -439,6 +453,8 @@ void drawOhcaSummary();
 void drawTwoStepArmedOverlay(const char* what);
 void drawOhcaConfirmDialog(uint8_t evType);
 void drawOhcaEndConfirmDialog();
+void drawFlashOverlay();
+void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor);
 void drawPlaceholder(const char* title, const char* phase);
 void drawDrugMenu();
 void drawBackfillType();
@@ -535,6 +551,11 @@ void loop() {
     if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS &&
         now - backfillSuccessShownMs >= BACKFILL_SUCCESS_MS) {
         resetSubState();
+    }
+
+    // Flash overlay timeout（demo flash() 對齊，duration 由 caller 指定）
+    if (flashState.active && now - flashState.startMs >= flashState.durationMs) {
+        flashState.active = false;
     }
 
     // STEP 03: vent 返回鍵提示 2s 自動消失
@@ -740,6 +761,8 @@ void onShortPress(uint8_t btnIdx) {
                         ohcaVentPaused         = false;
                         ventStartMs            = millis();
                         ventPrevSinceMs        = 0;
+                        // A6：對齊 demo flash('6秒給氣', '已開啟')
+                        triggerFlash("6 秒給氣", "已開啟", 800, COLOR_ACCENT_OK);
                         Serial.println("[OHCA] vent overlay = ON");
                     }
                     // backfillCursor == 1 → Back（resetSubState 即可）
@@ -751,8 +774,12 @@ void onShortPress(uint8_t btnIdx) {
                             // V1 §14.11：繼續時秒數重新從 1 開始
                             ventStartMs     = millis();
                             ventPrevSinceMs = 0;
+                            // A6：對齊 demo flash('6秒給氣', '已繼續')
+                            triggerFlash("6 秒給氣", "已繼續", 800, COLOR_ACCENT_OK);
                         } else {
                             stopBeep();
+                            // A6：對齊 demo flash('6秒給氣', '已暫停')
+                            triggerFlash("6 秒給氣", "已暫停", 800, COLOR_ACCENT_WARN);
                         }
                         Serial.printf("[OHCA] vent paused = %d\n", ohcaVentPaused);
                     } else if (backfillCursor == 1) {
@@ -760,6 +787,8 @@ void onShortPress(uint8_t btnIdx) {
                         ohcaVentOverlayEnabled = false;
                         ohcaVentPaused         = false;
                         stopBeep();
+                        // A6：對齊 demo flash('6秒給氣', '已關閉')
+                        triggerFlash("6 秒給氣", "已關閉", 800, COLOR_TEXT_MUTED);
                         Serial.println("[OHCA] vent overlay = OFF");
                     }
                     // backfillCursor == 2 → Back
@@ -791,6 +820,8 @@ void onShortPress(uint8_t btnIdx) {
                     recordLocalEvent(EVT_AMIODARONE);
                     dispatchOhcaEvent(OHCA_EVT_AMIO_CONFIRMED, 0);  // 不重啟倒數
                     triggerBeep(1, 80, 0);
+                    // A4：對齊 demo flash('Amiodarone 已紀錄', '')
+                    triggerFlash("Amiodarone 已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                     Serial.println("[OHCA] Amio confirmed");
                     resetSubState();
                 } else {
@@ -909,6 +940,8 @@ void onShortPress(uint8_t btnIdx) {
                 if (endConfirmShown) {
                     endConfirmShown = false;
                     dispatchOhcaEvent(OHCA_EVT_END_CONFIRM, 0);
+                    // A5：對齊 demo flash('案件結束並鎖定', '已存入歷史紀錄')
+                    triggerFlash("案件結束並鎖定", "已存入歷史紀錄", FLASH_DEFAULT_MS, COLOR_ACCENT_ALERT);
                     Serial.println("[OHCA] case LOCKED (after END_CONFIRM dialog)");
                     return;
                 }
@@ -1009,6 +1042,8 @@ void onShortPress(uint8_t btnIdx) {
                 stopBeep();
                 recordLocalEvent(EVT_EPI_LOCAL);
                 triggerBeep(1, 80, 0);  // 短確認音
+                // A2：對齊 demo flash('EPI 已紀錄', '重新倒數 4 分鐘')
+                triggerFlash("EPI 已紀錄", "重新倒數 4 分鐘", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                 Serial.println("[OHCA] EPI confirmed");
             } else {
                 showEpiArmedPrompt   = true;
@@ -1026,6 +1061,8 @@ void onShortPress(uint8_t btnIdx) {
                 dispatchOhcaEvent(OHCA_EVT_SHOCK_CONFIRMED, 0);  // 不重啟倒數
                 recordLocalEvent(EVT_SHOCK_LOCAL);
                 triggerBeep(1, 80, 0);
+                // A3：對齊 demo flash('電擊已紀錄', '')
+                triggerFlash("電擊已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                 Serial.println("[OHCA] Shock confirmed");
             } else {
                 showShockArmedPrompt   = true;
@@ -1456,6 +1493,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     if (alarmMuted)             s.flags |= 0x20;
     if (ventBackHintShown)      s.flags |= 0x40;
     if (endConfirmShown)        s.flags |= 0x100;  // A7：bit 8
+    if (flashState.active)      s.flags |= 0x200;  // Batch 2：flash overlay bit 9
 
     // ALARMING flash phase：bit 進 snapshot 讓 dedupe 在 ALARMING 期間每半週期觸發一次重繪
     // （demo flashRed 0.6s 全週期 → OHCA_FLASH_HALF_MS 半週期）
@@ -1476,11 +1514,18 @@ void updateDisplay() {
     // STEP 01: partial update — 倒數每秒只 tick 一格時，整片 fillScreen 會出掃描線閃爍。
     // 偵測「在 OHCA 倒數同 state 內，僅 countdownSec 改變」→ 只重繪時間區塊，不動 badge/label/counter。
     // 排除 ALARMING（半週期閃 phase 跟著變，必須走 full path 重畫整片紅 bg）。
+    // 排除 modal overlay（confirm dialog/flash）— partial 不會重畫 overlay，會被時間區塊 fillRect 蓋掉
+    constexpr uint16_t MODAL_FLAGS_MASK = 0x01    // showEpiArmedPrompt
+                                        | 0x02    // showShockArmedPrompt
+                                        | 0x04    // showAmioArmedPrompt
+                                        | 0x100   // endConfirmShown
+                                        | 0x200;  // flashState.active
     const bool inCountdownGroup = (now.globalState == GLOBAL_OHCA)
                                && (now.ohcaState == OHCA_STATE_COUNTDOWN
                                    || now.ohcaState == OHCA_STATE_WARNING
                                    || now.ohcaState == OHCA_STATE_OVERTIME)
-                               && (now.ohcaSubState == 0);
+                               && (now.ohcaSubState == 0)
+                               && ((now.flags & MODAL_FLAGS_MASK) == 0);
     const bool sameStateAsLast = (now.globalState     == lastDisplaySnapshot.globalState)
                               && (now.ohcaState       == lastDisplaySnapshot.ohcaState)
                               && (now.ohcaSubState    == lastDisplaySnapshot.ohcaSubState)
@@ -1584,6 +1629,11 @@ void updateDisplay() {
         drawPlaceholder("歷史紀錄", "E 階段");
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
         drawPlaceholder("系統設定", "G 階段");
+    }
+
+    // Flash overlay 最上層覆蓋（demo flash() 對齊 — 蓋掉所有底下畫面）
+    if (flashState.active) {
+        drawFlashOverlay();
     }
 
     // STEP 99: pushSprite DMA 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
@@ -1810,6 +1860,41 @@ void drawOhcaEndCheck() {
     display.setTextSize(1);
     drawCenteredText("上下選擇　主鍵確認",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+}
+
+/**
+ * 觸發 flash 過場提示（對齊 demo flash() helper）。
+ * @param title       主標題（非 NULL）
+ * @param subtitle    副標題（NULL 或 "" 略過）
+ * @param duration_ms 顯示毫秒（典型 FLASH_DEFAULT_MS=1200）
+ * @param titleColor  主標題色（典型 COLOR_ACCENT_OK / COLOR_TEXT_PRIMARY）
+ */
+void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor) {
+    flashState.active     = true;
+    flashState.startMs    = millis();
+    flashState.durationMs = duration_ms;
+    flashState.titleColor = titleColor;
+    strncpy(flashState.title,    title    ? title    : "", sizeof(flashState.title)    - 1);
+    strncpy(flashState.subtitle, subtitle ? subtitle : "", sizeof(flashState.subtitle) - 1);
+    flashState.title[sizeof(flashState.title)       - 1] = '\0';
+    flashState.subtitle[sizeof(flashState.subtitle) - 1] = '\0';
+    Serial.printf("[FLASH] %s | %s\n", flashState.title, flashState.subtitle);
+}
+
+/** Flash overlay render — 全螢幕黑底（覆蓋背景），主副標居中 */
+void drawFlashOverlay() {
+    display.fillScreen(COLOR_BG);
+    display.setFont(&fonts::efontTW_24);
+    const bool hasSub = (flashState.subtitle[0] != '\0');
+    if (hasSub) {
+        display.setTextSize(1.5f, 1.5f);
+        drawCenteredText(flashState.title, SCREEN_H / 2 - 36, flashState.titleColor);
+        display.setTextSize(1);
+        drawCenteredText(flashState.subtitle, SCREEN_H / 2 + 24, COLOR_TEXT_MUTED);
+    } else {
+        display.setTextSize(1.5f, 1.5f);
+        drawCenteredText(flashState.title, SCREEN_H / 2 - 18, flashState.titleColor);
+    }
 }
 
 /** 對話框共用框架：8/8 margin → 304×224 大框（避免文字觸碰邊框） */
