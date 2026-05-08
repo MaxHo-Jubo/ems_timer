@@ -1286,7 +1286,67 @@ void applyOhcaOutput(const ohca_output_t& out) {
 // 顯示繪製
 // ============================================================
 
+/**
+ * 顯示狀態快照：updateDisplay 每次比對與上次的差異，無變化則跳過全螢幕重畫。
+ * TFT 沒有 framebuffer，每次 clearDisplay+redraw 都直寫 76,800 像素到 SPI bus，
+ * 視覺上會看到掃描線。snapshot 比對只有當顯示內容真正改變時才重繪 → 解決閃爍。
+ *
+ * 涵蓋會影響顯示的所有狀態：global/ohca state、cursor、倒數秒數、vent 拍點、
+ * armed prompts、各種 overlay flag。
+ */
+struct DisplaySnapshot {
+    uint8_t  globalState;
+    uint8_t  ohcaState;
+    uint8_t  ohcaSubState;
+    uint8_t  mainMenuCursor;
+    uint32_t countdownSec;       /**< OHCA 倒數/超時當前顯示秒數（per-second granularity） */
+    uint8_t  ventBeat;           /**< 6sec 通氣節奏目前秒（0-5） */
+    uint8_t  ventVolume;
+    bool     ventPaused;
+    uint8_t  flags;              /**< bit-packed prompt/overlay 狀態 */
+};
+
+static DisplaySnapshot lastDisplaySnapshot = {};  // 全 0 初始 → 首次 updateDisplay 必觸發重繪
+
+/** 當前顯示狀態 → DisplaySnapshot。 */
+static DisplaySnapshot captureDisplaySnapshot() {
+    DisplaySnapshot s = {};
+    s.globalState     = (uint8_t)globalState;
+    s.ohcaState       = (uint8_t)ohcaState;
+    s.ohcaSubState    = (uint8_t)ohcaSubState;
+    s.mainMenuCursor  = mainMenuCursor;
+
+    if (ohcaLastEpiMs != 0) {
+        const uint32_t since = millis() - ohcaLastEpiMs;
+        s.countdownSec = (since < EPI_CYCLE_MS)
+                       ? (EPI_CYCLE_MS - since) / 1000
+                       : (since - EPI_CYCLE_MS) / 1000;
+    }
+    if (ventStartMs != 0 && !ventPaused) {
+        const uint32_t since = millis() - ventStartMs;
+        s.ventBeat = (uint8_t)computeVentBeat(since);
+    }
+    s.ventVolume = ventVolume;
+    s.ventPaused = ventPaused;
+
+    if (showEpiArmedPrompt)     s.flags |= 0x01;
+    if (showShockArmedPrompt)   s.flags |= 0x02;
+    if (showAmioArmedPrompt)    s.flags |= 0x04;
+    if (ohcaVentOverlayEnabled) s.flags |= 0x08;
+    if (ventEndCheckShown)      s.flags |= 0x10;
+    if (alarmMuted)             s.flags |= 0x20;
+    if (ventBackHintShown)      s.flags |= 0x40;
+    return s;
+}
+
 void updateDisplay() {
+    // STEP 00: snapshot 去重 — 顯示狀態無變化即跳過，避免無謂的全螢幕重畫造成掃描線閃爍。
+    DisplaySnapshot now = captureDisplaySnapshot();
+    if (memcmp(&now, &lastDisplaySnapshot, sizeof(DisplaySnapshot)) == 0) {
+        return;
+    }
+    lastDisplaySnapshot = now;
+
     display.clearDisplay();
 
     if (globalState == GLOBAL_MAIN_MENU) {
