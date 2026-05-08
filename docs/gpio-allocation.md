@@ -79,20 +79,29 @@
 - GPIO 43, 44 — 預設 USB-CDC TX/RX（**僅在 USB-CDC 不啟用時可用**，目前韌體用 USB-CDC 做 Serial Monitor，預設禁用）
 - GPIO 47, 48 — 通用 GPIO
 
-### 5.2 TFT SPI bus 腳位（取代 tft-migration-plan.md 舊版 GPIO 9~13）
+### 5.2 TFT SPI bus 腳位（2026-05-08 實機修正：GPIO 35/36/37 不可用）
+
+> 🔴 **2026-05-08 實機踩雷**：採購到的 GOOUUU TECH ESP32-S3 開發板實際為 **N16R8 octal PSRAM 模組**（金屬遮蔽印 `ESP32-S3-N16R8`），GPIO 35/36/37 內部給 PSRAM，當 IO 用即 `Guru Meditation StoreProhibited`。原 §5.1 「N16R8 模組可能被佔」的警告由「保守提示」升級為「強制限制」。**MOSI/SCK 必須改用 ADC1（GPIO 2/3）**，犧牲兩支 ADC。詳見 `tft-migration-plan.md §3.1` 與 `firmware/platformio.ini [env:tft-smoke-test]` 註解。
 
 | 用途 | GPIO | 備註 |
 |------|------|------|
-| SPI SCK | **36** | TFT + MicroSD 共用 |
-| SPI MOSI | **35** | TFT + MicroSD 共用 |
-| SPI MISO | **37** | MicroSD 需要，TFT 純寫入不需要 |
-| TFT CS | **21** | 獨立 |
+| SPI MOSI | **2** | 原 35 → 改 2（ADC1_CH1，已取消 ADC 候選） |
+| SPI SCK | **3** | 原 36 → 改 3（ADC1_CH2，已取消 ADC 候選） |
+| SPI MISO | **不接**（TFT 純寫入） / 接 MicroSD 時擇腳 | 原 37 → 不可用；MicroSD 加入時用 GPIO 1（ADC1_CH0）或 43/44 |
+| TFT CS | **21** | 獨立，PWM 能力 |
 | TFT DC | **48** | Data/Command 切換 |
 | TFT RST | **47** | Hardware reset |
-| TFT BL（背光 PWM） | **接 3.3V 常亮 或 GPIO 1**（PWM 調亮度，會吃掉 ADC1_CH0） | 二擇一 |
-| MicroSD CS | **47** ← **衝突！** | 與 TFT RST 衝突 |
+| TFT BL（背光） | **接 3.3V 常亮**（實機驗證使用配置） | 若需 PWM 調亮度可改 GPIO 1，但與 MicroSD MISO 互斥 |
+| MicroSD CS | **43**（放棄 USB-CDC）或不接 | 原 §5.2 候選 GPIO 2 已給 SPI MOSI，候選 GPIO 47 與 TFT RST 衝突 |
 
-> ⚠️ **MicroSD CS 修正**：上表 MicroSD CS 改用 **GPIO 2**（ADC1_CH1，犧牲一支 ADC）或 **GPIO 43**（USB-CDC 替代腳，需放棄 USB Serial Monitor）。建議優先 GPIO 2，因 USB-CDC 對開發階段除錯重要。
+> 📌 **2026-05-08 實機驗證通過配置**：
+> - Library：**Adafruit_ST7789 + Adafruit_GFX**（不用 TFT_eSPI 2.5.43，原因見下方註記）
+> - 必加：`tft.invertDisplay(false)`（蝦皮買的 ST7789 紅板出廠 polarity 與 Adafruit 預設相反）
+> - VCC：**接 5V/VIN**（板上有 LDO + level shifter，吃 3.3V VCC 會 brown out）
+> - LED：接 3.3V 常亮
+> - 訊號線（CS/DC/RST/MOSI/SCK）：3.3V 邏輯，不需 level shift（板子自帶）
+
+> 🚫 **TFT_eSPI 2.5.43 在此模組踩雷**：lib 對 ESP32-S3 SPI controller 做暫存器級存取（`SPI_CMD_REG(SPI_PORT)`），在 N16R8 模組 init() 即 StoreProhibited（lib 自己原始碼註解 "Draws once then freezes"）。換 GPIO 無解，必須換 lib。
 
 ### 5.3 CO 感測器擴充腳位（取代舊版 GPIO 17/18 獨立 I2C）
 
@@ -100,7 +109,7 @@
 |---------|------|------|------|
 | 電化學型 + I2C | SDA / SCL | **與 OLED 共用 GPIO 42 / 41** | I2C 多裝置 bus，OLED + CO 感測器同 bus 並存 |
 | 電化學型 + UART | TX / RX | **GPIO 43 / 44** | 必須放棄 USB-CDC Serial Monitor |
-| MEMS 半導體型 + ADC | 類比輸入 | **GPIO 1 / 2 / 3 擇一** | 與 TFT 背光 PWM、MicroSD CS 互斥 |
+| MEMS 半導體型 + ADC | 類比輸入 | **GPIO 1 擇一**（原 1/2/3 → 2/3 已給 TFT SPI） | 2026-05-08 後 ADC 僅剩 GPIO 1 一支可用 |
 | 加熱半導體型（MQ-7/MQ-9） | — | **🚫 禁用** | 功耗超出 USB-C 供電上限（SoT V1 §20.5） |
 
 ### 5.4 RTC 模組擴充（DS3231，Dev-Phase 3 計畫）
@@ -117,10 +126,11 @@
 
 | 衝突組合 | 互斥原因 | 解法 |
 |---------|---------|------|
-| TFT BL（PWM） vs CO 感測器 ADC | 都搶 GPIO 1/2/3 | 二擇一；TFT BL 可接 3.3V 常亮，省下 GPIO |
+| TFT SPI MOSI/SCK（GPIO 2/3）vs CO 感測器 ADC | 2026-05-08 起 GPIO 2/3 已給 SPI | ADC 僅剩 GPIO 1；CO 感測器改走 I2C 或 UART |
+| TFT BL（PWM, GPIO 1） vs CO 感測器 ADC（GPIO 1） | 同搶 GPIO 1 | TFT BL 接 3.3V 常亮（不用 PWM），讓出 GPIO 1 給 ADC |
 | MicroSD CS vs USB-CDC Serial | GPIO 43/44 衝突 | 量產不需 USB-CDC 時切換 |
 | 獨立 I2C vs 按鍵 16/17/18 | 物理腳位衝突 | 按鍵已封版，獨立 I2C 改與 OLED bus 共用 |
-| GPIO 35/36/37 vs N16R8 octal PSRAM | 模組型號限制 | 採購務必選 N8 / N16 非 octal 版 |
+| **GPIO 35/36/37 vs N16R8 octal PSRAM** | **2026-05-08 實機踩雷確認**：採購到的就是 N16R8 模組 | TFT SPI 改 GPIO 2/3；採購若能選 N8 可釋放 GPIO 35/36/37 |
 
 ---
 
@@ -147,3 +157,4 @@
 | 2026-05-04 | 確認 SoT §4.1 8 按鍵封版 | GPIO 16/17/18 歸屬返回 / EPI / 電擊鍵 |
 | 2026-05-04 | TFT GPIO 重配 | 原 9~13 與 SPI flash 禁用區衝突，改 35~37 + 21, 47, 48 |
 | 2026-05-04 | Impl-Phase A 韌體對齊 | main.cpp 重寫：`BTN_COUNT=8`、新增 `BTN_BACK/EPI/SHOCK`、震動 GPIO 21；舊 lib `ems_countdown` / `ems_vent` 廢止 |
+| 2026-05-08 | TFT SPI 改 GPIO 2/3、library 改 Adafruit | 實機踩雷：採購到 N16R8 octal PSRAM 模組，GPIO 35/36/37 不可用；TFT_eSPI 2.5.43 暫存器級存取 crash，改 Adafruit_ST7789。詳見 §5.2 與 `tft-migration-plan.md §3.1` |

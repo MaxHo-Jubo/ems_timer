@@ -37,28 +37,32 @@
 
 ---
 
-## 3. TFT 接線規劃（建議配置）
+## 3. TFT 接線規劃（2026-05-08 實機驗證版）
 
-> ⚠️ **2026-05-04 修正**：原計劃使用 GPIO 9~13，與 ESP32-S3 內建 SPI flash 禁用區衝突，已改用高號 GPIO。最終腳位以 [`gpio-allocation.md`](gpio-allocation.md) 為準。
+> ✅ **2026-05-08 實機跑通**：2.8" ST7789 紅板（蝦皮）+ ESP32-S3 GOOUUU N16R8 + Adafruit_ST7789 lib，紅綠藍三色 + 文字計數器全部正確顯示。本節為實機驗證後的 SoT。
+> ❌ **2026-05-04 舊計劃**（GPIO 35/36 + TFT_eSPI）已作廢，原因見 §3.4。
 
-### 3.1 TFT 主訊號（5 支必要 + 1 支選用）
+### 3.1 TFT 主訊號（實機接線）
 
-| GPIO | TFT pin | 說明 |
-|------|---------|------|
-| **36** | SCK | SPI clock（與 MicroSD 共用） |
-| **35** | MOSI | SPI MOSI（與 MicroSD 共用） |
-| **21** | CS | TFT 片選（獨立） |
-| **48** | DC | Data/Command 切換 |
-| **47** | RST | Hardware reset |
-| **3.3V** 直供（預設）或 **GPIO 1**（PWM 調亮度，會占用 ADC1_CH0） | BL | 背光 |
+| GPIO | TFT pin | 實機驗證 |
+|------|---------|---------|
+| **2** | MOSI / SDI | ✅（原 35 → 2，避開 N16R8 octal PSRAM） |
+| **3** | SCK | ✅（原 36 → 3，同上原因） |
+| **21** | CS | ✅ |
+| **48** | DC | ✅ |
+| **47** | RST | ✅ |
+| **3.3V** 直供 | LED（背光） | ✅ 常亮，未啟用 PWM |
+| **5V / VIN** | VCC | ✅ 板上有 LDO + level shifter，3.3V VCC 會 brown out |
+| GND | GND | ✅ |
+| MISO / 觸控腳（T_IRQ/T_DO/T_DIN/T_CS/T_CLK） | 不接 | TFT 純寫入；無觸控 |
 
-**為什麼選 35~37 + 21, 47, 48**：
-- 避開 ESP32-S3 內建 SPI flash 禁用區（GPIO 8~13）。
-- 避開按鍵已封版的 GPIO 4~7, 14~18（SoT V1 §4.1 主要按鍵）。
-- 避開 strapping pin（GPIO 0, 45, 46）與 USB D±（GPIO 19, 20）。
-- 高號 GPIO（35~48）連續且方便焊接。
+**腳位選擇邏輯**：
+- 避開 GPIO 8~13（SPI flash）、19/20（USB）、0/45/46（strapping）。
+- 避開按鍵已封版 GPIO 4~7, 14~18。
+- **避開 GPIO 35~37**（N16R8 octal PSRAM 內部佔用，2026-05-08 實機踩雷確認）。
+- MOSI/SCK 用 GPIO 2/3（原為 ADC1 候選），CS/DC/RST 用 GPIO 21/48/47。
 
-⚠️ **採購注意**：GPIO 35/36/37 在 **N16R8 octal PSRAM 模組**會被佔用，務必確認採購的 ESP32-S3 GOOUUU 為 **N8 / 非 octal PSRAM 版本**。
+> 🔴 **採購警示升級**：先前文件警告「採購務必選 N8 / 非 octal PSRAM 版本」**未生效** — 採購到的 GOOUUU TECH 板實際就是 N16R8（金屬遮蔽印 `ESP32-S3-N16R8`）。本節腳位以「拿到 N16R8」為前提；若日後改用 N8 模組，可釋放 GPIO 2/3 回 ADC、SPI 改回 35/36。
 
 ### 3.2 預留 SPI bus 共用（未來 MicroSD）
 
@@ -66,14 +70,39 @@ MicroSD 模組與 TFT 共用 SCK / MOSI，再加 MISO + 獨立 CS：
 
 | GPIO | 用途 |
 |------|------|
-| 36 | SCK（與 TFT 共用） |
-| 35 | MOSI（與 TFT 共用） |
-| **37** | MISO（TFT 不需要，MicroSD 讀檔需要） |
-| **2** | MicroSD CS（獨立，犧牲 ADC1_CH1） |
+| **3** | SCK（與 TFT 共用，原 36 → 3） |
+| **2** | MOSI（與 TFT 共用，原 35 → 2） |
+| **1** | MISO（原 37 不可用 → 1，犧牲 ADC1_CH0；TFT BL PWM 互斥） |
+| **43** | MicroSD CS（USB-CDC TX，需放棄 USB Serial Monitor） |
 
-> ⚠️ **避開原本 GPIO 47 衝突**：原規劃 MicroSD CS 用 GPIO 47，與 TFT RST 衝突，改用 GPIO 2（ADC1）。若 CO 感測器走 ADC 路線，需重新配置。
+> ⚠️ **CS 候選惡化**：原 §3.2 候選 GPIO 2 已給 SPI MOSI、GPIO 47 與 TFT RST 衝突。剩 GPIO 43（USB-CDC）或 44。Prod-Phase 量產不需 USB-CDC 時切換。Dev-Phase 期間若需同時保留 USB Serial 與 MicroSD，需重新評估或加 IO expander。
 
 **注意**：TFT 通常只需 MOSI（單向寫入），但若 SD 卡共用 bus，整條 bus 必須加 MISO 線。
+
+### 3.3 移除項目
+
+- ~~GPIO 41, 42（I2C OLED）~~ → 釋出 2 支，但**仍建議留作 I2C bus**（DS3231 RTC、CO 感測器電化學型可掛同 bus，避免再開新 bus）
+
+### 3.4 為什麼放棄 TFT_eSPI 改 Adafruit_ST7789（2026-05-08）
+
+| 項目 | TFT_eSPI 2.5.43 | Adafruit_ST7789 + GFX |
+|------|----------------|----------------------|
+| 在 N16R8 模組 init() 行為 | ❌ `Guru Meditation StoreProhibited`，crash 在 SPI 暫存器寫入（`SPI_CMD_REG(SPI_PORT)` 被 octal PSRAM 旁路寫到 0x10） | ✅ 走標準 Arduino SPI driver，正常 init |
+| 換 GPIO 是否解決 | ❌ 從 35/36 換到 2/3 仍 crash（不是腳位問題，是 lib 對 ESP32-S3 的 SPI 暫存器假設不成立） | n/a |
+| Lib 自身備註 | `// Draws once then freezes`（`TFT_eSPI_ESP32.c` SPI3_HOST 配置處） | — |
+| 速度 | 較快（DMA + 暫存器級） | 較慢（標準 SPI），但 EMS Timer 顯示頻率（≤2 fps）感覺不到 |
+| ESP32-S3 N16R8 穩定性 | 已驗證不可用 | 已驗證可用 |
+
+**結論**：放棄 TFT_eSPI。Adafruit 速度差異對救護現場顯示需求（倒數計時 + 大字事件）可忽略。
+
+### 3.5 顏色反相設定（必加）
+
+蝦皮買的 ST7789 紅板出廠 panel polarity 與 Adafruit_ST7789 預設相反：
+- Adafruit init 預設送 `INVON`（IPS 主流）
+- 此模組需要 `INVOFF` 才正確
+- **必須**在 `tft.init()` 後呼叫 `tft.invertDisplay(false)`
+
+不加會看到：白變黑、紅變藍系、綠變紫、藍變黃（每位元反相）。
 
 ### 3.3 移除項目
 
@@ -87,18 +116,18 @@ MicroSD 模組與 TFT 共用 SCK / MOSI，再加 MISO + 獨立 CS：
 
 | 項目 | 變更內容 |
 |------|---------|
-| 函式庫 | `Adafruit_SH110X` + `Adafruit_GFX` → **`TFT_eSPI`**（推薦，ESP32 最佳化） |
-| 初始化 | `display.begin(0x3C, true)` → `tft.init()` + `tft.setRotation()` |
-| 繪圖 API | `display.drawPixel/drawLine/print` → `tft.drawPixel/drawLine/drawString`（API 類似但函式名不同） |
-| 字型 | SSD1306 內建 5x7 → TFT_eSPI 提供多種字型 + Free Fonts（救護現場可選大字型如 24pt 以上） |
+| 函式庫 | `Adafruit_SH110X` + `Adafruit_GFX` → **`Adafruit_ST7789` + `Adafruit_GFX`**（2026-05-08 實機驗證後從 TFT_eSPI 改回 Adafruit；原因見 §3.4） |
+| 初始化 | `display.begin(0x3C, true)` → `tft.init(240, 320)` + `tft.setRotation(1)` + **`tft.invertDisplay(false)`**（必加，見 §3.5） |
+| 繪圖 API | `display.drawPixel/drawLine/print` → 同名 API（Adafruit_GFX 共用基底，遷移最小） |
+| 字型 | SSD1306 內建 5x7 → Adafruit_GFX 預設 5x7 + `setTextSize()` 放大 + Free Fonts（救護現場可選大字型如 24pt 以上） |
 | 色彩 | 單色 → RGB565（16-bit），可用顏色區分倒數狀態（綠/黃/紅） |
 | 更新策略 | 全螢幕重繪 → 建議改 partial update（只重繪變動區域），避免閃爍 |
-| 配置檔 | `User_Setup.h` 需配置 ST7789 或 ILI9341 driver、SPI pin、頻率（建議 40MHz） |
+| 配置檔 | 不需 `User_Setup.h`，建構子直接傳 GPIO；色彩反相寫在程式碼 |
 
 **影響範圍**：
-- `firmware/src/main.cpp`：所有 `display.xxx()` 呼叫需改寫
+- `firmware/src/main.cpp`：所有 `display.xxx()` 呼叫需改寫，但 Adafruit_GFX API 與現有 SH110X API 高度相容（都繼承 Adafruit_GFX 基底）
 - `firmware/lib/`：若有自訂 OLED 顯示模組，需重構為 TFT 版本
-- `platformio.ini`：移除 `adafruit/Adafruit SH110X`，新增 `bodmer/TFT_eSPI`
+- `platformio.ini`：移除 `adafruit/Adafruit SH110X`，新增 `adafruit/Adafruit ST7735 and ST7789 Library`
 
 ### 4.2 硬體層
 
