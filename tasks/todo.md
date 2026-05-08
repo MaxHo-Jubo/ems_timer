@@ -142,12 +142,25 @@
 
 ### Step 3：字體放大改進方案（PM 反饋 2026-05-08）
 
-> PM 覺得目前介面字體不夠大（demo 也是）。整體放大策略待討論：放大基準字（size 2→3）、提高大時間字型 pt（24pt→36pt/48pt）、調間距等。
+> PM 覺得目前介面字體不夠大（demo 也是）。已對 OHCA 系列已改 layout 畫面套用 ~1.5x 放大（commit 39b544a）。
 
-- [ ] 調研：FreeMonoBold36pt7b / 48pt7b 是否在 LGFX `fonts::` namespace 提供
-- [ ] 主功能表標題 / 選項字級往上拉（需重算 36px row height）
-- [ ] OHCA 中央大時間：FreeMonoBold24pt7b → 36pt 或 48pt（demo 84px 對齊參考）
-- [ ] 標籤 / 計數行字級檢討（size 2 是否升 size 3）
+- [x] OHCA 已改 layout 畫面套放大尺度（commit 39b544a）：
+  - drawOhcaStartFlash: size 3→4
+  - drawOhcaWaitFirstEpi: badge 2→3 / Awaiting EPI 3→4 / 副標 1→2 / counter 1→2
+  - drawOhcaCountdownCommon: badge 2→3 / **大時間 size 1→2（96px tall）** / label 2→3 / counter 1→2
+  - 常數調整：OHCA_TIME_VISUAL_UP 8→20 / OHCA_LABEL_GAP_PX 16→48 / partial bbox 加大
+- [x] 大時間 pt 升級替代方案：用 setTextSize(2) FreeMonoBold24pt7b 達 96px（接近 demo 84px 視覺份量）。GFX bitmap font 沒 36/48pt7b，這條已用 size 2 解
+- [ ] 剩餘畫面（EndCheck/Locked/Summary/TwoStepArmedOverlay/VentOverlay/VentStandalone）對齊新 layout 時套用同 size pattern
+- [ ] 主功能表已滿版不改
+
+### 中文支援評估（2026-05-08 PM 詢問）
+
+> demo 用「下次給藥/請準備給藥/請給藥」中文。目前韌體用英文 (Next dose/Prepare EPI/GIVE EPI!)。要不要支援中文待定。
+
+- [ ] 試 LGFX `fonts::efontCN_24`（24px CJK）對繁中常用字 cover 率
+- [ ] 缺字評估：「藥」「準」「備」「給」等是否 OK
+- [ ] 若 efontCN cover 不夠，採用 vlw 自訂字型（自選繁中字集生成）
+- [ ] 決策：英文保持 / 全 CJK / 雙語切換
 
 ### Step 4：硬體層 + 文件同步（半小時）
 
