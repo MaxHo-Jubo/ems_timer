@@ -231,10 +231,27 @@
 - [ ] A6 — OHCA 內按返回 → QuickMenu 4 個動作對應 flash（已開啟/已繼續/已暫停/已關閉）
 - [x] partial update 已排除 modal flags，dialog/flash 不會被倒數時間穿透
 
-#### Batch 3：次要補完 ⏳ 待做
+#### Batch 3：次要補完 ✅ 已完成（待燒錄實機驗證）
 
-- [ ] A8：VENT_PRE「按主鍵開始」preview 畫面
-- [ ] B3：QUICK_MENU 加「案件簡版總覽」項目
+- [x] **A8：VENT_PRE preview 畫面**（drawVentPre）
+  - 進入 Vent 後先顯示「按主鍵開始」預備畫面
+  - 主鍵 → 啟動倒數；返回鍵 → 回主功能表
+  - 上下鍵預備時也可調音量
+  - 加 ventPreShown 旗標 + snapshot bit 10 (0x400)
+- [x] **B3：QUICK_MENU 加「案件簡版總覽」**（demo 對齊）
+  - 未開啟給氣：3 項（開啟給氣 / 案件簡版總覽 / 返回 OHCA）
+  - 已開啟給氣：4 項（暫停或繼續 / 關閉給氣 / 案件簡版總覽 / 返回 OHCA）
+  - 簡版總覽選項 → flash「簡版總覽 / 結束案件後看完整總覽」（2 秒）
+
+#### Batch 3 待實機測試項目
+
+- [ ] A8 — 主功能表選「6 秒通氣節奏」→ 看到「按主鍵開始」預備畫面（不立即開始倒數）
+- [ ] A8 — 預備畫面按上下鍵 → 音量改變
+- [ ] A8 — 預備畫面按返回鍵 → 回主功能表
+- [ ] A8 — 預備畫面按主鍵 → 開始倒數 1, 2, 3, 4, 5, 6
+- [ ] B3 — OHCA 進行中按返回鍵 → QuickMenu 看到「案件簡版總覽」項目
+- [ ] B3 — 選「案件簡版總覽」→ flash「簡版總覽 / 結束案件後看完整總覽」（2 秒）
+- [ ] B3 — 開啟給氣後再進 QuickMenu → 4 項（pause / disable / summary / back）
 
 ### 未跑 review 的 commits（rate limit 恢復後補跑）
 

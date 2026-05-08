@@ -340,6 +340,7 @@ static bool     ventBackHintShown  = false;                // 「請長按主鍵
 static uint32_t ventBackHintStartMs = 0;
 static const uint32_t VENT_BACK_HINT_MS = 2000;
 static bool     ventPaused         = false;                // V1 §13.11 / §13.12 獨立 vent 暫停旗標
+static bool     ventPreShown       = false;                // A8：VENT_PRE「按主鍵開始」preview 畫面（demo 對齊）
 
 /** OHCA 內 6 秒通氣輔助區塊開關（V1 §14.9 開啟、暫停、繼續與關閉） */
 static bool ohcaVentOverlayEnabled = false;
@@ -427,6 +428,7 @@ void enterShockBackfillMenu();
 void resetSubState();
 void updateVentTick();
 void applyVentOutput(const vent_output_t& out);
+void drawVentPre();
 void drawVentStandalone();
 void drawVentEndCheck();
 void drawQuickMenu();
@@ -652,13 +654,15 @@ void onShortPress(uint8_t btnIdx) {
                         Serial.println("[OHCA] Case start (START_FLASH)");
                         break;
                     case 1:  // 6 秒通氣節奏（獨立模式）
+                        // A8：先進 VENT_PRE「按主鍵開始」preview，主鍵按下後才正式啟動
                         globalState        = GLOBAL_VENT;
-                        ventStartMs        = millis();
+                        ventStartMs        = 0;            // 尚未啟動
                         ventPrevSinceMs    = 0;
                         ventEndCheckShown  = false;
                         ventBackHintShown  = false;
-                        ventPaused         = false;  // V1 §13.5 啟動規則：秒數從 1 開始
-                        Serial.println("[VENT] enter standalone");
+                        ventPaused         = false;
+                        ventPreShown       = true;          // A8：等使用者按主鍵
+                        Serial.println("[VENT] enter PRE (preview)");
                         break;
                     case 2: globalState = GLOBAL_TRAINING_PLACEHOLDER; break;
                     case 3: globalState = GLOBAL_HISTORY_PLACEHOLDER;  break;
@@ -674,6 +678,32 @@ void onShortPress(uint8_t btnIdx) {
     // ===== Phase C: GLOBAL_VENT 獨立模式（V1 §13）=====
     if (globalState == GLOBAL_VENT) {
         uint32_t now = millis();
+        // A8: VENT_PRE preview 畫面（按主鍵開始）
+        if (ventPreShown) {
+            if (btnIdx == BTN_UP) {
+                ventVolume = clampVentVolume((int16_t)ventVolume + 1);
+                return;
+            }
+            if (btnIdx == BTN_DOWN) {
+                ventVolume = clampVentVolume((int16_t)ventVolume - 1);
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                // 返回鍵 → 直接回主功能表（preview 還沒啟動，可直接走）
+                ventPreShown = false;
+                enterMainMenu();
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                // 主鍵 → 正式啟動（V1 §13.5 啟動規則：秒數從 1 開始）
+                ventPreShown = false;
+                ventStartMs  = now;
+                ventPrevSinceMs = 0;
+                Serial.println("[VENT] PRE -> running");
+                return;
+            }
+            return;
+        }
         // STEP 01: 結束確認對話框中
         if (ventEndCheckShown) {
             if (btnIdx == BTN_PRIMARY) {
@@ -738,12 +768,12 @@ void onShortPress(uint8_t btnIdx) {
         // STEP 01: SUCCESS 顯示中：忽略所有按鍵（自動 2s 後消失，由 loop 處理）
         if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS) return;
 
-        // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口；V1 §14.9 動態 2/3 項）
+        // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口；V1 §14.9 動態 3/4 項）
         if (ohcaSubState == SUBSTATE_QUICK_MENU) {
-            // V1 §14.9 選項：
-            //   未開啟 (overlay=false)：[0] Enable 6s vent  [1] Back to OHCA
-            //   已開啟 (overlay=true) ：[0] Pause/Resume    [1] Disable 6s vent  [2] Back
-            uint8_t cnt = ohcaVentOverlayEnabled ? 3 : 2;
+            // V1 §14.9 選項（B3：加「案件簡版總覽」對齊 demo）：
+            //   未開啟：[0] Enable [1] Summary [2] Back
+            //   已開啟：[0] Pause/Resume [1] Disable [2] Summary [3] Back
+            uint8_t cnt = ohcaVentOverlayEnabled ? 4 : 3;
             if (btnIdx == BTN_UP) {
                 backfillCursor = (backfillCursor + cnt - 1) % cnt;
                 return;
@@ -754,44 +784,49 @@ void onShortPress(uint8_t btnIdx) {
             }
             if (btnIdx == BTN_BACK) { resetSubState(); return; }
             if (btnIdx == BTN_PRIMARY) {
+                const uint8_t summaryIdx = ohcaVentOverlayEnabled ? 2 : 1;
+                const uint8_t backIdx    = ohcaVentOverlayEnabled ? 3 : 2;
+                if (backfillCursor == summaryIdx) {
+                    // B3：案件簡版總覽 — demo 略過，flash 提示
+                    triggerFlash("簡版總覽", "結束案件後看完整總覽", 2000, COLOR_TEXT_PRIMARY);
+                    Serial.println("[OHCA] quick: summary placeholder");
+                    resetSubState();
+                    return;
+                }
+                if (backfillCursor == backIdx) {
+                    // 返回 OHCA → resetSubState 即可
+                    resetSubState();
+                    return;
+                }
                 if (!ohcaVentOverlayEnabled) {
-                    if (backfillCursor == 0) {
-                        // STEP 01.5.1: Enable 6s vent（V1 §14.9）
-                        ohcaVentOverlayEnabled = true;
-                        ohcaVentPaused         = false;
-                        ventStartMs            = millis();
-                        ventPrevSinceMs        = 0;
-                        // A6：對齊 demo flash('6秒給氣', '已開啟')
-                        triggerFlash("6 秒給氣", "已開啟", 800, COLOR_ACCENT_OK);
-                        Serial.println("[OHCA] vent overlay = ON");
-                    }
-                    // backfillCursor == 1 → Back（resetSubState 即可）
+                    // backfillCursor == 0：Enable 6s vent
+                    ohcaVentOverlayEnabled = true;
+                    ohcaVentPaused         = false;
+                    ventStartMs            = millis();
+                    ventPrevSinceMs        = 0;
+                    triggerFlash("6 秒給氣", "已開啟", 800, COLOR_ACCENT_OK);
+                    Serial.println("[OHCA] vent overlay = ON");
                 } else {
                     if (backfillCursor == 0) {
-                        // STEP 01.5.2: toggle Pause / Resume（V1 §14.10 暫停 / §14.11 繼續）
+                        // toggle Pause / Resume（V1 §14.10 / §14.11）
                         ohcaVentPaused = !ohcaVentPaused;
                         if (!ohcaVentPaused) {
-                            // V1 §14.11：繼續時秒數重新從 1 開始
                             ventStartMs     = millis();
                             ventPrevSinceMs = 0;
-                            // A6：對齊 demo flash('6秒給氣', '已繼續')
                             triggerFlash("6 秒給氣", "已繼續", 800, COLOR_ACCENT_OK);
                         } else {
                             stopBeep();
-                            // A6：對齊 demo flash('6秒給氣', '已暫停')
                             triggerFlash("6 秒給氣", "已暫停", 800, COLOR_ACCENT_WARN);
                         }
                         Serial.printf("[OHCA] vent paused = %d\n", ohcaVentPaused);
                     } else if (backfillCursor == 1) {
-                        // STEP 01.5.3: Disable 6s vent（V1 §14.9）
+                        // Disable 6s vent
                         ohcaVentOverlayEnabled = false;
                         ohcaVentPaused         = false;
                         stopBeep();
-                        // A6：對齊 demo flash('6秒給氣', '已關閉')
                         triggerFlash("6 秒給氣", "已關閉", 800, COLOR_TEXT_MUTED);
                         Serial.println("[OHCA] vent overlay = OFF");
                     }
-                    // backfillCursor == 2 → Back
                 }
                 resetSubState();
                 return;
@@ -1494,6 +1529,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     if (ventBackHintShown)      s.flags |= 0x40;
     if (endConfirmShown)        s.flags |= 0x100;  // A7：bit 8
     if (flashState.active)      s.flags |= 0x200;  // Batch 2：flash overlay bit 9
+    if (ventPreShown)           s.flags |= 0x400;  // A8：VENT_PRE bit 10
 
     // ALARMING flash phase：bit 進 snapshot 讓 dedupe 在 ALARMING 期間每半週期觸發一次重繪
     // （demo flashRed 0.6s 全週期 → OHCA_FLASH_HALF_MS 半週期）
@@ -1621,8 +1657,9 @@ void updateDisplay() {
         else if (showShockArmedPrompt) drawOhcaConfirmDialog(EVT_SHOCK_LOCAL);
 
     } else if (globalState == GLOBAL_VENT) {
-        if (ventEndCheckShown) drawVentEndCheck();
-        else                    drawVentStandalone();
+        if (ventPreShown)            drawVentPre();
+        else if (ventEndCheckShown)  drawVentEndCheck();
+        else                          drawVentStandalone();
     } else if (globalState == GLOBAL_TRAINING_PLACEHOLDER) {
         drawPlaceholder("訓練模式", "D 階段");
     } else if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
@@ -2311,6 +2348,32 @@ void drawTimeline() {
 // ============================================================
 
 /** 獨立 6 秒通氣節奏主畫面（V1 §13.6 執行中畫面 / §13.12 暫停畫面） */
+/**
+ * A8：VENT_PRE 預備畫面 — 進入 Vent 模式但尚未按主鍵開始
+ * 對齊 demo VENT_PRE render
+ */
+void drawVentPre() {
+    display.setFont(&fonts::efontTW_24);
+
+    // 頂部標題
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("6 秒通氣節奏", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // 中央主訊息「按主鍵開始」（efontTW × 1.5 ≈ 36px）
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("按主鍵開始", SCREEN_H / 2 - 24, COLOR_TEXT_PRIMARY);
+
+    // 副訊息兩行
+    display.setTextSize(1);
+    drawCenteredText("通氣音量可由 上/下 調整", SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
+    drawCenteredText("主鍵暫停／繼續　長按 3 秒結束", SCREEN_H / 2 + 60, COLOR_TEXT_DIM);
+
+    // 底部音量顯示
+    char volBuf[32];
+    snprintf(volBuf, sizeof(volBuf), "音量 %u/%u", ventVolume, VENT_VOLUME_MAX);
+    drawCenteredText(volBuf, SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+}
+
 void drawVentStandalone() {
     display.setFont(&fonts::efontTW_24);
 
@@ -2384,18 +2447,20 @@ void drawQuickMenu() {
     drawCenteredText("快速功能", 20, COLOR_ACCENT_OK);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    // V1 §14.9：動態 2 / 3 項
-    const char* labels[3];
+    // V1 §14.9：動態 3 / 4 項（B3：加「案件簡版總覽」對齊 demo）
+    const char* labels[4];
     uint8_t count;
     if (!ohcaVentOverlayEnabled) {
         labels[0] = "開啟 6 秒給氣提示";
-        labels[1] = "返回 OHCA";
-        count = 2;
+        labels[1] = "案件簡版總覽";
+        labels[2] = "返回 OHCA";
+        count = 3;
     } else {
         labels[0] = ohcaVentPaused ? "繼續 6 秒給氣" : "暫停 6 秒給氣";
         labels[1] = "關閉 6 秒給氣提示";
-        labels[2] = "返回 OHCA";
-        count = 3;
+        labels[2] = "案件簡版總覽";
+        labels[3] = "返回 OHCA";
+        count = 4;
     }
 
     constexpr int16_t MENU_Y_START       = 78;
