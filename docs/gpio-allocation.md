@@ -41,9 +41,12 @@
 | 用途 | GPIO | 模組 | 狀態 |
 |------|------|------|------|
 | 蜂鳴器 PWM | **14** | 主動式蜂鳴器 | ✅ 啟用 |
-| 震動馬達 | **待定** | S8050 NPN + 1kΩ 基極 | ❌ `ENABLE_VIBRATION = 0` 停用 |
+| 震動馬達 | **21（與 TFT CS 互斥）** | S8050 NPN + 1kΩ 基極 | ❌ `ENABLE_VIBRATION = 0` 停用 |
 
-> 📌 震動馬達若啟用，建議用 GPIO 21（PWM 能力 + 不衝突按鍵）。
+> 🔴 **GPIO 21 互斥約束（2026-05-08 標註）**：本欄震動馬達 GPIO 21 與 §5.2 TFT CS GPIO 21 為同一支腳，**依專案進度擇一啟用**：
+> - **TFT 整合前**：可啟用震動馬達（`ENABLE_VIBRATION = 1`），TFT CS 暫無物件占用
+> - **TFT 整合後（Impl-Phase B+）**：TFT CS 正式占用 GPIO 21，震動馬達必須搬走或保持停用
+> - 若 Prod-Phase 量產同時需要 TFT 顯示 + 震動回饋，震動馬達需重新分配 GPIO（候選：剩餘空閒中找 PWM 能力腳位，需重做 §5.1 盤點）
 
 ---
 
@@ -126,6 +129,7 @@
 
 | 衝突組合 | 互斥原因 | 解法 |
 |---------|---------|------|
+| **TFT CS（GPIO 21） vs 震動馬達（GPIO 21）** | 同一支腳 | 依進度擇一啟用；Prod-Phase 同需則震動搬腳（見 §3 註記） |
 | TFT SPI MOSI/SCK（GPIO 2/3）vs CO 感測器 ADC | 2026-05-08 起 GPIO 2/3 已給 SPI | ADC 僅剩 GPIO 1；CO 感測器改走 I2C 或 UART |
 | TFT BL（PWM, GPIO 1） vs CO 感測器 ADC（GPIO 1） | 同搶 GPIO 1 | TFT BL 接 3.3V 常亮（不用 PWM），讓出 GPIO 1 給 ADC |
 | MicroSD CS vs USB-CDC Serial | GPIO 43/44 衝突 | 量產不需 USB-CDC 時切換 |
