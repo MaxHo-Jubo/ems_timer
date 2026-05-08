@@ -1536,8 +1536,8 @@ void updateDisplay() {
         }
 
         // overlay：兩段確認 armed 提示
-        if (showEpiArmedPrompt) drawTwoStepArmedOverlay("EPI? press again");
-        else if (showShockArmedPrompt) drawTwoStepArmedOverlay("Shock? press again");
+        if (showEpiArmedPrompt) drawTwoStepArmedOverlay("EPI？再按一次");
+        else if (showShockArmedPrompt) drawTwoStepArmedOverlay("電擊？再按一次");
 
     } else if (globalState == GLOBAL_VENT) {
         if (ventEndCheckShown) drawVentEndCheck();
@@ -1599,10 +1599,10 @@ static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
 }
 
 void drawOhcaStartFlash() {
-    // OHCA 案件啟動 1 秒提示：綠色全螢幕 "Start OHCA"（PM 反饋字級放大）
-    display.setFont(&fonts::Font0);
-    display.setTextSize(4);
-    drawCenteredText("Start OHCA", SCREEN_H / 2 - 16, COLOR_ACCENT_OK);
+    // OHCA 案件啟動 1 秒提示：綠色全螢幕「OHCA 啟動」（efontTW_24 × 1.5 ≈ 36px）
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("OHCA 啟動", SCREEN_H / 2 - 16, COLOR_ACCENT_OK);
 }
 
 void drawOhcaWaitFirstEpi() {
@@ -1838,11 +1838,11 @@ void drawOhcaSummary() {
 }
 
 void drawTwoStepArmedOverlay(const char* what) {
-    // 底部全寬反色提示條（琥珀警示色，size 3 大字）
-    const int16_t bar_h = 40;
+    // 底部全寬反色提示條（琥珀警示色，efontTW_24 × 1.2 ≈ 29px 黑字）
+    const int16_t bar_h = 44;
     display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
-    display.setFont(&fonts::Font0);
-    display.setTextSize(3);
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
     display.setTextColor(COLOR_BG);
     display.setTextDatum(textdatum_t::middle_center);
     display.drawString(what, SCREEN_W / 2, SCREEN_H - bar_h / 2);
