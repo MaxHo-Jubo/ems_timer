@@ -68,6 +68,75 @@
 
 ---
 
+## 🎨 TFT 整合（Phase A → B 過渡）
+
+> **2026-05-08 立案**：Phase A 已完成（OLED 跑通），TFT smoke test 也跑通（commit `f1a5792`）。下一步把 TFT 整進主韌體，UI 對齊 `docs/demo/index.html`（決策見 memory `project_tft_ui_design_target.md`）。
+> **依賴**：硬體用 ESP32-S3 N16R8、TFT 用 Adafruit_ST7789 + GFX、SPI 走 GPIO 2/3、必加 `invertDisplay(false)` — 全部已 documented 在 `docs/gpio-allocation.md §5.2` 與 `docs/tft-migration-plan.md §3`。
+
+### Step 1：lib 切換 + 編譯通過（半小時）
+
+- [ ] 新 branch：`feat/tft-integration`
+- [ ] `firmware/platformio.ini` `[env:esp32-s3-devkitc-1]`：`lib_deps` 把 `Adafruit SH110X` 換成 `Adafruit ST7735 and ST7789 Library`（`Adafruit GFX Library` 留著）
+- [ ] `firmware/src/main.cpp` 改 include：`<Adafruit_SH110X.h>` → `<Adafruit_ST7789.h>`
+- [ ] `display` 物件改宣告：`Adafruit_SH110X display(...)` → `Adafruit_ST7789 tft(...)`，建構子用 GPIO 2/3/21/47/48 五腳
+- [ ] `display.begin(0x3C, true)` → `tft.init(240, 320); tft.setRotation(1); tft.invertDisplay(false);`
+- [ ] **不改任何 `display.xxx()` 呼叫點**（先讓編譯通過，畫面會錯位但能跑）
+- [ ] `pio run -e esp32-s3-devkitc-1` 編譯通過
+- [ ] 95 unit tests `pio test -e native` 全綠（顯示層改不影響純邏輯）
+
+### Step 2：顯示適配層（半天）
+
+> demo 的 layout 是 320×240，原 OLED 是 128×64。直接 search-replace 會導致字擠在角落。需要全部重新排版。
+
+- [ ] 抽 `firmware/lib/ems_display/ems_display.{h,cpp}`：封裝畫面繪製函式
+  - `drawMainMenu(items, cursor)` — 對齊 demo §3.1 五項主選單
+  - `drawOhcaWaitFirstEpi(counters)` — 對齊 demo "OHCA / 待本機 EPI / EPI 0｜電擊 0"
+  - `drawOhcaCountdown(timeStr, label, counters, state)` — 對齊 demo §6.4 五狀態（normal / warning / alarming / overtime / overtime_remind）
+  - `drawTwoStepConfirm(label)` — 對齊 demo §6.2 確認畫面
+  - `drawOhcaEnd()` / `drawOhcaLocked()` — 對齊 demo §10
+  - `flashScreen(color, ms)` — 對齊 demo `flash-vent` 整片暗紅閃爍（§13.7 / §14.5.1）
+- [ ] design tokens（顏色 / 字型 / 字級）抽 const，從 demo CSS 提取
+- [ ] 字型：選 Adafruit GFX 的 `Fonts/FreeMonoBold24pt7b`（時間倒數）+ 預設 5x7（標籤）
+
+### Step 3：畫面對齊（一整天，逐畫面）
+
+> 優先序：高頻使用先做。每個畫面做完跑一次實機看效果，截圖對照 demo。
+
+- [ ] **OHCA 主畫面 — 待本機 EPI**（demo 第二螢幕）
+- [ ] **OHCA 倒數畫面 — normal**（demo "下次給藥"）
+- [ ] **OHCA 倒數畫面 — warning**（剩 1 分鐘，琥珀色，demo "請準備給藥"）
+- [ ] **OHCA 倒數畫面 — alarming**（到期 5 秒，紅閃，demo "請給藥"）
+- [ ] **OHCA 倒數畫面 — overtime**（紅色累計時間，demo "請給藥"）
+- [ ] **兩段確認畫面**（EPI / SHOCK）
+- [ ] **EPI 成立 1 秒提示**（"已 EPI"）
+- [ ] **主功能表**（五項，cursor 高亮）
+- [ ] **案件結束流程畫面**
+- [ ] **6 秒通氣（OHCA 內輔助 + 獨立模式）** — Phase C 才會用，此 step 先做骨架
+- [ ] 補登/Amiodarone 等 Phase B 畫面：本 step 不做，留 Phase B
+
+### Step 4：硬體層 + 文件同步（半小時）
+
+- [ ] SoT V1 §21.2 外殼開孔尺寸：0.96" OLED 25×15mm → 2.8" TFT 60×45mm（記得改 §21.2 跟 `flow.html` 對應段）
+- [ ] `CLAUDE.md` 更新：把「OLED」字眼換 TFT 描述
+- [ ] memory `project_oled_sh1106_interim.md` 結案，註記「2026-XX-XX TFT 整合完成，OLED 中繼期結束」
+
+### Step 5：實機驗收
+
+- [ ] 主功能表 cursor 上下、進入子選單、返回
+- [ ] OHCA 完整 flow：待 EPI → EPI 確認 → 倒數 → warning → alarming → overtime → 結束 → 鎖定
+- [ ] 兩段確認 timeout（5 秒未確認自動取消）
+- [ ] 6 秒通氣（基本切換能進）
+- [ ] 跟 demo screenshot 並排對照無視覺落差
+
+### 風險與決策點
+
+- 🟡 **字型大小調校**：demo 84px 在 320×240 占 35% 高度。實機 ST7789 用 GFX FreeMono 24pt 約 48px，可能要改 36pt 或 48pt 才接近 demo 視覺份量
+- 🟡 **動畫頻率**：demo CSS keyframes 寫死的閃爍頻率（黃慢、紅快、紅慢），韌體要照搬數字 → 抽出 demo CSS 的 `animation-duration` 數字當韌體常數
+- 🔴 **GPIO 21 衝突**：TFT CS 跟震動馬達同腳。整合時 `ENABLE_VIBRATION = 0` 必須維持；之後 Prod-Phase 要震動回饋的話必須先解 GPIO 衝突（見 `gpio-allocation.md` §3 註記）
+- 🟡 **Refresh strategy**：demo 用 React diff 重繪 DOM，TFT 沒 diff，全螢幕重繪會閃。要實作 partial update（只重繪變動區域）或 double buffer（耗 RAM）
+
+---
+
 ## GitLab 遷移設定（2026-04-24 完成）
 
 **背景**：repo 從 GitHub 移植到 GitLab（`https://gitlab.webotopia.work/maxhero/ems_timer.git`）。

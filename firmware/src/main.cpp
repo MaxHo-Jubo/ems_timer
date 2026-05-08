@@ -30,9 +30,9 @@
  */
 
 #include <Arduino.h>
-#include <Wire.h>
+#include <SPI.h>
 #include <Adafruit_GFX.h>
-#include <Adafruit_SH110X.h>
+#include <Adafruit_ST7789.h>
 
 #include "ems_ohca_state.h"
 #include "ems_ohca_countdown.h"
@@ -44,16 +44,49 @@
 using namespace ems;
 
 // ============================================================
-// 硬體常數（gpio-allocation.md）
+// 顯示遷移橋接：SH110X → ST7789（Step 1，最小變更，layout 待 Step 2 重排）
+//   - SH110X 的 1-bit 色（WHITE=1 / BLACK=0）→ TFT RGB565
+//   - SH110X 的 buffer flush model（要 display()）→ ST7789 立即寫入（display() no-op）
+//   - SH110X 的 clearDisplay()（清 buffer）→ ST7789 fillScreen(BLACK)
+//   詳細決策見 docs/tft-migration-plan.md 與 .claude/.../project_tft_ui_design_target.md
 // ============================================================
 
-/** OLED 解析度 */
-static const uint8_t OLED_WIDTH     = 128;
-static const uint8_t OLED_HEIGHT    = 64;
-static const int8_t  OLED_RESET_PIN = -1;
-static const uint8_t OLED_I2C_ADDR  = 0x3C;
-static const uint8_t I2C_SDA_PIN    = 42;
-static const uint8_t I2C_SCL_PIN    = 41;
+#define SH110X_WHITE  0xFFFF  /**< RGB565 白色（取代舊 1-bit 1） */
+#define SH110X_BLACK  0x0000  /**< RGB565 黑色（取代舊 1-bit 0） */
+
+/**
+ * Adafruit_ST7789 的薄包裝：補回 SH110X 風格的 clearDisplay() / display() 介面。
+ * Step 1 用途：讓既有 1300+ 行 `display.xxx()` 呼叫點不需修改即可編譯通過。
+ * Step 2 將以 `ems_display` 模組取代，本 adapter 屆時刪除。
+ */
+class TftAdapter : public Adafruit_ST7789 {
+public:
+    using Adafruit_ST7789::Adafruit_ST7789;
+    /** SH110X 相容：清空畫面（TFT 直接 fillScreen 黑） */
+    void clearDisplay() { fillScreen(SH110X_BLACK); }
+    /** SH110X 相容：buffer flush（TFT 立即寫入，no-op） */
+    void display() { /* ST7789 writes immediately, nothing to flush */ }
+};
+
+// ============================================================
+// 硬體常數（gpio-allocation.md §5.2）
+// ============================================================
+
+/** TFT 解析度（rotation=1 橫向後 320×240） */
+static const uint16_t TFT_WIDTH     = 240;
+static const uint16_t TFT_HEIGHT    = 320;
+/** Step 1：保留 OLED_WIDTH/HEIGHT 別名讓既有 layout 程式碼不用改（畫面會擠在左上角，Step 2 重排） */
+static const uint16_t OLED_WIDTH    = 128;
+static const uint16_t OLED_HEIGHT   = 64;
+/** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37） */
+static const int8_t   TFT_CS_PIN    = 21;
+static const int8_t   TFT_DC_PIN    = 48;
+static const int8_t   TFT_RST_PIN   = 47;
+static const int8_t   TFT_MOSI_PIN  = 2;
+static const int8_t   TFT_SCLK_PIN  = 3;
+/** I2C bus（OLED 已移除，腳位保留給未來 DS3231 RTC / CO 感測器擴充） */
+static const uint8_t  I2C_SDA_PIN   = 42;
+static const uint8_t  I2C_SCL_PIN   = 41;
 
 /** 蜂鳴器 GPIO */
 static const uint8_t BUZZER_PIN     = 14;
@@ -249,7 +282,7 @@ static bool     btnLongFired[BTN_COUNT]     = { false };
 // OLED + 蜂鳴 / 反色 SM
 // ============================================================
 
-Adafruit_SH1106G display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET_PIN);
+TftAdapter display(TFT_CS_PIN, TFT_DC_PIN, TFT_MOSI_PIN, TFT_SCLK_PIN, TFT_RST_PIN);
 
 // 蜂鳴器：脈衝模式（pulses=255 視為連續直到 stop）
 static uint8_t  beepPulsesRemaining = 0;
@@ -341,13 +374,13 @@ void setup() {
         lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
 
-    // STEP 03: OLED 初始化
-    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-    if (!display.begin(OLED_I2C_ADDR, /* reset= */ true)) {
-        Serial.println("[FAIL] SH1106 not found");
-    }
-    display.clearDisplay();
-    display.display();
+    // STEP 03: TFT 初始化（取代舊 SH1106 OLED）
+    //   - init() 回傳 void，無 fail handler 介面（Adafruit_ST7789 API 限制）
+    //   - invertDisplay(false)：蝦皮 ST7789 紅板 polarity 與 Adafruit 預設相反，必加（見 tft-migration-plan.md §3.5）
+    display.init(TFT_WIDTH, TFT_HEIGHT);
+    display.setRotation(1);  // 1 = 橫向 320x240
+    display.invertDisplay(false);
+    display.fillScreen(SH110X_BLACK);
 
     // STEP 04: 兩段確認 init
     twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
