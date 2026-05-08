@@ -155,18 +155,18 @@ static const uint16_t COLOR_FLASH_VENT   = 0x5800;
 static const uint32_t OHCA_FLASH_HALF_MS  = 300;
 /** 頂部 "OHCA" badge baseline Y（default font size 2，~14px 字高） */
 static const int16_t  OHCA_BADGE_Y        = 14;
-/** 大時間視覺上偏 px（baseline 中心微調，留下方標籤空間） */
-static const int16_t  OHCA_TIME_VISUAL_UP = 8;
-/** 標籤距大時間 baseline 下方 px */
-static const int16_t  OHCA_LABEL_GAP_PX   = 16;
+/** 大時間視覺上偏 px（middle datum 中心 y = SCREEN_H/2 - VISUAL_UP，留下方標籤空間） */
+static const int16_t  OHCA_TIME_VISUAL_UP = 20;
+/** 標籤距大時間 middle 下方 px（要 > 大時間半高 + padding，否則撞時間 bbox） */
+static const int16_t  OHCA_LABEL_GAP_PX   = 48;
 /** 底部 EPI/Shock 計數行距底邊 px */
 static const int16_t  OHCA_COUNTER_BOTTOM = 18;
 
-/** 倒數 partial push bbox（保守覆蓋 FreeMonoBold24pt7b "00:00" 5 chars 區域） */
-static const int16_t  OHCA_TIME_PUSH_X    = 80;
-static const int16_t  OHCA_TIME_PUSH_Y    = 90;
-static const int16_t  OHCA_TIME_PUSH_W    = 160;
-static const int16_t  OHCA_TIME_PUSH_H    = 60;
+/** 倒數 partial sprite erase bbox（FreeMonoBold24pt7b size 2 → 280×96 + margin） */
+static const int16_t  OHCA_TIME_PUSH_X    = 14;
+static const int16_t  OHCA_TIME_PUSH_Y    = 48;
+static const int16_t  OHCA_TIME_PUSH_W    = 292;
+static const int16_t  OHCA_TIME_PUSH_H    = 104;
 /** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37 + 板上 WS2812 GPIO 48） */
 static const int8_t   TFT_CS_PIN    = 21;
 static const int8_t   TFT_DC_PIN    = 1;   /**< 原 48 → 1：避開板上 WS2812 RGB LED（2026-05-08 實機踩雷） */
@@ -1599,28 +1599,28 @@ static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
 }
 
 void drawOhcaStartFlash() {
-    // OHCA 案件啟動 1 秒提示：綠色全螢幕 "Start OHCA"
+    // OHCA 案件啟動 1 秒提示：綠色全螢幕 "Start OHCA"（PM 反饋字級放大）
     display.setFont(&fonts::Font0);
-    display.setTextSize(3);
-    drawCenteredText("Start OHCA", SCREEN_H / 2 - 12, COLOR_ACCENT_OK);
+    display.setTextSize(4);
+    drawCenteredText("Start OHCA", SCREEN_H / 2 - 16, COLOR_ACCENT_OK);
 }
 
 void drawOhcaWaitFirstEpi() {
-    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout
+    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout（PM 反饋字級放大 1.5x）
     // 前置：caller 已 clearDisplay 為黑底
     display.setFont(&fonts::Font0);
 
     // 頂部 OHCA 綠 badge（同 drawOhcaCountdownCommon）
-    display.setTextSize(2);
+    display.setTextSize(3);
     drawCenteredText("OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    // 中央大字「Awaiting EPI」（demo 寫「待本機 EPI」灰色 24px；無中文字型，用英文 + size 3 default font）
-    display.setTextSize(3);
-    drawCenteredText("Awaiting EPI", SCREEN_H / 2 - 12, COLOR_TEXT_MUTED);
+    // 中央大字「Awaiting EPI」
+    display.setTextSize(4);
+    drawCenteredText("Awaiting EPI", SCREEN_H / 2 - 16, COLOR_TEXT_MUTED);
 
     // 副標：兩段確認提示
-    display.setTextSize(1);
-    drawCenteredText("(press EPI x2 to confirm)", SCREEN_H / 2 + 24, COLOR_TEXT_DIM);
+    display.setTextSize(2);
+    drawCenteredText("(press EPI x2 to confirm)", SCREEN_H / 2 + 32, COLOR_TEXT_DIM);
 
     // 底部 EPI/Shock 計數（首次 EPI 前皆為 0，但保持 layout 一致）
     uint16_t epiN = 0, shockN = 0;
@@ -1630,8 +1630,8 @@ void drawOhcaWaitFirstEpi() {
     }
     char counter[24];
     snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
-    display.setTextSize(1);
-    drawCenteredText(counter, SCREEN_H - OHCA_COUNTER_BOTTOM, COLOR_TEXT_DIM);
+    display.setTextSize(2);
+    drawCenteredText(counter, SCREEN_H - OHCA_COUNTER_BOTTOM - 6, COLOR_TEXT_DIM);
 }
 
 /**
@@ -1652,9 +1652,9 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
         display.fillScreen(COLOR_FLASH_VENT);
     }
 
-    // STEP 02: 頂部 mode badge "OHCA"（綠 top-center datum）
+    // STEP 02: 頂部 mode badge "OHCA"（綠 top-center datum，PM 反饋字級放大）
     display.setFont(&fonts::Font0);
-    display.setTextSize(2);
+    display.setTextSize(3);
     display.setTextColor(COLOR_ACCENT_OK);
     display.setTextDatum(textdatum_t::top_center);
     display.drawString("OHCA", SCREEN_W / 2, OHCA_BADGE_Y);
@@ -1667,15 +1667,15 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
              (unsigned long)(total_sec % 60));
 
     display.setFont(&fonts::FreeMonoBold24pt7b);
-    display.setTextSize(1);
+    display.setTextSize(2);  // 96px 高（PM 反饋大時間放大；middle_center 自動居中）
     display.setTextColor(timeColor);
     display.setTextDatum(textdatum_t::middle_center);
     const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
     display.drawString(timeStr, SCREEN_W / 2, time_y);
 
-    // STEP 04: 時間下方標籤
+    // STEP 04: 時間下方標籤（PM 反饋字級放大）
     display.setFont(&fonts::Font0);
-    display.setTextSize(2);
+    display.setTextSize(3);
     display.setTextColor(COLOR_TEXT_MUTED);
     display.setTextDatum(textdatum_t::top_center);
     display.drawString(label, SCREEN_W / 2, time_y + OHCA_LABEL_GAP_PX);
@@ -1687,10 +1687,10 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
 
-    // STEP 06: 底部計數行（bottom-center datum）
+    // STEP 06: 底部計數行（bottom-center datum，PM 反饋字級放大）
     char counter[24];     // "EPI 65535  Shock 65535\0" = 23 byte
     snprintf(counter, sizeof(counter), "EPI %u  Shock %u", epiN, shockN);
-    display.setTextSize(1);
+    display.setTextSize(2);
     display.setTextColor(COLOR_TEXT_DIM);
     display.setTextDatum(textdatum_t::bottom_center);
     display.drawString(counter, SCREEN_W / 2, SCREEN_H - OHCA_COUNTER_BOTTOM);
@@ -1730,7 +1730,7 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
                      OHCA_TIME_PUSH_W, OHCA_TIME_PUSH_H, COLOR_BG);
 
     display.setFont(&fonts::FreeMonoBold24pt7b);
-    display.setTextSize(1);
+    display.setTextSize(2);  // 對齊 drawOhcaCountdownCommon STEP 03
     display.setTextColor(timeColor);
     display.setTextDatum(textdatum_t::middle_center);
     const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
