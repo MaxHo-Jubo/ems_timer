@@ -117,8 +117,8 @@
   .menu-list { width: 100%; max-width: 320px; padding: 0; }
   .menu-item { padding: 6px 24px; font-size: 24px; color: #94a3b8; border-radius: 0; line-height: 36px; }
   .menu-item.selected { background: #fff; color: #000; font-weight: 700; }
-  .menu-item .menu-cursor { display: inline-block; width: 16px; color: #4ade80; }
-  .menu-item.selected .menu-cursor { color: #000; }
+  /* 韌體只有反白 highlight、沒有 ▶ 箭頭，故隱藏 cursor 元素 */
+  .menu-item .menu-cursor { display: none; }
   .menu-header { font-size: 29px; color: #4ade80; letter-spacing: 0; margin-bottom: 8px; text-align: center; text-transform: none; font-weight: 700; padding-top: 4px; border-bottom: 1px solid #334155; padding-bottom: 6px; }
 
   /* === Confirm dialog（韌體 320×240 同尺寸） === */
@@ -703,7 +703,7 @@ const STATES = {
       const cursor = stateData.cursor || 0;
       screenContent.innerHTML = `
         <div class="menu-list">
-          <div class="menu-header">EMS DoseSync Pro</div>
+          <div class="menu-header" style="font-size:16px;letter-spacing:2px;color:#94a3b8;font-weight:700;border-bottom:1px solid #334155;padding-bottom:4px;margin-bottom:6px;text-transform:uppercase">EMS DoseSync Pro</div>
           ${items.map((it, i) => `
             <div class="menu-item ${i === cursor ? 'selected' : ''}">
               <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}

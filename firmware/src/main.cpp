@@ -351,10 +351,13 @@ static bool ohcaVentPaused         = false;
 // ============================================================
 
 enum EndCheckCursor : uint8_t {
-    END_CHECK_CURSOR_CONFIRM = 0,
-    END_CHECK_CURSOR_CANCEL  = 1,
+    END_CHECK_CURSOR_CONFIRM  = 0,  // 完成並結束案件
+    END_CHECK_CURSOR_BACKFILL = 1,  // 前往補登
+    END_CHECK_CURSOR_CANCEL   = 2,  // 返回案件
 };
 static EndCheckCursor endCheckCursor = END_CHECK_CURSOR_CANCEL;
+/** A7：END_CHECK 選「完成並結束」後彈出二次確認對話（demo OHCA_END_CONFIRM） */
+static bool endConfirmShown = false;
 
 static uint16_t summaryScrollOffset = 0;
 
@@ -434,6 +437,8 @@ void drawOhcaEndCheck();
 void drawOhcaLocked();
 void drawOhcaSummary();
 void drawTwoStepArmedOverlay(const char* what);
+void drawOhcaConfirmDialog(uint8_t evType);
+void drawOhcaEndConfirmDialog();
 void drawPlaceholder(const char* title, const char* phase);
 void drawDrugMenu();
 void drawBackfillType();
@@ -900,12 +905,28 @@ void onShortPress(uint8_t btnIdx) {
             }
             // STEP 02: END_CHECK 主鍵 — 依 cursor 行為
             if (ohcaState == OHCA_STATE_END_CHECK) {
-                if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
+                // A7：二次確認對話顯示中 → 主鍵 = 真鎖定
+                if (endConfirmShown) {
+                    endConfirmShown = false;
                     dispatchOhcaEvent(OHCA_EVT_END_CONFIRM, 0);
-                    Serial.println("[OHCA] case LOCKED");
-                } else {
-                    dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
+                    Serial.println("[OHCA] case LOCKED (after END_CONFIRM dialog)");
+                    return;
                 }
+                if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
+                    // A7：開二次確認對話（不直接鎖定）
+                    endConfirmShown = true;
+                    Serial.println("[OHCA] END_CONFIRM dialog opened");
+                    return;
+                }
+                if (endCheckCursor == END_CHECK_CURSOR_BACKFILL) {
+                    // B1：前往補登 — 先回到原 phase，再進 drug menu
+                    dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
+                    enterDrugMenu();
+                    Serial.println("[OHCA] END_CHECK -> backfill (drug menu)");
+                    return;
+                }
+                // CANCEL
+                dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
                 return;
             }
             // STEP 03: LOCKED 主鍵 — 翻 SUMMARY
@@ -917,9 +938,9 @@ void onShortPress(uint8_t btnIdx) {
             break;
 
         case BTN_UP:
-            if (ohcaState == OHCA_STATE_END_CHECK) {
-                endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
-                               ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
+            if (ohcaState == OHCA_STATE_END_CHECK && !endConfirmShown) {
+                // 3 項循環：CONFIRM(0) ↔ BACKFILL(1) ↔ CANCEL(2)
+                endCheckCursor = (EndCheckCursor)((endCheckCursor + 2) % 3);
             } else if (ohcaState == OHCA_STATE_SUMMARY) {
                 // Phase B: SUMMARY 上鍵 → 進 Timeline 子畫面
                 ohcaSubState         = SUBSTATE_TIMELINE;
@@ -928,9 +949,8 @@ void onShortPress(uint8_t btnIdx) {
             break;
 
         case BTN_DOWN:
-            if (ohcaState == OHCA_STATE_END_CHECK) {
-                endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
-                               ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
+            if (ohcaState == OHCA_STATE_END_CHECK && !endConfirmShown) {
+                endCheckCursor = (EndCheckCursor)((endCheckCursor + 1) % 3);
             } else if (ohcaState == OHCA_STATE_SUMMARY) {
                 ohcaSubState         = SUBSTATE_TIMELINE;
                 timelineScrollOffset = 0;
@@ -938,13 +958,26 @@ void onShortPress(uint8_t btnIdx) {
             break;
 
         case BTN_BACK:
+            // A1：兩段確認對話顯示中 → 返回鍵 = 取消對話（modal 行為）
+            if (showEpiArmedPrompt || showShockArmedPrompt) {
+                showEpiArmedPrompt   = false;
+                showShockArmedPrompt = false;
+                Serial.println("[OHCA] confirm dialog cancelled (BACK)");
+                return;
+            }
             // STEP 01: SUMMARY 返回主功能表
             if (ohcaState == OHCA_STATE_SUMMARY) {
                 exitOhcaCase();
                 return;
             }
-            // STEP 02: END_CHECK 返回鍵 = 取消
+            // STEP 02: END_CHECK 返回鍵
             if (ohcaState == OHCA_STATE_END_CHECK) {
+                // A7：二次確認對話顯示中 → 返回 = 退回 END_CHECK 主畫面
+                if (endConfirmShown) {
+                    endConfirmShown = false;
+                    return;
+                }
+                // 一般 = 取消（回原 phase）
                 dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
                 return;
             }
@@ -1031,7 +1064,8 @@ void onLongPress(uint8_t btnIdx) {
         if (globalState == GLOBAL_OHCA && ohcaSubState == SUBSTATE_NONE &&
             isOhcaInProgress(ohcaState)) {
             dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
-            endCheckCursor = END_CHECK_CURSOR_CANCEL;
+            endCheckCursor   = END_CHECK_CURSOR_CANCEL;
+            endConfirmShown  = false;  // A7：reset 二次確認對話旗標
             stopBeep();
             Serial.println("[OHCA] enter END_CHECK");
             return;
@@ -1388,7 +1422,7 @@ struct DisplaySnapshot {
     uint8_t  ventBeat;           /**< 6sec 通氣節奏目前秒（0-5） */
     uint8_t  ventVolume;
     bool     ventPaused;
-    uint8_t  flags;              /**< bit-packed prompt/overlay 狀態 */
+    uint16_t flags;              /**< bit-packed prompt/overlay 狀態（擴成 uint16 容納 bit 8+） */
 };
 
 static DisplaySnapshot lastDisplaySnapshot = {};  // 全 0 初始 → 首次 updateDisplay 必觸發重繪
@@ -1421,6 +1455,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     if (ventEndCheckShown)      s.flags |= 0x10;
     if (alarmMuted)             s.flags |= 0x20;
     if (ventBackHintShown)      s.flags |= 0x40;
+    if (endConfirmShown)        s.flags |= 0x100;  // A7：bit 8
 
     // ALARMING flash phase：bit 進 snapshot 讓 dedupe 在 ALARMING 期間每半週期觸發一次重繪
     // （demo flashRed 0.6s 全週期 → OHCA_FLASH_HALF_MS 半週期）
@@ -1465,7 +1500,7 @@ void updateDisplay() {
         return;
     }
 
-    Serial.printf("[REDRAW] gs=%u os=%u sub=%u cur=%u cdSec=%lu vBeat=%u flags=0x%02x\n",
+    Serial.printf("[REDRAW] gs=%u os=%u sub=%u cur=%u cdSec=%lu vBeat=%u flags=0x%04x\n",
                   now.globalState, now.ohcaState, now.ohcaSubState, now.mainMenuCursor,
                   (unsigned long)now.countdownSec, now.ventBeat, now.flags);
     lastDisplaySnapshot = now;
@@ -1514,7 +1549,8 @@ void updateDisplay() {
                 break;
             }
             case OHCA_STATE_END_CHECK:
-                drawOhcaEndCheck();
+                if (endConfirmShown) drawOhcaEndConfirmDialog();
+                else                  drawOhcaEndCheck();
                 break;
             case OHCA_STATE_LOCKED:
                 drawOhcaLocked();
@@ -1535,9 +1571,9 @@ void updateDisplay() {
             drawOhcaVentOverlay(/*y_top*/ 44);
         }
 
-        // overlay：兩段確認 armed 提示
-        if (showEpiArmedPrompt) drawTwoStepArmedOverlay("確認已給 EPI？");
-        else if (showShockArmedPrompt) drawTwoStepArmedOverlay("確認已電擊？");
+        // A1：兩段確認改用全螢幕對話（fillScreen 覆蓋背景，對齊 demo OHCA_CONFIRM）
+        if (showEpiArmedPrompt)        drawOhcaConfirmDialog(EVT_EPI_LOCAL);
+        else if (showShockArmedPrompt) drawOhcaConfirmDialog(EVT_SHOCK_LOCAL);
 
     } else if (globalState == GLOBAL_VENT) {
         if (ventEndCheckShown) drawVentEndCheck();
@@ -1746,16 +1782,11 @@ void drawOhcaEndCheck() {
     // 標題（efontTW_24 size 1.2 ≈ 29px）
     display.setFont(&fonts::efontTW_24);
     display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("結束案件？", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
+    drawCenteredText("結束前檢查", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
 
-    // 提示
-    display.setTextSize(1);
-    drawCenteredText("結束後不可修改", 60, COLOR_TEXT_MUTED);
-
-    // 兩個選項（cursor highlight 反白）
-    const int16_t y_confirm = 110;
-    const int16_t y_cancel  = 160;
-    const int16_t row_h     = 36;
+    // 三個選項：完成並結束案件 / 前往補登 / 返回案件（demo OHCA_END_CHECK）
+    const int16_t y0     = 70;
+    const int16_t row_h  = 40;
 
     auto drawOption = [&](const char* text, int16_t y, bool selected) {
         if (selected) {
@@ -1770,14 +1801,94 @@ void drawOhcaEndCheck() {
         display.drawString(text, SCREEN_W / 2, y + row_h / 2);
     };
 
-    drawOption("確認結束", y_confirm, endCheckCursor == END_CHECK_CURSOR_CONFIRM);
-    drawOption("返回案件", y_cancel,  endCheckCursor == END_CHECK_CURSOR_CANCEL);
+    drawOption("完成並結束案件", y0,            endCheckCursor == END_CHECK_CURSOR_CONFIRM);
+    drawOption("前往補登",       y0 + row_h,    endCheckCursor == END_CHECK_CURSOR_BACKFILL);
+    drawOption("返回案件",       y0 + row_h*2,  endCheckCursor == END_CHECK_CURSOR_CANCEL);
 
     // 底部 hint
     display.setFont(&fonts::efontTW_24);
     display.setTextSize(1);
     drawCenteredText("上下選擇　主鍵確認",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+}
+
+/**
+ * A7：OHCA_END_CONFIRM 二次確認對話（END_CHECK 選「完成並結束」後彈出）
+ * 對齊 demo OHCA_END_CONFIRM render
+ */
+void drawOhcaEndConfirmDialog() {
+    // 全螢幕黑底 + 紅色邊框
+    display.fillScreen(COLOR_BG);
+
+    const int16_t margin_x = 16;
+    const int16_t margin_y = 24;
+    const int16_t x = margin_x;
+    const int16_t y = margin_y;
+    const int16_t w = SCREEN_W - 2 * margin_x;
+    const int16_t h = SCREEN_H - 2 * margin_y;
+    display.drawRect(x, y, w, h, COLOR_ACCENT_ALERT);
+    display.drawRect(x + 1, y + 1, w - 2, h - 2, COLOR_ACCENT_ALERT);
+
+    // 標題（紅色，efontTW_24 × 1.5 ≈ 36px）
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("確認結束案件？", y + 24, COLOR_ACCENT_ALERT);
+
+    // 內文
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("結束後不可修改", y + 100, COLOR_TEXT_MUTED);
+
+    // 底部分隔線
+    display.drawLine(x + 8, y + h - 36, x + w - 8, y + h - 36, COLOR_TEXT_DIM);
+
+    // hint
+    display.setTextSize(1);
+    drawCenteredText("主鍵確認　返回取消",
+                     y + h - 24, COLOR_TEXT_DIM);
+}
+
+/**
+ * A1：OHCA 兩段確認全螢幕對話（取代 44px bar overlay）
+ * 對齊 demo OHCA_CONFIRM render
+ *
+ * @param evType EVT_EPI_LOCAL / EVT_SHOCK_LOCAL（Amio 走 SUBSTATE_AMIO_CONFIRM）
+ */
+void drawOhcaConfirmDialog(uint8_t evType) {
+    // 全螢幕黑底 + 琥珀邊框（demo overlay rgba(0,0,0,0.92) + 2px amber）
+    display.fillScreen(COLOR_BG);
+
+    const int16_t margin_x = 16;
+    const int16_t margin_y = 24;
+    const int16_t x = margin_x;
+    const int16_t y = margin_y;
+    const int16_t w = SCREEN_W - 2 * margin_x;
+    const int16_t h = SCREEN_H - 2 * margin_y;
+    display.drawRect(x, y, w, h, COLOR_ACCENT_WARN);
+    display.drawRect(x + 1, y + 1, w - 2, h - 2, COLOR_ACCENT_WARN);
+
+    // 標題
+    const char* title = (evType == EVT_EPI_LOCAL)   ? "確認已給 EPI？"
+                      : (evType == EVT_SHOCK_LOCAL) ? "確認已電擊？"
+                      :                                "確認操作？";
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(title, y + 24, COLOR_TEXT_PRIMARY);
+
+    // 內文兩行（efontTW_24 × 1.2 ≈ 29px）
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("確認後將建立時間戳", y + 88, COLOR_TEXT_MUTED);
+    const char* body2 = (evType == EVT_EPI_LOCAL) ? "並重啟 4 分鐘倒數" : "不影響 EPI 倒數";
+    drawCenteredText(body2, y + 124, COLOR_TEXT_MUTED);
+
+    // 底部分隔線
+    display.drawLine(x + 8, y + h - 36, x + w - 8, y + h - 36, COLOR_TEXT_DIM);
+
+    // hint
+    display.setTextSize(1);
+    const char* hint = (evType == EVT_EPI_LOCAL)   ? "再按 EPI 鍵確認　返回取消"
+                     : (evType == EVT_SHOCK_LOCAL) ? "再按電擊鍵確認　返回取消"
+                     :                                "主鍵確認　返回取消";
+    drawCenteredText(hint, y + h - 24, COLOR_TEXT_DIM);
 }
 
 void drawOhcaLocked() {

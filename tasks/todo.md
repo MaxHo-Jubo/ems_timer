@@ -183,6 +183,49 @@
   - Placeholder（訓練模式 D 階段 / 歷史紀錄 E 階段 / 系統設定 G 階段）
   - **Phase B 全部 8 畫面**：DrugMenu / Backfill 4 步驟 / AmioConfirm / Timeline / QuickMenu
 
+### Demo vs 韌體對齊修正（2026-05-08 PM 反饋）
+
+#### Batch 1：核心對話流程 ✅ 已完成
+
+- [x] **demo 主選單 title 字級調小**（16px ASCII，對齊韌體 Font0 size 2）
+- [x] **demo 移除所有 menu cursor `▶`**（韌體只有反白 highlight）
+- [x] **A1：OHCA 兩段確認改全螢幕對話**（取代 44px bar overlay）— `drawOhcaConfirmDialog(EVT_EPI_LOCAL/SHOCK_LOCAL)`
+  - 全螢幕黑底 + 琥珀邊框 + 標題 36px + 內文 29px × 2 行 + 分隔線 + hint
+  - EPI: 「確認已給 EPI？/ 確認後將建立時間戳 / 並重啟 4 分鐘倒數 / 再按 EPI 鍵確認 返回取消」
+  - SHOCK: 「確認已電擊？/ 確認後將建立時間戳 / 不影響 EPI 倒數 / 再按電擊鍵確認 返回取消」
+  - BACK 鍵取消對話（modal 行為）
+- [x] **B1：END_CHECK 改 3 項**（demo 對齊）
+  - 完成並結束案件 / 前往補登 / 返回案件
+  - 上下鍵 cycle 3 項（mod 3）
+- [x] **A7：END_CONFIRM 二次確認對話**（END_CHECK 選「完成並結束」後彈出）
+  - 全螢幕黑底 + 紅色邊框 + 標題「確認結束案件？」+ 「結束後不可修改」+ 「主鍵確認 返回取消」
+  - 主鍵 → LOCKED；返回 → 退回 END_CHECK 主畫面
+- [x] flags 欄位擴成 uint16（容納 bit 8 endConfirmShown）
+
+#### Batch 1 待實機測試項目
+
+- [ ] 主選單字級看起來符合預期（韌體 size 2 ≈ 16px ASCII）
+- [ ] 短按 EPI/SHOCK → 應彈出全螢幕對話（不是底部 bar）
+- [ ] 對話內按 EPI/SHOCK 同鍵 → 確認成立
+- [ ] 對話內按返回鍵 → 取消對話
+- [ ] OHCA 進行中長按主鍵 3s → END_CHECK 看到 3 項（完成並結束 / 前往補登 / 返回案件）
+- [ ] END_CHECK cursor 0「完成並結束」→ 主鍵 → 紅色邊框「確認結束案件？」對話
+- [ ] 對話內主鍵 → LOCKED；對話內返回 → 退回 END_CHECK 3 項
+- [ ] END_CHECK cursor 1「前往補登」→ 主鍵 → 進入藥物選單（補登 EPI / Amiodarone）
+
+#### Batch 2：Flash 訊息（5 個）⏳ 待做
+
+- [ ] A2：「EPI 已紀錄」+「重新倒數 4 分鐘」flash（EPI 確認後）
+- [ ] A3：「電擊已紀錄」flash（電擊確認後）
+- [ ] A4：「Amiodarone 已紀錄」flash
+- [ ] A5：「案件結束並鎖定」+「已存入歷史紀錄」flash（END_CONFIRM 後）
+- [ ] A6：「6秒給氣」+「已開啟/已暫停/已繼續/已關閉」flash
+
+#### Batch 3：次要補完 ⏳ 待做
+
+- [ ] A8：VENT_PRE「按主鍵開始」preview 畫面
+- [ ] B3：QUICK_MENU 加「案件簡版總覽」項目
+
 ### 未跑 review 的 commits（rate limit 恢復後補跑）
 
 依 CLAUDE.md POST-COMMIT-REVIEW，以下 commits 已 commit 未走 5 步驟 review：
