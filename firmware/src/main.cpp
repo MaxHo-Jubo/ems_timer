@@ -250,11 +250,11 @@ static GlobalState globalState = GLOBAL_MAIN_MENU;
 /** 主功能表 5 項（SoT V1 §3.1） */
 static const uint8_t MAIN_MENU_COUNT = 5;
 static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
-    "OHCA Case",
-    "6sec Vent",
-    "Training",
-    "History",
-    "Settings",
+    "OHCA 急救",
+    "6 秒給氣",
+    "訓練模式",
+    "歷史紀錄",
+    "系統設定",
 };
 static uint8_t mainMenuCursor = 0;
 
@@ -1557,7 +1557,8 @@ void updateDisplay() {
 void drawMainMenu() {
     // 螢幕已由 updateDisplay() 的 clearDisplay() 清為黑底，這裡不重複 fillScreen 避免雙閃。
 
-    // STEP 01: 上方標題列 — "EMS DOSESYNC PRO" 灰字 size 2，y=8
+    // STEP 01: 上方標題列 — "EMS DOSESYNC PRO" 英文用 default font size 2
+    display.setFont(&fonts::Font0);
     display.setTextSize(2);
     display.setTextColor(COLOR_TEXT_MUTED);
     display.setCursor(16, 12);
@@ -1566,17 +1567,16 @@ void drawMainMenu() {
     // STEP 02: 標題下分隔線 y=36，灰色橫貫
     display.drawLine(16, 36, SCREEN_W - 16, 36, COLOR_TEXT_DIM);
 
-    // STEP 03: 5 個選單項，y=58 起每 36px 一行（總高 180px，剩 50/240 padding 上下分配）
+    // STEP 03: 5 個選單項用 efontCN_24（24px CJK，size 1，UTF-8 自動解碼），y=58 起每 36px 一行
     //   - cursor 項：白底黑字（demo cursor highlight）
     //   - 非 cursor：黑底白字
-    //   - text size 3（每字 18×24 px），左 padding 24
     constexpr int16_t MENU_Y_START   = 58;
     constexpr int16_t MENU_ROW_H     = 36;
     constexpr int16_t MENU_TEXT_PAD  = 24;
-    constexpr int16_t MENU_TEXT_SIZE = 3;
-    constexpr int16_t MENU_TEXT_OFFSET_Y = 8;  // text 在 row 內垂直置中的偏移
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;  // efont 24px 字在 36px row 內垂直置中
 
-    display.setTextSize(MENU_TEXT_SIZE);
+    display.setFont(&fonts::efontCN_24);
+    display.setTextSize(1);
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == mainMenuCursor) {

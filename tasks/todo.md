@@ -133,9 +133,10 @@
 
 - [x] **OHCA 主畫面 — 待本機 EPI** — `drawOhcaWaitFirstEpi()`（commit 8e428c8）
 - [x] **EPI 成立 1 秒提示** — `drawOhcaStartFlash()`（commit 8e428c8 + LGFX datum）
-- [ ] **兩段確認畫面**（EPI / SHOCK / Amio）— `drawTwoStepArmedOverlay()`
-- [ ] **案件結束流程畫面** — `drawOhcaEndCheck()` / `drawOhcaLocked()` / `drawOhcaSummary()`
-- [ ] **6 秒通氣**（OHCA 內輔助 + 獨立模式）— `drawOhcaVentOverlay()` / `drawVentStandalone()`
+- [x] **兩段確認 overlay** — `drawTwoStepArmedOverlay()`（commit 96ef727，琥珀反色 40px bar）
+- [x] **案件結束流程畫面** — `drawOhcaEndCheck()` / `drawOhcaLocked()` / `drawOhcaSummary()`（commit 96ef727）
+- [x] **6 秒通氣**（OHCA 內輔助 + 獨立模式）— `drawOhcaVentOverlay()` / `drawVentStandalone()`（commit 96ef727 + 7a85f64 大字 y 修正）
+- [x] **VentEndCheck / Placeholder** 一併對齊新 layout（commit 96ef727）
 - [ ] 補登/Amiodarone 等 Phase B 畫面：本階段不做，Phase B 才畫
 - [ ] 移除 `OLED_WIDTH/HEIGHT` 別名 + 殘留 SH110X_WHITE/BLACK 替換為 COLOR_TEXT_PRIMARY/COLOR_BG（全部畫面重排完後）
 - [ ] 考慮抽出 `firmware/lib/ems_display/ems_display.{h,cpp}` 模組（多畫面穩定後）
@@ -157,9 +158,12 @@
 
 > demo 用「下次給藥/請準備給藥/請給藥」中文。目前韌體用英文 (Next dose/Prepare EPI/GIVE EPI!)。要不要支援中文待定。
 
-- [ ] 試 LGFX `fonts::efontCN_24`（24px CJK）對繁中常用字 cover 率
-- [ ] 缺字評估：「藥」「準」「備」「給」等是否 OK
-- [ ] 若 efontCN cover 不夠，採用 vlw 自訂字型（自選繁中字集生成）
+- [x] 試 LGFX `fonts::efontCN_24`（24px CJK）— 主選單做 PoC：「OHCA 急救/6 秒給氣/訓練模式/歷史紀錄/系統設定」
+  - Flash 11→27.6%（efontCN_24 fontmap ~600KB），3.3MB 還夠
+  - 編譯通過，待實機驗收 cover 率（commit 待加）
+- [ ] 主選單實機驗收：所有字是否正常顯示，字型清晰度可接受
+- [ ] 缺字評估：擴展到 OHCA 倒數標籤「下次給藥/請準備給藥/請給藥」常用字
+- [ ] 若 efontCN cover 不夠或字型粗細不滿意，採用 vlw 自訂字型（自選繁中字集生成）
 - [ ] 決策：英文保持 / 全 CJK / 雙語切換
 
 ### Step 4：硬體層 + 文件同步（半小時）
