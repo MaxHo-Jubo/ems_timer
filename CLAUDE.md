@@ -171,7 +171,9 @@ EmsEvent { event_type: uint8, timestamp: uint64 (epoch ms), elapsed_ms: uint32 }
 
 | 文件 | 用途 |
 |------|------|
-| [`docs/power-module-purchase.md`](docs/power-module-purchase.md) | **電源模組採購與組裝 SOP**（採購清單、收貨驗收、組裝步驟、故障排除） |
+| [`docs/hardware-procurement-v2.md`](docs/hardware-procurement-v2.md) | **硬體採購清單 v2**（PM 6 條需求對照、兩條升級路徑、蝦皮/露天連結、焊接清單、成本工時對照、給 PM 下單參考）|
+| [`docs/hardware-procurement-v2.html`](docs/hardware-procurement-v2.html) | 同上 HTML 版（排版對齊 power-module-purchase.html，方便發給 PM）|
+| [`docs/power-module-purchase.md`](docs/power-module-purchase.md) | 電源模組採購與組裝 SOP（採購清單、收貨驗收、組裝步驟、故障排除） |
 | [`docs/power-module-purchase.html`](docs/power-module-purchase.html) | 同上 HTML 版（排版對齊 flow.html，方便瀏覽） |
 
 ### Dev-Phase 2~3 開發階段

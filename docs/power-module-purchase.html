@@ -124,7 +124,7 @@
 <div class="header">
   <h1>⚡ EMS Timer 電源模組採購與組裝指南</h1>
   <div class="subtitle">3.7V 鋰電池 + TP4056 充電升壓 + 邊充邊用</div>
-  <div class="version">v1.1 · 2026-05-06 · Max Ho</div>
+  <div class="version">v1.4 · 2026-05-07 · Max Ho</div>
 </div>
 
 <div class="meta-box">
@@ -592,7 +592,61 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
       <strong>適用情境：</strong>Prod-Phase 量產且想一次整合 RTC、電量顯示、APP 管理的進階方案
     </div>
 
-    <h3 class="sub-title">9.4 三方案對照</h3>
+    <h3 class="sub-title">9.4 候選方案 C：SparkFun Thing Plus - ESP32-S3</h3>
+    <div class="note note-amber">
+      ⚠️ <strong>此方案性質與 §9.2/§9.3 不同</strong>：A/B 是「電源附加模組」（外掛在主控板上），C 是「<strong>主控板替換方案</strong>」（整片取代目前 GOOUUU ESP32-S3 + 充電模組 + microSD 模組三件套）。切換 C 需重做 GPIO mapping 並調整韌體 partition table。
+    </div>
+
+    <div class="note note-blue">
+      <strong>官方產品介紹</strong>（節錄自 <a class="link" href="https://www.sparkfun.com/sparkfun-thing-plus-esp32-s3.html" target="_blank">sparkfun.com/sparkfun-thing-plus-esp32-s3.html</a>）：<br>
+      <em>"The board we rely on for demanding IoT projects with the ESP32-S3, this Feather-compatible board features a 240MHz dual-core processor, 2MB PSRAM, WiFi, and Bluetooth 5 LE. With on-board MCP73831 LiPo charger, MAX17048 fuel gauge, USB-C, microSD slot, and Qwiic connector, it integrates everything you need for a battery-powered project on a single board."</em>
+    </div>
+
+    <p style="font-weight: 600; margin: 16px 0 8px;">核心規格</p>
+    <table>
+      <thead><tr><th>項目</th><th>規格</th></tr></thead>
+      <tbody>
+        <tr><td>主控</td><td>ESP32-S3-MINI1-<strong>N4R2</strong>（4MB Flash + 2MB PSRAM）</td></tr>
+        <tr><td>充電 IC</td><td><strong>MCP73831</strong>（Microchip 工業級，預設 214mA@3.3V）</td></tr>
+        <tr><td>電量計</td><td><strong>MAX17048</strong>（I2C @ 0x36，可讀電量百分比 + 電壓）</td></tr>
+        <tr><td>升壓 IC</td><td>不需要（LiPo 3.7V 直驅板載 RT9080 LDO 輸出 3.3V@500mA）</td></tr>
+        <tr><td>輸入</td><td>USB-C 5V / 2-pin JST LiPo 3.7V</td></tr>
+        <tr><td>輸出</td><td>3.3V@500mA（板載 LDO）</td></tr>
+        <tr><td>電池接頭</td><td><strong>JST PH 2.0</strong>（與你目前 1000mAh 523450 電池相容）</td></tr>
+        <tr><td>microSD</td><td><strong>板載卡槽</strong>（共用 SPI bus）</td></tr>
+        <tr><td>I2C 介面</td><td><strong>Qwiic 連接器</strong>（4-pin SH 1.0，免焊接）</td></tr>
+        <tr><td>系統按鈕</td><td>BOOT / RESET（不可作 user button）</td></tr>
+        <tr><td>LED</td><td>WS2812 RGB（GPIO 46）+ 藍色 STAT</td></tr>
+        <tr><td>GPIO 引出</td><td>21 個（其中 17 個可 ADC）</td></tr>
+        <tr><td>形狀</td><td>Feather form factor，<strong>65 × 23 × ~10mm</strong></td></tr>
+        <tr><td>價格</td><td><strong>$24.95 USD（≈ NT$800）</strong> + 國際運費</td></tr>
+        <tr><td>含電池</td><td><span class="badge badge-fail">否，需另購</span></td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-weight: 600; margin: 16px 0 8px; color: #15803d;">核心優勢</p>
+    <ul class="check-list">
+      <li><strong>一片解決電源 + microSD + I2C bus</strong>：充電 IC + 燃料計 + LiPo JST + microSD + Qwiic + USB-C 全板載，省下 §9.2/§9.3 額外模組</li>
+      <li><strong>MAX17048 燃料計</strong>直接讀電量百分比，可在 OLED 顯示「XX% / 剩 N 小時」（比 PowerBoost LBO 二元警告精準）</li>
+      <li><strong>板載 microSD 直接支援 SD 卡 OTA</strong>：拔卡更新韌體，~5 秒燒完，比 BLE OTA 快 6~12 倍且不需拆殼（見 §9.8.2）</li>
+      <li><strong>Feather form factor 體積小</strong>（65 × 23mm），外殼設計簡化、走線變少</li>
+      <li>ESP32-S3 chip 與目前 GOOUUU 同型號 → <strong>韌體幾乎可平移</strong>，只需改 GPIO mapping</li>
+    </ul>
+
+    <p style="font-weight: 600; margin: 16px 0 8px; color: var(--red);">核心限制</p>
+    <ul class="check-list">
+      <li class="cross"><strong>板上沒有 user button / OLED / 蜂鳴器 / 震動 / 麥克風 / TFT</strong> — 全部仍要外接（這片是主控板，不是完整裝置）</li>
+      <li class="warn"><strong>Flash 縮水 N8 → N4</strong>（8MB → 4MB）— 完整韌體預估 1.58MB &gt; 預設 OTA partition 1.5MB，需自訂 partition table 拉到 1.94MB（見 §9.8.2 + §9.8.4）</li>
+      <li class="warn"><strong>GPIO 21 支對外接需求 22 支不夠</strong> — 需 MCP23017 I2C IO Expander 把 8 顆按鈕走 I2C（見 §9.8.3）</li>
+      <li class="warn"><strong>BOOT 鍵是 strapping pin</strong>（GPIO 0），不可挪用為 user button</li>
+      <li class="warn"><strong>Qwiic 預設 I2C 腳位</strong>（GPIO 8/9 推測）需查 schematic 確認，採購後實機驗證</li>
+    </ul>
+
+    <div class="note note-green">
+      <strong>適用情境：</strong>Prod-Phase pilot 量產（5~20 台），需要高整合度、體積要小、想用 SD 卡 OTA 取代 BLE OTA、且接受重做 GPIO mapping 的場景
+    </div>
+
+    <h3 class="sub-title">9.5 四方案對照</h3>
     <table>
       <thead>
         <tr>
@@ -600,6 +654,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
           <th>現行（蓮騰 + 523450 + DIY）</th>
           <th>A: PowerBoost 1000C</th>
           <th>B: PiSugar 3</th>
+          <th>C: SparkFun Thing Plus-ESP32-S3</th>
         </tr>
       </thead>
       <tbody>
@@ -608,65 +663,89 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
           <td><span class="badge badge-fail">否</span></td>
           <td><span class="badge badge-fail">否</span></td>
           <td><span class="badge badge-pass">1200mAh 內建</span></td>
+          <td><span class="badge badge-fail">否</span></td>
         </tr>
         <tr>
           <td>升壓 IC</td>
           <td>山寨版 SX1308 推測</td>
           <td>TI TPS61090（工業級）</td>
           <td>未公開（整合方案）</td>
+          <td><span class="badge badge-fail">無（直驅 3.3V LDO）</span></td>
         </tr>
         <tr>
           <td>Load-sharing</td>
           <td><span class="badge badge-amber">⚠️ 可能不真實</span></td>
           <td><span class="badge badge-pass">真實作</span></td>
           <td><span class="badge badge-pass">UPS 等級</span></td>
+          <td><span class="badge badge-pass">pass-through</span></td>
         </tr>
         <tr>
           <td>RTC</td>
           <td><span class="badge badge-fail">需外加 DS3231</span></td>
           <td><span class="badge badge-fail">無</span></td>
           <td><span class="badge badge-pass">內建 + 鈕扣備份</span></td>
+          <td><span class="badge badge-fail">需外加 DS3231</span></td>
         </tr>
         <tr>
           <td>I2C 電量計</td>
           <td><span class="badge badge-fail">無</span></td>
           <td><span class="badge badge-fail">無</span></td>
           <td><span class="badge badge-pass">0x57 / 0x68</span></td>
+          <td><span class="badge badge-pass">MAX17048 @ 0x36</span></td>
         </tr>
         <tr>
           <td>軟關機</td>
           <td><span class="badge badge-fail">無</span></td>
           <td><span class="badge badge-pass">EN pin</span></td>
           <td><span class="badge badge-pass">按鈕觸發</span></td>
+          <td><span class="badge badge-fail">需 GPIO 自實作</span></td>
         </tr>
         <tr>
           <td>電池接頭</td>
           <td>PH2.0 焊盤需自焊母座</td>
           <td>PH2.0 母座已焊</td>
           <td>內建免接線</td>
+          <td>JST PH 2.0 已焊</td>
+        </tr>
+        <tr>
+          <td>microSD</td>
+          <td>需外接模組</td>
+          <td>需外接模組</td>
+          <td>需外接模組</td>
+          <td><span class="badge badge-pass">板載卡槽</span></td>
+        </tr>
+        <tr>
+          <td>5V 輸出</td>
+          <td><span class="badge badge-pass">5V (TP4056 升壓)</span></td>
+          <td><span class="badge badge-pass">5.2V (TPS61090)</span></td>
+          <td><span class="badge badge-pass">5V-3A</span></td>
+          <td><span class="badge badge-fail">無 (僅 3.3V)</span></td>
         </tr>
         <tr>
           <td>總成本</td>
           <td class="price-col"><strong>NT$205</strong></td>
           <td class="price-col">≈ NT$900+</td>
           <td class="price-col">≈ NT$1,500</td>
+          <td class="price-col">≈ NT$1,000（含 MCP23017）</td>
         </tr>
         <tr>
           <td>取得難度</td>
           <td>蝦皮現貨 1 ~ 3 天</td>
           <td>海外代購 7 ~ 14 天</td>
           <td>海外運送 14 ~ 21 天</td>
+          <td>蝦皮現貨可</td>
         </tr>
         <tr>
           <td>適用階段</td>
           <td>Dev-Phase 2 原型</td>
           <td>Prod-Phase 量產</td>
           <td>Prod-Phase + 進階功能</td>
+          <td><strong>Prod-Phase pilot 整合替換</strong></td>
         </tr>
       </tbody>
     </table>
 
-    <h3 class="sub-title">9.5 決策建議</h3>
+    <h3 class="sub-title">9.6 決策建議</h3>
     <table>
       <thead>
         <tr><th>情境</th><th>推薦方案</th></tr>
@@ -681,7 +760,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
           <td><span class="badge badge-amber">升級 A</span> PowerBoost 1000C</td>
         </tr>
         <tr>
-          <td>Prod-Phase 5 ~ 10 台量產</td>
+          <td>Prod-Phase 5 ~ 10 台量產（維持 GOOUUU 主控）</td>
           <td><span class="badge badge-amber">升級 A</span>（成本可控、工業級可靠度）</td>
         </tr>
         <tr>
@@ -689,11 +768,305 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
           <td><span class="badge badge-purple" style="background: var(--purple-light); color: var(--purple);">升級 B</span> PiSugar 3</td>
         </tr>
         <tr>
+          <td><strong>Prod-Phase pilot + 想要 SD 卡 OTA + 體積要小 + 整合度高</strong></td>
+          <td><span class="badge badge-green">升級 C</span> SparkFun Thing Plus-ESP32-S3</td>
+        </tr>
+        <tr>
           <td>量產 50+ 台</td>
-          <td>自製 PCB 整合 PowerBoost 同等級 IC</td>
+          <td>自製 PCB + ESP32-S3-WROOM-1-N16R8（16MB Flash 永遠不擔心）</td>
         </tr>
       </tbody>
     </table>
+
+    <h3 class="sub-title">9.7 接線參考（候選方案 A：PowerBoost 1000C）</h3>
+    <p style="margin: 8px 0 16px; color: var(--gray-600); font-size: 14px;">
+      此節為未來切換到 PowerBoost 1000C 時的接線指南，目前僅作備案，不影響現行 §5 組裝流程。
+    </p>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.7.1 必接（最小可動）</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>PowerBoost 1000C</th>
+          <th>→</th>
+          <th>ESP32-S3 GOOUUU</th>
+          <th>說明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>BAT（JST PH 2.0 母座）</td>
+          <td>→</td>
+          <td>LiPo 3.7V 1000mAh 公頭</td>
+          <td>紅(+) 黑(-)；反接會炸</td>
+        </tr>
+        <tr>
+          <td>5V</td>
+          <td>→</td>
+          <td><span class="badge badge-blue">VIN</span>（<strong>不是 3V3</strong>）</td>
+          <td>走板載 LDO 轉 3.3V</td>
+        </tr>
+        <tr>
+          <td>GND</td>
+          <td>→</td>
+          <td>GND</td>
+          <td>共地</td>
+        </tr>
+        <tr>
+          <td>Micro USB</td>
+          <td>→</td>
+          <td>對外充電孔</td>
+          <td>插入時走 load-sharing：USB 直供 + 同時充電池</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.7.2 強烈建議接</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>PowerBoost 1000C</th>
+          <th>→</th>
+          <th>ESP32-S3 GPIO</th>
+          <th>說明</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>LBO</td>
+          <td>→</td>
+          <td>任一輸入腳（內部 pull-up）</td>
+          <td>電池 &lt; 3.2V 時拉低，作為低電量警告 / OLED 提示</td>
+        </tr>
+        <tr>
+          <td>EN</td>
+          <td>→</td>
+          <td>滑動開關到 GND（或 GPIO 程控）</td>
+          <td>拉低 = 軟關機；浮接 = 輸出常開</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.7.3 接線注意事項</h4>
+    <ol style="padding-left: 22px; line-height: 1.8;">
+      <li><strong>VIN ≠ 3V3</strong>：5.2V 必須接 VIN 或 5V pin；接 3V3 會直接燒板載 LDO</li>
+      <li><strong>LBO 是 open-drain</strong>：必須有 pull-up（用 ESP32 內部 pull-up 即可），否則讀不到 LOW</li>
+      <li><strong>EN 預設高電位</strong>：浮接時輸出常開；要做關機開關必須接到 GND</li>
+      <li><strong>JST PH 2.0 極性</strong>：Adafruit 標準是紅(+) 黑(-)；自製電池接頭前用三用電表確認</li>
+      <li><strong>load-sharing 行為</strong>：插上 Micro USB 時系統由 USB 供電同時充電池，<strong>不會</strong> brown-out；拔 USB 才走電池放電</li>
+      <li><strong>輸出 5.2V 不是 5.0V</strong>：TPS61090 特意拉高補償 USB 線損，ESP32-S3 VIN 可接受 5.0~5.5V 區間</li>
+    </ol>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.7.4 電流預算驗證（1A 額定）</h4>
+    <table>
+      <thead>
+        <tr>
+          <th>元件</th>
+          <th>峰值電流</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>ESP32-S3（WiFi / BLE TX 峰值）</td>
+          <td>~250mA</td>
+        </tr>
+        <tr>
+          <td>OLED 1.3"（SH1106）</td>
+          <td>~20mA</td>
+        </tr>
+        <tr>
+          <td>蜂鳴器（主動式）</td>
+          <td>~30mA</td>
+        </tr>
+        <tr>
+          <td>8 × 按鈕 pull-up</td>
+          <td>&lt; 1mA</td>
+        </tr>
+        <tr>
+          <td>INMP441 麥克風（Phase 1.5）</td>
+          <td>~1.4mA</td>
+        </tr>
+        <tr>
+          <td>MicroSD 寫入（Phase 1.5 峰值）</td>
+          <td>~100mA</td>
+        </tr>
+        <tr>
+          <td><strong>合計</strong></td>
+          <td><strong>&lt; 500mA</strong></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="margin: 10px 0 0; color: var(--gray-600); font-size: 14px;">
+      PowerBoost 1000C 額定 1A，餘量約 2 倍，符合 SoT V1 §20.5 擴充模組功耗預算。
+    </p>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.7.5 切換時需回填的文件</h4>
+    <p style="margin: 0 0 10px; color: var(--gray-700);">LBO 偵測腳位實際選定後，需同步更新：</p>
+    <ul style="padding-left: 22px; line-height: 1.8;">
+      <li><code>docs/gpio-allocation.md</code>：新增 LBO 偵測腳位、EN 控制腳位（若用 GPIO 而非開關）</li>
+      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §20.4.3：充電 IC 改寫為「Adafruit PowerBoost 1000C（MCP73871 + TPS61090）」</li>
+      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §21.1：主要硬體清單替換電源模組</li>
+      <li><code>docs/pcb-outsourcing-guide.md</code>：PCB 預留 PowerBoost 1000C（23 × 45 × 10mm）腳位與固定孔</li>
+    </ul>
+
+    <h3 class="sub-title">9.8 接線參考（候選方案 C：SparkFun Thing Plus-ESP32-S3）</h3>
+    <p style="margin: 8px 0 16px; color: var(--gray-600); font-size: 14px;">
+      此節為未來切換到 SparkFun Thing Plus-ESP32-S3 時的接線指南，目前僅作備案，不影響現行 §5 組裝流程。對應 §9.4 候選方案 C 的所有 §9.8.x 引用。
+    </p>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.8.1 板載周邊整合（免外接）</h4>
+    <p>切換到方案 C 後，以下三件原本要外接的模組可省略：</p>
+    <table>
+      <thead>
+        <tr><th>原方案需外接</th><th>方案 C 板載</th><th>I2C / 介面</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>TP4056 充電板</td><td><span class="badge badge-pass">✅ MCP73831 充電 IC</span></td><td>—</td></tr>
+        <tr><td>電量監控（無）</td><td><span class="badge badge-pass">✅ MAX17048 燃料計</span></td><td>I2C <code>0x36</code></td></tr>
+        <tr><td>MicroSD 模組</td><td><span class="badge badge-pass">✅ 板載 microSD 卡槽</span></td><td>SPI（共用 bus）</td></tr>
+        <tr><td>I2C bus 接線</td><td><span class="badge badge-pass">✅ Qwiic 連接器</span></td><td>4-pin SH 1.0 免焊</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      <strong>仍需外接</strong>：8 顆按鈕、OLED、蜂鳴器、震動、INMP441 麥克風、MCP23017。
+    </div>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.8.2 SD 卡 OTA 與 Partition Table</h4>
+    <p style="font-weight: 600; margin: 12px 0 6px;">為何要 SD 卡 OTA</p>
+    <ul class="check-list">
+      <li>BLE OTA 通過 NUS 傳 1.58MB 韌體 ~30~60 秒，且要 App 端配合</li>
+      <li><strong>SD 卡 OTA</strong>：拔卡 → 換新 firmware.bin → 插回開機 → bootloader 自動 flash，~5 秒搞定</li>
+      <li>救護現場不需拆殼、不需配對 App，現場能換版</li>
+    </ul>
+
+    <p style="font-weight: 600; margin: 16px 0 6px;">自訂 Partition Table（4MB Flash 規劃）</p>
+    <pre class="ascii-flow"># Name,    Type, SubType, Offset,  Size,     Flags
+nvs,      data, nvs,     0x9000,  0x5000,
+otadata,  data, ota,     0xe000,  0x2000,
+app0,     app,  ota_0,   0x10000, 0x1F0000,  # 1.94MB（拉大）
+app1,     app,  ota_1,   ,        0x1F0000,  # 1.94MB（拉大）
+spiffs,   data, spiffs,  ,        0x10000,   # 64KB 設定檔</pre>
+    <ul class="check-list">
+      <li><code>app0 + app1 = 3.88MB</code>，剩 0.12MB 給 nvs / spiffs</li>
+      <li>完整韌體 1.58MB &lt; 1.94MB，<strong>符合</strong></li>
+      <li>比預設 partition（OTA 各 1.5MB）多 0.44MB，未來韌體擴充有餘量</li>
+    </ul>
+
+    <p style="font-weight: 600; margin: 16px 0 6px;">OTA 流程程式碼骨架</p>
+    <pre class="ascii-flow">#include &lt;SD.h&gt;
+#include &lt;Update.h&gt;
+
+void checkSdOta() {
+  if (!SD.exists("/firmware.bin")) return;
+  File f = SD.open("/firmware.bin");
+  if (!Update.begin(f.size())) return;
+  Update.writeStream(f);
+  if (Update.end(true)) {
+    SD.remove("/firmware.bin");  // 刷完刪檔避免重刷
+    ESP.restart();
+  }
+}</pre>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.8.3 MCP23017 I/O 擴充接線</h4>
+    <p><strong>為何需要</strong>：SparkFun Thing Plus-ESP32-S3 對外 GPIO 21 支，扣掉 I2S（3）+ OLED（共用 Qwiic）+ 蜂鳴器（1）+ 震動（1）+ INTA（1）後，剩約 12~14 支自由分配。8 顆按鈕全走本體會太緊，PM 也明確要求<strong>主鍵 / EPI / 電擊保留本體 GPIO</strong>，其餘 5 顆走 MCP23017。</p>
+
+    <p style="font-weight: 600; margin: 16px 0 6px;">MCP23017 接線</p>
+    <table>
+      <thead>
+        <tr><th>MCP23017 pin</th><th>→</th><th>ESP32-S3</th><th>備註</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>VDD (9)</td><td>→</td><td>3V3</td><td></td></tr>
+        <tr><td>VSS (10)</td><td>→</td><td>GND</td><td></td></tr>
+        <tr><td>SDA (13)</td><td>→</td><td>GPIO 8（Qwiic SDA）</td><td>Wire bus 共用</td></tr>
+        <tr><td>SCL (12)</td><td>→</td><td>GPIO 9（Qwiic SCL）</td><td>同上</td></tr>
+        <tr><td>RESET (18)</td><td>→</td><td>3V3</td><td><strong>不可浮接</strong></td></tr>
+        <tr><td>A0/A1/A2 (15/16/17)</td><td>→</td><td>GND × 3</td><td>位址 = <code>0x20</code></td></tr>
+        <tr><td>INTA (20)</td><td>→</td><td>任一 GPIO</td><td>5 顆按鈕中斷通知</td></tr>
+      </tbody>
+    </table>
+
+    <p style="font-weight: 600; margin: 16px 0 6px;">I2C 位址表（避衝突）</p>
+    <table>
+      <thead><tr><th>裝置</th><th>位址</th><th>來源</th></tr></thead>
+      <tbody>
+        <tr><td>MCP23017</td><td><code>0x20</code></td><td>新採購</td></tr>
+        <tr><td>MAX17048 燃料計</td><td><code>0x36</code></td><td>板載</td></tr>
+        <tr><td>SH1106 OLED</td><td><code>0x3C</code></td><td>現行</td></tr>
+        <tr><td>DS3231 RTC（Dev-Phase 3）</td><td><code>0x68</code></td><td>預留</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-green">✅ 無衝突。</div>
+
+    <p style="font-weight: 600; margin: 16px 0 6px;">按鍵分配（對齊 PM #6）</p>
+    <table>
+      <thead><tr><th>按鍵</th><th>走哪</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>主鍵（長按 3s OHCA 入口）</td><td><span class="badge badge-blue">ESP32-S3 本體 GPIO</span></td><td>救命路徑、零延遲</td></tr>
+        <tr><td>EPI 鍵</td><td><span class="badge badge-blue">ESP32-S3 本體 GPIO</span></td><td>倒數計時即時觸發</td></tr>
+        <tr><td>電擊鍵</td><td><span class="badge badge-blue">ESP32-S3 本體 GPIO</span></td><td>同上</td></tr>
+        <tr><td>上 / 下 / Power / 錄音 / 返回</td><td><span class="badge badge-amber">MCP23017</span></td><td>選單操作慢 1ms 無感</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      詳細採購與焊接清單見 <code>docs/hardware-procurement-v2.md</code>。
+    </div>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.8.4 Flash 預算驗證</h4>
+    <table>
+      <thead><tr><th>區塊</th><th>大小</th><th>累計</th></tr></thead>
+      <tbody>
+        <tr><td>Bootloader</td><td>~32KB</td><td>32KB</td></tr>
+        <tr><td>Partition table</td><td>4KB</td><td>36KB</td></tr>
+        <tr><td>NVS</td><td>20KB</td><td>56KB</td></tr>
+        <tr><td>OTA data</td><td>8KB</td><td>64KB</td></tr>
+        <tr><td><strong>app0</strong>（OTA slot 0）</td><td>1.94MB</td><td>2.00MB</td></tr>
+        <tr><td><strong>app1</strong>（OTA slot 1）</td><td>1.94MB</td><td>3.94MB</td></tr>
+        <tr><td>SPIFFS</td><td>64KB</td><td>4.00MB</td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      ⚠️ <strong>剛好填滿 4MB，無餘量</strong>。未來韌體超過 1.94MB 時必須：升級到 ESP32-S3-WROOM-1-<strong>N16R8</strong>（16MB Flash） — 但要自製 PCB；或放棄 OTA，改全燒 factory partition（破壞 SD 卡 OTA 功能）。
+    </div>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.8.5 MAX17048 燃料計使用</h4>
+    <p style="font-weight: 600; margin: 12px 0 6px;">Library</p>
+    <pre class="ascii-flow"># platformio.ini
+lib_deps = sparkfun/SparkFun MAX1704x Fuel Gauge Arduino Library@^1.0.4</pre>
+
+    <p style="font-weight: 600; margin: 16px 0 6px;">程式碼骨架</p>
+    <pre class="ascii-flow">#include &lt;SparkFun_MAX1704x_Fuel_Gauge_Arduino_Library.h&gt;
+SFE_MAX1704X lipo(MAX1704X_MAX17048);
+
+void setup() {
+  Wire.begin();
+  lipo.begin();
+  lipo.quickStart();  // 校正
+}
+
+void loop() {
+  float voltage = lipo.getVoltage();      // 3.0~4.2V
+  float percent = lipo.getSOC();          // 0~100%
+  float change_rate = lipo.getChangeRate(); // %/hr，正=充電 負=放電
+  // OLED 顯示
+}</pre>
+
+    <p style="font-weight: 600; margin: 16px 0 6px;">OLED 顯示建議</p>
+    <pre class="ascii-flow">Battery: 78% (3.85V)
+Time left: ~3h 20m (放電中)</pre>
+
+    <h4 style="margin: 18px 0 10px; font-size: 15px; color: var(--gray-800);">9.8.6 切換時需回填的文件</h4>
+    <p style="margin: 0 0 10px; color: var(--gray-700);">切換到方案 C 後，需同步更新：</p>
+    <ul style="padding-left: 22px; line-height: 1.8;">
+      <li><code>docs/gpio-allocation.md</code>：全部重編（SparkFun GPIO 編號跟 GOOUUU 完全不同）</li>
+      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §20.4.3：充電 IC 改寫為「SparkFun Thing Plus-ESP32-S3 板載 MCP73831」</li>
+      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §21.1：主要硬體清單替換主控板</li>
+      <li><code>docs/pcb-outsourcing-guide.md</code>：PCB 預留 Feather form factor（65 × 23mm）</li>
+      <li><code>firmware/platformio.ini</code>：board 改 <code>sparkfun_esp32s3_thing_plus</code></li>
+      <li><code>firmware/partitions/custom_4MB_ota.csv</code>：新增自訂 partition table</li>
+      <li><code>firmware/src/main.cpp</code>：所有 pin 常數重定義</li>
+      <li><code>firmware/src/button_manager/</code>：抽 IButtonSource 介面 + Mcp23017ButtonSource 實作</li>
+    </ul>
   </div>
 </div>
 
@@ -723,13 +1096,31 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
           <td>新增 §9 未來升級路線（PowerBoost 1000C / PiSugar 3 候選方案）</td>
           <td>Max Ho</td>
         </tr>
+        <tr>
+          <td>2026-05-06</td>
+          <td><span class="badge badge-blue">v1.2</span></td>
+          <td>新增 §9.7 PowerBoost 1000C 接線參考（必接腳位、EN/LBO、電流預算、切換回填清單）</td>
+          <td>Max Ho</td>
+        </tr>
+        <tr>
+          <td>2026-05-07</td>
+          <td><span class="badge badge-blue">v1.3</span></td>
+          <td>新增 §9.4 候選方案 C（SparkFun Thing Plus-ESP32-S3 主控板級整合方案）+ §9.5/§9.6 對照表與決策建議擴充為四方案</td>
+          <td>Max Ho</td>
+        </tr>
+        <tr>
+          <td>2026-05-07</td>
+          <td><span class="badge badge-green">v1.4</span></td>
+          <td><strong>補回 §9.8 缺漏章節</strong>：板載周邊整合、SD 卡 OTA + Partition table、MCP23017 接線、Flash 預算、MAX17048 使用、切換回填清單。對齊 hardware-procurement-v2.md</td>
+          <td>Max Ho</td>
+        </tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <div class="footer">
-  EMS Timer · 電源模組採購與組裝指南 · v1.1 · 2026-05-06
+  EMS Timer · 電源模組採購與組裝指南 · v1.2 · 2026-05-06
 </div>
 
 </body>
