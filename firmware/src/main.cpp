@@ -1738,47 +1738,61 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
 }
 
 void drawOhcaEndCheck() {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("End Check");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
-    display.setCursor(4, 18);
-    display.println("Confirm end of case?");
+    // 標題
+    display.setFont(&fonts::Font0);
+    display.setTextSize(3);
+    drawCenteredText("End Case?", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
 
-    // 兩個選項
-    int y_confirm = 36, y_cancel = 50;
-    if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
-        display.fillRect(0, y_confirm - 1, OLED_WIDTH, 10, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
-    }
-    display.setCursor(4, y_confirm);
-    display.print("> Confirm end");
+    // 提示
+    display.setTextSize(2);
+    drawCenteredText("Confirm end of case?", 60, COLOR_TEXT_MUTED);
 
-    display.setTextColor(SH110X_WHITE);
-    if (endCheckCursor == END_CHECK_CURSOR_CANCEL) {
-        display.fillRect(0, y_cancel - 1, OLED_WIDTH, 10, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
-    }
-    display.setCursor(4, y_cancel);
-    display.print("> Back to case");
+    // 兩個選項（cursor highlight 反白）
+    const int16_t y_confirm = 110;
+    const int16_t y_cancel  = 160;
+    const int16_t row_h     = 36;
+
+    auto drawOption = [&](const char* text, int16_t y, bool selected) {
+        if (selected) {
+            display.fillRect(20, y, SCREEN_W - 40, row_h, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
+        } else {
+            display.setTextColor(COLOR_TEXT_PRIMARY);
+        }
+        display.setTextSize(3);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString(text, SCREEN_W / 2, y + row_h / 2);
+    };
+
+    drawOption("Confirm end",  y_confirm, endCheckCursor == END_CHECK_CURSOR_CONFIRM);
+    drawOption("Back to case", y_cancel,  endCheckCursor == END_CHECK_CURSOR_CANCEL);
+
+    // 底部 hint
+    display.setTextSize(2);
+    drawCenteredText("[Up/Dn] choose  [Main] confirm",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawOhcaLocked() {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("LOCKED");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::Font0);
+
+    // 標題：紅 LOCKED
+    display.setTextSize(3);
+    drawCenteredText("LOCKED", OHCA_BADGE_Y, COLOR_ACCENT_ALERT);
+
+    // 中央大字
+    display.setTextSize(4);
+    drawCenteredText("Case End", SCREEN_H / 2 - 16, COLOR_TEXT_PRIMARY);
+
+    // 事件總數
+    char buf[24];
+    snprintf(buf, sizeof(buf), "Events: %u", eventCount);
     display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.println("Case End");
-    display.setTextSize(1);
-    display.setCursor(0, 50);
-    display.print("Events: ");
-    display.print(eventCount);
-    display.setCursor(0, 58);
-    display.print("[Main] -> Summary");
+    drawCenteredText(buf, SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
+
+    // 底部 hint
+    drawCenteredText("[Main] -> Summary",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawOhcaSummary() {
@@ -1786,62 +1800,64 @@ void drawOhcaSummary() {
     ohca_case_summary_t s;
     caseSummary_build(&s, events, eventCount, /*case_start*/ 0, /*case_end*/ 0);
 
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Summary | OHCA");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::Font0);
 
-    display.setCursor(0, 14);
-    display.print("EPI Total: ");
-    display.print(s.epi_total);
-    display.setCursor(0, 24);
-    display.print(" L:"); display.print(s.epi_local);
-    display.print(" PH:"); display.print(s.epi_pre_handover);
-    display.print(" PS:"); display.print(s.epi_pure_supp);
+    // 標題
+    display.setTextSize(3);
+    drawCenteredText("Summary", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    display.setCursor(0, 34);
-    display.print("Shock Total: ");
-    display.print(s.shock_total);
-    display.setCursor(0, 44);
-    display.print(" L:"); display.print(s.shock_local);
-    display.print(" PH:"); display.print(s.shock_pre_handover);
-    display.print(" PS:"); display.print(s.shock_pure_supp);
+    // EPI / Shock 兩大行（size 3 大字）+ 細分行（size 2 灰）
+    char buf[40];
 
-    display.setCursor(72, 14);
-    display.print("Amio:");
-    display.print(s.amio_total);
+    snprintf(buf, sizeof(buf), "EPI: %u", s.epi_total);
+    display.setTextSize(3);
+    drawCenteredText(buf, 60, COLOR_TEXT_PRIMARY);
+    snprintf(buf, sizeof(buf), "L %u  PH %u  PS %u",
+             s.epi_local, s.epi_pre_handover, s.epi_pure_supp);
+    display.setTextSize(2);
+    drawCenteredText(buf, 92, COLOR_TEXT_MUTED);
 
-    display.setCursor(0, 56);
-    display.print("[Up]Time [Bk]Menu");
+    snprintf(buf, sizeof(buf), "Shock: %u", s.shock_total);
+    display.setTextSize(3);
+    drawCenteredText(buf, 122, COLOR_TEXT_PRIMARY);
+    snprintf(buf, sizeof(buf), "L %u  PH %u  PS %u",
+             s.shock_local, s.shock_pre_handover, s.shock_pure_supp);
+    display.setTextSize(2);
+    drawCenteredText(buf, 154, COLOR_TEXT_MUTED);
 
-    display.setCursor(0, 56);
-    display.print("[Back] -> Menu");
+    // Amio
+    snprintf(buf, sizeof(buf), "Amio: %u", s.amio_total);
+    display.setTextSize(2);
+    drawCenteredText(buf, 184, COLOR_TEXT_MUTED);
+
+    // 底部 hint
+    drawCenteredText("[Back] -> Menu",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawTwoStepArmedOverlay(const char* what) {
-    // 在底部畫一條反色提示條
-    display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
-    display.setTextColor(SH110X_BLACK);
-    display.setTextSize(1);
-    display.setCursor(2, OLED_HEIGHT - 10);
-    display.print(what);
+    // 底部全寬反色提示條（琥珀警示色，size 3 大字）
+    const int16_t bar_h = 40;
+    display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
+    display.setFont(&fonts::Font0);
+    display.setTextSize(3);
+    display.setTextColor(COLOR_BG);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(what, SCREEN_W / 2, SCREEN_H - bar_h / 2);
 }
 
 void drawPlaceholder(const char* title, const char* phase) {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println(title);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::Font0);
+    display.setTextSize(3);
+    drawCenteredText(title, OHCA_BADGE_Y, COLOR_TEXT_PRIMARY);
+
+    display.setTextSize(4);
+    drawCenteredText(phase, SCREEN_H / 2 - 32, COLOR_ACCENT_OK);
+
     display.setTextSize(2);
-    display.setCursor(0, 22);
-    display.print(phase);
-    display.setTextSize(1);
-    display.setCursor(0, 44);
-    display.println("Not implemented");
-    display.setCursor(0, 56);
-    display.println("[Back] -> Menu");
+    drawCenteredText("Not implemented", SCREEN_H / 2 + 16, COLOR_TEXT_MUTED);
+    drawCenteredText("[Back] -> Menu",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 // ============================================================
@@ -2078,65 +2094,69 @@ void drawTimeline() {
 
 /** 獨立 6 秒通氣節奏主畫面（V1 §13.6 執行中畫面 / §13.12 暫停畫面） */
 void drawVentStandalone() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("6sec Vent  Vol:");
-    display.print(ventVolume);
-    display.print("/");
-    display.print(VENT_VOLUME_MAX);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::Font0);
+
+    // 頂部標題 + 音量
+    display.setTextSize(3);
+    drawCenteredText("6sec Vent", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    char volBuf[24];
+    snprintf(volBuf, sizeof(volBuf), "Vol %u/%u", ventVolume, VENT_VOLUME_MAX);
+    display.setTextSize(2);
+    drawCenteredText(volBuf, 56, COLOR_TEXT_MUTED);
 
     if (ventPaused) {
-        // V1 §13.12 暫停畫面：保留節奏標題，秒數窗位置改顯示 PAUSED
+        display.setTextSize(4);
+        drawCenteredText("PAUSED", SCREEN_H / 2 - 16, COLOR_ACCENT_WARN);
         display.setTextSize(2);
-        display.setCursor(20, 24);
-        display.print("PAUSED");
-        display.setTextSize(1);
-        display.setCursor(0, 56);
-        display.print("[Main] resume [Bk]end");
+        drawCenteredText("[Main] resume  [Back] end",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
         return;
     }
 
-    // 大字顯示當前秒數
+    // 中央大字單秒數
     uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
     vent_beat_t beat = computeVentBeat(since);
     uint8_t num = (uint8_t)beat + 1;
 
-    display.setTextSize(5);
-    display.setCursor(48, 18);
-    display.print(num);
+    char numBuf[4];
+    snprintf(numBuf, sizeof(numBuf), "%u", num);
+    display.setFont(&fonts::FreeMonoBold24pt7b);
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 - OHCA_TIME_VISUAL_UP);
 
-    // 底部提示
-    display.setTextSize(1);
+    // 底部提示（橫條反色顯示「長按 [Main] 結束」hint 或基本提示）
+    display.setFont(&fonts::Font0);
     if (ventBackHintShown) {
-        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
-        display.setCursor(2, OLED_HEIGHT - 10);
-        display.print("Long-press [Main] to end");
+        const int16_t bar_h = 32;
+        display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
+        display.setTextSize(2);
+        display.setTextColor(COLOR_BG);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString("Long-press [Main] to end",
+                           SCREEN_W / 2, SCREEN_H - bar_h / 2);
     } else {
-        display.setCursor(0, 56);
-        display.print("[M]pause [M]3s=end");
+        display.setTextSize(2);
+        drawCenteredText("[Main] pause  [Main] 3s = end",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
     }
 }
 
 /** 獨立 vent 結束確認對話框（V1 §13.14 結束獨立 6 秒通氣節奏） */
 void drawVentEndCheck() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("End vent rhythm?");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    display.setFont(&fonts::Font0);
+
+    display.setTextSize(3);
+    drawCenteredText("End Vent?", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
+
+    display.setTextSize(4);
+    drawCenteredText("Confirm?", SCREEN_H / 2 - 16, COLOR_TEXT_PRIMARY);
 
     display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.println("Confirm?");
-
-    display.setTextSize(1);
-    display.setCursor(0, 56);
-    display.println("[Main]OK [Bk]cancel");
+    drawCenteredText("[Main] OK   [Back] cancel",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 快速功能選單（V1 §14.9 開啟、暫停、繼續與關閉 + §9 OHCA 中按返回鍵） */
@@ -2178,17 +2198,19 @@ void drawQuickMenu() {
     display.println("[Main]OK [Bk]close");
 }
 
-/** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗 / §14.10 暫停狀態） */
-void drawOhcaVentOverlay(int y_top) {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, y_top);
+/** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗 / §14.10 暫停狀態）
+ *  右上角小 overlay：放在 OHCA badge 同 y 的右側，不撞中央大時間 / 標籤 / 計數
+ *  y_top 參數保留 API 相容但忽略（新 layout 自決定位置）
+ */
+void drawOhcaVentOverlay(int /*y_top*/) {
+    display.setFont(&fonts::Font0);
 
     if (ohcaVentPaused) {
-        // V1 §14.10：暫停狀態畫面「6秒給氣｜已暫停 / 快速功能可繼續」
-        display.print("6s vent PAUSED");
-        display.setCursor(0, y_top + 8);
-        display.print("(QuickMenu Resume)");
+        // 暫停狀態：右上角 "VENT PAUSE"
+        display.setTextSize(2);
+        display.setTextColor(COLOR_ACCENT_WARN);
+        display.setTextDatum(textdatum_t::top_right);
+        display.drawString("VENT PAUSE", SCREEN_W - 8, OHCA_BADGE_Y + 2);
         return;
     }
 
@@ -2196,11 +2218,11 @@ void drawOhcaVentOverlay(int y_top) {
     vent_beat_t beat = computeVentBeat(since);
     uint8_t num = (uint8_t)beat + 1;
 
-    // 標籤 + 單秒數
-    display.print("6s vent ON  ");
-
-    // 大字單秒數（往右排）
+    // 右上角 "VENT N" — N 用大字
     display.setTextSize(2);
-    display.setCursor(80, y_top - 2);
-    display.print(num);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::top_right);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "VENT %u", num);
+    display.drawString(buf, SCREEN_W - 8, OHCA_BADGE_Y + 2);
 }
