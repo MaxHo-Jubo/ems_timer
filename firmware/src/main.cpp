@@ -69,6 +69,22 @@ public:
     void display() { /* ST7789 writes immediately, nothing to flush */ }
 };
 
+/**
+ * 全頁 RAM 緩衝：所有 draw functions 把畫面合成到 RAM canvas（GFXcanvas16），
+ * updateDisplay 結尾以 drawRGBBitmap 一次 push 到 TFT。徹底消滅「fillScreen → 慢
+ * 慢出文字」的中間態掃描感。
+ *   - RAM 開銷：320×240×2 = 153,600 bytes
+ *   - 補 SH110X 相容 display() / clearDisplay() no-op，與舊 1300+ 行呼叫點相容
+ */
+class FrameBuffer : public GFXcanvas16 {
+public:
+    using GFXcanvas16::GFXcanvas16;
+    /** SH110X 相容：清 canvas 為黑（取代 fillScreen(SH110X_BLACK)） */
+    void clearDisplay() { fillScreen(0x0000); }
+    /** SH110X 相容：no-op（push 由 updateDisplay 結尾統一處理） */
+    void display() { /* push to TFT happens at end of updateDisplay() */ }
+};
+
 // ============================================================
 // 硬體常數（gpio-allocation.md §5.2）
 // ============================================================
@@ -321,7 +337,10 @@ static bool     btnLongFired[BTN_COUNT]     = { false };
 // OLED + 蜂鳴 / 反色 SM
 // ============================================================
 
-TftAdapter display(TFT_CS_PIN, TFT_DC_PIN, TFT_MOSI_PIN, TFT_SCLK_PIN, TFT_RST_PIN);
+/** 實體 TFT 控制（init / SPI / rotation / push bitmap） */
+TftAdapter tft(TFT_CS_PIN, TFT_DC_PIN, TFT_MOSI_PIN, TFT_SCLK_PIN, TFT_RST_PIN);
+/** 全頁 RAM canvas — 所有 draw functions 寫到這裡，updateDisplay 結尾一次 push 到 tft */
+FrameBuffer display(SCREEN_W, SCREEN_H);
 
 // 蜂鳴器：脈衝模式（pulses=255 視為連續直到 stop）
 static uint8_t  beepPulsesRemaining = 0;
@@ -429,13 +448,14 @@ void setup() {
     // STEP 03: TFT 初始化（取代舊 SH1106 OLED）
     //   - init() 回傳 void，無 fail handler 介面（Adafruit_ST7789 API 限制）
     //   - invertDisplay(false)：蝦皮 ST7789 紅板 polarity 與 Adafruit 預設相反，必加（見 tft-migration-plan.md §3.5）
-    //   - setSPISpeed(40MHz)：預設 SPI clock 偏慢導致全頁重繪掃描感明顯；拉到 40MHz 整片 push < 8ms 視覺上接近瞬完成。
-    //     麵包板布線品質決定上限；不穩→降 24MHz。
-    display.init(TFT_WIDTH, TFT_HEIGHT);
-    display.setSPISpeed(40000000);
-    display.setRotation(1);  // 1 = 橫向 320x240
-    display.invertDisplay(false);
-    display.fillScreen(SH110X_BLACK);
+    //   - setSPISpeed(40MHz)：拉 40MHz 整片 push < 8ms。麵包板布線決定上限；不穩→降 24MHz
+    //   - tft 是實體 ST7789 控制；所有 draw 寫到全頁 canvas（display），updateDisplay 結尾一次 push
+    tft.init(TFT_WIDTH, TFT_HEIGHT);
+    tft.setSPISpeed(40000000);
+    tft.setRotation(1);  // 1 = 橫向 320x240
+    tft.invertDisplay(false);
+    tft.fillScreen(SH110X_BLACK);
+    display.fillScreen(0x0000);  // canvas 起始黑底
 
     // STEP 04: 兩段確認 init
     twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
@@ -1399,7 +1419,7 @@ void updateDisplay() {
         && sameStateAsLast
         && (now.countdownSec != lastDisplaySnapshot.countdownSec)) {
         drawOhcaCountdownTimeOnly(now.ohcaState);
-        display.display();
+        tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H);
         lastDisplaySnapshot = now;
         return;
     }
@@ -1415,14 +1435,14 @@ void updateDisplay() {
         drawMainMenu();
     } else if (globalState == GLOBAL_OHCA) {
         // Phase B: sub-state 子流程畫面優先
-        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.display(); return; }
-        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); display.display(); return; }
-        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); display.display(); return; }
-        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        display.display(); return; }
+        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
+        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H); return; }
 
         switch (ohcaState) {
             case OHCA_STATE_START_FLASH:
@@ -1489,7 +1509,8 @@ void updateDisplay() {
         drawPlaceholder("Settings", "Phase G");
     }
 
-    display.display();
+    // STEP 99: 把全頁 canvas 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
+    tft.drawRGBBitmap(0, 0, display.getBuffer(), SCREEN_W, SCREEN_H);
 }
 
 void drawMainMenu() {
