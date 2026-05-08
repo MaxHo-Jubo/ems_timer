@@ -1543,11 +1543,11 @@ void updateDisplay() {
         if (ventEndCheckShown) drawVentEndCheck();
         else                    drawVentStandalone();
     } else if (globalState == GLOBAL_TRAINING_PLACEHOLDER) {
-        drawPlaceholder("Training", "Phase D");
+        drawPlaceholder("訓練模式", "D 階段");
     } else if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
-        drawPlaceholder("History", "Phase E");
+        drawPlaceholder("歷史紀錄", "E 階段");
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
-        drawPlaceholder("Settings", "Phase G");
+        drawPlaceholder("系統設定", "G 階段");
     }
 
     // STEP 99: pushSprite DMA 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
@@ -1743,14 +1743,14 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
 }
 
 void drawOhcaEndCheck() {
-    // 標題
-    display.setFont(&fonts::Font0);
-    display.setTextSize(3);
-    drawCenteredText("End Case?", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
+    // 標題（efontTW_24 size 1.2 ≈ 29px）
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("結束案件？", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
 
     // 提示
-    display.setTextSize(2);
-    drawCenteredText("Confirm end of case?", 60, COLOR_TEXT_MUTED);
+    display.setTextSize(1);
+    drawCenteredText("結束後不可修改", 60, COLOR_TEXT_MUTED);
 
     // 兩個選項（cursor highlight 反白）
     const int16_t y_confirm = 110;
@@ -1764,39 +1764,41 @@ void drawOhcaEndCheck() {
         } else {
             display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setTextSize(3);
+        display.setFont(&fonts::efontTW_24);
+        display.setTextSize(1.2f, 1.2f);
         display.setTextDatum(textdatum_t::middle_center);
         display.drawString(text, SCREEN_W / 2, y + row_h / 2);
     };
 
-    drawOption("Confirm end",  y_confirm, endCheckCursor == END_CHECK_CURSOR_CONFIRM);
-    drawOption("Back to case", y_cancel,  endCheckCursor == END_CHECK_CURSOR_CANCEL);
+    drawOption("確認結束", y_confirm, endCheckCursor == END_CHECK_CURSOR_CONFIRM);
+    drawOption("返回案件", y_cancel,  endCheckCursor == END_CHECK_CURSOR_CANCEL);
 
     // 底部 hint
-    display.setTextSize(2);
-    drawCenteredText("[Up/Dn] choose  [Main] confirm",
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1);
+    drawCenteredText("上下選擇　主鍵確認",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawOhcaLocked() {
-    display.setFont(&fonts::Font0);
+    display.setFont(&fonts::efontTW_24);
 
-    // 標題：紅 LOCKED
-    display.setTextSize(3);
-    drawCenteredText("LOCKED", OHCA_BADGE_Y, COLOR_ACCENT_ALERT);
+    // 標題：紅「已鎖定」
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("已鎖定", OHCA_BADGE_Y, COLOR_ACCENT_ALERT);
 
-    // 中央大字
-    display.setTextSize(4);
-    drawCenteredText("Case End", SCREEN_H / 2 - 16, COLOR_TEXT_PRIMARY);
+    // 中央大字「案件結束」（size 2 ≈ 48px）
+    display.setTextSize(2);
+    drawCenteredText("案件結束", SCREEN_H / 2 - 24, COLOR_TEXT_PRIMARY);
 
     // 事件總數
-    char buf[24];
-    snprintf(buf, sizeof(buf), "Events: %u", eventCount);
-    display.setTextSize(2);
-    drawCenteredText(buf, SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "事件 %u 筆", eventCount);
+    display.setTextSize(1);
+    drawCenteredText(buf, SCREEN_H / 2 + 40, COLOR_TEXT_MUTED);
 
     // 底部 hint
-    drawCenteredText("[Main] -> Summary",
+    drawCenteredText("主鍵　總覽",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
@@ -1805,38 +1807,39 @@ void drawOhcaSummary() {
     ohca_case_summary_t s;
     caseSummary_build(&s, events, eventCount, /*case_start*/ 0, /*case_end*/ 0);
 
-    display.setFont(&fonts::Font0);
+    display.setFont(&fonts::efontTW_24);
 
     // 標題
-    display.setTextSize(3);
-    drawCenteredText("Summary", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("案件總覽", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    // EPI / Shock 兩大行（size 3 大字）+ 細分行（size 2 灰）
-    char buf[40];
+    char buf[64];
 
-    snprintf(buf, sizeof(buf), "EPI: %u", s.epi_total);
-    display.setTextSize(3);
+    // EPI 區塊
+    snprintf(buf, sizeof(buf), "EPI 共 %u", s.epi_total);
+    display.setTextSize(1.2f, 1.2f);
     drawCenteredText(buf, 60, COLOR_TEXT_PRIMARY);
-    snprintf(buf, sizeof(buf), "L %u  PH %u  PS %u",
+    snprintf(buf, sizeof(buf), "本機 %u｜接手前 %u｜純補登 %u",
              s.epi_local, s.epi_pre_handover, s.epi_pure_supp);
-    display.setTextSize(2);
+    display.setTextSize(1);
     drawCenteredText(buf, 92, COLOR_TEXT_MUTED);
 
-    snprintf(buf, sizeof(buf), "Shock: %u", s.shock_total);
-    display.setTextSize(3);
+    // 電擊 區塊
+    snprintf(buf, sizeof(buf), "電擊 共 %u", s.shock_total);
+    display.setTextSize(1.2f, 1.2f);
     drawCenteredText(buf, 122, COLOR_TEXT_PRIMARY);
-    snprintf(buf, sizeof(buf), "L %u  PH %u  PS %u",
+    snprintf(buf, sizeof(buf), "本機 %u｜接手前 %u｜純補登 %u",
              s.shock_local, s.shock_pre_handover, s.shock_pure_supp);
-    display.setTextSize(2);
+    display.setTextSize(1);
     drawCenteredText(buf, 154, COLOR_TEXT_MUTED);
 
     // Amio
-    snprintf(buf, sizeof(buf), "Amio: %u", s.amio_total);
-    display.setTextSize(2);
+    snprintf(buf, sizeof(buf), "Amiodarone %u", s.amio_total);
+    display.setTextSize(1);
     drawCenteredText(buf, 184, COLOR_TEXT_MUTED);
 
     // 底部 hint
-    drawCenteredText("[Back] -> Menu",
+    drawCenteredText("返回　主功能表",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
@@ -1852,16 +1855,16 @@ void drawTwoStepArmedOverlay(const char* what) {
 }
 
 void drawPlaceholder(const char* title, const char* phase) {
-    display.setFont(&fonts::Font0);
-    display.setTextSize(3);
+    display.setFont(&fonts::efontTW_24);
+    display.setTextSize(1.2f, 1.2f);
     drawCenteredText(title, OHCA_BADGE_Y, COLOR_TEXT_PRIMARY);
 
-    display.setTextSize(4);
-    drawCenteredText(phase, SCREEN_H / 2 - 32, COLOR_ACCENT_OK);
-
     display.setTextSize(2);
-    drawCenteredText("Not implemented", SCREEN_H / 2 + 16, COLOR_TEXT_MUTED);
-    drawCenteredText("[Back] -> Menu",
+    drawCenteredText(phase, SCREEN_H / 2 - 40, COLOR_ACCENT_OK);
+
+    display.setTextSize(1);
+    drawCenteredText("尚未實作", SCREEN_H / 2 + 24, COLOR_TEXT_MUTED);
+    drawCenteredText("返回　主功能表",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
@@ -2099,22 +2102,22 @@ void drawTimeline() {
 
 /** 獨立 6 秒通氣節奏主畫面（V1 §13.6 執行中畫面 / §13.12 暫停畫面） */
 void drawVentStandalone() {
-    display.setFont(&fonts::Font0);
+    display.setFont(&fonts::efontTW_24);
 
     // 頂部標題 + 音量
-    display.setTextSize(3);
-    drawCenteredText("6sec Vent", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("6 秒通氣節奏", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    char volBuf[24];
-    snprintf(volBuf, sizeof(volBuf), "Vol %u/%u", ventVolume, VENT_VOLUME_MAX);
-    display.setTextSize(2);
+    char volBuf[32];
+    snprintf(volBuf, sizeof(volBuf), "音量 %u/%u", ventVolume, VENT_VOLUME_MAX);
+    display.setTextSize(1);
     drawCenteredText(volBuf, 56, COLOR_TEXT_MUTED);
 
     if (ventPaused) {
-        display.setTextSize(4);
-        drawCenteredText("PAUSED", SCREEN_H / 2 - 16, COLOR_ACCENT_WARN);
         display.setTextSize(2);
-        drawCenteredText("[Main] resume  [Back] end",
+        drawCenteredText("已暫停", SCREEN_H / 2 - 24, COLOR_ACCENT_WARN);
+        display.setTextSize(1);
+        drawCenteredText("主鍵繼續　返回結束",
                          SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
         return;
     }
@@ -2132,35 +2135,35 @@ void drawVentStandalone() {
     display.setTextDatum(textdatum_t::middle_center);
     display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 16);
 
-    // 底部提示（橫條反色顯示「長按 [Main] 結束」hint 或基本提示）
-    display.setFont(&fonts::Font0);
+    // 底部提示（橫條反色顯示結束 hint 或基本提示）
+    display.setFont(&fonts::efontTW_24);
     if (ventBackHintShown) {
         const int16_t bar_h = 32;
         display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
-        display.setTextSize(2);
+        display.setTextSize(1);
         display.setTextColor(COLOR_BG);
         display.setTextDatum(textdatum_t::middle_center);
-        display.drawString("Long-press [Main] to end",
+        display.drawString("如要結束　請長按主鍵",
                            SCREEN_W / 2, SCREEN_H - bar_h / 2);
     } else {
-        display.setTextSize(2);
-        drawCenteredText("[Main] pause  [Main] 3s = end",
+        display.setTextSize(1);
+        drawCenteredText("主鍵暫停　長按 3 秒結束",
                          SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
     }
 }
 
 /** 獨立 vent 結束確認對話框（V1 §13.14 結束獨立 6 秒通氣節奏） */
 void drawVentEndCheck() {
-    display.setFont(&fonts::Font0);
+    display.setFont(&fonts::efontTW_24);
 
-    display.setTextSize(3);
-    drawCenteredText("End Vent?", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
-
-    display.setTextSize(4);
-    drawCenteredText("Confirm?", SCREEN_H / 2 - 16, COLOR_TEXT_PRIMARY);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("結束通氣節奏？", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
 
     display.setTextSize(2);
-    drawCenteredText("[Main] OK   [Back] cancel",
+    drawCenteredText("確認結束？", SCREEN_H / 2 - 24, COLOR_TEXT_PRIMARY);
+
+    display.setTextSize(1);
+    drawCenteredText("主鍵確認　返回取消",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
@@ -2208,14 +2211,14 @@ void drawQuickMenu() {
  *  y_top 參數保留 API 相容但忽略（新 layout 自決定位置）
  */
 void drawOhcaVentOverlay(int /*y_top*/) {
-    display.setFont(&fonts::Font0);
+    display.setFont(&fonts::efontTW_24);
 
     if (ohcaVentPaused) {
-        // 暫停狀態：右上角 "VENT PAUSE"
-        display.setTextSize(2);
+        // 暫停狀態：右上角「通氣暫停」
+        display.setTextSize(1);
         display.setTextColor(COLOR_ACCENT_WARN);
         display.setTextDatum(textdatum_t::top_right);
-        display.drawString("VENT PAUSE", SCREEN_W - 8, OHCA_BADGE_Y + 2);
+        display.drawString("通氣暫停", SCREEN_W - 8, OHCA_BADGE_Y + 2);
         return;
     }
 
@@ -2223,11 +2226,11 @@ void drawOhcaVentOverlay(int /*y_top*/) {
     vent_beat_t beat = computeVentBeat(since);
     uint8_t num = (uint8_t)beat + 1;
 
-    // 右上角 "VENT N" — N 用大字
-    display.setTextSize(2);
+    // 右上角「通氣 N」
+    display.setTextSize(1);
     display.setTextColor(COLOR_TEXT_MUTED);
     display.setTextDatum(textdatum_t::top_right);
     char buf[16];
-    snprintf(buf, sizeof(buf), "VENT %u", num);
+    snprintf(buf, sizeof(buf), "通氣 %u", num);
     display.drawString(buf, SCREEN_W - 8, OHCA_BADGE_Y + 2);
 }
