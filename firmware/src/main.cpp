@@ -359,6 +359,8 @@ struct FlashState {
     char     title[40];
     char     subtitle[40];
     uint16_t titleColor;
+    float    titleSize;     // 觸發時計算，避免 render hot-path 反覆 strcmp
+    float    subtitleSize;
 };
 static FlashState flashState = {};
 static const uint16_t FLASH_DEFAULT_MS = 1200;
@@ -1952,6 +1954,13 @@ void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms,
     strncpy(flashState.subtitle, subtitle ? subtitle : "", sizeof(flashState.subtitle) - 1);
     flashState.title[sizeof(flashState.title)       - 1] = '\0';
     flashState.subtitle[sizeof(flashState.subtitle) - 1] = '\0';
+
+    // 觸發時決定 size（避免每幀 strcmp）：
+    //   主標 7-char「案件結束並鎖定」size 2.25 會超出螢幕 → 1.9 留邊
+    //   副標 10-char「結束案件後看完整總覽」size 1.5 ~360px > 320 → 1.2 ≈ 288px
+    flashState.titleSize    = (strcmp(flashState.title,    "案件結束並鎖定")       == 0) ? 1.9f : 2.25f;
+    flashState.subtitleSize = (strcmp(flashState.subtitle, "結束案件後看完整總覽") == 0) ? 1.2f : 1.5f;
+
     Serial.printf("[FLASH] %s | %s\n", flashState.title, flashState.subtitle);
 }
 
@@ -1962,20 +1971,15 @@ void drawFlashOverlay() {
     const bool hasSub = (flashState.subtitle[0] != '\0');
     display.setTextDatum(textdatum_t::middle_center);
 
-    // 7-char 主標（如「案件結束並鎖定」）在 size 2.25 下會超出螢幕，降 size 1.9 留視覺餘裕
-    const float titleSize = (strcmp(flashState.title, "案件結束並鎖定") == 0) ? 1.9f : 2.25f;
-    // 10-char 副標（如「結束案件後看完整總覽」）在 size 1.5 下 ~360px 超出 320，降 size 1.2 ≈ 288px
-    const float subSize = (strcmp(flashState.subtitle, "結束案件後看完整總覽") == 0) ? 1.2f : 1.5f;
-
     if (hasSub) {
-        display.setTextSize(titleSize, titleSize);
+        display.setTextSize(flashState.titleSize, flashState.titleSize);
         display.setTextColor(flashState.titleColor);
         display.drawString(flashState.title, SCREEN_W / 2, SCREEN_H / 2 - 30);
-        display.setTextSize(subSize, subSize);
+        display.setTextSize(flashState.subtitleSize, flashState.subtitleSize);
         display.setTextColor(COLOR_TEXT_MUTED);
         display.drawString(flashState.subtitle, SCREEN_W / 2, SCREEN_H / 2 + 36);
     } else {
-        display.setTextSize(titleSize, titleSize);
+        display.setTextSize(flashState.titleSize, flashState.titleSize);
         display.setTextColor(flashState.titleColor);
         display.drawString(flashState.title, SCREEN_W / 2, SCREEN_H / 2);
     }
@@ -2514,7 +2518,6 @@ void drawQuickMenu() {
     constexpr int16_t MENU_ROW_H         = 36;
     constexpr int16_t MENU_TEXT_PAD      = 32;
     constexpr int16_t MENU_TEXT_OFFSET_Y = 4;  // size 1.1 → 26px 字在 36px row 內垂直置中
-    useZhFont();
     display.setTextSize(1.1f, 1.1f);
     for (uint8_t i = 0; i < count; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
