@@ -140,19 +140,18 @@ static const uint16_t COLOR_FLASH_VENT   = 0x5800;
 /** OHCA 倒數畫面 layout（drawOhcaCountdownCommon 使用） */
 /** ALARMING 背景閃爍半週期 ms（demo flashRed 0.6s 全週期 / 2） */
 static const uint32_t OHCA_FLASH_HALF_MS  = 300;
-/** 舊版（pre-vlw）badge baseline Y——drawOhcaEndCheck/Locked/Summary/Placeholder 仍用 */
+/** 舊 layout（非 vlw badge）— EndCheck/Locked/Summary/Placeholder 等尚未遷移 vlw 字型的畫面共用；
+ *  vlw 系列畫面（WaitFirstEpi/Countdown/VentPre）改用 OHCA_CHINESE_BADGE_TOP_Y */
 static const int16_t  OHCA_BADGE_Y        = 14;
 /** vlw 1.5× badge "OHCA" 文字 top y（datum top_center；ChineseBadge 在 WaitFirstEpi/Countdown 共用） */
 static const int16_t  OHCA_CHINESE_BADGE_TOP_Y = 8;
-/** 大時間視覺上偏 px（middle datum 中心 y = SCREEN_H/2 - VISUAL_UP，留下方標籤空間） */
+/** 大時間視覺上偏 px（middle datum 中心 y = SCREEN_H/2 - VISUAL_UP=100，時間 bbox ~52~148） */
 static const int16_t  OHCA_TIME_VISUAL_UP = 20;
-/** 標籤 middle-center y（理論幾何中點 174；上偏 9px 讓 vlw 1.8× descender 與計數行留間距） */
+/** OHCA 倒數標籤 middle-center y（vlw 1.8×；理論幾何中點 174 上偏 9px 讓 descender 與計數行留間距） */
 static const int16_t  OHCA_LABEL_Y        = 165;
-/** 標籤距大時間 middle 下方 px（要 > 大時間半高 + padding，否則撞時間 bbox） */
-static const int16_t  OHCA_LABEL_GAP_PX   = 60;
-/** WaitFirstEpi 底部 EPI/電擊 計數 top y（vlw 1.5× ≈ 36px，至 SCREEN_H 留 4px 邊界） */
+/** WaitFirstEpi 底部 EPI/電擊 計數 top y（vlw 1.5× ≈ 36px；200 + 36 + 4 邊界 = SCREEN_H 240） */
 static const int16_t  OHCA_WAIT_COUNTER_Y = 200;
-/** 底部 EPI/Shock 計數行距底邊 px */
+/** 底部 EPI/Shock 計數行距底邊 px（用於 SCREEN_H - OHCA_COUNTER_BOTTOM - 8 算 hint 行 y） */
 static const int16_t  OHCA_COUNTER_BOTTOM = 18;
 
 /** 倒數 partial sprite erase bbox（FreeMonoBold24pt7b size 2 → 280×96 + margin） */
