@@ -257,6 +257,10 @@
 
 依 CLAUDE.md POST-COMMIT-REVIEW，以下 commits 已 commit 未走 5 步驟 review：
 
+**🎯 下次 review 起點 baseline：`3d44950`（demo.html 字級對齊韌體 PM 反饋放大調整，2026-05-09 16:45 GMT+8）**
+- 預期 7:40pm rate limit 重置後從此 hash 起跑 POST-COMMIT-REVIEW 五步驟
+- step 1 eslint 跳過（無 .eslintrc.json）｜step 2 /simplify 立即跑｜step 3 pr-reviewer / step 4 review-pr / step 5 通知 由 schedule 接續
+
 ```
 7ffbf97  兩段確認 overlay + StartFlash 中文化
 e936caa  WaitFirstEpi 中文化（待本機 EPI / 按兩次 EPI 確認 / 電擊）
@@ -277,6 +281,17 @@ c2155a4  SPI 80MHz（穩定但 lib overhead 才是視覺瓶頸）
 4d831ab  partial 局部 push + canvas 殘留清除
 b675a45  SPI 40MHz + setTextColor(fg,bg) 試解掃描感
 8e428c8  WaitFirstEpi 對齊新 layout + partial path
+147f2a6  Phase B 補登/Timeline/QuickMenu/Amio 中文化 320×240 layout
+8fced41  EndCheck/Locked/Summary/Vent/Placeholder 中文化
+61e6899  中文用詞對齊 demo.html
+7ffd2cf  demo 模擬 320×240 TFT + 字級對齊韌體
+c6a92b4  batch1 韌體 vs demo 對齊（A1+B1+A7）
+9e76ccb  batch1 確認對話框外框放大
+57d043b  batch2 5 個 flash 過場提示 + partial update 排除 modal
+e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
+578bc1e  清 OLED/SH110X 別名 + SoT/CLAUDE.md TFT 同步
+6308d3e  TFT 中文 VLW 字型整合 + UI 字級與排版調整
+3d44950  demo.html 字級對齊韌體 PM 反饋放大調整 ← 🎯 review baseline
 ```
 
 ### Rate limit 恢復後接續清單（按優先序）
