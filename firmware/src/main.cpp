@@ -376,12 +376,14 @@ struct FlashState {
 static FlashState flashState = {};
 static const uint16_t FLASH_DEFAULT_MS = 1200;
 
-// Flash overlay 字級常數（vlw 24px 為基準）
-//   Default：~7-char 內主標 / ~6-char 內副標都不溢出 320px
-//   Long   ：title 7+ char（如「案件結束並鎖定」size 2.25 會超寬）/
-//           subtitle 10+ char（如「結束案件後看完整總覽」size 1.5 = 360px > 320）
+// Flash overlay 字級常數（vlw 24px 為基準；選值依 320px 螢幕反推安全縮放，留 ~10px 邊距）
+//   Default 2.25：~7-char 內主標 / ~6-char 內副標都不溢出 320px
+//   Long    1.9 ：title 7+ char（如「案件結束並鎖定」size 2.25 會超寬）/
+//                subtitle 10+ char（如「結束案件後看完整總覽」size 1.5 = 360px > 320）
+//   XLong   1.4 ：英文+中文混合 11+ 視寬度單位（如「Amiodarone 已紀錄」連 size 1.9 ≈ 395px 仍超）
 static constexpr float FLASH_TITLE_SIZE_DEFAULT    = 2.25f;
 static constexpr float FLASH_TITLE_SIZE_LONG       = 1.9f;
+static constexpr float FLASH_TITLE_SIZE_XLONG      = 1.4f;
 static constexpr float FLASH_SUBTITLE_SIZE_DEFAULT = 1.5f;
 static constexpr float FLASH_SUBTITLE_SIZE_LONG    = 1.2f;
 
@@ -904,7 +906,8 @@ void onShortPress(uint8_t btnIdx) {
                     dispatchOhcaEvent(OHCA_EVT_AMIO_CONFIRMED, 0);  // 不重啟倒數
                     triggerBeep(1, 80, 0);
                     // A4：對齊 demo flash('Amiodarone 已紀錄', '')
-                    triggerFlash("Amiodarone 已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
+                    triggerFlash("Amiodarone 已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK,
+                                 FLASH_TITLE_SIZE_XLONG, FLASH_SUBTITLE_SIZE_DEFAULT);
                     Serial.println("[OHCA] Amio confirmed");
                     resetSubState();
                 } else {
@@ -2189,6 +2192,26 @@ void drawPlaceholder(const char* title, const char* phase) {
 //  Phase B 顯示函式
 // ============================================================
 
+/**
+ * 子選單通用底部 hint（左：上下選擇／中：主鍵確認／右：返回取消）
+ * 三段分別貼左右邊與置中，避免單行 + 全形空格時溢出 320px。
+ */
+static void drawSubmenuNavHint() {
+    constexpr int16_t HINT_SIDE_INSET = 10;     // 左右段距螢幕邊
+    constexpr int16_t HINT_BOTTOM_GAP = 8;      // 貼底基準偏移（沿用 OHCA 主畫面 counter 行底邊 anchor）
+    constexpr float   HINT_TEXT_SIZE  = 0.85f;  // vlw 24px 縮放，0.85× 讓 3 段水平互不貼邊
+    useZhFont();
+    display.setTextSize(HINT_TEXT_SIZE);
+    display.setTextColor(COLOR_TEXT_DIM);
+    const int16_t hintY = SCREEN_H - OHCA_COUNTER_BOTTOM - HINT_BOTTOM_GAP;
+    display.setTextDatum(textdatum_t::top_left);
+    display.drawString("上下選擇", HINT_SIDE_INSET, hintY);
+    display.setTextDatum(textdatum_t::top_center);
+    display.drawString("主鍵確認", SCREEN_W / 2, hintY);
+    display.setTextDatum(textdatum_t::top_right);
+    display.drawString("返回取消", SCREEN_W - HINT_SIDE_INSET, hintY);
+}
+
 /** 藥物選單（V1 §9.2） */
 void drawDrugMenu() {
     // 標題
@@ -2217,8 +2240,7 @@ void drawDrugMenu() {
         display.print(labels[i]);
     }
 
-    drawCenteredText("上下選擇　主鍵確認　返回取消",
-                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    drawSubmenuNavHint();
 }
 
 /** 補登類型選擇（接手前 / 純補登） */
@@ -2254,44 +2276,50 @@ void drawBackfillType() {
         display.print(labels[i]);
     }
 
-    drawCenteredText("上下選擇　主鍵確認　返回取消",
-                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    drawSubmenuNavHint();
 }
 
-/** 補登次數選擇（V1 §9.6） */
+/** 補登次數選擇（V1 §9.6；對齊 demo OHCA_SUPP_COUNT 列表式：每 row "<typeLabel> ×<n>"） */
 void drawBackfillCount() {
-    // 標題
+    // STEP 01: header「選擇次數」（對齊 demo menu-header）
     useZhFont();
     display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("選擇次數", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
+
+    // STEP 02: 取 typeLabel + 範圍上限（PRE_HANDOVER=5 / PURE=3，不分 EPI/Shock）
     const char* typeLabel =
         (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
         (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "純補登 EPI" :
         (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "接手前電擊" :
                                                              "純補登電擊";
-    drawCenteredText(typeLabel, 20, COLOR_ACCENT_OK);
-    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
+    const uint8_t maxN = suppCountMax(backfillSuppType);
 
-    // 範圍提示
-    uint8_t maxN = suppCountMax(backfillSuppType);
-    char rangeBuf[32];
-    snprintf(rangeBuf, sizeof(rangeBuf), "次數（1~%u）", maxN);
+    // STEP 03: 列表 row（對齊 demo `${typeLabel} ×${i+1}` 與 drawBackfillConfirm/Success 同字符）
+    //   row_h=30 + start=60 → 5 row 結束 y=210，hint y=214 留 4px 緩衝
+    constexpr int16_t MENU_Y_START       = 60;
+    constexpr int16_t MENU_ROW_H         = 30;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 4;
     display.setTextSize(1);
-    drawCenteredText(rangeBuf, 78, COLOR_TEXT_MUTED);
+    char rowBuf[32];
+    for (uint8_t i = 0; i < maxN; i++) {
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
+        // STEP 03.01: backfillCount 是 1-indexed，i 從 0 起算 → 比對 i+1
+        const bool selected = ((i + 1) == backfillCount);
+        if (selected) {
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
+        } else {
+            display.setTextColor(COLOR_TEXT_PRIMARY);
+        }
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
+        snprintf(rowBuf, sizeof(rowBuf), "%s ×%u", typeLabel, (unsigned)(i + 1));
+        display.print(rowBuf);
+    }
 
-    // 大數字
-    char numBuf[6];
-    snprintf(numBuf, sizeof(numBuf), "%u", backfillCount);
-    display.setFont(&fonts::FreeMonoBold24pt7b);
-    display.setTextSize(2);
-    display.setTextColor(COLOR_TEXT_PRIMARY);
-    display.setTextDatum(textdatum_t::middle_center);
-    display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 8);
-
-    // 底部 hint
-    useZhFont();
-    display.setTextSize(1);
-    drawCenteredText("上下調整　主鍵確認　返回取消",
-                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    // STEP 04: 底部 hint
+    drawSubmenuNavHint();
 }
 
 /** 補登確認對話框（V1 §9.4） */
