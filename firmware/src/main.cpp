@@ -41,6 +41,8 @@
 #include "ems_case_summary.h"
 #include "ems_vent_metronome.h"
 
+#include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 222 glyphs (95 ASCII + 127 CJK)
+
 using namespace ems;
 
 /**
@@ -379,6 +381,22 @@ LGFX tft;
 /** 全頁 RAM sprite — 所有 draw functions 寫到這裡，updateDisplay 結尾 pushSprite DMA 一次推到 tft */
 FrameSprite display(&tft);
 
+/* vlw 載入旗標 — false 時 useZhFont() 不重 load（fallback 用 default font） */
+static bool g_vlw_loaded = false;
+
+/* vlw 字型切換 helper：
+ * LovyanGFX setFont() 切到內建字型時會 _runtime_font.reset() 析構 VLWfont，
+ * 所以一旦 setFont(&fonts::Font0) 後再切 vlw 必須重新 loadFont（lazy reload）。
+ * useZhFont() 檢查當前 font type，非 vlw 就重 load；同畫面連續用不會重 load。
+ */
+static inline void useZhFont() {
+    if (!g_vlw_loaded) return;
+    auto* f = display.getFont();
+    if (f == nullptr || f->getType() != lgfx::v1::IFont::font_type_t::ft_vlw) {
+        display.loadFont(ems_zh_24_vlw);
+    }
+}
+
 // 蜂鳴器：脈衝模式（pulses=255 視為連續直到 stop）
 static uint8_t  beepPulsesRemaining = 0;
 static uint32_t beepNextToggleMs    = 0;
@@ -503,6 +521,16 @@ void setup() {
         Serial.println("[FATAL] sprite createSprite failed");
     }
     display.fillScreen(0x0000);
+
+    // STEP 03.01: vlw 字型載入（PoC：Sarasa Mono TC Bold 24px，222 glyphs）
+    //   - 取代 efontTW_24 解「電擊」筆畫密集字型不平衡問題（PM 反饋 2026-05-09）
+    //   - loadFont 後設 g_vlw_loaded 旗標；中文渲染前呼叫 useZhFont() lazy reload
+    //   - LGFX setFont() 切走內建字型會 _runtime_font.reset() 析構 VLWfont，
+    //     所以不能緩存 VLWfont*，每次需要 vlw 必須檢查並重 load
+    g_vlw_loaded = display.loadFont(ems_zh_24_vlw);
+    Serial.printf("[FONT] vlw %s: %u bytes\n",
+                  g_vlw_loaded ? "loaded" : "FAILED",
+                  (unsigned)ems_zh_24_vlw_len);
 
     // STEP 04: 兩段確認 init
     twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
@@ -1475,6 +1503,7 @@ struct DisplaySnapshot {
     uint8_t  ohcaState;
     uint8_t  ohcaSubState;
     uint8_t  mainMenuCursor;
+    uint8_t  subCursor;          /**< 子選單 cursor（QuickMenu/Backfill/Drug 共用 backfillCursor） */
     uint32_t countdownSec;       /**< OHCA 倒數/超時當前顯示秒數（per-second granularity） */
     uint8_t  ventBeat;           /**< 6sec 通氣節奏目前秒（0-5） */
     uint8_t  ventVolume;
@@ -1491,6 +1520,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     s.ohcaState       = (uint8_t)ohcaState;
     s.ohcaSubState    = (uint8_t)ohcaSubState;
     s.mainMenuCursor  = mainMenuCursor;
+    s.subCursor       = backfillCursor;
 
     if (ohcaLastEpiMs != 0) {
         const uint32_t since = millis() - ohcaLastEpiMs;
@@ -1675,16 +1705,16 @@ void drawMainMenu() {
     // STEP 02: 標題下分隔線 y=36，灰色橫貫
     display.drawLine(16, 36, SCREEN_W - 16, 36, COLOR_TEXT_DIM);
 
-    // STEP 03: 5 個選單項用 efontCN_24（24px CJK，size 1，UTF-8 自動解碼），y=58 起每 36px 一行
+    // STEP 03: 5 個選單項用 vlw 24px size 1.1（PM 反饋放大），y=58 起每 36px 一行
     //   - cursor 項：白底黑字（demo cursor highlight）
     //   - 非 cursor：黑底白字
     constexpr int16_t MENU_Y_START   = 58;
     constexpr int16_t MENU_ROW_H     = 36;
     constexpr int16_t MENU_TEXT_PAD  = 24;
-    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;  // efont 24px 字在 36px row 內垂直置中
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 4;  // 26px 字在 36px row 內垂直置中
 
-    display.setFont(&fonts::efontTW_24);
-    display.setTextSize(1);
+    useZhFont();
+    display.setTextSize(1.1f, 1.1f);
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == mainMenuCursor) {
@@ -1708,33 +1738,42 @@ static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
 
 void drawOhcaStartFlash() {
     // OHCA 案件啟動 1 秒提示：對齊 demo flash('案件開始', 'OHCA')
-    // 主：「案件開始」綠色（efontTW_24 × 1.5 ≈ 36px）
-    display.setFont(&fonts::efontTW_24);
-    display.setTextSize(1.5f, 1.5f);
-    drawCenteredText("案件開始", SCREEN_H / 2 - 24, COLOR_ACCENT_OK);
+    // PM 反饋全部 1.5x：主 size 1.5→2.25（~54px）、副 Font0 size 3 → vlw 1.5（~36px）
+    useZhFont();
 
-    // 副：「OHCA」灰色小字（Font0 size 3，與 OHCA badge 同樣式）
-    display.setFont(&fonts::Font0);
-    display.setTextSize(3);
-    drawCenteredText("OHCA", SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
+    // 主：「案件開始」綠色（vlw size 2.25 ≈ 54px）
+    display.setTextSize(2.25f, 2.25f);
+    display.setTextColor(COLOR_ACCENT_OK);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString("案件開始", SCREEN_W / 2, SCREEN_H / 2 - 30);
+
+    // 副：「OHCA」灰色（vlw size 1.5 ≈ 36px，與 OHCA badge 同樣式）
+    display.setTextSize(1.5f, 1.5f);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.drawString("OHCA", SCREEN_W / 2, SCREEN_H / 2 + 36);
 }
 
 void drawOhcaWaitFirstEpi() {
-    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout（中文化 + 字級 1.2-1.5x）
+    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout（PM 反饋全部 1.5x）
     // 前置：caller 已 clearDisplay 為黑底
+    // Layout（vlw 24px 為基準，row 高 ≈ font_size × scale）：
+    //   - 頂部 OHCA badge：top y=8, size 1.5 → ~36px tall, bottom y≈44
+    //   - 中央大字「待本機 EPI」：middle-center datum, y=120, size 2.25 → ~54px tall, top≈93 / bottom≈147
+    //   - 底部 EPI/電擊 計數：top y=200, size 1.5 → ~36px tall, bottom y≈236（240 上限內）
+    useZhFont();
 
-    // 頂部 OHCA 綠 badge（ASCII，default font size 3）
-    display.setFont(&fonts::Font0);
-    display.setTextSize(3);
-    drawCenteredText("OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
-
-    // 中央大字「待本機 EPI」（efontTW_24 × 1.5 ≈ 36px）
-    // demo OHCA 螢幕無副標，故移除「(按兩次 EPI 確認)」hint
-    display.setFont(&fonts::efontTW_24);
+    // STEP 01: 頂部 OHCA 綠 badge（vlw size 1.5 ≈ 36px）
     display.setTextSize(1.5f, 1.5f);
-    drawCenteredText("待本機 EPI", SCREEN_H / 2 - 16, COLOR_TEXT_MUTED);
+    drawCenteredText("OHCA", 8, COLOR_ACCENT_OK);
 
-    // 底部 EPI/電擊 計數（與 OHCA 倒數計數行一致）
+    // STEP 02: 中央大字「待本機 EPI」（vlw size 2.25 ≈ 54px）
+    // demo OHCA 螢幕無副標，故移除「(按兩次 EPI 確認)」hint
+    display.setTextSize(2.25f, 2.25f);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString("待本機 EPI", SCREEN_W / 2, SCREEN_H / 2);
+
+    // STEP 03: 底部 EPI/電擊 計數（vlw size 1.5 ≈ 36px）
     uint16_t epiN = 0, shockN = 0;
     for (uint16_t i = 0; i < eventCount; i++) {
         if      (isEpiEvent(&events[i]))   epiN   += events[i].count;
@@ -1742,8 +1781,8 @@ void drawOhcaWaitFirstEpi() {
     }
     char counter[32];
     snprintf(counter, sizeof(counter), "EPI %u｜電擊 %u", epiN, shockN);
-    display.setTextSize(1);
-    drawCenteredText(counter, SCREEN_H - OHCA_COUNTER_BOTTOM - 6, COLOR_TEXT_DIM);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(counter, 200, COLOR_TEXT_DIM);
 }
 
 /**
@@ -1764,12 +1803,12 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
         display.fillScreen(COLOR_FLASH_VENT);
     }
 
-    // STEP 02: 頂部 mode badge "OHCA"（綠 top-center datum，PM 反饋字級放大）
-    display.setFont(&fonts::Font0);
-    display.setTextSize(3);
+    // STEP 02: 頂部 mode badge "OHCA"（vlw size 1.5 ≈ 36px，對齊 WaitFirstEpi）
+    useZhFont();
+    display.setTextSize(1.5f, 1.5f);
     display.setTextColor(COLOR_ACCENT_OK);
     display.setTextDatum(textdatum_t::top_center);
-    display.drawString("OHCA", SCREEN_W / 2, OHCA_BADGE_Y);
+    display.drawString("OHCA", SCREEN_W / 2, 8);
 
     // STEP 03: 中央大時間（FreeMonoBold24pt7b，middle-center datum 自動置中）
     char timeStr[8];
@@ -1785,12 +1824,15 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
     display.drawString(timeStr, SCREEN_W / 2, time_y);
 
-    // STEP 04: 時間下方標籤（efontTW_24 繁中 24px × 1.2 ≈ 29px，PM 反饋再大 1.2x）
-    display.setFont(&fonts::efontTW_24);
-    display.setTextSize(1.2f, 1.2f);
+    // STEP 04: 時間下方標籤「下次給藥」等（vlw size 1.8 ≈ 43px，PM 反饋 1.5x）
+    //   - 大時間 bottom ≈ time_y + 48 = 148
+    //   - 底部 counter top ≈ 200
+    //   - 標籤 middle-center 居中於 (148, 200) 中點 = 174
+    useZhFont();
+    display.setTextSize(1.8f, 1.8f);
     display.setTextColor(COLOR_TEXT_MUTED);
-    display.setTextDatum(textdatum_t::top_center);
-    display.drawString(label, SCREEN_W / 2, time_y + OHCA_LABEL_GAP_PX);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(label, SCREEN_W / 2, 165);
 
     // STEP 05: 累加 EPI / Shock 事件次數（含補登 count）
     uint16_t epiN = 0, shockN = 0;
@@ -1799,14 +1841,13 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
 
-    // STEP 06: 底部計數行（bottom-center，efontTW_24 size 1 ≈ 14px ASCII，保持原視覺大小）
+    // STEP 06: 底部計數行（vlw size 1.5 ≈ 36px，bottom-center y=236 留 4px 邊界）
     char counter[32];     // UTF-8「電擊」6 byte，buf 從 24 加大避免飽和
     snprintf(counter, sizeof(counter), "EPI %u｜電擊 %u", epiN, shockN);
-    display.setFont(&fonts::efontTW_24);
-    display.setTextSize(1);
+    display.setTextSize(1.5f, 1.5f);
     display.setTextColor(COLOR_TEXT_DIM);
     display.setTextDatum(textdatum_t::bottom_center);
-    display.drawString(counter, SCREEN_W / 2, SCREEN_H - OHCA_COUNTER_BOTTOM);
+    display.drawString(counter, SCREEN_W / 2, SCREEN_H - 4);
 }
 
 /**
@@ -1848,11 +1889,22 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
     display.setTextDatum(textdatum_t::middle_center);
     const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
     display.drawString(timeStr, SCREEN_W / 2, time_y);
+
+    // 也重畫 label — partial bbox 涵蓋 label 上半，每秒被 fillRect 清掉會看起來頂部被切掉
+    const char* label =
+        (ohcaStateForTime == OHCA_STATE_COUNTDOWN) ? "下次給藥" :
+        (ohcaStateForTime == OHCA_STATE_WARNING)   ? "請準備給藥" :
+                                                     "請給藥";
+    useZhFont();
+    display.setTextSize(1.8f, 1.8f);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(label, SCREEN_W / 2, 165);
 }
 
 void drawOhcaEndCheck() {
     // 標題（efontTW_24 size 1.2 ≈ 29px）
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("結束前檢查", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
 
@@ -1867,7 +1919,7 @@ void drawOhcaEndCheck() {
         } else {
             display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setFont(&fonts::efontTW_24);
+        useZhFont();
         display.setTextSize(1.2f, 1.2f);
         display.setTextDatum(textdatum_t::middle_center);
         display.drawString(text, SCREEN_W / 2, y + row_h / 2);
@@ -1878,7 +1930,7 @@ void drawOhcaEndCheck() {
     drawOption("返回案件",       y0 + row_h*2,  endCheckCursor == END_CHECK_CURSOR_CANCEL);
 
     // 底部 hint
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1);
     drawCenteredText("上下選擇　主鍵確認",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
@@ -1906,16 +1958,26 @@ void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms,
 /** Flash overlay render — 全螢幕黑底（覆蓋背景），主副標居中 */
 void drawFlashOverlay() {
     display.fillScreen(COLOR_BG);
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     const bool hasSub = (flashState.subtitle[0] != '\0');
+    display.setTextDatum(textdatum_t::middle_center);
+
+    // 7-char 主標（如「案件結束並鎖定」）在 size 2.25 下會超出螢幕，降 size 1.9 留視覺餘裕
+    const float titleSize = (strcmp(flashState.title, "案件結束並鎖定") == 0) ? 1.9f : 2.25f;
+    // 10-char 副標（如「結束案件後看完整總覽」）在 size 1.5 下 ~360px 超出 320，降 size 1.2 ≈ 288px
+    const float subSize = (strcmp(flashState.subtitle, "結束案件後看完整總覽") == 0) ? 1.2f : 1.5f;
+
     if (hasSub) {
-        display.setTextSize(1.5f, 1.5f);
-        drawCenteredText(flashState.title, SCREEN_H / 2 - 36, flashState.titleColor);
-        display.setTextSize(1);
-        drawCenteredText(flashState.subtitle, SCREEN_H / 2 + 24, COLOR_TEXT_MUTED);
+        display.setTextSize(titleSize, titleSize);
+        display.setTextColor(flashState.titleColor);
+        display.drawString(flashState.title, SCREEN_W / 2, SCREEN_H / 2 - 30);
+        display.setTextSize(subSize, subSize);
+        display.setTextColor(COLOR_TEXT_MUTED);
+        display.drawString(flashState.subtitle, SCREEN_W / 2, SCREEN_H / 2 + 36);
     } else {
-        display.setTextSize(1.5f, 1.5f);
-        drawCenteredText(flashState.title, SCREEN_H / 2 - 18, flashState.titleColor);
+        display.setTextSize(titleSize, titleSize);
+        display.setTextColor(flashState.titleColor);
+        display.drawString(flashState.title, SCREEN_W / 2, SCREEN_H / 2);
     }
 }
 
@@ -1939,7 +2001,7 @@ void drawOhcaEndConfirmDialog() {
     drawDialogFrame(COLOR_ACCENT_ALERT);
 
     // 標題（紅色，efontTW_24 × 1.5 ≈ 36px）
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.5f, 1.5f);
     drawCenteredText("確認結束案件？", 36, COLOR_ACCENT_ALERT);
 
@@ -1969,7 +2031,7 @@ void drawOhcaConfirmDialog(uint8_t evType) {
     const char* title = (evType == EVT_EPI_LOCAL)   ? "確認已給 EPI？"
                       : (evType == EVT_SHOCK_LOCAL) ? "確認已電擊？"
                       :                                "確認操作？";
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.5f, 1.5f);
     drawCenteredText(title, 28, COLOR_TEXT_PRIMARY);
 
@@ -1991,7 +2053,7 @@ void drawOhcaConfirmDialog(uint8_t evType) {
 }
 
 void drawOhcaLocked() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
 
     // 標題：紅「已鎖定」
     display.setTextSize(1.2f, 1.2f);
@@ -2017,7 +2079,7 @@ void drawOhcaSummary() {
     ohca_case_summary_t s;
     caseSummary_build(&s, events, eventCount, /*case_start*/ 0, /*case_end*/ 0);
 
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
 
     // 標題
     display.setTextSize(1.2f, 1.2f);
@@ -2057,7 +2119,7 @@ void drawTwoStepArmedOverlay(const char* what) {
     // 底部全寬反色提示條（琥珀警示色，efontTW_24 × 1.2 ≈ 29px 黑字）
     const int16_t bar_h = 44;
     display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     display.setTextColor(COLOR_BG);
     display.setTextDatum(textdatum_t::middle_center);
@@ -2065,7 +2127,7 @@ void drawTwoStepArmedOverlay(const char* what) {
 }
 
 void drawPlaceholder(const char* title, const char* phase) {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText(title, OHCA_BADGE_Y, COLOR_TEXT_PRIMARY);
 
@@ -2085,7 +2147,7 @@ void drawPlaceholder(const char* title, const char* phase) {
 /** 藥物選單（V1 §9.2） */
 void drawDrugMenu() {
     // 標題
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("EPI / 藥物選單", 20, COLOR_ACCENT_OK);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
@@ -2096,7 +2158,7 @@ void drawDrugMenu() {
     constexpr int16_t MENU_ROW_H         = 36;
     constexpr int16_t MENU_TEXT_PAD      = 32;
     constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1);
     for (uint8_t i = 0; i < 2; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
@@ -2116,7 +2178,7 @@ void drawDrugMenu() {
 
 /** 補登類型選擇（接手前 / 純補登） */
 void drawBackfillType() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     const char* header = (backfillCategory == BACKFILL_CAT_EPI) ? "補登 EPI" : "電擊補登";
     drawCenteredText(header, 20, COLOR_ACCENT_OK);
@@ -2133,7 +2195,7 @@ void drawBackfillType() {
     constexpr int16_t MENU_ROW_H         = 36;
     constexpr int16_t MENU_TEXT_PAD      = 32;
     constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1);
     for (uint8_t i = 0; i < 2; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
@@ -2154,7 +2216,7 @@ void drawBackfillType() {
 /** 補登次數選擇（V1 §9.6） */
 void drawBackfillCount() {
     // 標題
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     const char* typeLabel =
         (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
@@ -2181,7 +2243,7 @@ void drawBackfillCount() {
     display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 8);
 
     // 底部 hint
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1);
     drawCenteredText("上下調整　主鍵確認　返回取消",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
@@ -2189,7 +2251,7 @@ void drawBackfillCount() {
 
 /** 補登確認對話框（V1 §9.4） */
 void drawBackfillConfirm() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("確認補登？", 20, COLOR_ACCENT_WARN);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
@@ -2213,7 +2275,7 @@ void drawBackfillConfirm() {
 
 /** 補登成功提示（2s 後自動消失，V1 §9.5） */
 void drawBackfillSuccess() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("補登成功", 20, COLOR_ACCENT_OK);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
@@ -2234,7 +2296,7 @@ void drawBackfillSuccess() {
 
 /** Amiodarone 兩段確認 */
 void drawAmioConfirmPrompt() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("確認 Amiodarone？", 20, COLOR_ACCENT_OK);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
@@ -2247,7 +2309,7 @@ void drawAmioConfirmPrompt() {
         // 底部琥珀 bar overlay：再按一次主鍵確認
         const int16_t bar_h = 44;
         display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
-        display.setFont(&fonts::efontTW_24);
+        useZhFont();
         display.setTextSize(1.2f, 1.2f);
         display.setTextColor(COLOR_BG);
         display.setTextDatum(textdatum_t::middle_center);
@@ -2261,7 +2323,7 @@ void drawAmioConfirmPrompt() {
 /** Timeline 子畫面（V1 §11.5） */
 void drawTimeline() {
     // 標題
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("事件時間軸", 20, COLOR_ACCENT_OK);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
@@ -2284,7 +2346,7 @@ void drawTimeline() {
     constexpr int16_t TIME_X  = 24;
     constexpr int16_t LABEL_X = 110;
 
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1);
     uint16_t shown = 0;
     for (uint16_t i = timelineScrollOffset; i < eventCount && shown < 5; i++, shown++) {
@@ -2338,7 +2400,7 @@ void drawTimeline() {
  * 對齊 demo VENT_PRE render
  */
 void drawVentPre() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
 
     // 頂部標題
     display.setTextSize(1.2f, 1.2f);
@@ -2360,7 +2422,7 @@ void drawVentPre() {
 }
 
 void drawVentStandalone() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
 
     // 頂部標題 + 音量
     display.setTextSize(1.2f, 1.2f);
@@ -2394,7 +2456,7 @@ void drawVentStandalone() {
     display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 16);
 
     // 底部提示（橫條反色顯示結束 hint 或基本提示）
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     if (ventBackHintShown) {
         const int16_t bar_h = 32;
         display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
@@ -2412,7 +2474,7 @@ void drawVentStandalone() {
 
 /** 獨立 vent 結束確認對話框（V1 §13.14 結束獨立 6 秒通氣節奏） */
 void drawVentEndCheck() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
 
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("結束通氣節奏？", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
@@ -2427,7 +2489,7 @@ void drawVentEndCheck() {
 
 /** 快速功能選單（V1 §14.9 開啟、暫停、繼續與關閉 + §9 OHCA 中按返回鍵） */
 void drawQuickMenu() {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("快速功能", 20, COLOR_ACCENT_OK);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
@@ -2448,12 +2510,12 @@ void drawQuickMenu() {
         count = 4;
     }
 
-    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_Y_START       = 68;  // 往上 10px 避免 4 列時撞到底部 hint
     constexpr int16_t MENU_ROW_H         = 36;
     constexpr int16_t MENU_TEXT_PAD      = 32;
-    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
-    display.setFont(&fonts::efontTW_24);
-    display.setTextSize(1);
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 4;  // size 1.1 → 26px 字在 36px row 內垂直置中
+    useZhFont();
+    display.setTextSize(1.1f, 1.1f);
     for (uint8_t i = 0; i < count; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == backfillCursor) {
@@ -2466,6 +2528,8 @@ void drawQuickMenu() {
         display.print(labels[i]);
     }
 
+    // 底部 hint 14 字在 size 1 下 ~336px 超出 320，縮 size 0.85 ≈ 286px 完整顯示
+    display.setTextSize(0.85f, 0.85f);
     drawCenteredText("上下選擇　主鍵確認　返回關閉",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
@@ -2475,7 +2539,7 @@ void drawQuickMenu() {
  *  y_top 參數保留 API 相容但忽略（新 layout 自決定位置）
  */
 void drawOhcaVentOverlay(int /*y_top*/) {
-    display.setFont(&fonts::efontTW_24);
+    useZhFont();
 
     if (ohcaVentPaused) {
         // 暫停狀態：右上角「通氣暫停」
