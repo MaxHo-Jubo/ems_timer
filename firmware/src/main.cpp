@@ -1,32 +1,49 @@
 /**
- * EMS Timer — Phase A 韌體：OHCA 核心
+ * EMS Timer 韌體：OHCA 核心 + Phase B 已落地
  *
  * SoT 對齊：
- *   - docs/EMS_DoseSync_Pro_Prototype_V1.md §3 主功能表 / §5~§11 OHCA
+ *   - docs/EMS_DoseSync_Pro_Prototype_V1.md §3 主功能表 / §5~§13 OHCA + Vent
  *   - docs/pm-dev-spec.md §3~§5（OHCA 子狀態機 / EPI 倒數 / 兩段確認）
+ *   - docs/pm-dev-spec.md §四 Phase A~H acceptance
  *   - docs/gpio-allocation.md（GPIO 分配 SSOT）
  *
- * Phase A 範圍（pm-dev-spec §四）：
- *   ✅ 主功能表 5 項（Phase A 僅實作 OHCA case 入口；其他顯示「Phase X 待實作」）
- *   ✅ OHCA 子狀態機（10 態，delegate 至 lib/ems_ohca）
- *   ✅ EPI 4 分鐘倒數引擎（純函式 lib，TIMER_TICK 驅動）
- *   ✅ EPI / 電擊兩段確認（5s timeout）
- *   ✅ 三模態輸出：蜂鳴（短嗍 / 連續發報）/ OLED 反色（震動視覺替代）/ 震動（佔位）
- *   ❌ 補登 / Amio（Phase B）
- *   ❌ 6 秒通氣節奏（Phase C）
- *   ❌ Training（Phase D）
- *   ❌ 持久化 / 歷史紀錄（Phase E）
- *   ❌ BLE 同步（Phase F）
- *   ❌ 系統設定（Phase G）
- *   ❌ 電源管理（Phase H）
+ * 實作狀態（pm-dev-spec §四，2026-05-09 對齊）：
  *
- * 接線（gpio-allocation.md）：
+ *   Phase A — OHCA 核心
+ *     ✅ 主功能表 5 項（OHCA 入口可進；Training/History/Settings 顯示 placeholder）
+ *     ✅ OHCA 子狀態機（10 態，delegate 至 lib/ems_ohca）
+ *     ✅ EPI 4 分鐘倒數引擎（純函式 lib，TIMER_TICK 驅動）
+ *     ✅ EPI / 電擊兩段確認（5s timeout）
+ *     ✅ 三模態輸出：蜂鳴 / TFT flash / 震動（佔位）
+ *
+ *   Phase B — 補登 + Amiodarone + 案件總覽
+ *     ✅ 長按 EPI 鍵 → 藥物選單（補登 EPI / Amiodarone）
+ *     ✅ 長按電擊鍵 → 電擊補登（接手前 / 純補登）
+ *     ✅ 補登次數選擇 UI（接手前 1~5 / 純補登 1~3，列表式對齊 demo）
+ *     ✅ Amiodarone 兩段確認（twoStepConfirm）
+ *     ✅ END_CHECK 結束前檢查（V1 §10：完成並結束 / 前往補登 / 返回案件）
+ *     ✅ 案件總覽（V1 §11，caseSummary_build）+ Timeline 子畫面
+ *
+ *   Phase C — 6 秒通氣節奏（程式碼已落地，待 PM 驗收）
+ *     ❌ GLOBAL_VENT 獨立模式（從主功能表進入）
+ *     ❌ 通氣音量 0~5 即時可調（音量持久化見 Phase G）
+ *     ❌ OHCA 中快速功能進入（返回鍵 → SUBSTATE_QUICK_MENU）
+ *     ❌ EPI 高優先打斷邏輯（OHCA_STATE_ALARMING → effectiveVol=0）
+ *     ❌ EPI 完成後「返回通氣節奏？」詢問（V1 §13.13 待補）
+ *
+ *   ❌ Phase D — Training 模式
+ *   ❌ Phase E — 持久化 / 歷史紀錄（LittleFS partition + FIFO 覆蓋）
+ *   ❌ Phase F — BLE 同步（NUS + JSON 過渡 / 配對碼）
+ *   ❌ Phase G — 系統設定（亮度 / 系統音量 / 通氣音量 NVS）
+ *   ❌ Phase H — 電源管理（螢幕常亮 / Deep Sleep）
+ *
+ * 接線（完整 SSOT 見 docs/gpio-allocation.md）：
  *   主按鍵    → GPIO 4   返回鍵    → GPIO 16
  *   上鍵      → GPIO 5   EPI 鍵    → GPIO 17
  *   下鍵      → GPIO 6   電擊鍵    → GPIO 18
  *   Power 鍵  → GPIO 7   蜂鳴器    → GPIO 14
- *   錄音鍵    → GPIO 15  震動馬達  → GPIO 21（佔位，ENABLE_VIBRATION=0）
- *   OLED      → GPIO 42 (SDA) / 41 (SCL)
+ *   錄音鍵    → GPIO 15  震動馬達  → 停用（ENABLE_VIBRATION=0，原 21 已給 TFT CS）
+ *   TFT       → SCK 3 / MOSI 2 / DC 1 / CS 21 / RST 47（LovyanGFX SPI2 + DMA，BL 常亮）
  */
 
 #include <Arduino.h>
