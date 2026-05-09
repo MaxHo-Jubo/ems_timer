@@ -77,19 +77,19 @@
   }
 
   /* === 螢幕通用 components ===
-   * 字級對齊韌體（efontTW_24 = 24px / 1.2x ≈ 29px / 1.5x ≈ 36px / 2x ≈ 48px；
-   *           FreeMonoBold24pt7b size 2 ≈ 96px）
+   * 字級對齊韌體（efontTW_24 = 24px / 1.1x ≈ 26px / 1.2x ≈ 29px / 1.5x ≈ 36px /
+   *           1.8x ≈ 43px / 2x ≈ 48px / 2.25x ≈ 54px；FreeMonoBold24pt7b size 2 ≈ 96px）
    */
   .scr-title { font-size: 18px; color: #94a3b8; letter-spacing: 2px; margin-bottom: 4px; text-transform: uppercase; }
   .scr-mode  { font-size: 18px; color: #4ade80; margin-bottom: 6px; letter-spacing: 2px; font-weight: 700; }
   .scr-time-big { font-size: 96px; font-weight: 900; line-height: 1; font-family: "Courier New", monospace; color: #fff; }
   .scr-time-amber { color: #fbbf24; }
   .scr-time-red   { color: #ef4444; }
-  .scr-label   { font-size: 29px; color: #cbd5e1; margin-top: 8px; }
-  .scr-counter { font-size: 24px; color: #64748b; margin-top: 8px; font-family: "Courier New", monospace; }
+  .scr-label   { font-size: 43px; color: #cbd5e1; margin-top: 8px; }
+  .scr-counter { font-size: 36px; color: #64748b; margin-top: 8px; font-family: "Courier New", monospace; }
   .scr-alert-big { font-size: 56px; font-weight: 900; letter-spacing: 4px; color: #fff; }
-  .scr-flash-msg { font-size: 36px; font-weight: 700; color: #fff; text-align: center; }
-  .scr-flash-sub { font-size: 24px; color: #94a3b8; margin-top: 6px; }
+  .scr-flash-msg { font-size: 54px; font-weight: 700; color: #fff; text-align: center; }
+  .scr-flash-sub { font-size: 36px; color: #94a3b8; margin-top: 6px; }
 
   .scr-vent-num { font-size: 96px; font-weight: 900; line-height: 1; color: #fff; font-family: "Courier New", monospace; }
   .scr-vent-num.emphasis { color: #fff; }
@@ -115,7 +115,7 @@
 
   /* === Menu list（韌體：efontTW_24 標題 size 1.2 ≈ 29px / 項目 size 1 = 24px / 36px row） === */
   .menu-list { width: 100%; max-width: 320px; padding: 0; }
-  .menu-item { padding: 6px 24px; font-size: 24px; color: #94a3b8; border-radius: 0; line-height: 36px; }
+  .menu-item { padding: 6px 24px; font-size: 26px; color: #94a3b8; border-radius: 0; line-height: 36px; }
   .menu-item.selected { background: #fff; color: #000; font-weight: 700; }
   /* 韌體只有反白 highlight、沒有 ▶ 箭頭，故隱藏 cursor 元素 */
   .menu-item .menu-cursor { display: none; }
@@ -806,8 +806,8 @@ const STATES = {
       let inner = '';
       if (phase === 'WAIT_FIRST_EPI') {
         inner = `
-          <div class="scr-mode">OHCA</div>
-          <div class="scr-label" style="font-size:24px;color:#94a3b8">待本機 EPI</div>
+          <div class="scr-mode" style="font-size:36px">OHCA</div>
+          <div class="scr-label" style="font-size:54px;color:#94a3b8">待本機 EPI</div>
           <div class="scr-counter">EPI ${counters.epi}｜電擊 ${counters.shock}</div>
           ${ventOverlayHTML}
         `;
