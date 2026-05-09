@@ -140,12 +140,18 @@ static const uint16_t COLOR_FLASH_VENT   = 0x5800;
 /** OHCA 倒數畫面 layout（drawOhcaCountdownCommon 使用） */
 /** ALARMING 背景閃爍半週期 ms（demo flashRed 0.6s 全週期 / 2） */
 static const uint32_t OHCA_FLASH_HALF_MS  = 300;
-/** 頂部 "OHCA" badge baseline Y（default font size 2，~14px 字高） */
+/** 舊版（pre-vlw）badge baseline Y——drawOhcaEndCheck/Locked/Summary/Placeholder 仍用 */
 static const int16_t  OHCA_BADGE_Y        = 14;
+/** vlw 1.5× badge "OHCA" 文字 top y（datum top_center；ChineseBadge 在 WaitFirstEpi/Countdown 共用） */
+static const int16_t  OHCA_CHINESE_BADGE_TOP_Y = 8;
 /** 大時間視覺上偏 px（middle datum 中心 y = SCREEN_H/2 - VISUAL_UP，留下方標籤空間） */
 static const int16_t  OHCA_TIME_VISUAL_UP = 20;
+/** 標籤 middle-center y（理論幾何中點 174；上偏 9px 讓 vlw 1.8× descender 與計數行留間距） */
+static const int16_t  OHCA_LABEL_Y        = 165;
 /** 標籤距大時間 middle 下方 px（要 > 大時間半高 + padding，否則撞時間 bbox） */
 static const int16_t  OHCA_LABEL_GAP_PX   = 60;
+/** WaitFirstEpi 底部 EPI/電擊 計數 top y（vlw 1.5× ≈ 36px，至 SCREEN_H 留 4px 邊界） */
+static const int16_t  OHCA_WAIT_COUNTER_Y = 200;
 /** 底部 EPI/Shock 計數行距底邊 px */
 static const int16_t  OHCA_COUNTER_BOTTOM = 18;
 
@@ -154,6 +160,12 @@ static const int16_t  OHCA_TIME_PUSH_X    = 14;
 static const int16_t  OHCA_TIME_PUSH_Y    = 48;
 static const int16_t  OHCA_TIME_PUSH_W    = 292;
 static const int16_t  OHCA_TIME_PUSH_H    = 104;
+
+/** 確認 bar 高度（TwoStepArmed / AmioConfirm「再按一次主鍵確認」橫條） */
+static const int16_t  DIALOG_BAR_H        = 44;
+/** Vent 結束提示 bar 高度（VentStandalone「長按 ≥ 0.75s 結束」較窄保留中央資訊區） */
+static const int16_t  VENT_BAR_H          = 32;
+
 /** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37 + 板上 WS2812 GPIO 48） */
 static const int8_t   TFT_CS_PIN    = 21;
 static const int8_t   TFT_DC_PIN    = 1;   /**< 原 48 → 1：避開板上 WS2812 RGB LED（2026-05-08 實機踩雷） */
@@ -1790,7 +1802,7 @@ void drawOhcaWaitFirstEpi() {
 
     // STEP 01: 頂部 OHCA 綠 badge（vlw size 1.5 ≈ 36px）
     display.setTextSize(1.5f, 1.5f);
-    drawCenteredText("OHCA", 8, COLOR_ACCENT_OK);
+    drawCenteredText("OHCA", OHCA_CHINESE_BADGE_TOP_Y, COLOR_ACCENT_OK);
 
     // STEP 02: 中央大字「待本機 EPI」（vlw size 2.25 ≈ 54px）
     // demo OHCA 螢幕無副標，故移除「(按兩次 EPI 確認)」hint
@@ -1808,7 +1820,7 @@ void drawOhcaWaitFirstEpi() {
     char counter[32];
     snprintf(counter, sizeof(counter), "EPI %u｜電擊 %u", epiN, shockN);
     display.setTextSize(1.5f, 1.5f);
-    drawCenteredText(counter, 200, COLOR_TEXT_DIM);
+    drawCenteredText(counter, OHCA_WAIT_COUNTER_Y, COLOR_TEXT_DIM);
 }
 
 /**
@@ -1834,7 +1846,7 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     display.setTextSize(1.5f, 1.5f);
     display.setTextColor(COLOR_ACCENT_OK);
     display.setTextDatum(textdatum_t::top_center);
-    display.drawString("OHCA", SCREEN_W / 2, 8);
+    display.drawString("OHCA", SCREEN_W / 2, OHCA_CHINESE_BADGE_TOP_Y);
 
     // STEP 03: 中央大時間（FreeMonoBold24pt7b，middle-center datum 自動置中）
     char timeStr[8];
@@ -1857,7 +1869,7 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     display.setTextSize(1.8f, 1.8f);
     display.setTextColor(COLOR_TEXT_MUTED);
     display.setTextDatum(textdatum_t::middle_center);
-    display.drawString(label, SCREEN_W / 2, 165);
+    display.drawString(label, SCREEN_W / 2, OHCA_LABEL_Y);
 
     // STEP 05: 累加 EPI / Shock 事件次數（含補登 count）
     uint16_t epiN = 0, shockN = 0;
@@ -1924,7 +1936,7 @@ static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
     display.setTextSize(1.8f, 1.8f);
     display.setTextColor(COLOR_TEXT_MUTED);
     display.setTextDatum(textdatum_t::middle_center);
-    display.drawString(label, SCREEN_W / 2, 165);
+    display.drawString(label, SCREEN_W / 2, OHCA_LABEL_Y);
 }
 
 void drawOhcaEndCheck() {
@@ -2152,13 +2164,12 @@ void drawOhcaSummary() {
 
 void drawTwoStepArmedOverlay(const char* what) {
     // 底部全寬反色提示條（琥珀警示色，efontTW_24 × 1.2 ≈ 29px 黑字）
-    const int16_t bar_h = 44;
-    display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
+    display.fillRect(0, SCREEN_H - DIALOG_BAR_H, SCREEN_W, DIALOG_BAR_H, COLOR_ACCENT_WARN);
     useZhFont();
     display.setTextSize(1.2f, 1.2f);
     display.setTextColor(COLOR_BG);
     display.setTextDatum(textdatum_t::middle_center);
-    display.drawString(what, SCREEN_W / 2, SCREEN_H - bar_h / 2);
+    display.drawString(what, SCREEN_W / 2, SCREEN_H - DIALOG_BAR_H / 2);
 }
 
 void drawPlaceholder(const char* title, const char* phase) {
@@ -2342,13 +2353,12 @@ void drawAmioConfirmPrompt() {
 
     if (showAmioArmedPrompt) {
         // 底部琥珀 bar overlay：再按一次主鍵確認
-        const int16_t bar_h = 44;
-        display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
+        display.fillRect(0, SCREEN_H - DIALOG_BAR_H, SCREEN_W, DIALOG_BAR_H, COLOR_ACCENT_WARN);
         useZhFont();
         display.setTextSize(1.2f, 1.2f);
         display.setTextColor(COLOR_BG);
         display.setTextDatum(textdatum_t::middle_center);
-        display.drawString("再按一次主鍵確認", SCREEN_W / 2, SCREEN_H - bar_h / 2);
+        display.drawString("再按一次主鍵確認", SCREEN_W / 2, SCREEN_H - DIALOG_BAR_H / 2);
     } else {
         drawCenteredText("主鍵確認　返回取消",
                          SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
@@ -2493,13 +2503,12 @@ void drawVentStandalone() {
     // 底部提示（橫條反色顯示結束 hint 或基本提示）
     useZhFont();
     if (ventBackHintShown) {
-        const int16_t bar_h = 32;
-        display.fillRect(0, SCREEN_H - bar_h, SCREEN_W, bar_h, COLOR_ACCENT_WARN);
+        display.fillRect(0, SCREEN_H - VENT_BAR_H, SCREEN_W, VENT_BAR_H, COLOR_ACCENT_WARN);
         display.setTextSize(1);
         display.setTextColor(COLOR_BG);
         display.setTextDatum(textdatum_t::middle_center);
         display.drawString("如要結束　請長按主鍵",
-                           SCREEN_W / 2, SCREEN_H - bar_h / 2);
+                           SCREEN_W / 2, SCREEN_H - VENT_BAR_H / 2);
     } else {
         display.setTextSize(1);
         drawCenteredText("主鍵暫停　長按 3 秒結束",
