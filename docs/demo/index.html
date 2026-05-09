@@ -701,11 +701,12 @@ const STATES = {
     render: () => {
       const items = ['OHCA 案件', '6 秒通氣節奏', '訓練模式', '歷史紀錄', '系統設定'];
       const cursor = stateData.cursor || 0;
+      // 5 列 × 預設 48px + header 27px = 267px > 240px → 縮每 row padding/line-height 確保第 5 項可見
       screenContent.innerHTML = `
         <div class="menu-list">
           <div class="menu-header" style="font-size:16px;letter-spacing:2px;color:#94a3b8;font-weight:700;border-bottom:1px solid #334155;padding-bottom:4px;margin-bottom:6px;text-transform:uppercase">EMS DoseSync Pro</div>
           ${items.map((it, i) => `
-            <div class="menu-item ${i === cursor ? 'selected' : ''}">
+            <div class="menu-item ${i === cursor ? 'selected' : ''}" style="padding:4px 24px;line-height:30px">
               <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
             </div>
           `).join('')}
