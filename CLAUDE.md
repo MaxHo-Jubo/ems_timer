@@ -8,7 +8,7 @@
 
 - **主控板**: ESP32 開發板
 - **輸入**: 實體按鈕（麵包板接線）
-- **顯示**: 小螢幕（OLED / LCD）
+- **顯示**: 2.8 吋 TFT 320×240（ST7789，SPI，LovyanGFX + DMA）
 - **通訊**: BLE（Bluetooth Low Energy）連接手機 App
 - **錄音**: INMP441 I2S 數位麥克風 + MicroSD 卡模組（存 WAV）
 - **提醒**: 蜂鳴器（主動式或被動式）
@@ -158,7 +158,7 @@ EmsEvent { event_type: uint8, timestamp: uint64 (epoch ms), elapsed_ms: uint32 }
 
 ### 時間同步
 - **Dev-Phase 2**：App 連線時下發 epoch ms（軟體對時，免硬體成本）。
-- **Dev-Phase 3**：升級 DS3231 RTC 模組（I2C，與 OLED 共用 bus）— 離線不失憶、救護現場免等 App 連線、晶振精度 ±2ppm 符合醫療紀錄可信度要求。
+- **Dev-Phase 3**：升級 DS3231 RTC 模組（I2C，TFT 已轉 SPI 後 GPIO 41/42 釋出供 RTC 獨立 bus）— 離線不失憶、救護現場免等 App 連線、晶振精度 ±2ppm 符合醫療紀錄可信度要求。
 
 ### 按鈕功能擴展計畫（未來）
 - **開關電源功能**：特定按鈕長按 → 軟關機/啟動（進入 deep sleep 或重置）。

@@ -288,7 +288,7 @@ b675a45  SPI 40MHz + setTextColor(fg,bg) 試解掃描感
 5. **drawMainMenu 標題「EMS DOSESYNC PRO」是否本地化** — B 不動（demo 也用英文）
 6. ~~Phase B 8 畫面 320×240 中文化~~ ✅ commit 147f2a6
 7. **完整實機 flow 驗收剩餘項目**（見上方「實機驗收狀態」清單）
-8. **demo.html 對齊韌體 320×240 layout + 字級**（PM 反饋需求 2026-05-08）
+8. ~~demo.html 對齊韌體 320×240 layout + 字級~~ ✅ commit 7ffd2cf（#screen 固定 320×240 + 字級對齊 efontTW_24/FreeMonoBold24pt7b + cursor 反白）
 9. **補跑 22 個 commits 的 5 步驟 review**
 10. **推 origin（GitLab + GitHub backup）**
 

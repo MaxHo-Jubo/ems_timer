@@ -43,17 +43,6 @@
 
 using namespace ems;
 
-// ============================================================
-// 顯示遷移橋接：SH110X → ST7789（Step 1，最小變更，layout 待 Step 2 重排）
-//   - SH110X 的 1-bit 色（WHITE=1 / BLACK=0）→ TFT RGB565
-//   - SH110X 的 buffer flush model（要 display()）→ ST7789 立即寫入（display() no-op）
-//   - SH110X 的 clearDisplay()（清 buffer）→ ST7789 fillScreen(BLACK)
-//   詳細決策見 docs/tft-migration-plan.md 與 .claude/.../project_tft_ui_design_target.md
-// ============================================================
-
-#define SH110X_WHITE  0xFFFF  /**< RGB565 白色（取代舊 1-bit 1） */
-#define SH110X_BLACK  0x0000  /**< RGB565 黑色（取代舊 1-bit 0） */
-
 /**
  * LovyanGFX 硬體配置：ESP32-S3 GP-SPI2 + DMA + ST7789 240×320 panel。
  * Pin 號碼與 TFT_*_PIN 常數同步（gpio-allocation.md §5.2）。
@@ -103,14 +92,14 @@ public:
 };
 
 /**
- * SH110X 相容包裝：補 clearDisplay() / display() no-op 給 1300+ 行舊呼叫點。
- * push 由 updateDisplay 結尾透過 pushSprite(&tft, 0, 0) DMA 推到實體 TFT。
+ * 全頁 RAM framebuffer（LGFX_Sprite + PSRAM）：updateDisplay 結尾以
+ * pushSprite(&tft, 0, 0) DMA 一次推到實體 TFT，消全頁切換掃描感。
+ * clearDisplay() 為 fillScreen(BLACK) 別名，updateDisplay 入口呼叫一次。
  */
 class FrameSprite : public lgfx::LGFX_Sprite {
 public:
     FrameSprite(lgfx::LovyanGFX* parent) : LGFX_Sprite(parent) {}
     void clearDisplay() { fillScreen(0x0000); }
-    void display() { /* push handled at updateDisplay end */ }
 };
 
 // ============================================================
@@ -123,10 +112,6 @@ static const uint16_t TFT_HEIGHT    = 320;
 /** TFT 邏輯解析度（rotation=1 橫向後使用） */
 static const int16_t  SCREEN_W      = 320;
 static const int16_t  SCREEN_H      = 240;
-/** Step 1 過渡：保留 OLED_WIDTH/HEIGHT 別名讓尚未重排的舊 layout 程式碼仍能編譯（Step 2 逐畫面替換） */
-static const uint16_t OLED_WIDTH    = 128;
-static const uint16_t OLED_HEIGHT   = 64;
-
 // ============================================================
 // 顯示設計 tokens（對齊 docs/demo/index.html）
 // 規格：黑底 + 白主字 + 灰次要 + 急救色（綠/琥珀/紅）+ Courier monospace 大時間
