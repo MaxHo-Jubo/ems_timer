@@ -392,10 +392,15 @@ static bool g_vlw_loaded = false;
  * useZhFont() 檢查當前 font type，非 vlw 就重 load；同畫面連續用不會重 load。
  */
 static inline void useZhFont() {
-    if (!g_vlw_loaded) return;
+    if (!g_vlw_loaded) {
+        return;
+    }
     auto* f = display.getFont();
     if (f == nullptr || f->getType() != lgfx::v1::IFont::font_type_t::ft_vlw) {
-        display.loadFont(ems_zh_24_vlw);
+        if (!display.loadFont(ems_zh_24_vlw)) {
+            Serial.println("[FONT] lazy reload FAILED, disable VLW");
+            g_vlw_loaded = false;
+        }
     }
 }
 
@@ -524,14 +529,19 @@ void setup() {
     }
     display.fillScreen(0x0000);
 
-    // STEP 03.01: vlw 字型載入（PoC：Sarasa Mono TC Bold 24px，222 glyphs）
-    //   - 取代 efontTW_24 解「電擊」筆畫密集字型不平衡問題（PM 反饋 2026-05-09）
+    // STEP 03.01: vlw 字型載入（Sarasa Mono TC Bold 24px，222 glyphs）
     //   - loadFont 後設 g_vlw_loaded 旗標；中文渲染前呼叫 useZhFont() lazy reload
     //   - LGFX setFont() 切走內建字型會 _runtime_font.reset() 析構 VLWfont，
     //     所以不能緩存 VLWfont*，每次需要 vlw 必須檢查並重 load
+    //   - 首次載入失敗時做一次 retry（PSRAM 暫態），仍失敗就走 fallback
+    //     Font0 並 Serial 警告（CJK 會顯示為 ASCII tofu，避免救護現場啞顯示）
     g_vlw_loaded = display.loadFont(ems_zh_24_vlw);
+    if (!g_vlw_loaded) {
+        delay(50);
+        g_vlw_loaded = display.loadFont(ems_zh_24_vlw);
+    }
     Serial.printf("[FONT] vlw %s: %u bytes\n",
-                  g_vlw_loaded ? "loaded" : "FAILED",
+                  g_vlw_loaded ? "loaded" : "FAILED (CJK will fallback to Font0)",
                   (unsigned)ems_zh_24_vlw_len);
 
     // STEP 04: 兩段確認 init
@@ -1583,6 +1593,7 @@ void updateDisplay() {
                               && (now.ohcaState       == lastDisplaySnapshot.ohcaState)
                               && (now.ohcaSubState    == lastDisplaySnapshot.ohcaSubState)
                               && (now.mainMenuCursor  == lastDisplaySnapshot.mainMenuCursor)
+                              && (now.subCursor       == lastDisplaySnapshot.subCursor)
                               && (now.ventBeat        == lastDisplaySnapshot.ventBeat)
                               && (now.ventVolume      == lastDisplaySnapshot.ventVolume)
                               && (now.ventPaused      == lastDisplaySnapshot.ventPaused)
@@ -1826,10 +1837,9 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
     const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
     display.drawString(timeStr, SCREEN_W / 2, time_y);
 
-    // STEP 04: 時間下方標籤「下次給藥」等（vlw size 1.8 ≈ 43px，PM 反饋 1.5x）
-    //   - 大時間 bottom ≈ time_y + 48 = 148
-    //   - 底部 counter top ≈ 200
-    //   - 標籤 middle-center 居中於 (148, 200) 中點 = 174
+    // STEP 04: 時間下方標籤「下次給藥」等（vlw size 1.8 ≈ 43px）
+    //   時間 bbox bottom ≈ 148、counter row top ≈ 200，
+    //   理論幾何中點為 174；y=165 上偏 9px 讓 descender 與 counter 留間距。
     useZhFont();
     display.setTextSize(1.8f, 1.8f);
     display.setTextColor(COLOR_TEXT_MUTED);
@@ -1966,6 +1976,9 @@ void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms,
 
 /** Flash overlay render — 全螢幕黑底（覆蓋背景），主副標居中 */
 void drawFlashOverlay() {
+    if (flashState.title[0] == '\0') {
+        return;  // 空 title 不繪 → 不要黑屏 duration_ms 卻什麼都沒顯示
+    }
     display.fillScreen(COLOR_BG);
     useZhFont();
     const bool hasSub = (flashState.subtitle[0] != '\0');

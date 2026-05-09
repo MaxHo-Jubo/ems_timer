@@ -5,7 +5,10 @@ TTF → VLW（TFT_eSPI / LovyanGFX 共用格式）轉檔工具
 VLW header（24 bytes，big-endian，對齊 LovyanGFX VLWfont::loadFont）：
   - gCount (4)               ← glyph count
   - version (4)              ← vlw encoder version（discard）
-  - fontSize (4)             ← 字符高度（px）
+  - yAdvance (4)             ← LGFX 命名為 yAdvance（行高 px）；TFT_eSPI 註解寫
+                                "Font size in points"，但 LGFX 實作對 vlw 視為
+                                px 行高，且回退邏輯：max(yAdvance, ascent+descent)
+                                所以這個 slot 直接給 px 字高即可
   - reserved (4)             ← 0
   - ascent (4)               ← top of "d"
   - descent (4)              ← bottom of "p"
@@ -105,14 +108,19 @@ def render_glyph(face, codepoint: int):
 
 
 def write_vlw(glyphs, out_path: Path, font_size: int, ascent: int, descent: int):
-    """寫出 vlw 二進位（對齊 LovyanGFX VLWfont::loadFont 的 24-byte header）"""
+    """寫出 vlw 二進位（對齊 LovyanGFX VLWfont::loadFont 的 24-byte header）
+
+    使用 .tmp 中介檔 + os.replace 原子置換，避免寫入中途崩潰留下不完整 .vlw 被韌體載入。
+    """
+    import os
     glyphs_sorted = sorted(glyphs, key=lambda g: g["unicode"])
-    with out_path.open("wb") as f:
+    tmp_path = out_path.with_suffix(out_path.suffix + ".tmp")
+    with tmp_path.open("wb") as f:
         # Header（24 bytes / 6 個 uint32 BE）
         f.write(struct.pack(">IIIIII",
                             len(glyphs_sorted),  # gCount
                             0,                    # vlw encoder version (discard)
-                            font_size,            # fontSize px
+                            font_size,            # yAdvance（行高 px；LGFX max(yAdvance, ascent+descent) 回退）
                             0,                    # reserved
                             ascent,               # top of "d"
                             descent))             # bottom of "p"
@@ -130,6 +138,7 @@ def write_vlw(glyphs, out_path: Path, font_size: int, ascent: int, descent: int)
         # Bitmap block
         for g in glyphs_sorted:
             f.write(g["bitmap"])
+    os.replace(tmp_path, out_path)
 
 
 def main():
