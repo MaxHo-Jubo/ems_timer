@@ -1539,7 +1539,7 @@ struct DisplaySnapshot {
     uint8_t  ohcaState;
     uint8_t  ohcaSubState;
     uint8_t  mainMenuCursor;
-    uint8_t  subCursor;          /**< 子選單 cursor（QuickMenu/Backfill/Drug 共用 backfillCursor） */
+    uint8_t  backfillCursor;     /**< 子選單 cursor（QuickMenu/Backfill/Drug 共用同一變數 backfillCursor） */
     uint32_t countdownSec;       /**< OHCA 倒數/超時當前顯示秒數（per-second granularity） */
     uint8_t  ventBeat;           /**< 6sec 通氣節奏目前秒（0-5） */
     uint8_t  ventVolume;
@@ -1556,7 +1556,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     s.ohcaState       = (uint8_t)ohcaState;
     s.ohcaSubState    = (uint8_t)ohcaSubState;
     s.mainMenuCursor  = mainMenuCursor;
-    s.subCursor       = backfillCursor;
+    s.backfillCursor  = backfillCursor;
 
     if (ohcaLastEpiMs != 0) {
         const uint32_t since = millis() - ohcaLastEpiMs;
@@ -1617,7 +1617,7 @@ void updateDisplay() {
                               && (now.ohcaState       == lastDisplaySnapshot.ohcaState)
                               && (now.ohcaSubState    == lastDisplaySnapshot.ohcaSubState)
                               && (now.mainMenuCursor  == lastDisplaySnapshot.mainMenuCursor)
-                              && (now.subCursor       == lastDisplaySnapshot.subCursor)
+                              && (now.backfillCursor  == lastDisplaySnapshot.backfillCursor)
                               && (now.ventBeat        == lastDisplaySnapshot.ventBeat)
                               && (now.ventVolume      == lastDisplaySnapshot.ventVolume)
                               && (now.ventPaused      == lastDisplaySnapshot.ventPaused)
