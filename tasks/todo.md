@@ -68,6 +68,268 @@
 
 ---
 
+## 🎨 TFT 整合（Phase A → B 過渡）
+
+> **2026-05-08 立案**：Phase A 已完成（OLED 跑通），TFT smoke test 也跑通（commit `f1a5792`）。下一步把 TFT 整進主韌體，UI 對齊 `docs/demo/index.html`（決策見 memory `project_tft_ui_design_target.md`）。
+> **lib 演進**：Step 1 起用 Adafruit_ST7789 + GFX（避開 TFT_eSPI 在 N16R8 init crash）→ Step 2d 換成 **LovyanGFX + DMA**（Adafruit byte-swap CPU 是視覺瓶頸，DMA pushSprite 才能瞬切）。詳見 memory `feedback_lovyangfx_dma_for_tft.md`。
+> **硬體**：ESP32-S3 N16R8、ST7789 蝦皮紅板、SPI GPIO 2/3、DC GPIO 1（避開 GPIO 48 板上 WS2812）、`tft.setRotation(3)`（LGFX 跟 Adafruit 差 180）、panel cfg `invert=false`。
+>
+> **進度（2026-05-08 持續中）**：branch `feat/tft-integration` 已 ~12 commits（5b2d009 → 5be48fa）。Step 1 / 2a / 2b / 2c / 2d 全部實機驗收通過。下次接 Step 2 後續其他畫面 + Step 3 字體放大方案（PM 反饋）。
+
+### Step 1：lib 切換 + 編譯通過（半小時）✅ **已完成 2026-05-08**
+
+- [x] 新 branch：`feat/tft-integration`
+- [x] `firmware/platformio.ini` `[env:esp32-s3-devkitc-1]`：`lib_deps` 把 `Adafruit SH110X` 換成 `Adafruit ST7735 and ST7789 Library`（`Adafruit GFX Library` 留著）
+- [x] `firmware/src/main.cpp` 改 include：`<Adafruit_SH110X.h>` → `<Adafruit_ST7789.h>`
+- [x] `display` 物件改宣告：用 `TftAdapter` 繼承 `Adafruit_ST7789`，補 `clearDisplay()` / `display()` 給舊 SH110X-style 呼叫點 → 1300+ 行 draw code 不需改字面
+- [x] `display.begin(0x3C, true)` → `tft.init(240, 320); tft.setRotation(1); tft.invertDisplay(false);`
+- [x] **不改任何 `display.xxx()` 呼叫點**
+- [x] `pio run -e esp32-s3-devkitc-1` 編譯通過（Flash 8.7%、RAM 6.2%）
+- [x] 188 unit tests `pio test -e native` 全綠（toml 寫的 95 已過時）
+- [x] 實機踩雷 + 修正：
+  - DC GPIO 48 → 1（避開 GOOUUU 板上 WS2812）— commit 5c88c44
+  - WS2812 boot latch 白 → `neopixelWrite(48, 0, 0, 0)` 主動 silence — commit 862b924
+  - 按鍵 GND 公共線鬆動修復（硬體側）
+
+### Step 2a：主功能表對齊 demo + design tokens ✅ **已完成 2026-05-08**
+
+- [x] 加 design tokens（COLOR_BG/TEXT_PRIMARY/TEXT_MUTED/ACCENT_OK/WARN/ALERT/FLASH_VENT，RGB565）
+- [x] 加 SCREEN_W=320 / SCREEN_H=240 邏輯解析度常數
+- [x] `drawMainMenu()` 重排：黑底 + 灰色標題 + 5 大字選項 + cursor 白底黑字 highlight
+- [x] 修雙 fillScreen 雙閃 bug
+- [x] commit 5b2d009
+
+### Step 2b：updateDisplay snapshot 去重（解閃爍）✅ **已完成 2026-05-08**
+
+- [x] 加 `DisplaySnapshot` struct + `captureDisplaySnapshot()`：抓 globalState/ohcaState/ohcaSubState/cursor/countdownSec/ventBeat/flags
+- [x] `updateDisplay()` 入口 memcmp 比對，無變化跳過全螢幕重畫
+- [x] commit 1d4af9b
+- [x] 另：按鍵 debounce 統一 press/release 門檻（修 TFT 慢渲染期間 bounce 雙觸發）— commit d825bcf
+
+### Step 2c：OHCA 倒數畫面對齊 demo ✅ **已完成 2026-05-08**
+
+- [x] `drawOhcaCountdownCommon` 重排 320×240：頂部 OHCA 綠 badge / 中央大時間 mm:ss / 標籤 / 底部 EPI/Shock 計數
+- [x] state → 顏色：COUNTDOWN=WHITE / WARNING=AMBER / ALARMING=RED 閃爍 / OVERTIME=RED 持續
+- [x] ALARMING flash phase bit 進 snapshot（300ms 半週期切深紅 bg）
+- [x] 字型：`FreeMonoBold24pt7b`（~48px monospace），中央 datum-based 自動置中
+- [x] commits: f39ed89 (init) / 8e428c8 (WaitFirstEpi 對齊) / 4d831ab (partial push 局部 + 殘留清除)
+
+### Step 2d：LovyanGFX + DMA 全頁切換消掃描感 ✅ **已完成 2026-05-08**
+
+> Adafruit_GFX byte-swap CPU overhead 撐不住，SPI 80MHz 視覺仍卡；換 LovyanGFX 走 DMA 才解。
+
+- [x] platformio.ini：lib_deps 換 `lovyan03/LovyanGFX`，移除 Adafruit_ST7789 + Adafruit_GFX
+- [x] 寫 `LGFX` class（SPI2_HOST + DMA_CH_AUTO + 80MHz + 蝦皮紅板 panel cfg invert=false）
+- [x] `FrameSprite` 繼承 `LGFX_Sprite`，補 SH110X 相容 `clearDisplay()` / `display()` no-op
+- [x] `setPsram(true)` PSRAM 優先 alloc 153KB framebuffer（N16R8 8MB）
+- [x] updateDisplay 結尾 + sub-state early return + partial path 統一 `display.pushSprite(0, 0)` DMA push
+- [x] API 替換：`getTextBounds + setCursor` → `setTextDatum + drawString`；setFont 走 `&fonts::xxx` namespace
+- [x] commits: 9ed9a63 (lib 切換) / 5be48fa (rotation 1→3 修對齊)
+- [x] 實機驗收：所有畫面切換 ~4ms 接近瞬完成、倒數無殘留 ✅
+
+### Step 2 後續：其他畫面（每塊 1 commit）
+
+> demo 320×240，原 OLED 128×64。每個畫面要重新排版。Step 2c/2d 已驗證新 layout 流程，剩下走相同 pattern。
+
+- [x] **OHCA 主畫面 — 待本機 EPI** — `drawOhcaWaitFirstEpi()`（commit 8e428c8）
+- [x] **EPI 成立 1 秒提示** — `drawOhcaStartFlash()`（commit 8e428c8 + LGFX datum）
+- [x] **兩段確認 overlay** — `drawTwoStepArmedOverlay()`（commit 96ef727，琥珀反色 40px bar）
+- [x] **案件結束流程畫面** — `drawOhcaEndCheck()` / `drawOhcaLocked()` / `drawOhcaSummary()`（commit 96ef727）
+- [x] **6 秒通氣**（OHCA 內輔助 + 獨立模式）— `drawOhcaVentOverlay()` / `drawVentStandalone()`（commit 96ef727 + 7a85f64 大字 y 修正）
+- [x] **VentEndCheck / Placeholder** 一併對齊新 layout（commit 96ef727）
+- [ ] 補登/Amiodarone 等 Phase B 畫面：本階段不做，Phase B 才畫
+- [ ] 移除 `OLED_WIDTH/HEIGHT` 別名 + 殘留 SH110X_WHITE/BLACK 替換為 COLOR_TEXT_PRIMARY/COLOR_BG（全部畫面重排完後）
+- [ ] 考慮抽出 `firmware/lib/ems_display/ems_display.{h,cpp}` 模組（多畫面穩定後）
+
+### Step 3：字體放大改進方案（PM 反饋 2026-05-08）
+
+> PM 覺得目前介面字體不夠大（demo 也是）。已對 OHCA 系列已改 layout 畫面套用 ~1.5x 放大（commit 39b544a）。
+
+- [x] OHCA 已改 layout 畫面套放大尺度（commit 39b544a）：
+  - drawOhcaStartFlash: size 3→4
+  - drawOhcaWaitFirstEpi: badge 2→3 / Awaiting EPI 3→4 / 副標 1→2 / counter 1→2
+  - drawOhcaCountdownCommon: badge 2→3 / **大時間 size 1→2（96px tall）** / label 2→3 / counter 1→2
+  - 常數調整：OHCA_TIME_VISUAL_UP 8→20 / OHCA_LABEL_GAP_PX 16→48 / partial bbox 加大
+- [x] 大時間 pt 升級替代方案：用 setTextSize(2) FreeMonoBold24pt7b 達 96px（接近 demo 84px 視覺份量）。GFX bitmap font 沒 36/48pt7b，這條已用 size 2 解
+- [ ] 剩餘畫面（EndCheck/Locked/Summary/TwoStepArmedOverlay/VentOverlay/VentStandalone）對齊新 layout 時套用同 size pattern
+- [ ] 主功能表已滿版不改
+
+### 中文支援評估（2026-05-08 PM 詢問）
+
+> demo 用「下次給藥/請準備給藥/請給藥」中文。efontCN/TW 字型 ~600KB Flash 開銷可接受。
+
+- [x] 主選單 efontCN_24 PoC（commit 3f759d6）→ 缺字（給/氣/訓/練/歷/紀/錄/統/設）→ 換 efontTW_24 解（commit 0ab4060）
+- [x] OHCA 倒數標籤中文化 efontTW_24（commit 9a9575d）：「下次給藥/準備給藥/請給藥！/逾時」
+- [x] STEP 06 計數行漏 setFont(Font0) bug + label gap 48→60 修正（commit 7133d53）
+- [x] 標籤字級 setTextSize(1.2f, 1.2f) ≈ 29px（PM 反饋再大）+ 計數行 Shock→電擊（commit 3ea8ca5）
+- [x] Flash 11→27.6%（efontTW_24 fontmap ~600KB），3.3MB 還夠
+- [x] WaitFirstEpi 中文化（待本機 EPI / 按兩次 EPI 確認 / 電擊計數，commit e936caa）
+- [x] 兩段確認 overlay + StartFlash 中文化（EPI/電擊？再按一次 / OHCA 啟動，commit 7ffbf97）
+- [x] 6 項用詞對齊 demo.html（主選單 / 倒數標籤 / 啟動 flash / 兩段確認 / 計數行，commit 61e6899）
+- [x] 4 題決策對齊 demo（OVERTIME→請給藥 / 確認已給 EPI？ / 待 EPI 副標移除 / 啟動 flash 加副行 OHCA，含 commit 61e6899）
+- [x] EndCheck / Locked / Summary 中文化（commit 8fced41）
+- [x] VentStandalone / VentEndCheck / VentOverlay（VENT→通氣）/ Placeholder 中文化（commit 8fced41）
+- [x] Phase B 8 個畫面 320×240 中文化（DrugMenu / Backfill ×4 / Amio / Timeline / QuickMenu，commit 147f2a6）
+- [ ] efontTW_24 字型品質不一致（如「電擊」兩字視覺不平衡）若不可接受 → 採 vlw 自訂字型
+
+### 實機驗收狀態（2026-05-08 進行中）
+
+- [x] **OHCA 主流程已測試 OK**：主選單進入 / 待 EPI / EPI 兩段確認 / 倒數 4 階段 / 兩段確認 overlay 中文 / 計數行
+- [ ] **以下尚待實機驗證**：
+  - EndCheck（結束案件？對話）/ Locked（已鎖定）/ Summary（案件總覽）三畫面中文 layout
+  - 通氣獨立模式（drawVentStandalone 已暫停 / 主鍵繼續 / 結束 hint）
+  - 通氣結束確認（drawVentEndCheck 結束通氣節奏？）
+  - OHCA 內 vent overlay（通氣 N / 通氣暫停）
+  - Placeholder（訓練模式 D 階段 / 歷史紀錄 E 階段 / 系統設定 G 階段）
+  - **Phase B 全部 8 畫面**：DrugMenu / Backfill 4 步驟 / AmioConfirm / Timeline / QuickMenu
+
+### Demo vs 韌體對齊修正（2026-05-08 PM 反饋）
+
+#### Batch 1：核心對話流程 ✅ 已完成
+
+- [x] **demo 主選單 title 字級調小**（16px ASCII，對齊韌體 Font0 size 2）
+- [x] **demo 移除所有 menu cursor `▶`**（韌體只有反白 highlight）
+- [x] **A1：OHCA 兩段確認改全螢幕對話**（取代 44px bar overlay）— `drawOhcaConfirmDialog(EVT_EPI_LOCAL/SHOCK_LOCAL)`
+  - 全螢幕黑底 + 琥珀邊框 + 標題 36px + 內文 29px × 2 行 + 分隔線 + hint
+  - EPI: 「確認已給 EPI？/ 確認後將建立時間戳 / 並重啟 4 分鐘倒數 / 再按 EPI 鍵確認 返回取消」
+  - SHOCK: 「確認已電擊？/ 確認後將建立時間戳 / 不影響 EPI 倒數 / 再按電擊鍵確認 返回取消」
+  - BACK 鍵取消對話（modal 行為）
+- [x] **B1：END_CHECK 改 3 項**（demo 對齊）
+  - 完成並結束案件 / 前往補登 / 返回案件
+  - 上下鍵 cycle 3 項（mod 3）
+- [x] **A7：END_CONFIRM 二次確認對話**（END_CHECK 選「完成並結束」後彈出）
+  - 全螢幕黑底 + 紅色邊框 + 標題「確認結束案件？」+ 「結束後不可修改」+ 「主鍵確認 返回取消」
+  - 主鍵 → LOCKED；返回 → 退回 END_CHECK 主畫面
+- [x] flags 欄位擴成 uint16（容納 bit 8 endConfirmShown）
+
+#### Batch 1 待實機測試項目
+
+- [ ] 主選單字級看起來符合預期（韌體 size 2 ≈ 16px ASCII）
+- [ ] 短按 EPI/SHOCK → 應彈出全螢幕對話（不是底部 bar）
+- [ ] 對話內按 EPI/SHOCK 同鍵 → 確認成立
+- [ ] 對話內按返回鍵 → 取消對話
+- [ ] OHCA 進行中長按主鍵 3s → END_CHECK 看到 3 項（完成並結束 / 前往補登 / 返回案件）
+- [ ] END_CHECK cursor 0「完成並結束」→ 主鍵 → 紅色邊框「確認結束案件？」對話
+- [ ] 對話內主鍵 → LOCKED；對話內返回 → 退回 END_CHECK 3 項
+- [ ] END_CHECK cursor 1「前往補登」→ 主鍵 → 進入藥物選單（補登 EPI / Amiodarone）
+
+#### Batch 2：Flash 訊息（5 個）✅ 已完成
+
+- [x] **Flash helper 實作**：`triggerFlash(title, subtitle, duration_ms, titleColor)` + drawFlashOverlay + tick timeout + snapshot bit 9 + partial path 排除 modal flags
+- [x] A2：「EPI 已紀錄」+「重新倒數 4 分鐘」（COLOR_ACCENT_OK，1200ms）
+- [x] A3：「電擊已紀錄」（COLOR_ACCENT_OK，1200ms）
+- [x] A4：「Amiodarone 已紀錄」（COLOR_ACCENT_OK，1200ms）
+- [x] A5：「案件結束並鎖定」+「已存入歷史紀錄」（COLOR_ACCENT_ALERT，1200ms）
+- [x] A6：「6 秒給氣」+「已開啟/已繼續/已暫停/已關閉」（800ms）
+
+#### Batch 2 待實機測試項目
+
+- [x] A2 — EPI 確認後 flash「EPI 已紀錄」+「重新倒數 4 分鐘」
+- [ ] A3 — 電擊確認後 flash「電擊已紀錄」
+- [ ] A4 — 長按 EPI → Amiodarone → 確認後 flash「Amiodarone 已紀錄」
+- [ ] A5 — END_CHECK 完成並結束 → END_CONFIRM → 主鍵 → flash「案件結束並鎖定」+「已存入歷史紀錄」
+- [ ] A6 — OHCA 內按返回 → QuickMenu 4 個動作對應 flash（已開啟/已繼續/已暫停/已關閉）
+- [x] partial update 已排除 modal flags，dialog/flash 不會被倒數時間穿透
+
+#### Batch 3：次要補完 ✅ 已完成（待燒錄實機驗證）
+
+- [x] **A8：VENT_PRE preview 畫面**（drawVentPre）
+  - 進入 Vent 後先顯示「按主鍵開始」預備畫面
+  - 主鍵 → 啟動倒數；返回鍵 → 回主功能表
+  - 上下鍵預備時也可調音量
+  - 加 ventPreShown 旗標 + snapshot bit 10 (0x400)
+- [x] **B3：QUICK_MENU 加「案件簡版總覽」**（demo 對齊）
+  - 未開啟給氣：3 項（開啟給氣 / 案件簡版總覽 / 返回 OHCA）
+  - 已開啟給氣：4 項（暫停或繼續 / 關閉給氣 / 案件簡版總覽 / 返回 OHCA）
+  - 簡版總覽選項 → flash「簡版總覽 / 結束案件後看完整總覽」（2 秒）
+
+#### Batch 3 待實機測試項目
+
+- [ ] A8 — 主功能表選「6 秒通氣節奏」→ 看到「按主鍵開始」預備畫面（不立即開始倒數）
+- [ ] A8 — 預備畫面按上下鍵 → 音量改變
+- [ ] A8 — 預備畫面按返回鍵 → 回主功能表
+- [ ] A8 — 預備畫面按主鍵 → 開始倒數 1, 2, 3, 4, 5, 6
+- [ ] B3 — OHCA 進行中按返回鍵 → QuickMenu 看到「案件簡版總覽」項目
+- [ ] B3 — 選「案件簡版總覽」→ flash「簡版總覽 / 結束案件後看完整總覽」（2 秒）
+- [ ] B3 — 開啟給氣後再進 QuickMenu → 4 項（pause / disable / summary / back）
+
+### 未跑 review 的 commits（rate limit 恢復後補跑）
+
+依 CLAUDE.md POST-COMMIT-REVIEW，以下 commits 已 commit 未走 5 步驟 review：
+
+**🎯 下次 review 起點 baseline：`3d44950`（demo.html 字級對齊韌體 PM 反饋放大調整，2026-05-09 16:45 GMT+8）**
+- 預期 7:40pm rate limit 重置後從此 hash 起跑 POST-COMMIT-REVIEW 五步驟
+- step 1 eslint 跳過（無 .eslintrc.json）｜step 2 /simplify 立即跑｜step 3 pr-reviewer / step 4 review-pr / step 5 通知 由 schedule 接續
+
+```
+7ffbf97  兩段確認 overlay + StartFlash 中文化
+e936caa  WaitFirstEpi 中文化（待本機 EPI / 按兩次 EPI 確認 / 電擊）
+3ea8ca5  OHCA 倒數標籤 1.2x + 電擊中文
+7133d53  STEP 06 setFont fix + label gap 60
+9a9575d  OHCA 倒數標籤中文化
+0ab4060  efontCN→efontTW（解繁中缺字）
+3f759d6  主選單 efontCN_24 中文 PoC
+7a85f64  vent 大字 y 下移避撞 Vol
+96ef727  剩餘畫面（EndCheck/Locked/Summary/TwoStepArmed/Vent*/Placeholder）
+e242f37  todo Step 3 字體放大同步
+39b544a  字體放大 1.5x（OHCA 系列已改 layout 畫面）
+b7f9382  todo + memory sync
+5be48fa  setRotation 1→3 修 LGFX vs Adafruit 差 180
+9ed9a63  LovyanGFX + DMA pushSprite
+c2155a4  SPI 80MHz（穩定但 lib overhead 才是視覺瓶頸）
+34838f9  GFXcanvas16 全頁緩衝（被 9ed9a63 取代）
+4d831ab  partial 局部 push + canvas 殘留清除
+b675a45  SPI 40MHz + setTextColor(fg,bg) 試解掃描感
+8e428c8  WaitFirstEpi 對齊新 layout + partial path
+147f2a6  Phase B 補登/Timeline/QuickMenu/Amio 中文化 320×240 layout
+8fced41  EndCheck/Locked/Summary/Vent/Placeholder 中文化
+61e6899  中文用詞對齊 demo.html
+7ffd2cf  demo 模擬 320×240 TFT + 字級對齊韌體
+c6a92b4  batch1 韌體 vs demo 對齊（A1+B1+A7）
+9e76ccb  batch1 確認對話框外框放大
+57d043b  batch2 5 個 flash 過場提示 + partial update 排除 modal
+e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
+578bc1e  清 OLED/SH110X 別名 + SoT/CLAUDE.md TFT 同步
+6308d3e  TFT 中文 VLW 字型整合 + UI 字級與排版調整
+3d44950  demo.html 字級對齊韌體 PM 反饋放大調整 ← 🎯 review baseline
+```
+
+### Rate limit 恢復後接續清單（按優先序）
+
+1. ~~EndCheck/Locked/Summary 中文化~~ ✅ commit 8fced41
+2. ~~VentStandalone / VentEndCheck / VentOverlay 中文化~~ ✅ commit 8fced41
+3. ~~Placeholder 中文化~~ ✅ commit 8fced41
+4. **drawOhcaCountdownCommon 的 OHCA badge 是否中文化** — B 不動（demo 仍用英文）
+5. **drawMainMenu 標題「EMS DOSESYNC PRO」是否本地化** — B 不動（demo 也用英文）
+6. ~~Phase B 8 畫面 320×240 中文化~~ ✅ commit 147f2a6
+7. **完整實機 flow 驗收剩餘項目**（見上方「實機驗收狀態」清單）
+8. ~~demo.html 對齊韌體 320×240 layout + 字級~~ ✅ commit 7ffd2cf（#screen 固定 320×240 + 字級對齊 efontTW_24/FreeMonoBold24pt7b + cursor 反白）
+9. **補跑 22 個 commits 的 5 步驟 review**
+10. **推 origin（GitLab + GitHub backup）**
+
+### Step 4：硬體層 + 文件同步（半小時）
+
+- [ ] SoT V1 §21.2 外殼開孔尺寸：0.96" OLED 25×15mm → 2.8" TFT 60×45mm（記得改 §21.2 跟 `flow.html` 對應段）
+- [ ] `CLAUDE.md` 更新：把「OLED」字眼換 TFT 描述
+- [x] memory `project_oled_sh1106_interim.md` 結案（2026-05-08 已更新為「TFT + LGFX 封版」）
+
+### Step 5：實機驗收
+
+- [ ] 主功能表 cursor 上下、進入子選單、返回
+- [ ] OHCA 完整 flow：待 EPI → EPI 確認 → 倒數 → warning → alarming → overtime → 結束 → 鎖定
+- [ ] 兩段確認 timeout（5 秒未確認自動取消）
+- [ ] 6 秒通氣（基本切換能進）
+- [ ] 跟 demo screenshot 並排對照無視覺落差
+
+### 風險與決策點
+
+- 🟡 **字型大小調校**：demo 84px 在 320×240 占 35% 高度。實機 ST7789 用 GFX FreeMono 24pt 約 48px，可能要改 36pt 或 48pt 才接近 demo 視覺份量
+- 🟡 **動畫頻率**：demo CSS keyframes 寫死的閃爍頻率（黃慢、紅快、紅慢），韌體要照搬數字 → 抽出 demo CSS 的 `animation-duration` 數字當韌體常數
+- 🔴 **GPIO 21 衝突**：TFT CS 跟震動馬達同腳。整合時 `ENABLE_VIBRATION = 0` 必須維持；之後 Prod-Phase 要震動回饋的話必須先解 GPIO 衝突（見 `gpio-allocation.md` §3 註記）
+- 🟡 **Refresh strategy**：demo 用 React diff 重繪 DOM，TFT 沒 diff，全螢幕重繪會閃。要實作 partial update（只重繪變動區域）或 double buffer（耗 RAM）
+
+---
+
 ## GitLab 遷移設定（2026-04-24 完成）
 
 **背景**：repo 從 GitHub 移植到 GitLab（`https://gitlab.webotopia.work/maxhero/ems_timer.git`）。

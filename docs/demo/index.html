@@ -49,10 +49,15 @@
   @keyframes ledGreen      { 0%, 100% { background: #050505; } 50% { background: #22c55e; } }
   @keyframes ledVentPulse  { 0%, 100% { background: #050505; } 50% { background: #ef4444; } }
 
-  /* === OLED 螢幕區 === */
+  /* === 2.8" TFT 320×240 物理螢幕（對齊韌體 ST7789 實機 layout）=== */
+  /* 以韌體實機解析度為準，所有內容字級套用 efontTW_24 / FreeMonoBold24pt7b 對應 px */
   #screen {
-    flex: 1; background: #000; position: relative; overflow: hidden;
+    width: 320px; height: 240px;
+    flex: none; margin: 8px auto;
+    background: #000; position: relative; overflow: hidden;
     display: flex; flex-direction: column;
+    border: 2px solid #2a2a2a; border-radius: 4px;
+    box-shadow: 0 0 0 4px #1a1a1a, 0 4px 12px rgba(0, 0, 0, 0.6);
   }
   #screen.flash-red { animation: flashRed 0.6s infinite; }
   @keyframes flashRed { 0%, 100% { background: #000; } 50% { background: #4a0000; } }
@@ -60,7 +65,7 @@
 
   #screen-watermark {
     position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-20deg);
-    font-size: 80px; color: rgba(96, 165, 250, 0.08); font-weight: 900; letter-spacing: 12px;
+    font-size: 56px; color: rgba(96, 165, 250, 0.08); font-weight: 900; letter-spacing: 8px;
     pointer-events: none; white-space: nowrap;
   }
   #screen-watermark.show { display: block; }
@@ -68,35 +73,39 @@
 
   #screen-content {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 16px; position: relative; z-index: 1;
+    padding: 8px; position: relative; z-index: 1;
   }
 
-  /* === 螢幕通用 components === */
-  .scr-title { font-size: 14px; color: #94a3b8; letter-spacing: 4px; margin-bottom: 8px; text-transform: uppercase; }
-  .scr-mode  { font-size: 11px; color: #4ade80; margin-bottom: 12px; letter-spacing: 2px; }
-  .scr-time-big { font-size: 84px; font-weight: 900; line-height: 1; font-family: "Courier New", monospace; color: #fff; }
+  /* === 螢幕通用 components ===
+   * 字級對齊韌體（efontTW_24 = 24px / 1.1x ≈ 26px / 1.2x ≈ 29px / 1.5x ≈ 36px /
+   *           1.8x ≈ 43px / 2x ≈ 48px / 2.25x ≈ 54px；FreeMonoBold24pt7b size 2 ≈ 96px）
+   */
+  .scr-title { font-size: 18px; color: #94a3b8; letter-spacing: 2px; margin-bottom: 4px; text-transform: uppercase; }
+  .scr-mode  { font-size: 18px; color: #4ade80; margin-bottom: 6px; letter-spacing: 2px; font-weight: 700; }
+  .scr-time-big { font-size: 96px; font-weight: 900; line-height: 1; font-family: "Courier New", monospace; color: #fff; }
   .scr-time-amber { color: #fbbf24; }
   .scr-time-red   { color: #ef4444; }
-  .scr-label   { font-size: 16px; color: #cbd5e1; margin-top: 12px; }
-  .scr-counter { font-size: 13px; color: #64748b; margin-top: 16px; font-family: "Courier New", monospace; }
-  .scr-alert-big { font-size: 56px; font-weight: 900; letter-spacing: 8px; color: #fff; }
-  .scr-flash-msg { font-size: 24px; font-weight: 700; color: #fff; text-align: center; }
-  .scr-flash-sub { font-size: 14px; color: #94a3b8; margin-top: 8px; }
+  .scr-label   { font-size: 36px; color: #cbd5e1; margin-top: 6px; }
+  .scr-counter { font-size: 24px; color: #64748b; margin-top: 6px; font-family: "Courier New", monospace; }
+  .scr-alert-big { font-size: 56px; font-weight: 900; letter-spacing: 4px; color: #fff; }
+  .scr-flash-msg { font-size: 54px; font-weight: 700; color: #fff; text-align: center; }
+  .scr-flash-sub { font-size: 36px; color: #94a3b8; margin-top: 6px; }
 
-  .scr-vent-num { font-size: 200px; font-weight: 900; line-height: 1; color: #fff; font-family: "Courier New", monospace; }
+  .scr-vent-num { font-size: 96px; font-weight: 900; line-height: 1; color: #fff; font-family: "Courier New", monospace; }
   .scr-vent-num.emphasis { color: #fff; }
-  .scr-vent-label { font-size: 14px; color: #94a3b8; margin-top: 8px; letter-spacing: 4px; }
-  .scr-vent-epi-hint { position: absolute; bottom: 12px; left: 0; right: 0; text-align: center; font-size: 13px; color: #cbd5e1; font-family: "Courier New", monospace; }
+  .scr-vent-label { font-size: 24px; color: #94a3b8; margin-top: 4px; letter-spacing: 2px; }
+  .scr-vent-epi-hint { position: absolute; bottom: 8px; left: 0; right: 0; text-align: center; font-size: 18px; color: #cbd5e1; font-family: "Courier New", monospace; }
   .scr-vent-epi-hint.warning { color: #fbbf24; }
   .scr-vent-epi-hint.alarm   { color: #ef4444; }
 
-  /* V1 §14：OHCA 主畫面內 6秒通氣恆常顯示輔助區塊（單秒數視窗） */
+  /* V1 §14：OHCA 主畫面內 6秒通氣恆常顯示輔助區塊（韌體右上角小 overlay） */
   .scr-vent-overlay {
-    margin-top: 14px; padding: 6px 8px; border-top: 1px dashed #334155;
-    text-align: center; transition: background 120ms;
+    position: absolute; top: 4px; right: 8px; padding: 0;
+    text-align: right; transition: background 120ms; max-width: 50%;
   }
-  .scr-vent-overlay-label { font-size: 10px; color: #94a3b8; letter-spacing: 2px; }
-  .scr-vent-overlay-num   { font-size: 26px; font-weight: 900; color: #e2e8f0; font-family: "Courier New", monospace; line-height: 1.1; }
+  .scr-vent-overlay-label { font-size: 14px; color: #fbbf24; letter-spacing: 0; font-weight: 700; }
+  .scr-vent-overlay-num   { font-size: 20px; font-weight: 700; color: #94a3b8; font-family: inherit; line-height: 1; }
+  .scr-vent-overlay.beat-1 .scr-vent-overlay-num { color: #fff; }
   .scr-vent-overlay.beat-1 {
     background: #7f1d1d; border-radius: 4px; border-top-color: transparent;
     padding: 6px 8px;
@@ -104,38 +113,39 @@
   .scr-vent-overlay.beat-1 .scr-vent-overlay-label { color: #fecaca; }
   .scr-vent-overlay.beat-1 .scr-vent-overlay-num   { color: #fff; }
 
-  /* === Menu list === */
-  .menu-list { width: 100%; max-width: 320px; padding: 0 16px; }
-  .menu-item { padding: 12px 16px; font-size: 18px; color: #94a3b8; border-radius: 8px; }
-  .menu-item.selected { background: #1e3a5f; color: #fff; font-weight: 700; }
-  .menu-item .menu-cursor { display: inline-block; width: 16px; color: #4ade80; }
-  .menu-header { font-size: 14px; color: #4ade80; letter-spacing: 4px; margin-bottom: 16px; text-align: center; text-transform: uppercase; }
+  /* === Menu list（韌體：efontTW_24 標題 size 1.2 ≈ 29px / 項目 size 1 = 24px / 36px row） === */
+  .menu-list { width: 100%; max-width: 320px; padding: 0; }
+  .menu-item { padding: 6px 24px; font-size: 26px; color: #94a3b8; border-radius: 0; line-height: 36px; }
+  .menu-item.selected { background: #fff; color: #000; font-weight: 700; }
+  /* 韌體只有反白 highlight、沒有 ▶ 箭頭，故隱藏 cursor 元素 */
+  .menu-item .menu-cursor { display: none; }
+  .menu-header { font-size: 29px; color: #4ade80; letter-spacing: 0; margin-bottom: 8px; text-align: center; text-transform: none; font-weight: 700; padding-top: 4px; border-bottom: 1px solid #334155; padding-bottom: 6px; }
 
-  /* === Confirm dialog === */
+  /* === Confirm dialog（韌體 320×240 同尺寸） === */
   #overlay {
     position: absolute; inset: 0; background: rgba(0, 0, 0, 0.92);
     display: none; align-items: center; justify-content: center; z-index: 10;
-    padding: 24px;
+    padding: 12px;
   }
   #overlay.show { display: flex; }
   .dialog {
-    background: #111; border: 2px solid #f59e0b; border-radius: 12px;
-    padding: 24px; max-width: 320px; width: 100%; text-align: center;
+    background: #111; border: 2px solid #f59e0b; border-radius: 8px;
+    padding: 12px; max-width: 320px; width: 100%; text-align: center;
   }
   .dialog.danger { border-color: #ef4444; }
-  .dialog-title { font-size: 18px; font-weight: 700; color: #fff; margin-bottom: 12px; }
-  .dialog-body  { font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 16px; }
-  .dialog-hint  { font-size: 11px; color: #64748b; padding-top: 12px; border-top: 1px solid #333; }
+  .dialog-title { font-size: 29px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+  .dialog-body  { font-size: 24px; color: #94a3b8; line-height: 1.4; margin-bottom: 8px; }
+  .dialog-hint  { font-size: 18px; color: #64748b; padding-top: 6px; border-top: 1px solid #333; }
 
-  /* === Summary === */
-  .summary-box { width: 100%; max-width: 360px; padding: 0 16px; font-size: 13px; }
-  .summary-box .sum-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1e293b; }
+  /* === Summary（密度高：320×240 內塞下 EPI/電擊/Amio 三大區，韌體 size 1=24px / 1.2=29px） === */
+  .summary-box { width: 100%; padding: 0 8px; font-size: 18px; }
+  .summary-box .sum-row { display: flex; justify-content: space-between; padding: 1px 0; border-bottom: 1px solid #1e293b; line-height: 1.2; }
   .summary-box .sum-row .sum-key { color: #94a3b8; }
   .summary-box .sum-row .sum-val { color: #fff; font-family: "Courier New", monospace; font-weight: 700; }
-  .summary-box .sum-section { color: #4ade80; font-size: 11px; letter-spacing: 2px; margin: 12px 0 4px; }
+  .summary-box .sum-section { color: #4ade80; font-size: 18px; letter-spacing: 0; margin: 4px 0 1px; font-weight: 700; }
 
-  .timeline-box { width: 100%; max-width: 360px; padding: 0 16px; font-family: "Courier New", monospace; font-size: 12px; }
-  .timeline-box .tl-row { padding: 4px 0; display: flex; gap: 12px; }
+  .timeline-box { width: 100%; padding: 0 8px; font-family: "Courier New", monospace; font-size: 18px; }
+  .timeline-box .tl-row { padding: 1px 0; display: flex; gap: 8px; line-height: 1.3; }
   .timeline-box .tl-time { color: #4ade80; min-width: 56px; }
   .timeline-box .tl-time-na { color: #64748b; }
   .timeline-box .tl-event { color: #fff; }
@@ -693,7 +703,7 @@ const STATES = {
       const cursor = stateData.cursor || 0;
       screenContent.innerHTML = `
         <div class="menu-list">
-          <div class="menu-header">EMS DoseSync Pro</div>
+          <div class="menu-header" style="font-size:16px;letter-spacing:2px;color:#94a3b8;font-weight:700;border-bottom:1px solid #334155;padding-bottom:4px;margin-bottom:6px;text-transform:uppercase">EMS DoseSync Pro</div>
           ${items.map((it, i) => `
             <div class="menu-item ${i === cursor ? 'selected' : ''}">
               <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
@@ -796,8 +806,8 @@ const STATES = {
       let inner = '';
       if (phase === 'WAIT_FIRST_EPI') {
         inner = `
-          <div class="scr-mode">OHCA</div>
-          <div class="scr-label" style="font-size:24px;color:#94a3b8">待本機 EPI</div>
+          <div class="scr-mode" style="font-size:36px">OHCA</div>
+          <div class="scr-label" style="font-size:54px;color:#94a3b8">待本機 EPI</div>
           <div class="scr-counter">EPI ${counters.epi}｜電擊 ${counters.shock}</div>
           ${ventOverlayHTML}
         `;
@@ -874,9 +884,9 @@ const STATES = {
       const confirmBtn = BTN_LABEL[stateData.confirmKey] || `${stateData.confirmKey} 鍵`;
       // V1 §8.3：Amiodarone 確認畫面為選單事件樣式 — 標題大字、主鍵確認突出、不顯示「再按針筒鍵確認」
       const isAmio = ev === 'AMIO';
-      const titleStyle = isAmio ? 'font-size:22px' : '';
+      const titleStyle = isAmio ? 'font-size:24px' : '';
       const hintHTML  = isAmio
-        ? `<span style="font-size:14px;color:#fbbf24;font-weight:700">主鍵確認</span><span style="color:#64748b">　│　返回取消</span>`
+        ? `<span style="font-size:18px;color:#fbbf24;font-weight:700">主鍵確認</span><span style="color:#64748b">　│　返回取消</span>`
         : `再按 ${confirmBtn} 確認　│　返回取消`;
       const bodyText = ev === 'EPI'   ? '確認後將建立時間戳<br>並重啟 4 分鐘倒數'
                      : ev === 'SHOCK' ? '確認後將建立時間戳<br>不影響 EPI 倒數'
@@ -1056,7 +1066,7 @@ const STATES = {
       })[stateData.suppType];
       screenContent.innerHTML = `
         <div style="text-align:center;padding:24px">
-          <div class="dialog-title" style="font-size:20px">確認補登？</div>
+          <div class="dialog-title" style="font-size:29px">確認補登？</div>
           <div class="dialog-body" style="margin-top:12px">${typeLabel} ×${stateData.count}<br>成立後不可撤銷</div>
           <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
         </div>
@@ -1118,7 +1128,7 @@ const STATES = {
     render: () => {
       screenContent.innerHTML = `
         <div style="text-align:center;padding:24px">
-          <div class="dialog-title" style="font-size:20px;color:#ef4444">確認結束案件？</div>
+          <div class="dialog-title" style="font-size:29px;color:#ef4444">確認結束案件？</div>
           <div class="dialog-body" style="margin-top:12px">結束後不可修改</div>
           <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
         </div>
@@ -1161,7 +1171,7 @@ const STATES = {
           <div class="sum-section">藥物</div>
           <div class="sum-row"><span class="sum-key">Amiodarone</span><span class="sum-val">${c.amio} ${lastAmio ? '/ ' + formatTime(lastAmio.timestamp) : ''}</span></div>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-top:12px">主鍵 / ▼ = Timeline　│　返回 = 主功能表</div>
+        <div style="font-size:18px;color:#64748b;margin-top:6px">主鍵 / ▼ = Timeline　│　返回 = 主功能表</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1192,7 +1202,7 @@ const STATES = {
       rows.push({ time: formatTime(endEv.timestamp), label: '案件結束', cls: 'tl-event-end' });
       screenContent.innerHTML = `
         <div class="timeline-box">
-          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:11px;letter-spacing:2px;margin-bottom:8px">事件時間軸</div>
+          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:18px;letter-spacing:0;margin-bottom:4px;font-weight:700">事件時間軸</div>
           ${rows.map(r => `
             <div class="tl-row">
               <span class="tl-time ${r.time === '-' ? 'tl-time-na' : ''}">${r.time}</span>
@@ -1200,7 +1210,7 @@ const STATES = {
             </div>
           `).join('')}
         </div>
-        <div style="font-size:11px;color:#64748b;margin-top:12px">▲ = 回總覽　│　主鍵 = 主功能表</div>
+        <div style="font-size:18px;color:#64748b;margin-top:6px">▲ = 回總覽　│　主鍵 = 主功能表</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1353,7 +1363,7 @@ const STATES = {
         screenContent.innerHTML = `
           <div style="text-align:center;width:100%;position:relative">
             <div class="scr-mode">6 秒通氣節奏</div>
-            <div style="font-size:42px;color:#fbbf24;margin-top:32px;font-weight:bold">已暫停</div>
+            <div style="font-size:48px;color:#fbbf24;margin-top:16px;font-weight:bold">已暫停</div>
             <div class="scr-flash-sub" style="margin-top:24px">主鍵繼續　│　返回結束</div>
           </div>
         `;
@@ -1489,10 +1499,10 @@ const STATES = {
         screenEl.classList.remove('flash-red');
         screenContent.innerHTML = `
           <div class="scr-mode" style="color:#60a5fa">訓練模式</div>
-          <div class="scr-flash-msg" style="margin-top:24px;font-size:22px">待本機 EPI</div>
+          <div class="scr-flash-msg" style="margin-top:12px;font-size:29px">待本機 EPI</div>
           <div class="scr-flash-sub" style="margin-top:8px">案件開始 ≠ 倒數開始<br>第一筆 EPI 確認後啟動倒數</div>
           <div class="scr-counter" style="margin-top:24px">EPI ${counts.epi}｜電擊 ${counts.shock}${counts.amio ? `｜Amio ${counts.amio}` : ''}</div>
-          <div class="scr-counter" style="font-size:11px;color:#64748b;margin-top:6px">${hint}</div>
+          <div class="scr-counter" style="font-size:18px;color:#64748b;margin-top:4px">${hint}</div>
         `;
         overlay.classList.remove('show');
         return;
@@ -1527,7 +1537,7 @@ const STATES = {
         <div class="scr-time-big ${timeClass}">${timeStr}</div>
         <div class="scr-label">${label}</div>
         <div class="scr-counter">EPI ${counts.epi}｜電擊 ${counts.shock}${counts.amio ? `｜Amio ${counts.amio}` : ''}</div>
-        <div class="scr-counter" style="font-size:11px;color:#64748b;margin-top:6px">${hint}</div>
+        <div class="scr-counter" style="font-size:18px;color:#64748b;margin-top:4px">${hint}</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1570,9 +1580,9 @@ const STATES = {
       const confirmBtn = BTN_LABEL[stateData.confirmKey] || `${stateData.confirmKey} 鍵`;
       // V1 §8.3：Amiodarone 確認畫面樣式（標題大字、主鍵確認突出、不顯示「再按針筒鍵確認」）
       const isAmio = ev === 'AMIO';
-      const titleStyle = isAmio ? 'font-size:22px' : '';
+      const titleStyle = isAmio ? 'font-size:24px' : '';
       const hintHTML  = isAmio
-        ? `<span style="font-size:14px;color:#fbbf24;font-weight:700">主鍵確認</span><span style="color:#64748b">　│　返回取消</span>`
+        ? `<span style="font-size:18px;color:#fbbf24;font-weight:700">主鍵確認</span><span style="color:#64748b">　│　返回取消</span>`
         : `再按 ${confirmBtn} 確認　│　返回取消`;
       const bodyText = ev === 'EPI'   ? '確認後啟動 / 重啟訓練倒數'
                      : ev === 'SHOCK' ? '電擊不影響倒數（V1 §15.8）'
@@ -1714,7 +1724,7 @@ const STATES = {
     render: () => {
       screenContent.innerHTML = `
         <div style="text-align:center;padding:24px">
-          <div class="dialog-title" style="font-size:20px;color:#fbbf24">確認結束訓練？</div>
+          <div class="dialog-title" style="font-size:29px;color:#fbbf24">確認結束訓練？</div>
           <div class="dialog-body" style="margin-top:12px">結束後不可修改</div>
           <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
         </div>
@@ -1739,7 +1749,7 @@ const STATES = {
     render: () => {
       screenContent.innerHTML = `
         <div style="text-align:center;padding:24px">
-          <div class="dialog-title" style="font-size:20px">重置訓練？</div>
+          <div class="dialog-title" style="font-size:29px">重置訓練？</div>
           <div class="dialog-body" style="margin-top:12px">將清除本次訓練的<br>EPI 與電擊紀錄並重新計時</div>
           <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
         </div>
@@ -1830,7 +1840,7 @@ const STATES = {
           <div class="sum-section">藥物</div>
           <div class="sum-row"><span class="sum-key">Amiodarone</span><span class="sum-val">${counts.amio} ${lastAmio ? '/ ' + formatTime(lastAmio.timestamp) : ''}</span></div>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-top:12px">主鍵 / ▼ = 事件時間軸　│　返回 = ${stateData.fromHistory ? '案件操作' : '主功能表'}</div>
+        <div style="font-size:18px;color:#64748b;margin-top:6px">主鍵 / ▼ = 事件時間軸　│　返回 = ${stateData.fromHistory ? '案件操作' : '主功能表'}</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1870,8 +1880,8 @@ const STATES = {
       }
       screenContent.innerHTML = `
         <div class="timeline-box">
-          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:11px;letter-spacing:2px;margin-bottom:8px">事件時間軸｜Training</div>
-          ${rows.length === 1 ? '<div style="text-align:center;color:#64748b;font-size:12px;margin-top:16px">尚無事件</div>' : ''}
+          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:18px;letter-spacing:0;margin-bottom:4px;font-weight:700">事件時間軸｜Training</div>
+          ${rows.length === 1 ? '<div style="text-align:center;color:#64748b;font-size:18px;margin-top:8px">尚無事件</div>' : ''}
           ${rows.map(r => `
             <div class="tl-row">
               <span class="tl-time">${r.time}</span>
@@ -1879,7 +1889,7 @@ const STATES = {
             </div>
           `).join('')}
         </div>
-        <div style="font-size:11px;color:#64748b;margin-top:12px">▲ = 回總覽　│　主鍵 = ${stateData.fromHistory ? '案件操作' : '主功能表'}</div>
+        <div style="font-size:18px;color:#64748b;margin-top:6px">▲ = 回總覽　│　主鍵 = ${stateData.fromHistory ? '案件操作' : '主功能表'}</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1967,7 +1977,7 @@ const STATES = {
         screenContent.innerHTML = `
           <div style="text-align:center">
             <div class="scr-mode">${headerLabel}</div>
-            <div class="scr-flash-msg" style="margin-top:24px;font-size:16px">尚無紀錄</div>
+            <div class="scr-flash-msg" style="margin-top:12px;font-size:24px">尚無紀錄</div>
             <div class="scr-flash-sub">完成案件後會自動列入</div>
           </div>
         `;
@@ -1981,7 +1991,7 @@ const STATES = {
               const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
               const tag  = r.kind === 'ohca' ? 'App未同步' : 'Training';
               return `
-                <div class="menu-item ${i === cursor ? 'selected' : ''}" style="font-size:13px">
+                <div class="menu-item ${i === cursor ? 'selected' : ''}" style="font-size:18px">
                   <span class="menu-cursor">${i === cursor ? '▶' : ''}</span>
                   ${mmdd} ${hhmm}｜${tag}
                 </div>
@@ -2071,7 +2081,7 @@ const STATES = {
     render: () => {
       screenContent.innerHTML = `
         <div style="text-align:center;padding:24px">
-          <div class="dialog-title" style="font-size:20px;color:#ef4444">刪除此訓練紀錄？</div>
+          <div class="dialog-title" style="font-size:29px;color:#ef4444">刪除此訓練紀錄？</div>
           <div class="dialog-body" style="margin-top:12px">刪除後不可復原</div>
           <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
         </div>
@@ -2160,9 +2170,9 @@ const STATES = {
         <div style="width:100%;max-width:340px;padding:0 16px">
           <div class="menu-header">${stateData.label}</div>
           <div style="display:flex;gap:6px;margin-top:24px">${blocks}</div>
-          <div style="text-align:center;margin-top:16px;font-size:14px;color:#cbd5e1">當前：${v}/${stateData.max}</div>
-          <div style="text-align:center;margin-top:24px;font-size:11px;color:#64748b">▲ 增加　▼ 降低　│　主鍵 / 返回 = 完成</div>
-          ${note ? `<div style="text-align:center;margin-top:8px;font-size:11px;color:#fbbf24">${note}</div>` : ''}
+          <div style="text-align:center;margin-top:8px;font-size:24px;color:#cbd5e1">當前：${v}/${stateData.max}</div>
+          <div style="text-align:center;margin-top:12px;font-size:18px;color:#64748b">▲ 增加　▼ 降低　│　主鍵 / 返回 = 完成</div>
+          ${note ? `<div style="text-align:center;margin-top:4px;font-size:18px;color:#fbbf24">${note}</div>` : ''}
         </div>
       `;
       overlay.classList.remove('show');
@@ -2189,7 +2199,7 @@ const STATES = {
           <div class="sum-row"><span class="sum-key">Type-C</span><span class="sum-val" style="color:#64748b">未連線</span></div>
           <div style="margin-top:12px;font-size:10px;color:#64748b;text-align:center">Demo 限制：裝置名稱由 App 寫入｜App / Type-C 真實連線需實機</div>
         </div>
-        <div style="font-size:11px;color:#64748b;margin-top:8px">主鍵 / 返回 = 回設定選單</div>
+        <div style="font-size:18px;color:#64748b;margin-top:4px">主鍵 / 返回 = 回設定選單</div>
       `;
       overlay.classList.remove('show');
     },
@@ -2211,7 +2221,7 @@ const STATES = {
     render: () => {
       screenContent.innerHTML = `
         <div style="text-align:center;padding:24px">
-          <div class="dialog-title" style="font-size:20px">恢復預設設定？</div>
+          <div class="dialog-title" style="font-size:29px">恢復預設設定？</div>
           <div class="dialog-body" style="margin-top:12px">將清除：螢幕亮度 / 系統音量 / 通氣音量<br>不清除：案件 / Training / 裝置名稱</div>
           <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
         </div>

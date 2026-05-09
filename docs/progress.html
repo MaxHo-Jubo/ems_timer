@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS Timer 進度報告</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+
+  .header { text-align: center; margin-bottom: 24px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+  .header .version { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+
+  .meta-box {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px 24px; padding: 14px 20px; margin-bottom: 24px;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    font-size: 13px; box-shadow: var(--shadow);
+  }
+  .meta-box .meta-label { color: var(--text-secondary); margin-right: 6px; }
+  .meta-box .meta-value { color: var(--text); font-weight: 600; }
+
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .toc-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+  .toc-list a { color: var(--blue); text-decoration: none; padding: 4px 0; }
+  .toc-list a:hover { text-decoration: underline; }
+  .toc-list .toc-date { color: var(--text-secondary); font-size: 12px; margin-right: 8px; }
+
+  .progress-entry { margin-bottom: 40px; scroll-margin-top: 16px; }
+  .progress-entry-title {
+    font-size: 22px; font-weight: 800; margin-bottom: 8px; padding: 16px 20px;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--blue-light), #fff);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--blue);
+    color: #1e3a5f;
+  }
+  .progress-entry-title .num { display: inline-block; background: var(--blue); color: #fff; padding: 2px 12px; border-radius: 14px; font-size: 13px; font-weight: 700; vertical-align: middle; margin-right: 10px; }
+  .progress-entry-title .date { color: var(--text-secondary); font-size: 14px; font-weight: 500; margin-left: 8px; }
+
+  .section-title { font-size: 16px; font-weight: 700; margin: 20px 0 12px; padding-left: 12px; border-left: 4px solid var(--blue); color: var(--text); }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); margin-bottom: 14px; }
+
+  .one-liner {
+    background: linear-gradient(135deg, var(--green-light), #fff);
+    border: 1px solid var(--green); border-left: 4px solid var(--green);
+    border-radius: var(--radius); padding: 14px 18px; margin-bottom: 14px;
+    font-size: 15px; line-height: 1.7;
+  }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+
+  .diff-list { list-style: none; padding: 0; margin: 0; counter-reset: diff; }
+  .diff-list li {
+    padding: 12px 16px 12px 50px; position: relative; margin-bottom: 8px;
+    background: var(--bg); border-radius: 8px; font-size: 14px; line-height: 1.7;
+  }
+  .diff-list li::before {
+    counter-increment: diff; content: counter(diff);
+    position: absolute; left: 12px; top: 12px;
+    width: 26px; height: 26px;
+    background: var(--blue); color: #fff;
+    border-radius: 50%; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .check-list { list-style: none; padding: 0; margin: 8px 0; font-size: 14px; }
+  .check-list li { padding: 6px 0 6px 28px; position: relative; line-height: 1.7; }
+  .check-list li::before { content: "✓"; position: absolute; left: 4px; top: 6px; color: var(--green); font-weight: 700; }
+  .check-list li.todo::before { content: "○"; color: var(--gray); }
+
+  .issue-list { list-style: none; padding: 0; margin: 0; }
+  .issue-list li {
+    padding: 10px 14px 10px 32px; position: relative;
+    border-left: 3px solid var(--amber); background: var(--amber-light);
+    border-radius: 0 8px 8px 0; margin-bottom: 8px; font-size: 13px; line-height: 1.7;
+    color: #92400e;
+  }
+  .issue-list li::before {
+    content: "✓"; position: absolute; left: 10px; top: 10px;
+    color: #15803d; font-weight: 700;
+  }
+
+  .note-blue { padding: 10px 14px; background: var(--blue-light); border-left: 3px solid var(--blue); border-radius: 0 8px 8px 0; font-size: 13px; color: #1e40af; margin: 12px 0; }
+  .note-green { padding: 10px 14px; background: var(--green-light); border-left: 3px solid var(--green); border-radius: 0 8px 8px 0; font-size: 13px; color: #15803d; margin: 12px 0; }
+
+  .link { color: var(--blue); text-decoration: none; font-weight: 600; }
+  .link:hover { text-decoration: underline; }
+
+  code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: "JetBrains Mono", "SF Mono", Consolas, monospace; }
+
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+
+  /* 跳轉錨點頂部偏移（避免被 header 蓋） */
+  [id^="progress-"] { scroll-margin-top: 16px; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 22px; }
+    .meta-box { grid-template-columns: 1fr; }
+    .progress-entry-title { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>📋 EMS Timer 進度報告</h1>
+  <div class="subtitle">EMS DoseSync Pro — 救護人員給藥計時器</div>
+  <div class="version">PM 版 · 最後更新 2026-05-09</div>
+</div>
+
+<div class="meta-box">
+  <div><span class="meta-label">產品：</span><span class="meta-value">EMS DoseSync Pro</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-09</span></div>
+  <div><span class="meta-label">累計進度：</span><span class="meta-value">1 筆</span></div>
+  <div><span class="meta-label">負責：</span><span class="meta-value">Max Ho</span></div>
+</div>
+
+<div class="toc">
+  <div class="toc-title">章節導覽（點擊跳轉到該次進度）</div>
+  <div class="toc-list">
+    <a href="#progress-2026-05-09"><span class="toc-date">2026-05-09</span>進度 1 — 螢幕升級到 2.8 吋並修整體美觀</a>
+  </div>
+</div>
+
+<!-- ========== 進度 1 ========== -->
+<div class="progress-entry" id="progress-2026-05-09">
+  <div class="progress-entry-title">
+    <span class="num">進度 1</span>螢幕升級到 2.8 吋並修整體美觀<span class="date">2026-05-09</span>
+  </div>
+
+  <div class="one-liner">
+    <strong>一句話：</strong>把舊的 0.96 吋小螢幕換成 <strong>2.8 吋大螢幕</strong>，整個操作畫面重畫，文字放大、中文字型升級，畫面切換感變順、不再有以前那種掃描閃爍。
+  </div>
+
+  <div class="card">
+    <div class="section-title">你會看到什麼差異</div>
+    <ol class="diff-list">
+      <li><strong>螢幕變大很多</strong>：從原本郵票大小變成手掌心大小，遠遠就能看清倒數秒數。</li>
+      <li><strong>字級放大約 1.5 倍</strong>：之前你反映過字看不清楚，這次主畫面字放大、間距重抓。</li>
+      <li><strong>中文字看起來更舒服</strong>：「電擊」「給藥」這種筆畫密的字以前看起來歪歪的，現在換了字型工整很多。</li>
+      <li><strong>畫面切換不再閃</strong>：以前切畫面會看到一條條掃描線像跑馬燈，現在切換接近瞬完成。</li>
+      <li><strong>操作流程跟線上 demo 一致</strong>：13 個畫面（主選單、OHCA 倒數、待機、結束確認、6 秒通氣節奏…）都對齊 demo 的視覺，可以拿手機開 demo 並排對照。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <div class="section-title">硬體規格</div>
+    <table>
+      <tbody>
+        <tr><td style="width: 28%; color: var(--text-secondary)">顯示器</td><td><strong>2.8 吋 TFT 彩色螢幕</strong>（型號 ST7789）</td></tr>
+        <tr><td style="color: var(--text-secondary)">解析度</td><td>320 × 240 像素</td></tr>
+        <tr><td style="color: var(--text-secondary)">接線方式</td><td>SPI 4-wire，運行頻率 80 MHz</td></tr>
+        <tr><td style="color: var(--text-secondary)">主控板</td><td>ESP32-S3（GOOUUU N16R8，含 8MB PSRAM）</td></tr>
+        <tr><td style="color: var(--text-secondary)">功耗</td><td>典型 80 mA / 峰值 120 mA（含 TFT 背光）</td></tr>
+        <tr><td style="color: var(--text-secondary)">韌體佔用</td><td>Flash 14.1%（約 470 KB / 3.34 MB）｜RAM 6.8%（22 KB / 320 KB）</td></tr>
+        <tr><td style="color: var(--text-secondary)">中文字型</td><td>自訂 24px 點陣字，222 個常用字含全形標點，91 KB</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title">過程中遇到並解決的問題</div>
+    <ul class="issue-list">
+      <li>開機時主板上的 RGB LED 會亮一下白光（不影響功能但 PM 看了奇怪）— 已修，開機流程主動把 LED 關掉。</li>
+      <li>換螢幕後發現顯示驅動跟主板某顆 LED 共用同一條控制線 — 已重新分配腳位避開衝突。</li>
+      <li>第一版字級雖然放大但部分中文字（如「電擊」）筆畫密、看起來有歪斜感 — 換成自訂字型後解決。</li>
+      <li>螢幕切換每次都會看到掃描線往下跑 — 改用直接記憶體推送整片送，現在切換接近瞬完成。</li>
+      <li>倒數時某些情境下按鍵會被連續觸發兩次 — 已修，按鍵防彈跳改用統一門檻。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">線上 demo（PM 可開瀏覽器互動）</div>
+    <p style="font-size: 14px; line-height: 1.9;">
+      📱 部署版本：<a class="link" href="https://1d0d3dcd.ems-dosesync-demo.pages.dev" target="_blank">1d0d3dcd.ems-dosesync-demo.pages.dev</a><br>
+      🌿 分支版本：<a class="link" href="https://feat-tft-integration.ems-dosesync-demo.pages.dev" target="_blank">feat-tft-integration.ems-dosesync-demo.pages.dev</a>
+    </p>
+    <div class="note-blue">實機已燒錄韌體，可現場拍照對照 demo。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">後續工作</div>
+    <ul class="check-list">
+      <li class="todo">Backfill / Drug 子選單實機操作確認（按鍵流程）</li>
+      <li class="todo">6 秒通氣 4 種訊息對齊 demo（已寫好程式，待實機看視覺）</li>
+      <li class="todo">Dialog 對話框內部座標可優化（不影響功能）</li>
+      <li class="todo">第二套中文字型工具測試（目前只有一套，當未來想換字型時做）</li>
+    </ul>
+    <div class="note-green">以上後續工作都不阻擋下一階段「藍牙傳輸到手機 App」開工。</div>
+  </div>
+</div>
+
+<div class="footer">
+  本報告會在每次重要進度後累加，最新進度排在最上方。<br>
+  EMS DoseSync Pro · Generated 2026-05-09
+</div>
+
+</body>
+</html>

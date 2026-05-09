@@ -30,9 +30,9 @@
  */
 
 #include <Arduino.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SH110X.h>
+#include <SPI.h>
+#define LGFX_USE_V1
+#include <LovyanGFX.hpp>
 
 #include "ems_ohca_state.h"
 #include "ems_ohca_countdown.h"
@@ -41,19 +41,139 @@
 #include "ems_case_summary.h"
 #include "ems_vent_metronome.h"
 
+#include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 222 glyphs (95 ASCII + 127 CJK)
+
 using namespace ems;
 
+/**
+ * LovyanGFX 硬體配置：ESP32-S3 GP-SPI2 + DMA + ST7789 240×320 panel。
+ * Pin 號碼與 TFT_*_PIN 常數同步（gpio-allocation.md §5.2）。
+ */
+class LGFX : public lgfx::LGFX_Device {
+    lgfx::Panel_ST7789 _panel;
+    lgfx::Bus_SPI      _bus;
+public:
+    LGFX(void) {
+        {
+            auto cfg = _bus.config();
+            cfg.spi_host = SPI2_HOST;
+            cfg.spi_mode = 0;
+            cfg.freq_write = 80000000;
+            cfg.freq_read  = 16000000;
+            cfg.spi_3wire  = false;
+            cfg.use_lock   = true;
+            cfg.dma_channel = SPI_DMA_CH_AUTO;
+            cfg.pin_sclk = 3;
+            cfg.pin_mosi = 2;
+            cfg.pin_miso = -1;
+            cfg.pin_dc   = 1;
+            _bus.config(cfg);
+            _panel.setBus(&_bus);
+        }
+        {
+            auto cfg = _panel.config();
+            cfg.pin_cs   = 21;
+            cfg.pin_rst  = 47;
+            cfg.pin_busy = -1;
+            cfg.panel_width  = 240;
+            cfg.panel_height = 320;
+            cfg.offset_x = 0;
+            cfg.offset_y = 0;
+            cfg.offset_rotation = 0;
+            cfg.dummy_read_pixel = 8;
+            cfg.dummy_read_bits  = 1;
+            cfg.readable  = false;
+            cfg.invert    = false;  // 蝦皮紅板 polarity（同 Adafruit_ST7789 invertDisplay(false)）
+            cfg.rgb_order = false;
+            cfg.dlen_16bit = false;
+            cfg.bus_shared = false;
+            _panel.config(cfg);
+        }
+        setPanel(&_panel);
+    }
+};
+
+/**
+ * 全頁 RAM framebuffer（LGFX_Sprite + PSRAM）：updateDisplay 結尾以
+ * pushSprite(&tft, 0, 0) DMA 一次推到實體 TFT，消全頁切換掃描感。
+ * clearDisplay() 為 fillScreen(BLACK) 別名，updateDisplay 入口呼叫一次。
+ */
+class FrameSprite : public lgfx::LGFX_Sprite {
+public:
+    FrameSprite(lgfx::LovyanGFX* parent) : LGFX_Sprite(parent) {}
+    void clearDisplay() { fillScreen(0x0000); }
+};
+
 // ============================================================
-// 硬體常數（gpio-allocation.md）
+// 硬體常數（gpio-allocation.md §5.2）
 // ============================================================
 
-/** OLED 解析度 */
-static const uint8_t OLED_WIDTH     = 128;
-static const uint8_t OLED_HEIGHT    = 64;
-static const int8_t  OLED_RESET_PIN = -1;
-static const uint8_t OLED_I2C_ADDR  = 0x3C;
-static const uint8_t I2C_SDA_PIN    = 42;
-static const uint8_t I2C_SCL_PIN    = 41;
+/** TFT 解析度（native portrait） */
+static const uint16_t TFT_WIDTH     = 240;
+static const uint16_t TFT_HEIGHT    = 320;
+/** TFT 邏輯解析度（rotation=1 橫向後使用） */
+static const int16_t  SCREEN_W      = 320;
+static const int16_t  SCREEN_H      = 240;
+// ============================================================
+// 顯示設計 tokens（對齊 docs/demo/index.html）
+// 規格：黑底 + 白主字 + 灰次要 + 急救色（綠/琥珀/紅）+ Courier monospace 大時間
+// 詳見 .claude/.../project_tft_ui_design_target.md
+// ============================================================
+
+/** 背景色：純黑 #000000（demo `body { background: #000 }`） */
+static const uint16_t COLOR_BG          = 0x0000;
+/** 主文字：白 #ffffff */
+static const uint16_t COLOR_TEXT_PRIMARY = 0xFFFF;
+/** 次要資訊：灰 ≈ #94a3b8（demo `.scr-title color`） */
+static const uint16_t COLOR_TEXT_MUTED  = 0x9492;
+/** 暗灰：#64748b（demo `.scr-counter color`） */
+static const uint16_t COLOR_TEXT_DIM    = 0x6B4D;
+/** 執行中綠：≈ #22c55e（demo `.scr-mode color`） */
+static const uint16_t COLOR_ACCENT_OK   = 0x2604;
+/** 警告琥珀：≈ #fbbf24（demo `.scr-time-amber`） */
+static const uint16_t COLOR_ACCENT_WARN = 0xFDE0;
+/** 警報紅：≈ #ef4444（demo `.scr-time-red`） */
+static const uint16_t COLOR_ACCENT_ALERT = 0xEA44;
+/** 暗紅閃爍：#5a0000（demo `flash-vent` 整片暗紅） */
+static const uint16_t COLOR_FLASH_VENT   = 0x5800;
+
+/** OHCA 倒數畫面 layout（drawOhcaCountdownCommon 使用） */
+/** ALARMING 背景閃爍半週期 ms（demo flashRed 0.6s 全週期 / 2） */
+static const uint32_t OHCA_FLASH_HALF_MS  = 300;
+/** 舊 layout（非 vlw badge）— EndCheck/Locked/Summary/Placeholder 等尚未遷移 vlw 字型的畫面共用；
+ *  vlw 系列畫面（WaitFirstEpi/Countdown/VentPre）改用 OHCA_CHINESE_BADGE_TOP_Y */
+static const int16_t  OHCA_BADGE_Y        = 14;
+/** vlw 1.5× badge "OHCA" 文字 top y（datum top_center；ChineseBadge 在 WaitFirstEpi/Countdown 共用） */
+static const int16_t  OHCA_CHINESE_BADGE_TOP_Y = 8;
+/** 大時間視覺上偏 px（middle datum 中心 y = SCREEN_H/2 - VISUAL_UP=100，時間 bbox ~52~148） */
+static const int16_t  OHCA_TIME_VISUAL_UP = 20;
+/** OHCA 倒數標籤 middle-center y（vlw 1.8×；理論幾何中點 174 上偏 9px 讓 descender 與計數行留間距） */
+static const int16_t  OHCA_LABEL_Y        = 165;
+/** WaitFirstEpi 底部 EPI/電擊 計數 top y（vlw 1.5× ≈ 36px；200 + 36 + 4 邊界 = SCREEN_H 240） */
+static const int16_t  OHCA_WAIT_COUNTER_Y = 200;
+/** 底部 EPI/Shock 計數行距底邊 px（用於 SCREEN_H - OHCA_COUNTER_BOTTOM - 8 算 hint 行 y） */
+static const int16_t  OHCA_COUNTER_BOTTOM = 18;
+
+/** 倒數 partial sprite erase bbox（FreeMonoBold24pt7b size 2 → 280×96 + margin） */
+static const int16_t  OHCA_TIME_PUSH_X    = 14;
+static const int16_t  OHCA_TIME_PUSH_Y    = 48;
+static const int16_t  OHCA_TIME_PUSH_W    = 292;
+static const int16_t  OHCA_TIME_PUSH_H    = 104;
+
+/** 確認 bar 高度（TwoStepArmed / AmioConfirm「再按一次主鍵確認」橫條） */
+static const int16_t  DIALOG_BAR_H        = 44;
+/** Vent 結束提示 bar 高度（VentStandalone「長按 ≥ 0.75s 結束」較窄保留中央資訊區） */
+static const int16_t  VENT_BAR_H          = 32;
+
+/** TFT SPI 腳位（避開 N16R8 octal PSRAM 佔用的 GPIO 35-37 + 板上 WS2812 GPIO 48） */
+static const int8_t   TFT_CS_PIN    = 21;
+static const int8_t   TFT_DC_PIN    = 1;   /**< 原 48 → 1：避開板上 WS2812 RGB LED（2026-05-08 實機踩雷） */
+static const int8_t   TFT_RST_PIN   = 47;
+static const int8_t   TFT_MOSI_PIN  = 2;
+static const int8_t   TFT_SCLK_PIN  = 3;
+/** I2C bus（OLED 已移除，腳位保留給未來 DS3231 RTC / CO 感測器擴充） */
+static const uint8_t  I2C_SDA_PIN   = 42;
+static const uint8_t  I2C_SCL_PIN   = 41;
 
 /** 蜂鳴器 GPIO */
 static const uint8_t BUZZER_PIN     = 14;
@@ -128,11 +248,11 @@ static GlobalState globalState = GLOBAL_MAIN_MENU;
 /** 主功能表 5 項（SoT V1 §3.1） */
 static const uint8_t MAIN_MENU_COUNT = 5;
 static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
-    "OHCA Case",
-    "6sec Vent",
-    "Training",
-    "History",
-    "Settings",
+    "OHCA 案件",
+    "6 秒通氣節奏",
+    "訓練模式",
+    "歷史紀錄",
+    "系統設定",
 };
 static uint8_t mainMenuCursor = 0;
 
@@ -218,6 +338,7 @@ static bool     ventBackHintShown  = false;                // 「請長按主鍵
 static uint32_t ventBackHintStartMs = 0;
 static const uint32_t VENT_BACK_HINT_MS = 2000;
 static bool     ventPaused         = false;                // V1 §13.11 / §13.12 獨立 vent 暫停旗標
+static bool     ventPreShown       = false;                // A8：VENT_PRE「按主鍵開始」preview 畫面（demo 對齊）
 
 /** OHCA 內 6 秒通氣輔助區塊開關（V1 §14.9 開啟、暫停、繼續與關閉） */
 static bool ohcaVentOverlayEnabled = false;
@@ -229,12 +350,40 @@ static bool ohcaVentPaused         = false;
 // ============================================================
 
 enum EndCheckCursor : uint8_t {
-    END_CHECK_CURSOR_CONFIRM = 0,
-    END_CHECK_CURSOR_CANCEL  = 1,
+    END_CHECK_CURSOR_CONFIRM  = 0,  // 完成並結束案件
+    END_CHECK_CURSOR_BACKFILL = 1,  // 前往補登
+    END_CHECK_CURSOR_CANCEL   = 2,  // 返回案件
 };
 static EndCheckCursor endCheckCursor = END_CHECK_CURSOR_CANCEL;
+/** A7：END_CHECK 選「完成並結束」後彈出二次確認對話（demo OHCA_END_CONFIRM） */
+static bool endConfirmShown = false;
 
 static uint16_t summaryScrollOffset = 0;
+
+// ============================================================
+// Flash overlay（demo 對齊：1.2s 全螢幕過場提示）
+// ============================================================
+struct FlashState {
+    bool     active;
+    uint32_t startMs;
+    uint16_t durationMs;
+    char     title[40];
+    char     subtitle[40];
+    uint16_t titleColor;
+    float    titleSize;     // 觸發時計算，避免 render hot-path 反覆 strcmp
+    float    subtitleSize;
+};
+static FlashState flashState = {};
+static const uint16_t FLASH_DEFAULT_MS = 1200;
+
+// Flash overlay 字級常數（vlw 24px 為基準）
+//   Default：~7-char 內主標 / ~6-char 內副標都不溢出 320px
+//   Long   ：title 7+ char（如「案件結束並鎖定」size 2.25 會超寬）/
+//           subtitle 10+ char（如「結束案件後看完整總覽」size 1.5 = 360px > 320）
+static constexpr float FLASH_TITLE_SIZE_DEFAULT    = 2.25f;
+static constexpr float FLASH_TITLE_SIZE_LONG       = 1.9f;
+static constexpr float FLASH_SUBTITLE_SIZE_DEFAULT = 1.5f;
+static constexpr float FLASH_SUBTITLE_SIZE_LONG    = 1.2f;
 
 // ============================================================
 // 按鈕狀態
@@ -249,7 +398,31 @@ static bool     btnLongFired[BTN_COUNT]     = { false };
 // OLED + 蜂鳴 / 反色 SM
 // ============================================================
 
-Adafruit_SH1106G display(OLED_WIDTH, OLED_HEIGHT, &Wire, OLED_RESET_PIN);
+/** 實體 TFT 控制（init / SPI / rotation / DMA push） */
+LGFX tft;
+/** 全頁 RAM sprite — 所有 draw functions 寫到這裡，updateDisplay 結尾 pushSprite DMA 一次推到 tft */
+FrameSprite display(&tft);
+
+/* vlw 載入旗標 — false 時 useZhFont() 不重 load（fallback 用 default font） */
+static bool g_vlw_loaded = false;
+
+/* vlw 字型切換 helper：
+ * LovyanGFX setFont() 切到內建字型時會 _runtime_font.reset() 析構 VLWfont，
+ * 所以一旦 setFont(&fonts::Font0) 後再切 vlw 必須重新 loadFont（lazy reload）。
+ * useZhFont() 檢查當前 font type，非 vlw 就重 load；同畫面連續用不會重 load。
+ */
+static inline void useZhFont() {
+    if (!g_vlw_loaded) {
+        return;
+    }
+    auto* f = display.getFont();
+    if (f == nullptr || f->getType() != lgfx::v1::IFont::font_type_t::ft_vlw) {
+        if (!display.loadFont(ems_zh_24_vlw)) {
+            Serial.println("[FONT] lazy reload FAILED, disable VLW");
+            g_vlw_loaded = false;
+        }
+    }
+}
 
 // 蜂鳴器：脈衝模式（pulses=255 視為連續直到 stop）
 static uint8_t  beepPulsesRemaining = 0;
@@ -285,6 +458,7 @@ void enterShockBackfillMenu();
 void resetSubState();
 void updateVentTick();
 void applyVentOutput(const vent_output_t& out);
+void drawVentPre();
 void drawVentStandalone();
 void drawVentEndCheck();
 void drawQuickMenu();
@@ -303,11 +477,18 @@ void updateDisplay();
 void drawMainMenu();
 void drawOhcaStartFlash();
 void drawOhcaWaitFirstEpi();
-void drawOhcaCountdownCommon(const char* label, uint32_t remaining_ms, bool show_overtime);
+void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* label, bool flashOn);
+static void drawOhcaCountdownTimeOnly(uint8_t ohcaState);
 void drawOhcaEndCheck();
 void drawOhcaLocked();
 void drawOhcaSummary();
 void drawTwoStepArmedOverlay(const char* what);
+void drawOhcaConfirmDialog(uint8_t evType);
+void drawOhcaEndConfirmDialog();
+void drawFlashOverlay();
+void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor,
+                  float titleSize = FLASH_TITLE_SIZE_DEFAULT,
+                  float subtitleSize = FLASH_SUBTITLE_SIZE_DEFAULT);
 void drawPlaceholder(const char* title, const char* phase);
 void drawDrugMenu();
 void drawBackfillType();
@@ -321,10 +502,22 @@ void drawTimeline();
 // setup() / loop()
 // ============================================================
 
+/** GOOUUU 板上 WS2812 RGB LED 接 GPIO 48；boot 階段可能被訊號 latch 成隨機顏色，主動發 (0,0,0) 關掉。 */
+static const uint8_t WS2812_PIN = 48;
+
 void setup() {
     Serial.begin(115200);
-    delay(50);
+    // ESP32-S3 USB-CDC 列舉需 1~2 秒，太早 Serial.println 會被吃掉。
+    // 等到 Serial 通了再印，方便除錯。
+    uint32_t serialWaitStart = millis();
+    while (!Serial && (millis() - serialWaitStart) < 3000) {
+        delay(10);
+    }
     Serial.println("[BOOT] EMS Timer Phase A");
+
+    // STEP 00: 關掉板上 WS2812（GPIO 48）。boot bootloader 可能 latch 成白色，必須主動 reset。
+    //   neopixelWrite() 由 esp32-hal-rgb-led 提供（ESP32 Arduino core ≥ 2.0.7 內建）。
+    neopixelWrite(WS2812_PIN, 0, 0, 0);
 
     // STEP 01: 蜂鳴器
     pinMode(BUZZER_PIN, OUTPUT);
@@ -341,13 +534,37 @@ void setup() {
         lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
 
-    // STEP 03: OLED 初始化
-    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
-    if (!display.begin(OLED_I2C_ADDR, /* reset= */ true)) {
-        Serial.println("[FAIL] SH1106 not found");
+    // STEP 03: TFT 初始化（LovyanGFX + DMA + sprite buffer）
+    //   - tft.init()：SPI 80MHz @ DMA_CH_AUTO（class LGFX 內 cfg）
+    //   - invert: false（蝦皮紅板 polarity，已寫死於 LGFX panel cfg）
+    //   - display 為全頁 LGFX_Sprite（320×240 @ 16bpp = 153,600 bytes，
+    //     優先嘗試 PSRAM；fail 退 internal RAM）
+    //   - 所有 draw 寫到 display sprite，updateDisplay 結尾 pushSprite DMA 推到 tft
+    tft.init();
+    tft.setRotation(3);  // 3 = 橫向 320x240（LGFX 跟 Adafruit_ST7789 rotation index 差 180）
+    tft.fillScreen(0x0000);
+
+    display.setColorDepth(16);
+    display.setPsram(true);  // PSRAM 優先（N16R8 8MB），fail 退 internal RAM
+    if (!display.createSprite(SCREEN_W, SCREEN_H)) {
+        Serial.println("[FATAL] sprite createSprite failed");
     }
-    display.clearDisplay();
-    display.display();
+    display.fillScreen(0x0000);
+
+    // STEP 03.01: vlw 字型載入（Sarasa Mono TC Bold 24px，222 glyphs）
+    //   - loadFont 後設 g_vlw_loaded 旗標；中文渲染前呼叫 useZhFont() lazy reload
+    //   - LGFX setFont() 切走內建字型會 _runtime_font.reset() 析構 VLWfont，
+    //     所以不能緩存 VLWfont*，每次需要 vlw 必須檢查並重 load
+    //   - 首次載入失敗時做一次 retry（PSRAM 暫態），仍失敗就走 fallback
+    //     Font0 並 Serial 警告（CJK 會顯示為 ASCII tofu，避免救護現場啞顯示）
+    g_vlw_loaded = display.loadFont(ems_zh_24_vlw);
+    if (!g_vlw_loaded) {
+        delay(50);
+        g_vlw_loaded = display.loadFont(ems_zh_24_vlw);
+    }
+    Serial.printf("[FONT] vlw %s: %u bytes\n",
+                  g_vlw_loaded ? "loaded" : "FAILED (CJK will fallback to Font0)",
+                  (unsigned)ems_zh_24_vlw_len);
 
     // STEP 04: 兩段確認 init
     twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
@@ -385,6 +602,11 @@ void loop() {
         resetSubState();
     }
 
+    // Flash overlay timeout（demo flash() 對齊，duration 由 caller 指定）
+    if (flashState.active && now - flashState.startMs >= flashState.durationMs) {
+        flashState.active = false;
+    }
+
     // STEP 03: vent 返回鍵提示 2s 自動消失
     if (ventBackHintShown && now - ventBackHintStartMs >= VENT_BACK_HINT_MS) {
         ventBackHintShown = false;
@@ -410,13 +632,17 @@ void handleButtons() {
 
         if (cur != lastBtnState[i]) {
             // STEP 01: 邊緣事件
+            // STEP 01.00: 統一 debounce — press 與 release 邊緣共用同一個門檻，
+            //   避免 TFT 慢渲染拉長時間窗時 bounce 邊緣穿過原本只擋 press 的防抖造成 double-fire
+            if (now - lastPressMs[i] < DEBOUNCE_MS) {
+                continue;
+            }
+            lastPressMs[i] = now;
+
             if (cur == LOW) {
                 // STEP 01.01: 按下（press start）
-                if (now - lastPressMs[i] >= DEBOUNCE_MS) {
-                    btnPressStartMs[i] = now;
-                    btnLongFired[i]  = false;
-                    lastPressMs[i]     = now;
-                }
+                btnPressStartMs[i] = now;
+                btnLongFired[i]    = false;
             } else {
                 // STEP 01.02: 放開（release）
                 if (btnPressStartMs[i] > 0 && !btnLongFired[i]) {
@@ -475,13 +701,15 @@ void onShortPress(uint8_t btnIdx) {
                         Serial.println("[OHCA] Case start (START_FLASH)");
                         break;
                     case 1:  // 6 秒通氣節奏（獨立模式）
+                        // A8：先進 VENT_PRE「按主鍵開始」preview，主鍵按下後才正式啟動
                         globalState        = GLOBAL_VENT;
-                        ventStartMs        = millis();
+                        ventStartMs        = 0;            // 尚未啟動
                         ventPrevSinceMs    = 0;
                         ventEndCheckShown  = false;
                         ventBackHintShown  = false;
-                        ventPaused         = false;  // V1 §13.5 啟動規則：秒數從 1 開始
-                        Serial.println("[VENT] enter standalone");
+                        ventPaused         = false;
+                        ventPreShown       = true;          // A8：等使用者按主鍵
+                        Serial.println("[VENT] enter PRE (preview)");
                         break;
                     case 2: globalState = GLOBAL_TRAINING_PLACEHOLDER; break;
                     case 3: globalState = GLOBAL_HISTORY_PLACEHOLDER;  break;
@@ -497,6 +725,32 @@ void onShortPress(uint8_t btnIdx) {
     // ===== Phase C: GLOBAL_VENT 獨立模式（V1 §13）=====
     if (globalState == GLOBAL_VENT) {
         uint32_t now = millis();
+        // A8: VENT_PRE preview 畫面（按主鍵開始）
+        if (ventPreShown) {
+            if (btnIdx == BTN_UP) {
+                ventVolume = clampVentVolume((int16_t)ventVolume + 1);
+                return;
+            }
+            if (btnIdx == BTN_DOWN) {
+                ventVolume = clampVentVolume((int16_t)ventVolume - 1);
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                // 返回鍵 → 直接回主功能表（preview 還沒啟動，可直接走）
+                ventPreShown = false;
+                enterMainMenu();
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                // 主鍵 → 正式啟動（V1 §13.5 啟動規則：秒數從 1 開始）
+                ventPreShown = false;
+                ventStartMs  = now;
+                ventPrevSinceMs = 0;
+                Serial.println("[VENT] PRE -> running");
+                return;
+            }
+            return;
+        }
         // STEP 01: 結束確認對話框中
         if (ventEndCheckShown) {
             if (btnIdx == BTN_PRIMARY) {
@@ -561,12 +815,12 @@ void onShortPress(uint8_t btnIdx) {
         // STEP 01: SUCCESS 顯示中：忽略所有按鍵（自動 2s 後消失，由 loop 處理）
         if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS) return;
 
-        // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口；V1 §14.9 動態 2/3 項）
+        // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口；V1 §14.9 動態 3/4 項）
         if (ohcaSubState == SUBSTATE_QUICK_MENU) {
-            // V1 §14.9 選項：
-            //   未開啟 (overlay=false)：[0] Enable 6s vent  [1] Back to OHCA
-            //   已開啟 (overlay=true) ：[0] Pause/Resume    [1] Disable 6s vent  [2] Back
-            uint8_t cnt = ohcaVentOverlayEnabled ? 3 : 2;
+            // V1 §14.9 選項（B3：加「案件簡版總覽」對齊 demo）：
+            //   未開啟：[0] Enable [1] Summary [2] Back
+            //   已開啟：[0] Pause/Resume [1] Disable [2] Summary [3] Back
+            uint8_t cnt = ohcaVentOverlayEnabled ? 4 : 3;
             if (btnIdx == BTN_UP) {
                 backfillCursor = (backfillCursor + cnt - 1) % cnt;
                 return;
@@ -577,36 +831,50 @@ void onShortPress(uint8_t btnIdx) {
             }
             if (btnIdx == BTN_BACK) { resetSubState(); return; }
             if (btnIdx == BTN_PRIMARY) {
+                const uint8_t summaryIdx = ohcaVentOverlayEnabled ? 2 : 1;
+                const uint8_t backIdx    = ohcaVentOverlayEnabled ? 3 : 2;
+                if (backfillCursor == summaryIdx) {
+                    // B3：案件簡版總覽 — demo 略過，flash 提示
+                    triggerFlash("簡版總覽", "結束案件後看完整總覽", 2000, COLOR_TEXT_PRIMARY,
+                                 FLASH_TITLE_SIZE_DEFAULT, FLASH_SUBTITLE_SIZE_LONG);
+                    Serial.println("[OHCA] quick: summary placeholder");
+                    resetSubState();
+                    return;
+                }
+                if (backfillCursor == backIdx) {
+                    // 返回 OHCA → resetSubState 即可
+                    resetSubState();
+                    return;
+                }
                 if (!ohcaVentOverlayEnabled) {
-                    if (backfillCursor == 0) {
-                        // STEP 01.5.1: Enable 6s vent（V1 §14.9）
-                        ohcaVentOverlayEnabled = true;
-                        ohcaVentPaused         = false;
-                        ventStartMs            = millis();
-                        ventPrevSinceMs        = 0;
-                        Serial.println("[OHCA] vent overlay = ON");
-                    }
-                    // backfillCursor == 1 → Back（resetSubState 即可）
+                    // backfillCursor == 0：Enable 6s vent
+                    ohcaVentOverlayEnabled = true;
+                    ohcaVentPaused         = false;
+                    ventStartMs            = millis();
+                    ventPrevSinceMs        = 0;
+                    triggerFlash("6 秒給氣", "已開啟", 800, COLOR_ACCENT_OK);
+                    Serial.println("[OHCA] vent overlay = ON");
                 } else {
                     if (backfillCursor == 0) {
-                        // STEP 01.5.2: toggle Pause / Resume（V1 §14.10 暫停 / §14.11 繼續）
+                        // toggle Pause / Resume（V1 §14.10 / §14.11）
                         ohcaVentPaused = !ohcaVentPaused;
                         if (!ohcaVentPaused) {
-                            // V1 §14.11：繼續時秒數重新從 1 開始
                             ventStartMs     = millis();
                             ventPrevSinceMs = 0;
+                            triggerFlash("6 秒給氣", "已繼續", 800, COLOR_ACCENT_OK);
                         } else {
                             stopBeep();
+                            triggerFlash("6 秒給氣", "已暫停", 800, COLOR_ACCENT_WARN);
                         }
                         Serial.printf("[OHCA] vent paused = %d\n", ohcaVentPaused);
                     } else if (backfillCursor == 1) {
-                        // STEP 01.5.3: Disable 6s vent（V1 §14.9）
+                        // Disable 6s vent
                         ohcaVentOverlayEnabled = false;
                         ohcaVentPaused         = false;
                         stopBeep();
+                        triggerFlash("6 秒給氣", "已關閉", 800, COLOR_TEXT_MUTED);
                         Serial.println("[OHCA] vent overlay = OFF");
                     }
-                    // backfillCursor == 2 → Back
                 }
                 resetSubState();
                 return;
@@ -635,6 +903,8 @@ void onShortPress(uint8_t btnIdx) {
                     recordLocalEvent(EVT_AMIODARONE);
                     dispatchOhcaEvent(OHCA_EVT_AMIO_CONFIRMED, 0);  // 不重啟倒數
                     triggerBeep(1, 80, 0);
+                    // A4：對齊 demo flash('Amiodarone 已紀錄', '')
+                    triggerFlash("Amiodarone 已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                     Serial.println("[OHCA] Amio confirmed");
                     resetSubState();
                 } else {
@@ -749,12 +1019,31 @@ void onShortPress(uint8_t btnIdx) {
             }
             // STEP 02: END_CHECK 主鍵 — 依 cursor 行為
             if (ohcaState == OHCA_STATE_END_CHECK) {
-                if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
+                // A7：二次確認對話顯示中 → 主鍵 = 真鎖定
+                if (endConfirmShown) {
+                    endConfirmShown = false;
                     dispatchOhcaEvent(OHCA_EVT_END_CONFIRM, 0);
-                    Serial.println("[OHCA] case LOCKED");
-                } else {
-                    dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
+                    // A5：對齊 demo flash('案件結束並鎖定', '已存入歷史紀錄')
+                    triggerFlash("案件結束並鎖定", "已存入歷史紀錄", FLASH_DEFAULT_MS, COLOR_ACCENT_ALERT,
+                                 FLASH_TITLE_SIZE_LONG, FLASH_SUBTITLE_SIZE_DEFAULT);
+                    Serial.println("[OHCA] case LOCKED (after END_CONFIRM dialog)");
+                    return;
                 }
+                if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
+                    // A7：開二次確認對話（不直接鎖定）
+                    endConfirmShown = true;
+                    Serial.println("[OHCA] END_CONFIRM dialog opened");
+                    return;
+                }
+                if (endCheckCursor == END_CHECK_CURSOR_BACKFILL) {
+                    // B1：前往補登 — 先回到原 phase，再進 drug menu
+                    dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
+                    enterDrugMenu();
+                    Serial.println("[OHCA] END_CHECK -> backfill (drug menu)");
+                    return;
+                }
+                // CANCEL
+                dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
                 return;
             }
             // STEP 03: LOCKED 主鍵 — 翻 SUMMARY
@@ -766,9 +1055,9 @@ void onShortPress(uint8_t btnIdx) {
             break;
 
         case BTN_UP:
-            if (ohcaState == OHCA_STATE_END_CHECK) {
-                endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
-                               ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
+            if (ohcaState == OHCA_STATE_END_CHECK && !endConfirmShown) {
+                // 3 項循環：CONFIRM(0) ↔ BACKFILL(1) ↔ CANCEL(2)
+                endCheckCursor = (EndCheckCursor)((endCheckCursor + 2) % 3);
             } else if (ohcaState == OHCA_STATE_SUMMARY) {
                 // Phase B: SUMMARY 上鍵 → 進 Timeline 子畫面
                 ohcaSubState         = SUBSTATE_TIMELINE;
@@ -777,9 +1066,8 @@ void onShortPress(uint8_t btnIdx) {
             break;
 
         case BTN_DOWN:
-            if (ohcaState == OHCA_STATE_END_CHECK) {
-                endCheckCursor = (endCheckCursor == END_CHECK_CURSOR_CANCEL)
-                               ? END_CHECK_CURSOR_CONFIRM : END_CHECK_CURSOR_CANCEL;
+            if (ohcaState == OHCA_STATE_END_CHECK && !endConfirmShown) {
+                endCheckCursor = (EndCheckCursor)((endCheckCursor + 1) % 3);
             } else if (ohcaState == OHCA_STATE_SUMMARY) {
                 ohcaSubState         = SUBSTATE_TIMELINE;
                 timelineScrollOffset = 0;
@@ -787,13 +1075,26 @@ void onShortPress(uint8_t btnIdx) {
             break;
 
         case BTN_BACK:
+            // A1：兩段確認對話顯示中 → 返回鍵 = 取消對話（modal 行為）
+            if (showEpiArmedPrompt || showShockArmedPrompt) {
+                showEpiArmedPrompt   = false;
+                showShockArmedPrompt = false;
+                Serial.println("[OHCA] confirm dialog cancelled (BACK)");
+                return;
+            }
             // STEP 01: SUMMARY 返回主功能表
             if (ohcaState == OHCA_STATE_SUMMARY) {
                 exitOhcaCase();
                 return;
             }
-            // STEP 02: END_CHECK 返回鍵 = 取消
+            // STEP 02: END_CHECK 返回鍵
             if (ohcaState == OHCA_STATE_END_CHECK) {
+                // A7：二次確認對話顯示中 → 返回 = 退回 END_CHECK 主畫面
+                if (endConfirmShown) {
+                    endConfirmShown = false;
+                    return;
+                }
+                // 一般 = 取消（回原 phase）
                 dispatchOhcaEvent(OHCA_EVT_END_CANCEL, 0);
                 return;
             }
@@ -825,6 +1126,8 @@ void onShortPress(uint8_t btnIdx) {
                 stopBeep();
                 recordLocalEvent(EVT_EPI_LOCAL);
                 triggerBeep(1, 80, 0);  // 短確認音
+                // A2：對齊 demo flash('EPI 已紀錄', '重新倒數 4 分鐘')
+                triggerFlash("EPI 已紀錄", "重新倒數 4 分鐘", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                 Serial.println("[OHCA] EPI confirmed");
             } else {
                 showEpiArmedPrompt   = true;
@@ -842,6 +1145,8 @@ void onShortPress(uint8_t btnIdx) {
                 dispatchOhcaEvent(OHCA_EVT_SHOCK_CONFIRMED, 0);  // 不重啟倒數
                 recordLocalEvent(EVT_SHOCK_LOCAL);
                 triggerBeep(1, 80, 0);
+                // A3：對齊 demo flash('電擊已紀錄', '')
+                triggerFlash("電擊已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                 Serial.println("[OHCA] Shock confirmed");
             } else {
                 showShockArmedPrompt   = true;
@@ -880,7 +1185,8 @@ void onLongPress(uint8_t btnIdx) {
         if (globalState == GLOBAL_OHCA && ohcaSubState == SUBSTATE_NONE &&
             isOhcaInProgress(ohcaState)) {
             dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_LONG_3S, 0);
-            endCheckCursor = END_CHECK_CURSOR_CANCEL;
+            endCheckCursor   = END_CHECK_CURSOR_CANCEL;
+            endConfirmShown  = false;  // A7：reset 二次確認對話旗標
             stopBeep();
             Serial.println("[OHCA] enter END_CHECK");
             return;
@@ -1169,14 +1475,14 @@ void triggerOledFlash(uint16_t durationMs) {
     oledInverted          = true;
     oledInvertStartMs     = millis();
     oledInvertDurationMs  = durationMs;
-    display.invertDisplay(true);
+    tft.invertDisplay(true);
 }
 
 void updateOledFlashMachine() {
     if (!oledInverted) return;
     if (millis() - oledInvertStartMs >= oledInvertDurationMs) {
         oledInverted = false;
-        display.invertDisplay(false);
+        tft.invertDisplay(false);
     }
 }
 
@@ -1220,21 +1526,132 @@ void applyOhcaOutput(const ohca_output_t& out) {
 // 顯示繪製
 // ============================================================
 
+/**
+ * 顯示狀態快照：updateDisplay 每次比對與上次的差異，無變化則跳過全螢幕重畫。
+ * TFT 沒有 framebuffer，每次 clearDisplay+redraw 都直寫 76,800 像素到 SPI bus，
+ * 視覺上會看到掃描線。snapshot 比對只有當顯示內容真正改變時才重繪 → 解決閃爍。
+ *
+ * 涵蓋會影響顯示的所有狀態：global/ohca state、cursor、倒數秒數、vent 拍點、
+ * armed prompts、各種 overlay flag。
+ */
+struct DisplaySnapshot {
+    uint8_t  globalState;
+    uint8_t  ohcaState;
+    uint8_t  ohcaSubState;
+    uint8_t  mainMenuCursor;
+    uint8_t  backfillCursor;     /**< 子選單 cursor（QuickMenu/Backfill/Drug 共用同一變數 backfillCursor） */
+    uint32_t countdownSec;       /**< OHCA 倒數/超時當前顯示秒數（per-second granularity） */
+    uint8_t  ventBeat;           /**< 6sec 通氣節奏目前秒（0-5） */
+    uint8_t  ventVolume;
+    bool     ventPaused;
+    uint16_t flags;              /**< bit-packed prompt/overlay 狀態（擴成 uint16 容納 bit 8+） */
+};
+
+static DisplaySnapshot lastDisplaySnapshot = {};  // 全 0 初始 → 首次 updateDisplay 必觸發重繪
+
+/** 當前顯示狀態 → DisplaySnapshot。 */
+static DisplaySnapshot captureDisplaySnapshot() {
+    DisplaySnapshot s = {};
+    s.globalState     = (uint8_t)globalState;
+    s.ohcaState       = (uint8_t)ohcaState;
+    s.ohcaSubState    = (uint8_t)ohcaSubState;
+    s.mainMenuCursor  = mainMenuCursor;
+    s.backfillCursor  = backfillCursor;
+
+    if (ohcaLastEpiMs != 0) {
+        const uint32_t since = millis() - ohcaLastEpiMs;
+        s.countdownSec = (since < EPI_CYCLE_MS)
+                       ? (EPI_CYCLE_MS - since) / 1000
+                       : (since - EPI_CYCLE_MS) / 1000;
+    }
+    if (ventStartMs != 0 && !ventPaused) {
+        const uint32_t since = millis() - ventStartMs;
+        s.ventBeat = (uint8_t)computeVentBeat(since);
+    }
+    s.ventVolume = ventVolume;
+    s.ventPaused = ventPaused;
+
+    if (showEpiArmedPrompt)     s.flags |= 0x01;
+    if (showShockArmedPrompt)   s.flags |= 0x02;
+    if (showAmioArmedPrompt)    s.flags |= 0x04;
+    if (ohcaVentOverlayEnabled) s.flags |= 0x08;
+    if (ventEndCheckShown)      s.flags |= 0x10;
+    if (alarmMuted)             s.flags |= 0x20;
+    if (ventBackHintShown)      s.flags |= 0x40;
+    if (endConfirmShown)        s.flags |= 0x100;  // A7：bit 8
+    if (flashState.active)      s.flags |= 0x200;  // Batch 2：flash overlay bit 9
+    if (ventPreShown)           s.flags |= 0x400;  // A8：VENT_PRE bit 10
+
+    // ALARMING flash phase：bit 進 snapshot 讓 dedupe 在 ALARMING 期間每半週期觸發一次重繪
+    // （demo flashRed 0.6s 全週期 → OHCA_FLASH_HALF_MS 半週期）
+    const bool alarmingFlashPhase = (globalState == GLOBAL_OHCA)
+                                 && (ohcaState == OHCA_STATE_ALARMING)
+                                 && (((millis() / OHCA_FLASH_HALF_MS) & 1) != 0);
+    if (alarmingFlashPhase) s.flags |= 0x80;
+    return s;
+}
+
 void updateDisplay() {
+    // STEP 00: snapshot 去重 — 顯示狀態無變化即跳過，避免無謂的全螢幕重畫造成掃描線閃爍。
+    DisplaySnapshot now = captureDisplaySnapshot();
+    if (memcmp(&now, &lastDisplaySnapshot, sizeof(DisplaySnapshot)) == 0) {
+        return;
+    }
+
+    // STEP 01: partial update — 倒數每秒只 tick 一格時，整片 fillScreen 會出掃描線閃爍。
+    // 偵測「在 OHCA 倒數同 state 內，僅 countdownSec 改變」→ 只重繪時間區塊，不動 badge/label/counter。
+    // 排除 ALARMING（半週期閃 phase 跟著變，必須走 full path 重畫整片紅 bg）。
+    // 排除 modal overlay（confirm dialog/flash）— partial 不會重畫 overlay，會被時間區塊 fillRect 蓋掉
+    constexpr uint16_t MODAL_FLAGS_MASK = 0x01    // showEpiArmedPrompt
+                                        | 0x02    // showShockArmedPrompt
+                                        | 0x04    // showAmioArmedPrompt
+                                        | 0x100   // endConfirmShown
+                                        | 0x200;  // flashState.active
+    const bool inCountdownGroup = (now.globalState == GLOBAL_OHCA)
+                               && (now.ohcaState == OHCA_STATE_COUNTDOWN
+                                   || now.ohcaState == OHCA_STATE_WARNING
+                                   || now.ohcaState == OHCA_STATE_OVERTIME)
+                               && (now.ohcaSubState == 0)
+                               && ((now.flags & MODAL_FLAGS_MASK) == 0);
+    const bool sameStateAsLast = (now.globalState     == lastDisplaySnapshot.globalState)
+                              && (now.ohcaState       == lastDisplaySnapshot.ohcaState)
+                              && (now.ohcaSubState    == lastDisplaySnapshot.ohcaSubState)
+                              && (now.mainMenuCursor  == lastDisplaySnapshot.mainMenuCursor)
+                              && (now.backfillCursor  == lastDisplaySnapshot.backfillCursor)
+                              && (now.ventBeat        == lastDisplaySnapshot.ventBeat)
+                              && (now.ventVolume      == lastDisplaySnapshot.ventVolume)
+                              && (now.ventPaused      == lastDisplaySnapshot.ventPaused)
+                              && (now.flags           == lastDisplaySnapshot.flags);
+    if (inCountdownGroup
+        && sameStateAsLast
+        && (now.countdownSec != lastDisplaySnapshot.countdownSec)) {
+        drawOhcaCountdownTimeOnly(now.ohcaState);
+        // LGFX DMA pushSprite 整片 ~4ms @80MHz；sub-region push 雖更短，
+        // 但 DMA 整片視覺已近瞬完成，留簡化邏輯
+        display.pushSprite(0, 0);
+        lastDisplaySnapshot = now;
+        return;
+    }
+
+    Serial.printf("[REDRAW] gs=%u os=%u sub=%u cur=%u cdSec=%lu vBeat=%u flags=0x%04x\n",
+                  now.globalState, now.ohcaState, now.ohcaSubState, now.mainMenuCursor,
+                  (unsigned long)now.countdownSec, now.ventBeat, now.flags);
+    lastDisplaySnapshot = now;
+
     display.clearDisplay();
 
     if (globalState == GLOBAL_MAIN_MENU) {
         drawMainMenu();
     } else if (globalState == GLOBAL_OHCA) {
         // Phase B: sub-state 子流程畫面優先
-        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.display(); return; }
-        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); display.display(); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); display.display(); return; }
-        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); display.display(); return; }
-        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        display.display(); return; }
+        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        display.pushSprite(0, 0); return; }
 
         switch (ohcaState) {
             case OHCA_STATE_START_FLASH:
@@ -1243,36 +1660,30 @@ void updateDisplay() {
             case OHCA_STATE_WAIT_FIRST_EPI:
                 drawOhcaWaitFirstEpi();
                 break;
-            case OHCA_STATE_COUNTDOWN: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
-                drawOhcaCountdownCommon("EPI Countdown", remain, false);
-                break;
-            }
-            case OHCA_STATE_WARNING: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
-                drawOhcaCountdownCommon("Prepare EPI", remain, false);
-                break;
-            }
-            case OHCA_STATE_ALARMING: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t past = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
-                drawOhcaCountdownCommon("GIVE EPI!", past, true);
-                break;
-            }
+            case OHCA_STATE_COUNTDOWN:
+            case OHCA_STATE_WARNING:
+            case OHCA_STATE_ALARMING:
             case OHCA_STATE_OVERTIME: {
-                uint32_t now = millis();
-                uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-                uint32_t past = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
-                drawOhcaCountdownCommon("OVERTIME", past, true);
+                const uint32_t now    = millis();
+                const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                const uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
+                const uint32_t past   = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+                // ALARMING 閃爍開關直接從 snapshot 讀，避免在 render 內二次取樣 millis()
+                const bool alarmingFlashOn = (lastDisplaySnapshot.flags & 0x80) != 0;
+                if (ohcaState == OHCA_STATE_COUNTDOWN) {
+                    drawOhcaCountdownCommon(remain, COLOR_TEXT_PRIMARY, "下次給藥", false);
+                } else if (ohcaState == OHCA_STATE_WARNING) {
+                    drawOhcaCountdownCommon(remain, COLOR_ACCENT_WARN,  "請準備給藥", false);
+                } else if (ohcaState == OHCA_STATE_ALARMING) {
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "請給藥",     alarmingFlashOn);
+                } else {
+                    drawOhcaCountdownCommon(past,   COLOR_ACCENT_ALERT, "請給藥",   false);
+                }
                 break;
             }
             case OHCA_STATE_END_CHECK:
-                drawOhcaEndCheck();
+                if (endConfirmShown) drawOhcaEndConfirmDialog();
+                else                  drawOhcaEndCheck();
                 break;
             case OHCA_STATE_LOCKED:
                 drawOhcaLocked();
@@ -1293,145 +1704,420 @@ void updateDisplay() {
             drawOhcaVentOverlay(/*y_top*/ 44);
         }
 
-        // overlay：兩段確認 armed 提示
-        if (showEpiArmedPrompt) drawTwoStepArmedOverlay("EPI? press again");
-        else if (showShockArmedPrompt) drawTwoStepArmedOverlay("Shock? press again");
+        // A1：兩段確認改用全螢幕對話（fillScreen 覆蓋背景，對齊 demo OHCA_CONFIRM）
+        if (showEpiArmedPrompt)        drawOhcaConfirmDialog(EVT_EPI_LOCAL);
+        else if (showShockArmedPrompt) drawOhcaConfirmDialog(EVT_SHOCK_LOCAL);
 
     } else if (globalState == GLOBAL_VENT) {
-        if (ventEndCheckShown) drawVentEndCheck();
-        else                    drawVentStandalone();
+        if (ventPreShown)            drawVentPre();
+        else if (ventEndCheckShown)  drawVentEndCheck();
+        else                          drawVentStandalone();
     } else if (globalState == GLOBAL_TRAINING_PLACEHOLDER) {
-        drawPlaceholder("Training", "Phase D");
+        drawPlaceholder("訓練模式", "D 階段");
     } else if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
-        drawPlaceholder("History", "Phase E");
+        drawPlaceholder("歷史紀錄", "E 階段");
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
-        drawPlaceholder("Settings", "Phase G");
+        drawPlaceholder("系統設定", "G 階段");
     }
 
-    display.display();
+    // Flash overlay 最上層覆蓋（demo flash() 對齊 — 蓋掉所有底下畫面）
+    if (flashState.active) {
+        drawFlashOverlay();
+    }
+
+    // STEP 99: pushSprite DMA 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
+    display.pushSprite(0, 0);
 }
 
 void drawMainMenu() {
-    display.setTextSize(1);
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 0);
-    display.println("EMS DoseSync Pro");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // 螢幕已由 updateDisplay() 的 clearDisplay() 清為黑底，這裡不重複 fillScreen 避免雙閃。
 
+    // STEP 01: 上方標題列 — "EMS DOSESYNC PRO" 英文用 default font size 2
+    display.setFont(&fonts::Font0);
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setCursor(16, 12);
+    display.print("EMS DOSESYNC PRO");
+
+    // STEP 02: 標題下分隔線 y=36，灰色橫貫
+    display.drawLine(16, 36, SCREEN_W - 16, 36, COLOR_TEXT_DIM);
+
+    // STEP 03: 5 個選單項用 vlw 24px size 1.1（PM 反饋放大），y=58 起每 36px 一行
+    //   - cursor 項：白底黑字（demo cursor highlight）
+    //   - 非 cursor：黑底白字
+    constexpr int16_t MENU_Y_START   = 58;
+    constexpr int16_t MENU_ROW_H     = 36;
+    constexpr int16_t MENU_TEXT_PAD  = 24;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 4;  // 26px 字在 36px row 內垂直置中
+
+    useZhFont();
+    display.setTextSize(1.1f, 1.1f);
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
-        int y = 14 + i * 10;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == mainMenuCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 10, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            // STEP 03.01: cursor highlight — 白底全寬橫條，黑字
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(MAIN_MENU_LABELS[i]);
     }
 }
 
+/** 共用：水平置中文字（top_center datum，y = top 對齊） */
+static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
+    display.setTextColor(color);
+    display.setTextDatum(textdatum_t::top_center);
+    display.drawString(text, SCREEN_W / 2, y);
+}
+
 void drawOhcaStartFlash() {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(2);
-    display.setCursor(8, 24);
-    display.println("Start OHCA");
+    // OHCA 案件啟動 1 秒提示：對齊 demo flash('案件開始', 'OHCA')
+    // PM 反饋全部 1.5x：主 size 1.5→2.25（~54px）、副 Font0 size 3 → vlw 1.5（~36px）
+    useZhFont();
+
+    // 主：「案件開始」綠色（vlw size 2.25 ≈ 54px）
+    display.setTextSize(2.25f, 2.25f);
+    display.setTextColor(COLOR_ACCENT_OK);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString("案件開始", SCREEN_W / 2, SCREEN_H / 2 - 30);
+
+    // 副：「OHCA」灰色（vlw size 1.5 ≈ 36px，與 OHCA badge 同樣式）
+    display.setTextSize(1.5f, 1.5f);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.drawString("OHCA", SCREEN_W / 2, SCREEN_H / 2 + 36);
 }
 
 void drawOhcaWaitFirstEpi() {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("OHCA Case");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
-    display.setTextSize(2);
-    display.setCursor(8, 24);
-    display.println("Press EPI");
-    display.setTextSize(1);
-    display.setCursor(8, 50);
-    display.println("(2-step confirm)");
-}
+    // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout（PM 反饋全部 1.5x）
+    // 前置：caller 已 clearDisplay 為黑底
+    // Layout（vlw 24px 為基準，row 高 ≈ font_size × scale）：
+    //   - 頂部 OHCA badge：top y=8, size 1.5 → ~36px tall, bottom y≈44
+    //   - 中央大字「待本機 EPI」：middle-center datum, y=120, size 2.25 → ~54px tall, top≈93 / bottom≈147
+    //   - 底部 EPI/電擊 計數：top y=200, size 1.5 → ~36px tall, bottom y≈236（240 上限內）
+    useZhFont();
 
-void drawOhcaCountdownCommon(const char* label, uint32_t time_ms, bool show_overtime) {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print(label);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // STEP 01: 頂部 OHCA 綠 badge（vlw size 1.5 ≈ 36px）
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("OHCA", OHCA_CHINESE_BADGE_TOP_Y, COLOR_ACCENT_OK);
 
-    // 時間 mm:ss 大字顯示
-    uint32_t total_sec = time_ms / 1000;
-    uint32_t mm = total_sec / 60;
-    uint32_t ss = total_sec % 60;
+    // STEP 02: 中央大字「待本機 EPI」（vlw size 2.25 ≈ 54px）
+    // demo OHCA 螢幕無副標，故移除「(按兩次 EPI 確認)」hint
+    display.setTextSize(2.25f, 2.25f);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString("待本機 EPI", SCREEN_W / 2, SCREEN_H / 2);
 
-    display.setTextSize(3);
-    display.setCursor(12, 22);
-    if (mm < 10) display.print("0");
-    display.print(mm);
-    display.print(":");
-    if (ss < 10) display.print("0");
-    display.print(ss);
-
-    // 事件數提示（含補登 count）
-    display.setTextSize(1);
-    display.setCursor(0, 54);
-    display.print("EPI:");
+    // STEP 03: 底部 EPI/電擊 計數（vlw size 1.5 ≈ 36px）
     uint16_t epiN = 0, shockN = 0;
     for (uint16_t i = 0; i < eventCount; i++) {
         if      (isEpiEvent(&events[i]))   epiN   += events[i].count;
         else if (isShockEvent(&events[i])) shockN += events[i].count;
     }
-    display.print(epiN);
-    display.print("  Shk:");
-    display.print(shockN);
-    if (show_overtime) {
-        display.setCursor(96, 54);
-        display.print("OVT");
+    char counter[32];
+    snprintf(counter, sizeof(counter), "EPI %u｜電擊 %u", epiN, shockN);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(counter, OHCA_WAIT_COUNTER_Y, COLOR_TEXT_DIM);
+}
+
+/**
+ * OHCA 倒數共用畫面（對齊 docs/demo/index.html OHCA 第二螢幕）。
+ *
+ * 320×240 layout：
+ *   - 頂部 mode badge "OHCA"（綠），baseline y = OHCA_BADGE_Y
+ *   - 中央大時間 mm:ss（FreeMonoBold24pt7b），顏色由 caller 指定
+ *   - 時間下方標籤（default font size 2，灰色）
+ *   - 底部 "EPI N  Shock N"（default font size 1，dim 灰）
+ *   - flashOn=true 時整片背景填 COLOR_FLASH_VENT；flashOn 由 snapshot phase bit 決定（單一真相）
+ *
+ * 前置條件：caller（updateDisplay）已執行 display.clearDisplay() 把畫面填黑。
+ */
+void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* label, bool flashOn) {
+    // STEP 01: 背景 — flashOn 時填深紅，否則保持 caller clear 的黑底
+    if (flashOn) {
+        display.fillScreen(COLOR_FLASH_VENT);
     }
+
+    // STEP 02: 頂部 mode badge "OHCA"（vlw size 1.5 ≈ 36px，對齊 WaitFirstEpi）
+    useZhFont();
+    display.setTextSize(1.5f, 1.5f);
+    display.setTextColor(COLOR_ACCENT_OK);
+    display.setTextDatum(textdatum_t::top_center);
+    display.drawString("OHCA", SCREEN_W / 2, OHCA_CHINESE_BADGE_TOP_Y);
+
+    // STEP 03: 中央大時間（FreeMonoBold24pt7b，middle-center datum 自動置中）
+    char timeStr[8];
+    const uint32_t total_sec = time_ms / 1000;
+    snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu",
+             (unsigned long)(total_sec / 60),
+             (unsigned long)(total_sec % 60));
+
+    display.setFont(&fonts::FreeMonoBold24pt7b);
+    display.setTextSize(2);  // 96px 高（PM 反饋大時間放大；middle_center 自動居中）
+    display.setTextColor(timeColor);
+    display.setTextDatum(textdatum_t::middle_center);
+    const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
+    display.drawString(timeStr, SCREEN_W / 2, time_y);
+
+    // STEP 04: 時間下方標籤「下次給藥」等（vlw size 1.8 ≈ 43px）
+    //   時間 bbox bottom ≈ 148、counter row top ≈ 200，
+    //   理論幾何中點為 174；y=165 上偏 9px 讓 descender 與 counter 留間距。
+    useZhFont();
+    display.setTextSize(1.8f, 1.8f);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(label, SCREEN_W / 2, OHCA_LABEL_Y);
+
+    // STEP 05: 累加 EPI / Shock 事件次數（含補登 count）
+    uint16_t epiN = 0, shockN = 0;
+    for (uint16_t i = 0; i < eventCount; i++) {
+        if      (isEpiEvent(&events[i]))   epiN   += events[i].count;
+        else if (isShockEvent(&events[i])) shockN += events[i].count;
+    }
+
+    // STEP 06: 底部計數行（vlw size 1.5 ≈ 36px，bottom-center y=236 留 4px 邊界）
+    char counter[32];     // UTF-8「電擊」6 byte，buf 從 24 加大避免飽和
+    snprintf(counter, sizeof(counter), "EPI %u｜電擊 %u", epiN, shockN);
+    display.setTextSize(1.5f, 1.5f);
+    display.setTextColor(COLOR_TEXT_DIM);
+    display.setTextDatum(textdatum_t::bottom_center);
+    display.drawString(counter, SCREEN_W / 2, SCREEN_H - 4);
+}
+
+/**
+ * OHCA 倒數 partial update — 每秒 tick 只重畫時間區塊，badge / label / counter 不動。
+ *
+ * 解閃爍：避免每秒 fillScreen 整片 320×240 → 掃描線可見。只 fillRect 時間 bbox。
+ * 限定條件由 caller 確保（同 state、僅 countdownSec 變化、非 ALARMING）。
+ */
+static void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
+    const uint32_t now    = millis();
+    const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+    const uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
+    const uint32_t past   = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+
+    uint32_t time_ms;
+    uint16_t timeColor;
+    if (ohcaStateForTime == OHCA_STATE_COUNTDOWN) {
+        time_ms = remain; timeColor = COLOR_TEXT_PRIMARY;
+    } else if (ohcaStateForTime == OHCA_STATE_WARNING) {
+        time_ms = remain; timeColor = COLOR_ACCENT_WARN;
+    } else {
+        time_ms = past;   timeColor = COLOR_ACCENT_ALERT;  // OVERTIME
+    }
+
+    char timeStr[8];
+    const uint32_t total_sec = time_ms / 1000;
+    snprintf(timeStr, sizeof(timeStr), "%02lu:%02lu",
+             (unsigned long)(total_sec / 60),
+             (unsigned long)(total_sec % 60));
+
+    // 先把 partial push 區域的 canvas 全黑（解 advance gap 殘留 — glyph bbox 之外
+    // 的像素 setTextColor(fg,bg) 不會清，每秒寫一次會累積成白塊）
+    display.fillRect(OHCA_TIME_PUSH_X, OHCA_TIME_PUSH_Y,
+                     OHCA_TIME_PUSH_W, OHCA_TIME_PUSH_H, COLOR_BG);
+
+    display.setFont(&fonts::FreeMonoBold24pt7b);
+    display.setTextSize(2);  // 對齊 drawOhcaCountdownCommon STEP 03
+    display.setTextColor(timeColor);
+    display.setTextDatum(textdatum_t::middle_center);
+    const int16_t time_y = SCREEN_H / 2 - OHCA_TIME_VISUAL_UP;
+    display.drawString(timeStr, SCREEN_W / 2, time_y);
+
+    // 也重畫 label — partial bbox 涵蓋 label 上半，每秒被 fillRect 清掉會看起來頂部被切掉
+    const char* label =
+        (ohcaStateForTime == OHCA_STATE_COUNTDOWN) ? "下次給藥" :
+        (ohcaStateForTime == OHCA_STATE_WARNING)   ? "請準備給藥" :
+                                                     "請給藥";
+    useZhFont();
+    display.setTextSize(1.8f, 1.8f);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(label, SCREEN_W / 2, OHCA_LABEL_Y);
 }
 
 void drawOhcaEndCheck() {
-    display.setTextColor(SH110X_WHITE);
+    // 標題（efontTW_24 size 1.2 ≈ 29px）
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("結束前檢查", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
+
+    // 三個選項：完成並結束案件 / 前往補登 / 返回案件（demo OHCA_END_CHECK）
+    const int16_t y0     = 70;
+    const int16_t row_h  = 40;
+
+    auto drawOption = [&](const char* text, int16_t y, bool selected) {
+        if (selected) {
+            display.fillRect(20, y, SCREEN_W - 40, row_h, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
+        } else {
+            display.setTextColor(COLOR_TEXT_PRIMARY);
+        }
+        useZhFont();
+        display.setTextSize(1.2f, 1.2f);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString(text, SCREEN_W / 2, y + row_h / 2);
+    };
+
+    drawOption("完成並結束案件", y0,            endCheckCursor == END_CHECK_CURSOR_CONFIRM);
+    drawOption("前往補登",       y0 + row_h,    endCheckCursor == END_CHECK_CURSOR_BACKFILL);
+    drawOption("返回案件",       y0 + row_h*2,  endCheckCursor == END_CHECK_CURSOR_CANCEL);
+
+    // 底部 hint
+    useZhFont();
     display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("End Check");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
-    display.setCursor(4, 18);
-    display.println("Confirm end of case?");
+    drawCenteredText("上下選擇　主鍵確認",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+}
 
-    // 兩個選項
-    int y_confirm = 36, y_cancel = 50;
-    if (endCheckCursor == END_CHECK_CURSOR_CONFIRM) {
-        display.fillRect(0, y_confirm - 1, OLED_WIDTH, 10, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
-    }
-    display.setCursor(4, y_confirm);
-    display.print("> Confirm end");
+/**
+ * 觸發 flash 過場提示（對齊 demo flash() helper）。
+ * @param title         主標題（非 NULL）
+ * @param subtitle      副標題（NULL 或 "" 略過）
+ * @param duration_ms   顯示毫秒（典型 FLASH_DEFAULT_MS=1200）
+ * @param titleColor    主標題色（典型 COLOR_ACCENT_OK / COLOR_TEXT_PRIMARY）
+ * @param titleSize     主標 vlw multiplier（預設 FLASH_TITLE_SIZE_DEFAULT=2.25；
+ *                      ~7-char 以上易超寬，傳 FLASH_TITLE_SIZE_LONG=1.9）
+ * @param subtitleSize  副標 vlw multiplier（預設 FLASH_SUBTITLE_SIZE_DEFAULT=1.5；
+ *                      ~10-char 以上易超寬，傳 FLASH_SUBTITLE_SIZE_LONG=1.2）
+ */
+void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor,
+                  float titleSize, float subtitleSize) {
+    // STEP 01: 寫入 lifecycle 與 visual 欄位（render 由 drawFlashOverlay 讀取）
+    flashState.active       = true;
+    flashState.startMs      = millis();
+    flashState.durationMs   = duration_ms;
+    flashState.titleColor   = titleColor;
+    flashState.titleSize    = titleSize;
+    flashState.subtitleSize = subtitleSize;
 
-    display.setTextColor(SH110X_WHITE);
-    if (endCheckCursor == END_CHECK_CURSOR_CANCEL) {
-        display.fillRect(0, y_cancel - 1, OLED_WIDTH, 10, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
+    // STEP 02: 文字欄位 bounded copy（NULL 視為 ""，超出 buf 截斷不 overflow）
+    strncpy(flashState.title,    title    ? title    : "", sizeof(flashState.title)    - 1);
+    strncpy(flashState.subtitle, subtitle ? subtitle : "", sizeof(flashState.subtitle) - 1);
+    flashState.title[sizeof(flashState.title)       - 1] = '\0';
+    flashState.subtitle[sizeof(flashState.subtitle) - 1] = '\0';
+
+    // STEP 03: serial trace（debug 用，可看到 flash 觸發順序）
+    Serial.printf("[FLASH] %s | %s\n", flashState.title, flashState.subtitle);
+}
+
+/** Flash overlay render — 全螢幕黑底（覆蓋背景），主副標居中 */
+void drawFlashOverlay() {
+    if (flashState.title[0] == '\0') {
+        return;  // 空 title 不繪 → 不要黑屏 duration_ms 卻什麼都沒顯示
     }
-    display.setCursor(4, y_cancel);
-    display.print("> Back to case");
+    display.fillScreen(COLOR_BG);
+    useZhFont();
+    const bool hasSub = (flashState.subtitle[0] != '\0');
+    display.setTextDatum(textdatum_t::middle_center);
+
+    if (hasSub) {
+        display.setTextSize(flashState.titleSize, flashState.titleSize);
+        display.setTextColor(flashState.titleColor);
+        display.drawString(flashState.title, SCREEN_W / 2, SCREEN_H / 2 - 30);
+        display.setTextSize(flashState.subtitleSize, flashState.subtitleSize);
+        display.setTextColor(COLOR_TEXT_MUTED);
+        display.drawString(flashState.subtitle, SCREEN_W / 2, SCREEN_H / 2 + 36);
+    } else {
+        display.setTextSize(flashState.titleSize, flashState.titleSize);
+        display.setTextColor(flashState.titleColor);
+        display.drawString(flashState.title, SCREEN_W / 2, SCREEN_H / 2);
+    }
+}
+
+/** 對話框共用框架：8/8 margin → 304×224 大框（避免文字觸碰邊框） */
+static void drawDialogFrame(uint16_t borderColor) {
+    display.fillScreen(COLOR_BG);
+    const int16_t margin = 8;
+    const int16_t x = margin;
+    const int16_t y = margin;
+    const int16_t w = SCREEN_W - 2 * margin;   // 304
+    const int16_t h = SCREEN_H - 2 * margin;   // 224
+    display.drawRect(x,     y,     w,     h,     borderColor);
+    display.drawRect(x + 1, y + 1, w - 2, h - 2, borderColor);
+}
+
+/**
+ * A7：OHCA_END_CONFIRM 二次確認對話（END_CHECK 選「完成並結束」後彈出）
+ * 對齊 demo OHCA_END_CONFIRM render
+ */
+void drawOhcaEndConfirmDialog() {
+    drawDialogFrame(COLOR_ACCENT_ALERT);
+
+    // 標題（紅色，efontTW_24 × 1.5 ≈ 36px）
+    useZhFont();
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("確認結束案件？", 36, COLOR_ACCENT_ALERT);
+
+    // 內文（efontTW_24 × 1.2 ≈ 29px）
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("結束後不可修改", 116, COLOR_TEXT_MUTED);
+
+    // 底部分隔線（在 hint 上方）
+    display.drawLine(20, 184, SCREEN_W - 20, 184, COLOR_TEXT_DIM);
+
+    // hint
+    display.setTextSize(1);
+    drawCenteredText("主鍵確認　返回取消", 196, COLOR_TEXT_DIM);
+}
+
+/**
+ * A1：OHCA 兩段確認全螢幕對話（取代 44px bar overlay）
+ * 對齊 demo OHCA_CONFIRM render
+ *
+ * @param evType EVT_EPI_LOCAL / EVT_SHOCK_LOCAL（Amio 走 SUBSTATE_AMIO_CONFIRM）
+ */
+void drawOhcaConfirmDialog(uint8_t evType) {
+    // 框架（demo overlay rgba(0,0,0,0.92) + 2px amber）
+    drawDialogFrame(COLOR_ACCENT_WARN);
+
+    // 標題（efontTW_24 × 1.5 ≈ 36px）
+    const char* title = (evType == EVT_EPI_LOCAL)   ? "確認已給 EPI？"
+                      : (evType == EVT_SHOCK_LOCAL) ? "確認已電擊？"
+                      :                                "確認操作？";
+    useZhFont();
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(title, 28, COLOR_TEXT_PRIMARY);
+
+    // 內文兩行（efontTW_24 × 1.2 ≈ 29px）
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("確認後將建立時間戳", 92, COLOR_TEXT_MUTED);
+    const char* body2 = (evType == EVT_EPI_LOCAL) ? "並重啟 4 分鐘倒數" : "不影響 EPI 倒數";
+    drawCenteredText(body2, 128, COLOR_TEXT_MUTED);
+
+    // 底部分隔線
+    display.drawLine(20, 184, SCREEN_W - 20, 184, COLOR_TEXT_DIM);
+
+    // hint
+    display.setTextSize(1);
+    const char* hint = (evType == EVT_EPI_LOCAL)   ? "再按 EPI 鍵確認　返回取消"
+                     : (evType == EVT_SHOCK_LOCAL) ? "再按電擊鍵確認　返回取消"
+                     :                                "主鍵確認　返回取消";
+    drawCenteredText(hint, 196, COLOR_TEXT_DIM);
 }
 
 void drawOhcaLocked() {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("LOCKED");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    useZhFont();
+
+    // 標題：紅「已鎖定」
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("已鎖定", OHCA_BADGE_Y, COLOR_ACCENT_ALERT);
+
+    // 中央大字「案件結束」（size 2 ≈ 48px）
     display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.println("Case End");
+    drawCenteredText("案件結束", SCREEN_H / 2 - 24, COLOR_TEXT_PRIMARY);
+
+    // 事件總數
+    char buf[32];
+    snprintf(buf, sizeof(buf), "事件 %u 筆", eventCount);
     display.setTextSize(1);
-    display.setCursor(0, 50);
-    display.print("Events: ");
-    display.print(eventCount);
-    display.setCursor(0, 58);
-    display.print("[Main] -> Summary");
+    drawCenteredText(buf, SCREEN_H / 2 + 40, COLOR_TEXT_MUTED);
+
+    // 底部 hint
+    drawCenteredText("主鍵　總覽",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawOhcaSummary() {
@@ -1439,62 +2125,64 @@ void drawOhcaSummary() {
     ohca_case_summary_t s;
     caseSummary_build(&s, events, eventCount, /*case_start*/ 0, /*case_end*/ 0);
 
-    display.setTextColor(SH110X_WHITE);
+    useZhFont();
+
+    // 標題
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("案件總覽", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    char buf[64];
+
+    // EPI 區塊
+    snprintf(buf, sizeof(buf), "EPI 共 %u", s.epi_total);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText(buf, 60, COLOR_TEXT_PRIMARY);
+    snprintf(buf, sizeof(buf), "本機 %u｜接手前 %u｜純補登 %u",
+             s.epi_local, s.epi_pre_handover, s.epi_pure_supp);
     display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Summary | OHCA");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    drawCenteredText(buf, 92, COLOR_TEXT_MUTED);
 
-    display.setCursor(0, 14);
-    display.print("EPI Total: ");
-    display.print(s.epi_total);
-    display.setCursor(0, 24);
-    display.print(" L:"); display.print(s.epi_local);
-    display.print(" PH:"); display.print(s.epi_pre_handover);
-    display.print(" PS:"); display.print(s.epi_pure_supp);
+    // 電擊 區塊
+    snprintf(buf, sizeof(buf), "電擊 共 %u", s.shock_total);
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText(buf, 122, COLOR_TEXT_PRIMARY);
+    snprintf(buf, sizeof(buf), "本機 %u｜接手前 %u｜純補登 %u",
+             s.shock_local, s.shock_pre_handover, s.shock_pure_supp);
+    display.setTextSize(1);
+    drawCenteredText(buf, 154, COLOR_TEXT_MUTED);
 
-    display.setCursor(0, 34);
-    display.print("Shock Total: ");
-    display.print(s.shock_total);
-    display.setCursor(0, 44);
-    display.print(" L:"); display.print(s.shock_local);
-    display.print(" PH:"); display.print(s.shock_pre_handover);
-    display.print(" PS:"); display.print(s.shock_pure_supp);
+    // Amio
+    snprintf(buf, sizeof(buf), "Amiodarone %u", s.amio_total);
+    display.setTextSize(1);
+    drawCenteredText(buf, 184, COLOR_TEXT_MUTED);
 
-    display.setCursor(72, 14);
-    display.print("Amio:");
-    display.print(s.amio_total);
-
-    display.setCursor(0, 56);
-    display.print("[Up]Time [Bk]Menu");
-
-    display.setCursor(0, 56);
-    display.print("[Back] -> Menu");
+    // 底部 hint
+    drawCenteredText("返回　主功能表",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawTwoStepArmedOverlay(const char* what) {
-    // 在底部畫一條反色提示條
-    display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
-    display.setTextColor(SH110X_BLACK);
-    display.setTextSize(1);
-    display.setCursor(2, OLED_HEIGHT - 10);
-    display.print(what);
+    // 底部全寬反色提示條（琥珀警示色，efontTW_24 × 1.2 ≈ 29px 黑字）
+    display.fillRect(0, SCREEN_H - DIALOG_BAR_H, SCREEN_W, DIALOG_BAR_H, COLOR_ACCENT_WARN);
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    display.setTextColor(COLOR_BG);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(what, SCREEN_W / 2, SCREEN_H - DIALOG_BAR_H / 2);
 }
 
 void drawPlaceholder(const char* title, const char* phase) {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println(title);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText(title, OHCA_BADGE_Y, COLOR_TEXT_PRIMARY);
+
     display.setTextSize(2);
-    display.setCursor(0, 22);
-    display.print(phase);
+    drawCenteredText(phase, SCREEN_H / 2 - 40, COLOR_ACCENT_OK);
+
     display.setTextSize(1);
-    display.setCursor(0, 44);
-    display.println("Not implemented");
-    display.setCursor(0, 56);
-    display.println("[Back] -> Menu");
+    drawCenteredText("尚未實作", SCREEN_H / 2 + 24, COLOR_TEXT_MUTED);
+    drawCenteredText("返回　主功能表",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 // ============================================================
@@ -1503,182 +2191,192 @@ void drawPlaceholder(const char* title, const char* phase) {
 
 /** 藥物選單（V1 §9.2） */
 void drawDrugMenu() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Drug Menu");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // 標題
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("EPI / 藥物選單", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    const char* labels[2] = { "Backfill EPI", "Amiodarone" };
+    // 2 項目
+    const char* labels[2] = { "補登 EPI", "Amiodarone" };
+    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    useZhFont();
+    display.setTextSize(1);
     for (uint8_t i = 0; i < 2; i++) {
-        int y = 18 + i * 12;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
-        display.print("> ");
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(labels[i]);
     }
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 56);
-    display.println("[Back] cancel");
+
+    drawCenteredText("上下選擇　主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登類型選擇（接手前 / 純補登） */
 void drawBackfillType() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println(backfillCategory == BACKFILL_CAT_EPI ? "Backfill EPI"
-                                                         : "Backfill Shock");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    const char* header = (backfillCategory == BACKFILL_CAT_EPI) ? "補登 EPI" : "電擊補登";
+    drawCenteredText(header, 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    const char* labels[2] = { "Pre-handover", "Pure backfill" };
+    const char* labels[2];
+    if (backfillCategory == BACKFILL_CAT_EPI) {
+        labels[0] = "接手前 EPI"; labels[1] = "純補登 EPI";
+    } else {
+        labels[0] = "接手前電擊"; labels[1] = "純補登電擊";
+    }
+
+    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    useZhFont();
+    display.setTextSize(1);
     for (uint8_t i = 0; i < 2; i++) {
-        int y = 18 + i * 12;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
-        display.print("> ");
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(labels[i]);
     }
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 56);
-    display.println("[Back] cancel");
+
+    drawCenteredText("上下選擇　主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登次數選擇（V1 §9.6） */
 void drawBackfillCount() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
+    // 標題
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
     const char* typeLabel =
-        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "PreHandover EPI" :
-        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure Supp EPI"   :
-        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "PreHandover Shk" :
-                                                             "Pure Supp Shk";
-    display.println(typeLabel);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "純補登 EPI" :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "接手前電擊" :
+                                                             "純補登電擊";
+    drawCenteredText(typeLabel, 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    display.setCursor(0, 18);
-    display.print("Count: ");
+    // 範圍提示
     uint8_t maxN = suppCountMax(backfillSuppType);
-    display.print("(1~");
-    display.print(maxN);
-    display.print(")");
-
-    display.setTextSize(3);
-    display.setCursor(48, 30);
-    display.print(backfillCount);
-
+    char rangeBuf[32];
+    snprintf(rangeBuf, sizeof(rangeBuf), "次數（1~%u）", maxN);
     display.setTextSize(1);
-    display.setCursor(0, 56);
-    display.println("[Up/Dn] [Main]OK [Bk]");
+    drawCenteredText(rangeBuf, 78, COLOR_TEXT_MUTED);
+
+    // 大數字
+    char numBuf[6];
+    snprintf(numBuf, sizeof(numBuf), "%u", backfillCount);
+    display.setFont(&fonts::FreeMonoBold24pt7b);
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 8);
+
+    // 底部 hint
+    useZhFont();
+    display.setTextSize(1);
+    drawCenteredText("上下調整　主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登確認對話框（V1 §9.4） */
 void drawBackfillConfirm() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Confirm backfill?");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("確認補登？", 20, COLOR_ACCENT_WARN);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     const char* shortLabel =
-        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
-        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure-EPI"   :
-        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "Pre-Shk" :
-                                                             "Pure-Shk";
-
-    display.setTextSize(2);
-    display.setCursor(8, 16);
-    display.print(shortLabel);
-    display.print(" x");
-    display.print(backfillCount);
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "純補登 EPI" :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "接手前電擊" :
+                                                             "純補登電擊";
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%s ×%u", shortLabel, backfillCount);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(buf, 90, COLOR_TEXT_PRIMARY);
 
     display.setTextSize(1);
-    display.setCursor(0, 38);
-    display.println("Not undoable");
-    display.setCursor(0, 56);
-    display.println("[Main]OK [Bk]cancel");
+    drawCenteredText("成立後不可撤銷", 150, COLOR_TEXT_MUTED);
+
+    drawCenteredText("主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 補登成功提示（2s 後自動消失，V1 §9.5） */
 void drawBackfillSuccess() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Backfill OK");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("補登成功", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     const char* shortLabel =
-        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "Pre-EPI" :
-        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "Pure-EPI"   :
-        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "Pre-Shk" :
-                                                             "Pure-Shk";
-
-    display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.print(shortLabel);
-    display.print(" x");
-    display.print(backfillCount);
+        (backfillSuppType == SUPP_TYPE_EPI_PRE_HANDOVER)   ? "接手前 EPI" :
+        (backfillSuppType == SUPP_TYPE_EPI_PURE)           ? "純補登 EPI" :
+        (backfillSuppType == SUPP_TYPE_SHOCK_PRE_HANDOVER) ? "接手前電擊" :
+                                                             "純補登電擊";
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%s ×%u", shortLabel, backfillCount);
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText(buf, 90, COLOR_TEXT_PRIMARY);
 
     display.setTextSize(1);
-    display.setCursor(0, 56);
-    display.println("Recorded");
+    drawCenteredText("已紀錄", 150, COLOR_TEXT_MUTED);
 }
 
 /** Amiodarone 兩段確認 */
 void drawAmioConfirmPrompt() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Amiodarone");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
-
-    display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.println("Confirm?");
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("確認 Amiodarone？", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     display.setTextSize(1);
+    drawCenteredText("確認後將建立時間戳", 90, COLOR_TEXT_PRIMARY);
+    drawCenteredText("不影響 EPI 倒數",   124, COLOR_TEXT_MUTED);
+
     if (showAmioArmedPrompt) {
-        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
-        display.setCursor(2, OLED_HEIGHT - 10);
-        display.print("Press [Main] again");
+        // 底部琥珀 bar overlay：再按一次主鍵確認
+        display.fillRect(0, SCREEN_H - DIALOG_BAR_H, SCREEN_W, DIALOG_BAR_H, COLOR_ACCENT_WARN);
+        useZhFont();
+        display.setTextSize(1.2f, 1.2f);
+        display.setTextColor(COLOR_BG);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString("再按一次主鍵確認", SCREEN_W / 2, SCREEN_H - DIALOG_BAR_H / 2);
     } else {
-        display.setCursor(0, 56);
-        display.println("[Main]confirm [Bk]cancel");
+        drawCenteredText("主鍵確認　返回取消",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
     }
 }
 
 /** Timeline 子畫面（V1 §11.5） */
 void drawTimeline() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Timeline");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    // 標題
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("事件時間軸", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     if (eventCount == 0) {
-        display.setCursor(0, 24);
-        display.println("(no events)");
-        display.setCursor(0, 56);
-        display.println("[Back] -> Summary");
+        display.setTextSize(1);
+        drawCenteredText("（無事件）", SCREEN_H / 2 - 12, COLOR_TEXT_MUTED);
+        drawCenteredText("返回　總覽",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
         return;
     }
 
@@ -1686,43 +2384,54 @@ void drawTimeline() {
     static uint16_t idx[MAX_EVENTS];
     caseSummary_buildTimeline(idx, events, eventCount);
 
-    // 顯示最多 4 筆
+    // 顯示最多 5 筆，row_h=28
+    constexpr int16_t ROW_Y0  = 70;
+    constexpr int16_t ROW_H   = 28;
+    constexpr int16_t TIME_X  = 24;
+    constexpr int16_t LABEL_X = 110;
+
+    useZhFont();
+    display.setTextSize(1);
     uint16_t shown = 0;
-    for (uint16_t i = timelineScrollOffset; i < eventCount && shown < 4; i++, shown++) {
-        int y = 14 + shown * 10;
-        display.setCursor(0, y);
+    for (uint16_t i = timelineScrollOffset; i < eventCount && shown < 5; i++, shown++) {
+        const int16_t y = ROW_Y0 + shown * ROW_H;
         const ems_event_t& e = events[idx[i]];
 
-        // 時間欄：本機顯示 mm:ss；補登顯示「-」
-        if (isBackfillEvent(&e)) {
-            display.print("- ");
+        // 時間欄
+        char timeBuf[16];
+        const bool isSupp = isBackfillEvent(&e);
+        if (isSupp) {
+            snprintf(timeBuf, sizeof(timeBuf), "—");
+            display.setTextColor(COLOR_TEXT_DIM);
         } else {
-            uint32_t sec = e.elapsed_ms / 1000;
-            if (sec / 60 < 10) display.print("0");
-            display.print(sec / 60);
-            display.print(":");
-            if (sec % 60 < 10) display.print("0");
-            display.print(sec % 60);
-            display.print(" ");
+            const uint32_t sec = e.elapsed_ms / 1000;
+            snprintf(timeBuf, sizeof(timeBuf), "%02lu:%02lu",
+                     (unsigned long)(sec / 60), (unsigned long)(sec % 60));
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
+        display.setCursor(TIME_X, y);
+        display.print(timeBuf);
 
-        // 類型 + count（補登 ×N）
+        // 類型欄
         const char* lbl =
             e.type == EVT_EPI_LOCAL          ? "EPI" :
-            e.type == EVT_SHOCK_LOCAL        ? "Shk" :
-            e.type == EVT_AMIODARONE         ? "Amio" :
-            e.type == EVT_EPI_PRE_HANDOVER   ? "PreEPI" :
-            e.type == EVT_EPI_PURE_SUPP      ? "PurEPI" :
-            e.type == EVT_SHOCK_PRE_HANDOVER ? "PreShk" :
-            e.type == EVT_SHOCK_PURE_SUPP    ? "PurShk" : "?";
+            e.type == EVT_SHOCK_LOCAL        ? "電擊" :
+            e.type == EVT_AMIODARONE         ? "Amiodarone" :
+            e.type == EVT_EPI_PRE_HANDOVER   ? "接手前 EPI" :
+            e.type == EVT_EPI_PURE_SUPP      ? "純補登 EPI" :
+            e.type == EVT_SHOCK_PRE_HANDOVER ? "接手前電擊" :
+            e.type == EVT_SHOCK_PURE_SUPP    ? "純補登電擊" : "?";
+        display.setTextColor(isSupp ? COLOR_ACCENT_WARN : COLOR_TEXT_PRIMARY);
+        display.setCursor(LABEL_X, y);
         display.print(lbl);
         if (e.count > 1) {
-            display.print("x");
+            display.print(" ×");
             display.print(e.count);
         }
     }
-    display.setCursor(0, 56);
-    display.println("[Back] -> Summary");
+
+    drawCenteredText("返回　總覽",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 // ============================================================
@@ -1730,118 +2439,156 @@ void drawTimeline() {
 // ============================================================
 
 /** 獨立 6 秒通氣節奏主畫面（V1 §13.6 執行中畫面 / §13.12 暫停畫面） */
-void drawVentStandalone() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
+/**
+ * A8：VENT_PRE 預備畫面 — 進入 Vent 模式但尚未按主鍵開始
+ * 對齊 demo VENT_PRE render
+ */
+void drawVentPre() {
+    useZhFont();
+
+    // 頂部標題
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("6 秒通氣節奏", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // 中央主訊息「按主鍵開始」（efontTW × 1.5 ≈ 36px）
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("按主鍵開始", SCREEN_H / 2 - 24, COLOR_TEXT_PRIMARY);
+
+    // 副訊息兩行
     display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.print("6sec Vent  Vol:");
-    display.print(ventVolume);
-    display.print("/");
-    display.print(VENT_VOLUME_MAX);
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    drawCenteredText("通氣音量可由 上/下 調整", SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
+    drawCenteredText("主鍵暫停／繼續　長按 3 秒結束", SCREEN_H / 2 + 60, COLOR_TEXT_DIM);
+
+    // 底部音量顯示
+    char volBuf[32];
+    snprintf(volBuf, sizeof(volBuf), "音量 %u/%u", ventVolume, VENT_VOLUME_MAX);
+    drawCenteredText(volBuf, SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+}
+
+void drawVentStandalone() {
+    useZhFont();
+
+    // 頂部標題 + 音量
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("6 秒通氣節奏", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    char volBuf[32];
+    snprintf(volBuf, sizeof(volBuf), "音量 %u/%u", ventVolume, VENT_VOLUME_MAX);
+    display.setTextSize(1);
+    drawCenteredText(volBuf, 56, COLOR_TEXT_MUTED);
 
     if (ventPaused) {
-        // V1 §13.12 暫停畫面：保留節奏標題，秒數窗位置改顯示 PAUSED
         display.setTextSize(2);
-        display.setCursor(20, 24);
-        display.print("PAUSED");
+        drawCenteredText("已暫停", SCREEN_H / 2 - 24, COLOR_ACCENT_WARN);
         display.setTextSize(1);
-        display.setCursor(0, 56);
-        display.print("[Main] resume [Bk]end");
+        drawCenteredText("主鍵繼續　返回結束",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
         return;
     }
 
-    // 大字顯示當前秒數
+    // 中央大字單秒數（中心 y 略下移，避開頂部 Vol 行）
     uint32_t since = (ventStartMs == 0) ? 0 : (millis() - ventStartMs);
     vent_beat_t beat = computeVentBeat(since);
     uint8_t num = (uint8_t)beat + 1;
 
-    display.setTextSize(5);
-    display.setCursor(48, 18);
-    display.print(num);
+    char numBuf[4];
+    snprintf(numBuf, sizeof(numBuf), "%u", num);
+    display.setFont(&fonts::FreeMonoBold24pt7b);
+    display.setTextSize(2);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_center);
+    display.drawString(numBuf, SCREEN_W / 2, SCREEN_H / 2 + 16);
 
-    // 底部提示
-    display.setTextSize(1);
+    // 底部提示（橫條反色顯示結束 hint 或基本提示）
+    useZhFont();
     if (ventBackHintShown) {
-        display.fillRect(0, OLED_HEIGHT - 12, OLED_WIDTH, 12, SH110X_WHITE);
-        display.setTextColor(SH110X_BLACK);
-        display.setCursor(2, OLED_HEIGHT - 10);
-        display.print("Long-press [Main] to end");
+        display.fillRect(0, SCREEN_H - VENT_BAR_H, SCREEN_W, VENT_BAR_H, COLOR_ACCENT_WARN);
+        display.setTextSize(1);
+        display.setTextColor(COLOR_BG);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString("如要結束　請長按主鍵",
+                           SCREEN_W / 2, SCREEN_H - VENT_BAR_H / 2);
     } else {
-        display.setCursor(0, 56);
-        display.print("[M]pause [M]3s=end");
+        display.setTextSize(1);
+        drawCenteredText("主鍵暫停　長按 3 秒結束",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
     }
 }
 
 /** 獨立 vent 結束確認對話框（V1 §13.14 結束獨立 6 秒通氣節奏） */
 void drawVentEndCheck() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("End vent rhythm?");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    useZhFont();
+
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("結束通氣節奏？", OHCA_BADGE_Y, COLOR_ACCENT_WARN);
 
     display.setTextSize(2);
-    display.setCursor(8, 22);
-    display.println("Confirm?");
+    drawCenteredText("確認結束？", SCREEN_H / 2 - 24, COLOR_TEXT_PRIMARY);
 
     display.setTextSize(1);
-    display.setCursor(0, 56);
-    display.println("[Main]OK [Bk]cancel");
+    drawCenteredText("主鍵確認　返回取消",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 /** 快速功能選單（V1 §14.9 開啟、暫停、繼續與關閉 + §9 OHCA 中按返回鍵） */
 void drawQuickMenu() {
-    display.clearDisplay();
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, 0);
-    display.println("Quick Menu");
-    display.drawLine(0, 10, OLED_WIDTH - 1, 10, SH110X_WHITE);
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("快速功能", 20, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    // V1 §14.9：動態 2 / 3 項
-    const char* labels[3];
+    // V1 §14.9：動態 3 / 4 項（B3：加「案件簡版總覽」對齊 demo）
+    const char* labels[4];
     uint8_t count;
     if (!ohcaVentOverlayEnabled) {
-        labels[0] = "Enable 6s vent";
-        labels[1] = "Back to OHCA";
-        count = 2;
-    } else {
-        labels[0] = ohcaVentPaused ? "Resume 6s vent" : "Pause 6s vent";
-        labels[1] = "Disable 6s vent";
-        labels[2] = "Back to OHCA";
+        labels[0] = "開啟 6 秒給氣提示";
+        labels[1] = "案件簡版總覽";
+        labels[2] = "返回 OHCA";
         count = 3;
+    } else {
+        labels[0] = ohcaVentPaused ? "繼續 6 秒給氣" : "暫停 6 秒給氣";
+        labels[1] = "關閉 6 秒給氣提示";
+        labels[2] = "案件簡版總覽";
+        labels[3] = "返回 OHCA";
+        count = 4;
     }
+
+    constexpr int16_t MENU_Y_START       = 68;  // 往上 10px 避免 4 列時撞到底部 hint
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 4;  // size 1.1 → 26px 字在 36px row 內垂直置中
+    display.setTextSize(1.1f, 1.1f);
     for (uint8_t i = 0; i < count; i++) {
-        int y = 18 + i * 12;
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == backfillCursor) {
-            display.fillRect(0, y - 1, OLED_WIDTH, 11, SH110X_WHITE);
-            display.setTextColor(SH110X_BLACK);
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
         } else {
-            display.setTextColor(SH110X_WHITE);
+            display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(4, y);
-        display.print("> ");
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
         display.print(labels[i]);
     }
-    display.setTextColor(SH110X_WHITE);
-    display.setCursor(0, 56);
-    display.println("[Main]OK [Bk]close");
+
+    // 底部 hint 14 字在 size 1 下 ~336px 超出 320，縮 size 0.85 ≈ 286px 完整顯示
+    display.setTextSize(0.85f, 0.85f);
+    drawCenteredText("上下選擇　主鍵確認　返回關閉",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
-/** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗 / §14.10 暫停狀態） */
-void drawOhcaVentOverlay(int y_top) {
-    display.setTextColor(SH110X_WHITE);
-    display.setTextSize(1);
-    display.setCursor(0, y_top);
+/** OHCA 內 6 秒通氣輔助區塊（V1 §14.4 單秒數視窗 / §14.10 暫停狀態）
+ *  右上角小 overlay：放在 OHCA badge 同 y 的右側，不撞中央大時間 / 標籤 / 計數
+ *  y_top 參數保留 API 相容但忽略（新 layout 自決定位置）
+ */
+void drawOhcaVentOverlay(int /*y_top*/) {
+    useZhFont();
 
     if (ohcaVentPaused) {
-        // V1 §14.10：暫停狀態畫面「6秒給氣｜已暫停 / 快速功能可繼續」
-        display.print("6s vent PAUSED");
-        display.setCursor(0, y_top + 8);
-        display.print("(QuickMenu Resume)");
+        // 暫停狀態：右上角「通氣暫停」
+        display.setTextSize(1);
+        display.setTextColor(COLOR_ACCENT_WARN);
+        display.setTextDatum(textdatum_t::top_right);
+        display.drawString("通氣暫停", SCREEN_W - 8, OHCA_BADGE_Y + 2);
         return;
     }
 
@@ -1849,11 +2596,11 @@ void drawOhcaVentOverlay(int y_top) {
     vent_beat_t beat = computeVentBeat(since);
     uint8_t num = (uint8_t)beat + 1;
 
-    // 標籤 + 單秒數
-    display.print("6s vent ON  ");
-
-    // 大字單秒數（往右排）
-    display.setTextSize(2);
-    display.setCursor(80, y_top - 2);
-    display.print(num);
+    // 右上角「通氣 N」
+    display.setTextSize(1);
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::top_right);
+    char buf[16];
+    snprintf(buf, sizeof(buf), "通氣 %u", num);
+    display.drawString(buf, SCREEN_W - 8, OHCA_BADGE_Y + 2);
 }

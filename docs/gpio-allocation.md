@@ -90,11 +90,11 @@
 |------|------|------|
 | SPI MOSI | **2** | 原 35 → 改 2（ADC1_CH1，已取消 ADC 候選） |
 | SPI SCK | **3** | 原 36 → 改 3（ADC1_CH2，已取消 ADC 候選） |
-| SPI MISO | **不接**（TFT 純寫入） / 接 MicroSD 時擇腳 | 原 37 → 不可用；MicroSD 加入時用 GPIO 1（ADC1_CH0）或 43/44 |
+| SPI MISO | **不接**（TFT 純寫入） / 接 MicroSD 時擇腳 | 原 37 → 不可用；MicroSD 加入時用 43/44 |
 | TFT CS | **21** | 獨立，PWM 能力 |
-| TFT DC | **48** | Data/Command 切換 |
+| TFT DC | **1**（2026-05-08 改） | 原 48 與 GOOUUU 板上 WS2812 RGB LED 衝突 → DC 切換時 LED 會把訊號吃成色彩資料 |
 | TFT RST | **47** | Hardware reset |
-| TFT BL（背光） | **接 3.3V 常亮**（實機驗證使用配置） | 若需 PWM 調亮度可改 GPIO 1，但與 MicroSD MISO 互斥 |
+| TFT BL（背光） | **接 3.3V 常亮** | 原計畫 PWM 走 GPIO 1，現 GPIO 1 給 TFT DC，BL PWM 能力放棄 |
 | MicroSD CS | **43**（放棄 USB-CDC）或不接 | 原 §5.2 候選 GPIO 2 已給 SPI MOSI，候選 GPIO 47 與 TFT RST 衝突 |
 
 > 📌 **2026-05-08 實機驗證通過配置**：
@@ -112,7 +112,7 @@
 |---------|------|------|------|
 | 電化學型 + I2C | SDA / SCL | **與 OLED 共用 GPIO 42 / 41** | I2C 多裝置 bus，OLED + CO 感測器同 bus 並存 |
 | 電化學型 + UART | TX / RX | **GPIO 43 / 44** | 必須放棄 USB-CDC Serial Monitor |
-| MEMS 半導體型 + ADC | 類比輸入 | **GPIO 1 擇一**（原 1/2/3 → 2/3 已給 TFT SPI） | 2026-05-08 後 ADC 僅剩 GPIO 1 一支可用 |
+| MEMS 半導體型 + ADC | 類比輸入 | **❌ 已無 ADC 可用**（GPIO 1/2/3 全部給 TFT） | 2026-05-08 起 N16R8 + TFT 整合後 ADC 全用完；CO 必須走 I2C 或 UART |
 | 加熱半導體型（MQ-7/MQ-9） | — | **🚫 禁用** | 功耗超出 USB-C 供電上限（SoT V1 §20.5） |
 
 ### 5.4 RTC 模組擴充（DS3231，Dev-Phase 3 計畫）
@@ -130,8 +130,9 @@
 | 衝突組合 | 互斥原因 | 解法 |
 |---------|---------|------|
 | **TFT CS（GPIO 21） vs 震動馬達（GPIO 21）** | 同一支腳 | 依進度擇一啟用；Prod-Phase 同需則震動搬腳（見 §3 註記） |
-| TFT SPI MOSI/SCK（GPIO 2/3）vs CO 感測器 ADC | 2026-05-08 起 GPIO 2/3 已給 SPI | ADC 僅剩 GPIO 1；CO 感測器改走 I2C 或 UART |
-| TFT BL（PWM, GPIO 1） vs CO 感測器 ADC（GPIO 1） | 同搶 GPIO 1 | TFT BL 接 3.3V 常亮（不用 PWM），讓出 GPIO 1 給 ADC |
+| **TFT DC（GPIO 48 → 1） vs 板上 WS2812 RGB LED（GPIO 48）** | GOOUUU 板出廠 GPIO 48 接 WS2812，DC 切換頻率高，LED 把訊號吃成資料一直亂亮 | 2026-05-08 改 TFT DC → GPIO 1；GPIO 48 留給 WS2812（未來可當狀態指示燈使用） |
+| TFT SPI MOSI/SCK（GPIO 2/3）vs CO 感測器 ADC | 2026-05-08 起 GPIO 2/3 已給 SPI | ADC 全部用完（1/2/3 全給 TFT）；CO 感測器改走 I2C 或 UART |
+| ~~TFT BL（PWM, GPIO 1） vs CO 感測器 ADC~~ | 已失效：2026-05-08 後 GPIO 1 已給 TFT DC | TFT BL 維持 3.3V 常亮（無 PWM 能力）；CO 感測器走 I2C 或 UART |
 | MicroSD CS vs USB-CDC Serial | GPIO 43/44 衝突 | 量產不需 USB-CDC 時切換 |
 | 獨立 I2C vs 按鍵 16/17/18 | 物理腳位衝突 | 按鍵已封版，獨立 I2C 改與 OLED bus 共用 |
 | **GPIO 35/36/37 vs N16R8 octal PSRAM** | **2026-05-08 實機踩雷確認**：採購到的就是 N16R8 模組 | TFT SPI 改 GPIO 2/3；採購若能選 N8 可釋放 GPIO 35/36/37 |
@@ -162,3 +163,4 @@
 | 2026-05-04 | TFT GPIO 重配 | 原 9~13 與 SPI flash 禁用區衝突，改 35~37 + 21, 47, 48 |
 | 2026-05-04 | Impl-Phase A 韌體對齊 | main.cpp 重寫：`BTN_COUNT=8`、新增 `BTN_BACK/EPI/SHOCK`、震動 GPIO 21；舊 lib `ems_countdown` / `ems_vent` 廢止 |
 | 2026-05-08 | TFT SPI 改 GPIO 2/3、library 改 Adafruit | 實機踩雷：採購到 N16R8 octal PSRAM 模組，GPIO 35/36/37 不可用；TFT_eSPI 2.5.43 暫存器級存取 crash，改 Adafruit_ST7789。詳見 §5.2 與 `tft-migration-plan.md §3.1` |
+| 2026-05-08 | TFT DC 改 GPIO 48 → 1 | 主韌體整合 Step 1 燒錄後實機踩雷：GOOUUU 板上 GPIO 48 接 WS2812 RGB LED，TFT DC 高頻切換時 LED 把訊號吃成色彩資料一直亂亮。GPIO 1 原為 TFT BL PWM 候選，改為 DC，BL 改 3.3V 常亮（無 PWM）；ADC 完全用盡 |
