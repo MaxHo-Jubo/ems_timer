@@ -1963,23 +1963,32 @@ void drawOhcaEndCheck() {
 
 /**
  * 觸發 flash 過場提示（對齊 demo flash() helper）。
- * @param title       主標題（非 NULL）
- * @param subtitle    副標題（NULL 或 "" 略過）
- * @param duration_ms 顯示毫秒（典型 FLASH_DEFAULT_MS=1200）
- * @param titleColor  主標題色（典型 COLOR_ACCENT_OK / COLOR_TEXT_PRIMARY）
+ * @param title         主標題（非 NULL）
+ * @param subtitle      副標題（NULL 或 "" 略過）
+ * @param duration_ms   顯示毫秒（典型 FLASH_DEFAULT_MS=1200）
+ * @param titleColor    主標題色（典型 COLOR_ACCENT_OK / COLOR_TEXT_PRIMARY）
+ * @param titleSize     主標 vlw multiplier（預設 FLASH_TITLE_SIZE_DEFAULT=2.25；
+ *                      ~7-char 以上易超寬，傳 FLASH_TITLE_SIZE_LONG=1.9）
+ * @param subtitleSize  副標 vlw multiplier（預設 FLASH_SUBTITLE_SIZE_DEFAULT=1.5；
+ *                      ~10-char 以上易超寬，傳 FLASH_SUBTITLE_SIZE_LONG=1.2）
  */
 void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor,
                   float titleSize, float subtitleSize) {
+    // STEP 01: 寫入 lifecycle 與 visual 欄位（render 由 drawFlashOverlay 讀取）
     flashState.active       = true;
     flashState.startMs      = millis();
     flashState.durationMs   = duration_ms;
     flashState.titleColor   = titleColor;
     flashState.titleSize    = titleSize;
     flashState.subtitleSize = subtitleSize;
+
+    // STEP 02: 文字欄位 bounded copy（NULL 視為 ""，超出 buf 截斷不 overflow）
     strncpy(flashState.title,    title    ? title    : "", sizeof(flashState.title)    - 1);
     strncpy(flashState.subtitle, subtitle ? subtitle : "", sizeof(flashState.subtitle) - 1);
     flashState.title[sizeof(flashState.title)       - 1] = '\0';
     flashState.subtitle[sizeof(flashState.subtitle) - 1] = '\0';
+
+    // STEP 03: serial trace（debug 用，可看到 flash 觸發順序）
     Serial.printf("[FLASH] %s | %s\n", flashState.title, flashState.subtitle);
 }
 
