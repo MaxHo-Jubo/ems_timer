@@ -365,6 +365,15 @@ struct FlashState {
 static FlashState flashState = {};
 static const uint16_t FLASH_DEFAULT_MS = 1200;
 
+// Flash overlay 字級常數（vlw 24px 為基準）
+//   Default：~7-char 內主標 / ~6-char 內副標都不溢出 320px
+//   Long   ：title 7+ char（如「案件結束並鎖定」size 2.25 會超寬）/
+//           subtitle 10+ char（如「結束案件後看完整總覽」size 1.5 = 360px > 320）
+static constexpr float FLASH_TITLE_SIZE_DEFAULT    = 2.25f;
+static constexpr float FLASH_TITLE_SIZE_LONG       = 1.9f;
+static constexpr float FLASH_SUBTITLE_SIZE_DEFAULT = 1.5f;
+static constexpr float FLASH_SUBTITLE_SIZE_LONG    = 1.2f;
+
 // ============================================================
 // 按鈕狀態
 // ============================================================
@@ -466,7 +475,9 @@ void drawTwoStepArmedOverlay(const char* what);
 void drawOhcaConfirmDialog(uint8_t evType);
 void drawOhcaEndConfirmDialog();
 void drawFlashOverlay();
-void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor);
+void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor,
+                  float titleSize = FLASH_TITLE_SIZE_DEFAULT,
+                  float subtitleSize = FLASH_SUBTITLE_SIZE_DEFAULT);
 void drawPlaceholder(const char* title, const char* phase);
 void drawDrugMenu();
 void drawBackfillType();
@@ -813,7 +824,8 @@ void onShortPress(uint8_t btnIdx) {
                 const uint8_t backIdx    = ohcaVentOverlayEnabled ? 3 : 2;
                 if (backfillCursor == summaryIdx) {
                     // B3：案件簡版總覽 — demo 略過，flash 提示
-                    triggerFlash("簡版總覽", "結束案件後看完整總覽", 2000, COLOR_TEXT_PRIMARY);
+                    triggerFlash("簡版總覽", "結束案件後看完整總覽", 2000, COLOR_TEXT_PRIMARY,
+                                 FLASH_TITLE_SIZE_DEFAULT, FLASH_SUBTITLE_SIZE_LONG);
                     Serial.println("[OHCA] quick: summary placeholder");
                     resetSubState();
                     return;
@@ -1001,7 +1013,8 @@ void onShortPress(uint8_t btnIdx) {
                     endConfirmShown = false;
                     dispatchOhcaEvent(OHCA_EVT_END_CONFIRM, 0);
                     // A5：對齊 demo flash('案件結束並鎖定', '已存入歷史紀錄')
-                    triggerFlash("案件結束並鎖定", "已存入歷史紀錄", FLASH_DEFAULT_MS, COLOR_ACCENT_ALERT);
+                    triggerFlash("案件結束並鎖定", "已存入歷史紀錄", FLASH_DEFAULT_MS, COLOR_ACCENT_ALERT,
+                                 FLASH_TITLE_SIZE_LONG, FLASH_SUBTITLE_SIZE_DEFAULT);
                     Serial.println("[OHCA] case LOCKED (after END_CONFIRM dialog)");
                     return;
                 }
@@ -1955,22 +1968,18 @@ void drawOhcaEndCheck() {
  * @param duration_ms 顯示毫秒（典型 FLASH_DEFAULT_MS=1200）
  * @param titleColor  主標題色（典型 COLOR_ACCENT_OK / COLOR_TEXT_PRIMARY）
  */
-void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor) {
-    flashState.active     = true;
-    flashState.startMs    = millis();
-    flashState.durationMs = duration_ms;
-    flashState.titleColor = titleColor;
+void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms, uint16_t titleColor,
+                  float titleSize, float subtitleSize) {
+    flashState.active       = true;
+    flashState.startMs      = millis();
+    flashState.durationMs   = duration_ms;
+    flashState.titleColor   = titleColor;
+    flashState.titleSize    = titleSize;
+    flashState.subtitleSize = subtitleSize;
     strncpy(flashState.title,    title    ? title    : "", sizeof(flashState.title)    - 1);
     strncpy(flashState.subtitle, subtitle ? subtitle : "", sizeof(flashState.subtitle) - 1);
     flashState.title[sizeof(flashState.title)       - 1] = '\0';
     flashState.subtitle[sizeof(flashState.subtitle) - 1] = '\0';
-
-    // 觸發時決定 size（避免每幀 strcmp）：
-    //   主標 7-char「案件結束並鎖定」size 2.25 會超出螢幕 → 1.9 留邊
-    //   副標 10-char「結束案件後看完整總覽」size 1.5 ~360px > 320 → 1.2 ≈ 288px
-    flashState.titleSize    = (strcmp(flashState.title,    "案件結束並鎖定")       == 0) ? 1.9f : 2.25f;
-    flashState.subtitleSize = (strcmp(flashState.subtitle, "結束案件後看完整總覽") == 0) ? 1.2f : 1.5f;
-
     Serial.printf("[FLASH] %s | %s\n", flashState.title, flashState.subtitle);
 }
 
