@@ -1262,9 +1262,10 @@ const STATES = {
     render: () => {
       const items = buildQuickMenuItems();
       const cursor = stateData.cursor;
+      // 對齊主選單緊湊樣式：標題縮小避免 4 列項目時溢出 240px
       screenContent.innerHTML = `
         <div class="menu-list">
-          <div class="menu-header">快速功能</div>
+          <div class="menu-header" style="font-size:18px;color:#4ade80;letter-spacing:1px;font-weight:700;border-bottom:1px solid #334155;padding-bottom:4px;margin-bottom:6px">快速功能</div>
           ${items.map((it, i) => `
             <div class="menu-item ${i === cursor ? 'selected' : ''}">
               <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it.label}
