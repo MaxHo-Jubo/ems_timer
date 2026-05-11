@@ -130,21 +130,139 @@
 <div class="header">
   <h1>📋 EMS Timer 進度報告</h1>
   <div class="subtitle">EMS DoseSync Pro — 救護人員給藥計時器</div>
-  <div class="version">PM 版 · 最後更新 2026-05-09</div>
+  <div class="version">PM 版 · 最後更新 2026-05-11</div>
 </div>
 
 <div class="meta-box">
   <div><span class="meta-label">產品：</span><span class="meta-value">EMS DoseSync Pro</span></div>
-  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-09</span></div>
-  <div><span class="meta-label">累計進度：</span><span class="meta-value">2 筆</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-11</span></div>
+  <div><span class="meta-label">累計進度：</span><span class="meta-value">3 筆</span></div>
   <div><span class="meta-label">負責：</span><span class="meta-value">Max Ho</span></div>
 </div>
 
 <div class="toc">
   <div class="toc-title">章節導覽（點擊跳轉到該次進度）</div>
   <div class="toc-list">
+    <a href="#progress-2026-05-11"><span class="toc-date">2026-05-11</span>進度 3 — 用自動化測試掃出 10 個畫面文字溢出並修正</a>
     <a href="#progress-2026-05-09-2"><span class="toc-date">2026-05-09</span>進度 2 — 補登次數選單列表化＋介面文字溢出修整</a>
     <a href="#progress-2026-05-09"><span class="toc-date">2026-05-09</span>進度 1 — 螢幕升級到 2.8 吋並修整體美觀</a>
+  </div>
+</div>
+
+<!-- ========== 進度 3 ========== -->
+<div class="progress-entry" id="progress-2026-05-11">
+  <div class="progress-entry-title">
+    <span class="num">進度 3</span>用自動化測試掃出 10 個畫面文字溢出並修正<span class="date">2026-05-11</span>
+  </div>
+
+  <div class="one-liner">
+    <strong>一句話：</strong>請瀏覽器自動測試工具<strong>逐一打開線上 demo 的 34 個畫面</strong>做檢查，找出 <strong>10 個畫面的文字會被螢幕邊界切掉</strong>（含「電擊紀錄整段看不到」、「不知道按哪鍵確認」這種影響操作的嚴重問題），全部一次修完並重新自動驗證 34/34 通過。
+  </div>
+
+  <div class="card">
+    <div class="section-title">修了哪些畫面（依嚴重程度排序）</div>
+    <table>
+      <thead>
+        <tr><th>畫面</th><th>修前狀況</th><th>修後</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>OHCA 案件總覽</strong></td>
+          <td>「電擊」剛起頭就切、「Amiodarone」整段完全消失</td>
+          <td>三段（EPI／電擊／Amio）全部塞進螢幕</td>
+        </tr>
+        <tr>
+          <td><strong>恢復預設設定？對話框</strong></td>
+          <td>「主鍵確認 ｜ 返回取消」操作提示消失 → <strong>使用者不知道按什麼確認</strong></td>
+          <td>操作提示釘到底部，永遠可見</td>
+        </tr>
+        <tr>
+          <td><strong>補登次數選單（接手前 EPI）</strong></td>
+          <td>選 ×4 / ×5 時看不到選項，但游標可選到 → <strong>會選錯而不自知</strong></td>
+          <td>5 項全部塞進螢幕，選中項反白</td>
+        </tr>
+        <tr>
+          <td><strong>6 秒通氣節奏起始頁</strong></td>
+          <td>底部「主鍵短按暫停／長按 0.75s 結束」提示完全消失</td>
+          <td>提示釘到底部</td>
+        </tr>
+        <tr>
+          <td><strong>系統設定主選單</strong></td>
+          <td>5 項只看到前 3 項完整 + 第 4 項剩半字，「裝置資訊」「恢復預設值」完全消失</td>
+          <td>5 項都看得到，字級略縮</td>
+        </tr>
+        <tr>
+          <td><strong>重置訓練？對話框</strong></td>
+          <td>底部操作提示被推出畫面外</td>
+          <td>提示釘底</td>
+        </tr>
+        <tr>
+          <td><strong>訓練歷史紀錄操作選單</strong></td>
+          <td>4 項中第 4 項「返回」剩半個字</td>
+          <td>4 項全部完整</td>
+        </tr>
+        <tr>
+          <td><strong>刪除訓練紀錄？對話框</strong></td>
+          <td>同上操作提示問題</td>
+          <td>提示釘底</td>
+        </tr>
+        <tr>
+          <td><strong>裝置資訊頁</strong></td>
+          <td>底部「Demo 限制」說明 + 操作提示消失</td>
+          <td>全部可見</td>
+        </tr>
+        <tr>
+          <td><strong>事件時間軸</strong></td>
+          <td>事件超過 7 筆時，最後幾筆會被切（含「案件結束」事件）</td>
+          <td>加上下翻頁，顯示頁碼如 (1-7/9)，▲▼ 捲動</td>
+        </tr>
+        <tr>
+          <td><strong>主選單</strong></td>
+          <td>第 5 項「系統設定」底部約 2 像素被切（不影響閱讀但邊緣切到）</td>
+          <td>完全乾淨</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title">自動化測試怎麼做的</div>
+    <ol class="diff-list">
+      <li>啟動瀏覽器自動化工具開啟線上 demo。</li>
+      <li>透過 demo 內建的畫面切換函式逐一切到 <strong>34 個畫面</strong>（含 dialog、子選單、補登流程等）。</li>
+      <li>對每個畫面所有可見文字元素做位置計算，比對是否超出 320×240 模擬螢幕邊界。</li>
+      <li>自動截圖溢出的畫面供比對。</li>
+      <li>修完後重跑同一套測試，確認 <strong>34/34 都通過</strong>。</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <div class="section-title">過程中遇到並解決的問題</div>
+    <ul class="issue-list">
+      <li>第一輪修完還剩 OHCA 案件總覽 5 像素溢出 — 字級從 14 縮到 13、行高拉緊，剛好塞進 224 像素可用區域。</li>
+      <li>事件時間軸事件多時一頁塞不下 — 加上下翻頁機制，每頁顯示 7 列，標題旁顯示頁碼如 <code>(1-7/9)</code>，▲▼ 捲動。</li>
+      <li>對話框（重置訓練 / 刪除紀錄 / 恢復預設）三個畫面結構雷同 — 抽出共用樣式「對話框三段釘底版面」，標題、內文、操作提示各自定位，未來新增對話框直接套用。</li>
+      <li>主選單 5 項邊緣切 2px — 把每列高度從 30px 微縮到 28px，現在留有 17px 安全帶。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">線上 demo（PM 可開瀏覽器互動）</div>
+    <p style="font-size: 14px; line-height: 1.9;">
+      📱 部署版本：<a class="link" href="https://1d0d3dcd.ems-dosesync-demo.pages.dev" target="_blank">1d0d3dcd.ems-dosesync-demo.pages.dev</a>
+    </p>
+    <div class="note-blue">修完後請 PM 重新打開 demo 點過每個畫面（特別是案件總覽 / 補登次數選 ×5 / 任一恢復預設 / 通氣節奏起始頁），驗收實際效果。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">後續工作</div>
+    <ul class="check-list">
+      <li class="todo">Phase B（補登／Amio／結束前檢查／案件總覽）程式碼已 100% 落地，待 PM 實機完整流程驗收。</li>
+      <li class="todo">Phase C（6 秒通氣節奏）程式碼已落地，5 項驗收項目待 PM 實機拍板。</li>
+      <li class="todo">Phase D（訓練模式）尚未開工。</li>
+      <li class="todo">Phase E（資料持久化／歷史紀錄）尚未開工，這是下一階段藍牙傳輸到手機 App 的前置必修。</li>
+    </ul>
+    <div class="note-green">demo 視覺問題清乾淨後，下一個重點仍是「重開機後資料不遺失」（Phase E），然後才是手機 App 同步（Phase F）。</div>
   </div>
 </div>
 
