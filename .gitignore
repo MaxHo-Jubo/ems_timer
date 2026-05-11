@@ -9,3 +9,6 @@ dist/
 
 # Wrangler 本機狀態
 .wrangler/
+
+# Playwright MCP 截圖與報告（本機驗證用）
+.playwright-mcp/

@@ -209,6 +209,38 @@
   /* === Speed control 隱藏式 === */
   #speed-toggle { font-size: 10px; color: #64748b; cursor: pointer; padding: 2px 6px; border-radius: 4px; }
   #speed-toggle:hover { background: #1e293b; }
+
+  /* === 共用：5 項以上選單緊湊樣式（避免 240px 切到底部項目） === */
+  .menu-list.compact .menu-header { font-size: 22px; padding-top: 2px; padding-bottom: 4px; margin-bottom: 4px; }
+  .menu-list.compact .menu-item   { font-size: 22px; line-height: 28px; padding: 3px 20px; }
+
+  /* === 共用：高密度 summary（OHCA / 裝置資訊多段塞 240px）
+   *   padding-bottom 預留 .scr-bottom-hint 釘底空間，依該畫面內容密度由 inline 調整。 */
+  .summary-box.dense              { font-size: 13px; padding: 0 8px; line-height: 1.15; }
+  .summary-box.dense .sum-section { font-size: 13px; margin: 1px 0 0; }
+  .summary-box.dense .sum-row     { padding: 0; line-height: 1.15; }
+
+  /* === 共用：timeline 高密度視窗（hint 釘底用 padding-bottom 預留 24px） === */
+  .timeline-box.dense             { font-size: 14px; padding-bottom: 24px; }
+  .timeline-box.dense .tl-row     { padding: 0; line-height: 1.25; }
+
+  /* === 共用：dialog 三段釘底版面（標題 / 內文 / hint 各自定位）=== */
+  .dialog-screen {
+    position: absolute; inset: 0; padding: 16px 16px 8px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center;
+  }
+  .dialog-screen .dialog-hint {
+    position: absolute; left: 0; right: 0; bottom: 6px;
+    margin: 0; padding-top: 4px;
+  }
+
+  /* === 共用：畫面底部 hint 釘底（VENT_PRE / SETTINGS_DEVICE_INFO 等） === */
+  .scr-bottom-hint {
+    position: absolute; left: 0; right: 0; bottom: 3px;
+    text-align: center; font-size: 14px; color: #64748b;
+    font-family: "Courier New", monospace; line-height: 1.1;
+  }
 </style>
 </head>
 <body>
@@ -701,12 +733,14 @@ const STATES = {
     render: () => {
       const items = ['OHCA 案件', '6 秒通氣節奏', '訓練模式', '歷史紀錄', '系統設定'];
       const cursor = stateData.cursor || 0;
-      // 5 列 × 預設 48px + header 27px = 267px > 240px → 縮每 row padding/line-height 確保第 5 項可見
+      // 5 列 + header 必須塞進 240px：用緊湊行高 + 略大字級保持品牌感
+      // 注意：不套 .menu-list.compact（22px），改 inline 24px+padding 3px，
+      //       因為主選單字級不能太小，但 sibling 5 項選單（SETTINGS_MENU）走 compact 即可
       screenContent.innerHTML = `
         <div class="menu-list">
-          <div class="menu-header" style="font-size:16px;letter-spacing:2px;color:#94a3b8;font-weight:700;border-bottom:1px solid #334155;padding-bottom:4px;margin-bottom:6px;text-transform:uppercase">EMS DoseSync Pro</div>
+          <div class="menu-header" style="font-size:16px;letter-spacing:2px;color:#94a3b8;font-weight:700;border-bottom:1px solid #334155;padding-top:2px;padding-bottom:4px;margin-bottom:4px;text-transform:uppercase">EMS DoseSync Pro</div>
           ${items.map((it, i) => `
-            <div class="menu-item ${i === cursor ? 'selected' : ''}" style="padding:4px 24px;line-height:30px">
+            <div class="menu-item ${i === cursor ? 'selected' : ''}" style="padding:3px 24px;line-height:28px;font-size:24px">
               <span class="menu-cursor">${i === cursor ? '▶' : ''}</span> ${it}
             </div>
           `).join('')}
@@ -1027,8 +1061,10 @@ const STATES = {
         SHOCK_PURE_SUPP:    '純補登電擊',
       })[stateData.suppType];
       const items = Array.from({ length: max }, (_, i) => `${typeLabel} ×${i + 1}`);
+      // V1 §9.6：>=4 項撐爆 240px → 套 compact；<=3 項維持標準字級
+      const compactCls = max >= 4 ? ' compact' : '';
       screenContent.innerHTML = `
-        <div class="menu-list">
+        <div class="menu-list${compactCls}">
           <div class="menu-header">選擇次數</div>
           ${items.map((it, i) => `
             <div class="menu-item ${i === cursor ? 'selected' : ''}">
@@ -1156,8 +1192,9 @@ const STATES = {
       const lastEpi  = [...ohcaCase.events].reverse().find(e => e.type === 'EPI_LOCAL');
       const lastShock = [...ohcaCase.events].reverse().find(e => e.type === 'SHOCK_LOCAL');
       const lastAmio  = [...ohcaCase.events].reverse().find(e => e.type === 'AMIODARONE');
+      // dense + hint 釘底；padding-bottom 預留 hint 避開最後一行
       screenContent.innerHTML = `
-        <div class="summary-box">
+        <div class="summary-box dense" style="padding-bottom:12px">
           <div class="sum-section">案件總覽｜OHCA</div>
           <div class="sum-row"><span class="sum-key">同步狀態</span><span class="sum-val">App 未同步</span></div>
           <div class="sum-section">EPI</div>
@@ -1172,17 +1209,34 @@ const STATES = {
           <div class="sum-section">藥物</div>
           <div class="sum-row"><span class="sum-key">Amiodarone</span><span class="sum-val">${c.amio} ${lastAmio ? '/ ' + formatTime(lastAmio.timestamp) : ''}</span></div>
         </div>
-        <div style="font-size:18px;color:#64748b;margin-top:6px">主鍵 / ▼ = Timeline　│　返回 = 主功能表</div>
+        <div class="scr-bottom-hint">主鍵 / ▼ = Timeline　│　返回 = 主功能表</div>
       `;
       overlay.classList.remove('show');
     },
   },
 
   OHCA_TIMELINE: {
-    onEnter: () => {},
+    onEnter: () => { stateData.scrollIdx = stateData.scrollIdx || 0; },
     onButton: (btn, kind) => {
       if (kind !== 'SHORT') return;
-      if (btn === 'BACK' || btn === 'UP') { go('OHCA_SUMMARY', { fromHistory: stateData.fromHistory }); return; }
+      // ▲ 在頂端兼做「離開回總覽」（避免使用者卡在 timeline 找不到 BACK）；
+      // ▼ 在底端僅發 boundary beep 不再前進（不退出，避免覆蓋 BACK 語意）。
+      // hint 主推「返回 = 總覽」為通用退出鍵。
+      if (btn === 'UP') {
+        if (stateData.scrollIdx > 0) { stateData.scrollIdx -= 1; beep(600, 30, 0.1); render(); }
+        else                          { go('OHCA_SUMMARY', { fromHistory: stateData.fromHistory }); }
+        return;
+      }
+      if (btn === 'DOWN') {
+        // 案件開始 + events + 案件結束 共 events.length + 2 row（與 render 中 rows 構造一致）
+        const total = (ohcaCase?.events?.length ?? 0) + 2;
+        const visible = 7;
+        const maxScroll = Math.max(0, total - visible);
+        if (stateData.scrollIdx < maxScroll) { stateData.scrollIdx += 1; beep(600, 30, 0.1); render(); }
+        else                                  { beep(300, 20, 0.05); }
+        return;
+      }
+      if (btn === 'BACK') { go('OHCA_SUMMARY', { fromHistory: stateData.fromHistory }); return; }
       if (btn === 'MAIN') {
         if (stateData.fromHistory) go('HISTORY_LIST', { kind: 'ohca', cursor: 0 });
         else                       go('MAIN_MENU', { cursor: 0 });
@@ -1201,17 +1255,26 @@ const STATES = {
         rows.push({ time: tStr, label: eventLabel(e), cls });
       });
       rows.push({ time: formatTime(endEv.timestamp), label: '案件結束', cls: 'tl-event-end' });
+      const VISIBLE = 7;
+      const start = stateData.scrollIdx || 0;
+      const slice = rows.slice(start, start + VISIBLE);
+      const hasMoreUp   = start > 0;
+      const hasMoreDown = start + VISIBLE < rows.length;
       screenContent.innerHTML = `
-        <div class="timeline-box">
-          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:18px;letter-spacing:0;margin-bottom:4px;font-weight:700">事件時間軸</div>
-          ${rows.map(r => `
+        <div class="timeline-box dense">
+          <div class="sum-section" style="text-align:center;color:#4ade80;font-size:18px;letter-spacing:0;margin-bottom:4px;font-weight:700">
+            事件時間軸 ${rows.length > VISIBLE ? `<span style="font-size:14px;color:#64748b">(${start + 1}-${Math.min(start + VISIBLE, rows.length)}/${rows.length})</span>` : ''}
+          </div>
+          ${hasMoreUp ? '<div style="text-align:center;color:#64748b;font-size:12px;line-height:1">▲</div>' : ''}
+          ${slice.map(r => `
             <div class="tl-row">
               <span class="tl-time ${r.time === '-' ? 'tl-time-na' : ''}">${r.time}</span>
               <span class="${r.cls}">${r.label}</span>
             </div>
           `).join('')}
+          ${hasMoreDown ? '<div style="text-align:center;color:#64748b;font-size:12px;line-height:1">▼</div>' : ''}
         </div>
-        <div style="font-size:18px;color:#64748b;margin-top:6px">▲ = 回總覽　│　主鍵 = 主功能表</div>
+        <div class="scr-bottom-hint">▲▼ 捲動 │ 返回 = 總覽 │ 主鍵 = 主功能表</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1290,12 +1353,14 @@ const STATES = {
       }
     },
     render: () => {
+      // hint 釘底避免被推出 240px
       screenContent.innerHTML = `
         <div style="text-align:center">
           <div class="scr-mode">6 秒通氣節奏</div>
-          <div class="scr-flash-msg" style="margin-top:24px">按主鍵開始</div>
-          <div class="scr-flash-sub" style="margin-top:12px">通氣音量可由 ▲▼ 調整<br>主鍵短按暫停 / 繼續　│　長按 ≥ 0.75s 結束</div>
+          <div class="scr-flash-msg" style="margin-top:16px;font-size:48px">按主鍵開始</div>
+          <div style="margin-top:14px;font-size:20px;color:#cbd5e1">通氣音量可由 ▲▼ 調整</div>
         </div>
+        <div class="scr-bottom-hint">主鍵短按暫停 / 繼續　│　長按 ≥ 0.75s 結束</div>
       `;
       overlay.classList.remove('show');
     },
@@ -1750,10 +1815,10 @@ const STATES = {
     },
     render: () => {
       screenContent.innerHTML = `
-        <div style="text-align:center;padding:24px">
+        <div class="dialog-screen">
           <div class="dialog-title" style="font-size:29px">重置訓練？</div>
           <div class="dialog-body" style="margin-top:12px">將清除本次訓練的<br>EPI 與電擊紀錄並重新計時</div>
-          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
+          <div class="dialog-hint">主鍵確認　│　返回取消</div>
         </div>
       `;
       overlay.classList.remove('show');
@@ -2054,8 +2119,9 @@ const STATES = {
         const hhmm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
         header = `${mmdd} ${hhmm}｜Training`;
       }
+      // 4 項選單 + header 標題（含日期）會撐爆 240px，套 compact 字級
       screenContent.innerHTML = `
-        <div class="menu-list">
+        <div class="menu-list compact">
           <div class="menu-header">${header}</div>
           ${items.map((it, i) => `
             <div class="menu-item ${i === cursor ? 'selected' : ''}">
@@ -2082,10 +2148,10 @@ const STATES = {
     },
     render: () => {
       screenContent.innerHTML = `
-        <div style="text-align:center;padding:24px">
+        <div class="dialog-screen">
           <div class="dialog-title" style="font-size:29px;color:#ef4444">刪除此訓練紀錄？</div>
           <div class="dialog-body" style="margin-top:12px">刪除後不可復原</div>
-          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
+          <div class="dialog-hint">主鍵確認　│　返回取消</div>
         </div>
       `;
       overlay.classList.remove('show');
@@ -2118,8 +2184,9 @@ const STATES = {
       const valueOf = ['brightness', 'sysVolume', 'ventVolume', null, null]
         .map(k => k ? `${SETTINGS[k]}/${k === 'ventVolume' ? '5' : '5'}` : '');
       const cursor = stateData.cursor;
+      // 5 項 + header 在 240px 內必須 compact（22px 字級 / 28px 行高）
       screenContent.innerHTML = `
-        <div class="menu-list">
+        <div class="menu-list compact">
           <div class="menu-header">系統設定</div>
           ${items.map((it, i) => `
             <div class="menu-item ${i === cursor ? 'selected' : ''}" style="display:flex;justify-content:space-between">
@@ -2188,8 +2255,9 @@ const STATES = {
       if (btn === 'BACK' || btn === 'MAIN') { go('SETTINGS_MENU', { cursor: 3 }); }
     },
     render: () => {
+      // 2 段 + 7 row + demo 限制備註 + hint：套 dense 並釘底 hint
       screenContent.innerHTML = `
-        <div class="summary-box">
+        <div class="summary-box dense" style="padding-bottom:22px">
           <div class="sum-section">裝置資訊</div>
           <div class="sum-row"><span class="sum-key">名稱</span><span class="sum-val">${DEVICE_MOCK.name}</span></div>
           <div class="sum-row"><span class="sum-key">型號</span><span class="sum-val">${DEVICE_MOCK.model}</span></div>
@@ -2199,9 +2267,9 @@ const STATES = {
           <div class="sum-section">連線</div>
           <div class="sum-row"><span class="sum-key">App 連線</span><span class="sum-val" style="color:#64748b">未連線</span></div>
           <div class="sum-row"><span class="sum-key">Type-C</span><span class="sum-val" style="color:#64748b">未連線</span></div>
-          <div style="margin-top:12px;font-size:10px;color:#64748b;text-align:center">Demo 限制：裝置名稱由 App 寫入｜App / Type-C 真實連線需實機</div>
+          <div style="margin-top:4px;font-size:10px;color:#64748b;text-align:center;line-height:1.2">Demo 限制：裝置名稱由 App 寫入｜App / Type-C 真實連線需實機</div>
         </div>
-        <div style="font-size:18px;color:#64748b;margin-top:4px">主鍵 / 返回 = 回設定選單</div>
+        <div class="scr-bottom-hint">主鍵 / 返回 = 回設定選單</div>
       `;
       overlay.classList.remove('show');
     },
@@ -2222,10 +2290,10 @@ const STATES = {
     },
     render: () => {
       screenContent.innerHTML = `
-        <div style="text-align:center;padding:24px">
-          <div class="dialog-title" style="font-size:29px">恢復預設設定？</div>
-          <div class="dialog-body" style="margin-top:12px">將清除：螢幕亮度 / 系統音量 / 通氣音量<br>不清除：案件 / Training / 裝置名稱</div>
-          <div class="dialog-hint" style="margin-top:16px">主鍵確認　│　返回取消</div>
+        <div class="dialog-screen">
+          <div class="dialog-title" style="font-size:26px">恢復預設設定？</div>
+          <div class="dialog-body" style="margin-top:10px;font-size:20px">將清除：螢幕亮度 / 系統音量 / 通氣音量<br>不清除：案件 / Training / 裝置名稱</div>
+          <div class="dialog-hint">主鍵確認　│　返回取消</div>
         </div>
       `;
       overlay.classList.remove('show');
