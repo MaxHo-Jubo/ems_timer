@@ -57,6 +57,8 @@
 #include "ems_supp_model.h"
 #include "ems_case_summary.h"
 #include "ems_vent_metronome.h"
+#include "ems_storage_logic.h"   // Phase E：持久化邏輯層
+#include "ems_storage_fs.h"      // Phase E：LittleFS adapter
 
 #include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 222 glyphs (95 ASCII + 127 CJK)
 
@@ -311,6 +313,19 @@ static ems_event_t events[MAX_EVENTS];
 static uint16_t    eventCount   = 0;
 static uint32_t    nextEventId  = 1;  // 案件內流水號，從 1 起
 
+// ===== Phase E：持久化 =====
+static IStorageBackend g_storage_be;
+static bool g_storage_ready    = false;
+static bool g_locked_saved     = false;  // LOCKED 防重複存
+
+// ===== Phase E：歷史紀錄 UI =====
+static case_meta_t historyCases[EMS_STORAGE_OHCA_CAP];
+static uint16_t historyCount        = 0;
+static uint16_t historyCursor       = 0;
+static uint16_t historyScrollOffset = 0;
+static bool     historySummaryMode  = false;  // true = 載入了案件、進 SUMMARY 子畫面
+static const uint8_t HISTORY_VISIBLE_ROWS = 5;
+
 // ============================================================
 // Phase B 子流程狀態機（補登 / Amio / Timeline）
 // ============================================================
@@ -509,6 +524,7 @@ void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms,
                   float titleSize = FLASH_TITLE_SIZE_DEFAULT,
                   float subtitleSize = FLASH_SUBTITLE_SIZE_DEFAULT);
 void drawPlaceholder(const char* title, const char* phase);
+void drawHistoryList();
 void drawDrugMenu();
 void drawBackfillType();
 void drawBackfillCount();
@@ -588,6 +604,19 @@ void setup() {
     // STEP 04: 兩段確認 init
     twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
     twoStepConfirm_init(&shockConfirm, TWO_STEP_DEFAULT_TIMEOUT_MS);
+
+    // STEP 04.5: Phase E 持久化 — mount LittleFS + storage_init
+    //   失敗只 log warn，不擋 boot；歷史紀錄會走 "無資料" 路徑，OHCA case 跑得起來
+    if (emsStorage_fs_mount(&g_storage_be)) {
+        if (storage_init(&g_storage_be)) {
+            g_storage_ready = true;
+            Serial.println("[STORAGE] OK LittleFS mounted + storage_init");
+        } else {
+            Serial.println("[STORAGE] WARN storage_init failed");
+        }
+    } else {
+        Serial.println("[STORAGE] WARN LittleFS mount failed");
+    }
 
     // STEP 05: 初始顯示
     updateDisplay();
@@ -731,7 +760,21 @@ void onShortPress(uint8_t btnIdx) {
                         Serial.println("[VENT] enter PRE (preview)");
                         break;
                     case 2: globalState = GLOBAL_TRAINING_PLACEHOLDER; break;
-                    case 3: globalState = GLOBAL_HISTORY_PLACEHOLDER;  break;
+                    case 3:  // 歷史紀錄（Phase E）
+                        // 進入時重抓 list（每次進都最新；最新案件在 index 0）
+                        if (g_storage_ready) {
+                            historyCount = storage_list(&g_storage_be,
+                                                        EMS_CASE_TYPE_OHCA,
+                                                        historyCases,
+                                                        EMS_STORAGE_OHCA_CAP);
+                        } else {
+                            historyCount = 0;
+                        }
+                        historyCursor       = 0;
+                        historyScrollOffset = 0;
+                        historySummaryMode  = false;
+                        globalState         = GLOBAL_HISTORY_PLACEHOLDER;
+                        break;
                     case 4: globalState = GLOBAL_SETTINGS_PLACEHOLDER; break;
                 }
                 break;
@@ -812,6 +855,63 @@ void onShortPress(uint8_t btnIdx) {
             }
             Serial.printf("[VENT] paused=%d\n", ventPaused);
             return;
+        }
+        return;
+    }
+
+    // ===== Phase E：歷史紀錄（已實作，覆蓋共用佔位處理） =====
+    if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
+        // STEP 01: SUMMARY 子畫面 — BACK 回列表
+        if (historySummaryMode) {
+            if (btnIdx == BTN_BACK) {
+                historySummaryMode = false;
+                eventCount = 0;     // 清掉 history 載回來的事件，避免汙染下個 OHCA case
+            }
+            return;
+        }
+        // STEP 02: 列表模式
+        switch (btnIdx) {
+            case BTN_UP:
+                if (historyCursor > 0) {
+                    historyCursor--;
+                }
+                if (historyCursor < historyScrollOffset) {
+                    historyScrollOffset = historyCursor;
+                }
+                break;
+            case BTN_DOWN:
+                if (historyCursor + 1 < historyCount) {
+                    historyCursor++;
+                }
+                if (historyCursor >= historyScrollOffset + HISTORY_VISIBLE_ROWS) {
+                    historyScrollOffset = historyCursor - (HISTORY_VISIBLE_ROWS - 1);
+                }
+                break;
+            case BTN_BACK:
+                enterMainMenu();
+                break;
+            case BTN_PRIMARY:
+                // STEP 02.01: 選定後載入該案件、跳到 SUMMARY 子畫面
+                if (historyCount > 0 && g_storage_ready) {
+                    uint16_t loaded = 0;
+                    bool ok = storage_load_events(&g_storage_be,
+                                                  EMS_CASE_TYPE_OHCA,
+                                                  historyCases[historyCursor].id,
+                                                  events, MAX_EVENTS, &loaded);
+                    if (ok) {
+                        eventCount = loaded;
+                        historySummaryMode = true;
+                        Serial.printf("[STORAGE] loaded case %s (%u events)\n",
+                                      historyCases[historyCursor].id,
+                                      loaded);
+                    } else {
+                        Serial.printf("[STORAGE] load failed for %s\n",
+                                      historyCases[historyCursor].id);
+                    }
+                }
+                break;
+            default:
+                break;
         }
         return;
     }
@@ -1268,6 +1368,25 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
     if (event == OHCA_EVT_END_CANCEL && !isOhcaInProgress(end_check_source)) {
         Serial.printf("[OHCA] WARN END_CANCEL invalid source=%u, fallback OVERTIME\n",
                       end_check_source);
+    }
+
+    // STEP 04: Phase E — 首次進 LOCKED 持久化案件，離開 LOCKED 時 reset 防重複旗標
+    if (ohcaState == OHCA_STATE_LOCKED
+        && prev != OHCA_STATE_LOCKED
+        && g_storage_ready
+        && !g_locked_saved) {
+        // case_start_ms / case_end_ms 用 0：目前無 RTC，timestamp 留給 Phase 3 DS3231
+        bool ok = storage_save_case(&g_storage_be, EMS_CASE_TYPE_OHCA,
+                                    events, eventCount,
+                                    /*case_start_ms*/ 0,
+                                    /*case_end_ms*/   0);
+        Serial.printf("[STORAGE] save case (%u events) %s\n",
+                      eventCount, ok ? "OK" : "FAILED");
+        g_locked_saved = true;
+    }
+    if (ohcaState != OHCA_STATE_LOCKED
+        && ohcaState != OHCA_STATE_SUMMARY) {
+        g_locked_saved = false;
     }
 }
 
@@ -1735,7 +1854,12 @@ void updateDisplay() {
     } else if (globalState == GLOBAL_TRAINING_PLACEHOLDER) {
         drawPlaceholder("訓練模式", "D 階段");
     } else if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
-        drawPlaceholder("歷史紀錄", "E 階段");
+        // Phase E：列表 vs SUMMARY 子畫面（從歷史進入時重用既有 drawOhcaSummary）
+        if (historySummaryMode) {
+            drawOhcaSummary();
+        } else {
+            drawHistoryList();
+        }
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
         drawPlaceholder("系統設定", "G 階段");
     }
@@ -2138,6 +2262,59 @@ void drawOhcaLocked() {
     // 底部 hint
     drawCenteredText("主鍵　總覽",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+}
+
+void drawHistoryList() {
+    useZhFont();
+
+    // 標題
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("歷史紀錄", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // 無資料 — 提示 + early exit
+    if (historyCount == 0) {
+        display.setTextSize(1);
+        drawCenteredText("尚無案件紀錄", SCREEN_H / 2 - 8, COLOR_TEXT_MUTED);
+        drawCenteredText("返回　主功能表",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+        return;
+    }
+
+    // 列出 HISTORY_VISIBLE_ROWS（5）筆，以 historyScrollOffset 為起點
+    char buf[64];
+    uint16_t shown = 0;
+    for (uint16_t i = historyScrollOffset;
+         i < historyCount && shown < HISTORY_VISIBLE_ROWS;
+         ++i, ++shown) {
+        const case_meta_t& m = historyCases[i];
+        int y = 60 + (int)shown * 28;
+
+        // cursor 高亮列：填底色
+        if (i == historyCursor) {
+            display.fillRect(8, y - 4, SCREEN_W - 16, 26, COLOR_ACCENT_WARN);
+        }
+        uint16_t fg = (i == historyCursor) ? COLOR_BG : COLOR_TEXT_PRIMARY;
+
+        // 顯示「id 後 5 位 ｜ EPI N ｜ 電擊 N」
+        uint16_t epi_total =
+            (uint16_t)(m.epi_local + m.epi_pre_handover + m.epi_pure_supp);
+        uint16_t shock_total =
+            (uint16_t)(m.shock_local + m.shock_pre_handover + m.shock_pure_supp);
+        snprintf(buf, sizeof(buf), "#%s  EPI %u  電擊 %u",
+                 m.id + 5,
+                 (unsigned)epi_total,
+                 (unsigned)shock_total);
+        display.setTextSize(1);
+        display.setTextColor(fg);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString(buf, SCREEN_W / 2, y + 8);
+    }
+
+    // 底部 hint：分頁訊息 + 操作
+    snprintf(buf, sizeof(buf), "%u/%u  主鍵 詳情　返回 主功能表",
+             (unsigned)(historyCursor + 1),
+             (unsigned)historyCount);
+    drawCenteredText(buf, SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawOhcaSummary() {

@@ -1,0 +1,20 @@
+# EMS DoseSync Pro — ESP32-S3 N16R8 partition table（16MB flash）
+#
+# 對應規格：
+#   - plan ticklish-exploring-dragonfly.md §1 Partition layout
+#   - pm-dev-spec.md §四 Phase E
+#
+# 設計要點：
+#   - 保留 OTA dual-app（1.9 MB × 2 = 3.8 MB），未來 BLE OTA 升版不破壞
+#   - LittleFS 12.19 MB（spec 只需 ~65 KB 給 50 OHCA，餘量給未來音檔或紀錄擴展）
+#   - 對 esptool `write_flash 0x0 firmware.bin` 透明（partition table 嵌在 bin 內）
+#
+# 16MB = 0x01000000；offset + size 必須對齊 0x1000
+#
+# Name,    Type, SubType,  Offset,   Size,     Flags
+# 註：SubType 0x82 = ESP-IDF 官方 LittleFS subtype（gen_esp32part.py 不認 "littlefs" 字面值）
+nvs,       data, nvs,      0x9000,   0x5000,
+otadata,   data, ota,      0xE000,   0x2000,
+app0,      app,  ota_0,    0x10000,  0x1E0000,
+app1,      app,  ota_1,    0x1F0000, 0x1E0000,
+littlefs,  data, 0x82,     0x3D0000, 0xC30000,
