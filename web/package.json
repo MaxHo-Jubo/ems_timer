@@ -1,0 +1,21 @@
+{
+  "name": "ems-timer-sync",
+  "version": "0.1.0",
+  "private": true,
+  "description": "EMS Timer Phase F web validation: BLE sync + Cloudflare D1",
+  "scripts": {
+    "predev": "wrangler d1 migrations apply ems-timer-cases --local",
+    "dev": "wrangler pages dev public",
+    "deploy": "wrangler pages deploy public",
+    "db:create": "wrangler d1 create ems-timer-cases",
+    "db:migrate": "wrangler d1 migrations apply ems-timer-cases --local",
+    "db:migrate:remote": "wrangler d1 migrations apply ems-timer-cases --remote",
+    "db:reset": "rm -rf .wrangler/state/v3/d1 && wrangler d1 migrations apply ems-timer-cases --local",
+    "db:list": "wrangler d1 list"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250101.0",
+    "typescript": "^5.4.0",
+    "wrangler": "^4.90.1"
+  }
+}

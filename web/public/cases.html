@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>EMS Timer 案件列表</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="app-header__nav" href="./index.html">← 返回同步</a>
+    <span class="app-header__title">案件列表</span>
+  </header>
+
+  <main class="container container--wide">
+    <div class="card">
+      <div class="card__label">
+        共 <span id="caseCount" class="text-mono">—</span> 筆 ｜ 點欄位切換排序
+      </div>
+      <div class="case-table__container">
+        <table class="case-table" id="caseTable">
+          <thead>
+            <tr>
+              <th data-sort-key="started_at" data-sort-active="desc">開始時間</th>
+              <th data-sort-key="mode">模式</th>
+              <th data-sort-key="device_id">裝置</th>
+              <th data-sort-key="event_count">事件數</th>
+              <th data-sort-key="synced_at">同步時間</th>
+              <th data-sort-key="started_at" data-show="timestamp_ms">時間戳記 (ms)</th>
+            </tr>
+          </thead>
+          <tbody id="caseTableBody">
+            <tr>
+              <td colspan="6" class="case-table__empty">載入中...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <footer class="footer">
+    Phase F Web 驗證 v0.1
+  </footer>
+
+  <script type="module" src="./js/api-client.js"></script>
+  <script type="module" src="./js/table-view.js"></script>
+</body>
+</html>

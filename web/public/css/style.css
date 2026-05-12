@@ -1,0 +1,348 @@
+/*
+ * EMS Timer Sync — 共用樣式
+ * 對齊 docs/demo/index.html 美學：黑底 + 急救色 + monospace
+ */
+
+/* === Reset === */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  background: #0a0a0a;
+  color: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif;
+  min-height: 100vh;
+  font-size: 16px;
+}
+
+/* === Tokens === */
+:root {
+  --bg-primary: #0a0a0a;
+  --bg-card: #1a1a1a;
+  --bg-hover: #242424;
+  --bg-input: #050505;
+  --border: #2a2a2a;
+  --border-strong: #444;
+  --text-primary: #fff;
+  --text-secondary: #cbd5e1;
+  --text-muted: #64748b;
+  --accent-red: #ef4444;
+  --accent-amber: #fbbf24;
+  --accent-green: #4ade80;
+  --accent-blue: #93c5fd;
+  --accent-blue-bg: #1e3a5f;
+  --mono: "Courier New", "Menlo", monospace;
+}
+
+/* === Layout === */
+.container {
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 16px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.container--wide {
+  max-width: 960px;
+}
+
+/* === Header === */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: #050505;
+  border-bottom: 1px solid var(--border);
+  font-family: var(--mono);
+  letter-spacing: 1px;
+}
+
+.app-header__title {
+  font-size: 14px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.app-header__nav {
+  font-size: 12px;
+  color: var(--accent-blue);
+  text-decoration: none;
+  padding: 4px 8px;
+  background: var(--accent-blue-bg);
+  border-radius: 4px;
+}
+
+.app-header__nav:hover {
+  filter: brightness(1.2);
+}
+
+/* === Cards === */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.card__label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin-bottom: 8px;
+}
+
+.card__value {
+  font-family: var(--mono);
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+/* === Connect Button (1/5 screen height, per spec) === */
+.connect-button {
+  width: 100%;
+  min-height: 20vh;
+  padding: 24px;
+  background: var(--accent-blue-bg);
+  color: var(--accent-blue);
+  border: 2px solid var(--accent-blue);
+  border-radius: 12px;
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.connect-button:hover:not(:disabled) {
+  background: #2a4d7a;
+  transform: translateY(-1px);
+}
+
+.connect-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.connect-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.connect-button--syncing {
+  background: var(--accent-amber);
+  color: #1a1a00;
+  border-color: var(--accent-amber);
+  animation: pulse 1.5s infinite;
+}
+
+.connect-button--done {
+  background: var(--accent-green);
+  color: #062d12;
+  border-color: var(--accent-green);
+}
+
+.connect-button--error {
+  background: var(--accent-red);
+  color: #fff;
+  border-color: var(--accent-red);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+/* === Pair Code Input === */
+.pair-code {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.pair-code__digit {
+  width: 56px;
+  height: 72px;
+  background: var(--bg-input);
+  border: 2px solid var(--border-strong);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: var(--mono);
+  font-size: 36px;
+  font-weight: 700;
+  text-align: center;
+  caret-color: var(--accent-blue);
+}
+
+.pair-code__digit:focus {
+  outline: none;
+  border-color: var(--accent-blue);
+  box-shadow: 0 0 0 4px rgba(147, 197, 253, 0.2);
+}
+
+/* === Progress === */
+.progress-log {
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.progress-log li {
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progress-log li::before {
+  content: "●";
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.progress-log li.progress-log__step--active::before {
+  color: var(--accent-amber);
+  animation: pulse 1s infinite;
+}
+
+.progress-log li.progress-log__step--done::before {
+  color: var(--accent-green);
+}
+
+.progress-log li.progress-log__step--error::before {
+  color: var(--accent-red);
+}
+
+/* === Table === */
+.case-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 13px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.case-table thead {
+  background: var(--bg-input);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.case-table th {
+  padding: 12px 8px;
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 1px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+
+.case-table th:hover {
+  color: var(--accent-blue);
+}
+
+.case-table th[data-sort-active="asc"]::after {
+  content: " ▲";
+  color: var(--accent-blue);
+}
+
+.case-table th[data-sort-active="desc"]::after {
+  content: " ▼";
+  color: var(--accent-blue);
+}
+
+.case-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.case-table tbody tr:hover {
+  background: var(--bg-hover);
+}
+
+.case-table td {
+  padding: 12px 8px;
+  color: var(--text-secondary);
+  vertical-align: top;
+}
+
+.case-table td.mode-ohca {
+  color: var(--accent-red);
+  font-weight: 700;
+}
+
+.case-table td.mode-training {
+  color: var(--accent-amber);
+  font-weight: 700;
+}
+
+.case-table td.timestamp {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.case-table__empty {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.case-table__container {
+  overflow-x: auto;
+  max-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* === Footer === */
+.footer {
+  margin-top: auto;
+  padding: 16px 0;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* === Utility === */
+.text-mono {
+  font-family: var(--mono);
+}
+
+.text-mute {
+  color: var(--text-muted);
+}
+
+.text-red {
+  color: var(--accent-red);
+}
+
+.text-amber {
+  color: var(--accent-amber);
+}
+
+.text-green {
+  color: var(--accent-green);
+}
+
+.hidden {
+  display: none !important;
+}

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>EMS Timer 同步工具</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <span class="app-header__title">EMS Timer Sync</span>
+    <a class="app-header__nav" href="./cases.html">案件列表 →</a>
+  </header>
+
+  <main class="container">
+    <button id="connectBtn" class="connect-button" type="button">
+      連線並接收資料
+    </button>
+
+    <section class="card" id="pairCard" hidden>
+      <div class="card__label">配對碼（讀裝置螢幕後輸入）</div>
+      <div class="pair-code">
+        <input class="pair-code__digit" type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input class="pair-code__digit" type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input class="pair-code__digit" type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+        <input class="pair-code__digit" type="tel" maxlength="1" inputmode="numeric" pattern="[0-9]" />
+      </div>
+      <div class="card__label" style="margin-top: 12px;">
+        剩餘 <span id="pairTtl" class="text-amber text-mono">120</span> 秒
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card__label">同步進度</div>
+      <ul id="progressLog" class="progress-log">
+        <li>等待操作</li>
+      </ul>
+    </section>
+
+    <section class="card">
+      <div class="card__label">最近同步</div>
+      <div id="lastSync" class="card__value text-mute">—</div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    Phase F Web 驗證 v0.1 ｜ Chromium 系列瀏覽器 ｜ 需 HTTPS / localhost
+  </footer>
+
+  <script type="module" src="./js/api-client.js"></script>
+  <script type="module" src="./js/connect.js"></script>
+</body>
+</html>
