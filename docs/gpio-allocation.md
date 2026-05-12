@@ -27,12 +27,14 @@
 
 ## 2. 顯示
 
+主顯示為 2.8" ST7789 TFT（SPI bus）—— 完整腳位見 §5.2。
+
 | 用途 | GPIO | 介面 | 模組 | 狀態 |
 |------|------|------|------|------|
-| OLED SDA | **42** | I2C | SSD1306 0.96" | ✅ 啟用 |
-| OLED SCL | **41** | I2C | SSD1306 0.96" | ✅ 啟用 |
+| I2C SDA | **42** | I2C | — | 🟡 預留 |
+| I2C SCL | **41** | I2C | — | 🟡 預留 |
 
-> 📌 若採用 `tft-migration-plan.md` 升級 2.4" TFT，OLED 拆除，GPIO 41/42 釋出可作其他 I2C 用途（如 DS3231 RTC）。TFT SPI 腳位見第 5.2 節。
+> 📌 原 1.3" SH1106 OLED（I2C，GPIO 41/42）於 2026-05-08 拆除改 SPI TFT，I2C bus 整段釋出。GPIO 41/42 目前無裝置，預留給 §5.4 DS3231 RTC（Dev-Phase 3）與 §5.3 CO 感測器（電化學型 I2C）擴充。
 
 ---
 
@@ -110,17 +112,19 @@
 
 | 候選方案 | 介面 | GPIO | 備註 |
 |---------|------|------|------|
-| 電化學型 + I2C | SDA / SCL | **與 OLED 共用 GPIO 42 / 41** | I2C 多裝置 bus，OLED + CO 感測器同 bus 並存 |
+| 電化學型 + I2C | SDA / SCL | **GPIO 42 / 41**（I2C bus，可與 §5.4 DS3231 共用） | I2C 多裝置 bus；DS3231 地址 0x68，CO 感測器選用不同地址即可同 bus 並存 |
 | 電化學型 + UART | TX / RX | **GPIO 43 / 44** | 必須放棄 USB-CDC Serial Monitor |
 | MEMS 半導體型 + ADC | 類比輸入 | **❌ 已無 ADC 可用**（GPIO 1/2/3 全部給 TFT） | 2026-05-08 起 N16R8 + TFT 整合後 ADC 全用完；CO 必須走 I2C 或 UART |
 | 加熱半導體型（MQ-7/MQ-9） | — | **🚫 禁用** | 功耗超出 USB-C 供電上限（SoT V1 §20.5） |
 
 ### 5.4 RTC 模組擴充（DS3231，Dev-Phase 3 計畫）
 
+> 📌 **GPIO 41/42 目前為空閒狀態**：2026-05-08 後 OLED 已撤、改 SPI TFT，原 OLED I2C bus 釋出。DS3231 上機後此 bus 為其獨佔（地址 0x68）。後續若再加 I2C 感測器（如 CO 電化學型 §5.3）才會變共用 bus。
+
 | 用途 | GPIO | 備註 |
 |------|------|------|
-| I2C SDA | **與 OLED 共用 GPIO 42** | DS3231 + OLED 同 bus，地址不衝突（DS3231=0x68, SSD1306=0x3C） |
-| I2C SCL | **與 OLED 共用 GPIO 41** | 同上 |
+| I2C SDA | **GPIO 42** | 原 OLED bus，TFT 升級後釋出；DS3231 地址 0x68 |
+| I2C SCL | **GPIO 41** | 原 OLED bus，TFT 升級後釋出 |
 | INT（選用） | **GPIO 43**（若 USB-CDC 停用）或不接 | 用於秒中斷喚醒 |
 
 ---
@@ -134,7 +138,7 @@
 | TFT SPI MOSI/SCK（GPIO 2/3）vs CO 感測器 ADC | 2026-05-08 起 GPIO 2/3 已給 SPI | ADC 全部用完（1/2/3 全給 TFT）；CO 感測器改走 I2C 或 UART |
 | ~~TFT BL（PWM, GPIO 1） vs CO 感測器 ADC~~ | 已失效：2026-05-08 後 GPIO 1 已給 TFT DC | TFT BL 維持 3.3V 常亮（無 PWM 能力）；CO 感測器走 I2C 或 UART |
 | MicroSD CS vs USB-CDC Serial | GPIO 43/44 衝突 | 量產不需 USB-CDC 時切換 |
-| 獨立 I2C vs 按鍵 16/17/18 | 物理腳位衝突 | 按鍵已封版，獨立 I2C 改與 OLED bus 共用 |
+| 獨立 I2C vs 按鍵 16/17/18 | 物理腳位衝突 | 按鍵已封版；I2C 改用釋出的 GPIO 41/42 bus（原 OLED 用） |
 | **GPIO 35/36/37 vs N16R8 octal PSRAM** | **2026-05-08 實機踩雷確認**：採購到的就是 N16R8 模組 | TFT SPI 改 GPIO 2/3；採購若能選 N8 可釋放 GPIO 35/36/37 |
 
 ---
