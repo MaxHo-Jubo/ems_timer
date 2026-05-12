@@ -59,6 +59,7 @@
 #include "ems_vent_metronome.h"
 #include "ems_storage_logic.h"   // Phase E：持久化邏輯層
 #include "ems_storage_fs.h"      // Phase E：LittleFS adapter
+#include "ems_display_snapshot.h"// L2 regression：DisplaySnapshot 純邏輯
 
 #include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 222 glyphs (95 ASCII + 127 CJK)
 
@@ -119,7 +120,7 @@ public:
  */
 class FrameSprite : public lgfx::LGFX_Sprite {
 public:
-    FrameSprite(lgfx::LovyanGFX* parent) : LGFX_Sprite(parent) {}
+    explicit FrameSprite(lgfx::LovyanGFX* parent) : LGFX_Sprite(parent) {}
     void clearDisplay() { fillScreen(0x0000); }
 };
 
@@ -1676,69 +1677,58 @@ void applyOhcaOutput(const ohca_output_t& out) {
  * TFT 沒有 framebuffer，每次 clearDisplay+redraw 都直寫 76,800 像素到 SPI bus，
  * 視覺上會看到掃描線。snapshot 比對只有當顯示內容真正改變時才重繪 → 解決閃爍。
  *
- * 涵蓋會影響顯示的所有狀態：global/ohca state、cursor、倒數秒數、vent 拍點、
- * armed prompts、各種 overlay flag。
+ * struct/純邏輯抽到 lib/ems_display_snapshot/，native 環境可寫 L2 regression test
+ * （Phase E history UI 漏 historyCursor 導致無重繪那類 bug 必須在 native 階段被擋）。
  */
-struct DisplaySnapshot {
-    uint8_t  globalState;
-    uint8_t  ohcaState;
-    uint8_t  ohcaSubState;
-    uint8_t  mainMenuCursor;
-    uint8_t  backfillCursor;     /**< 子選單 cursor（QuickMenu/Backfill/Drug 共用同一變數 backfillCursor） */
-    uint32_t countdownSec;       /**< OHCA 倒數/超時當前顯示秒數（per-second granularity） */
-    uint8_t  ventBeat;           /**< 6sec 通氣節奏目前秒（0-5） */
-    uint8_t  ventVolume;
-    bool     ventPaused;
-    uint16_t historyCursor;      /**< Phase E：歷史列表 cursor（影響反白條位置與底部 "N/M"） */
-    uint16_t historyScrollOffset;/**< Phase E：歷史列表分頁起點（影響可見列） */
-    uint16_t flags;              /**< bit-packed prompt/overlay 狀態（擴成 uint16 容納 bit 8+） */
-};
-
 static DisplaySnapshot lastDisplaySnapshot = {};  // 全 0 初始 → 首次 updateDisplay 必觸發重繪
 
 /** 當前顯示狀態 → DisplaySnapshot。 */
 static DisplaySnapshot captureDisplaySnapshot() {
-    DisplaySnapshot s = {};
-    s.globalState     = (uint8_t)globalState;
-    s.ohcaState       = (uint8_t)ohcaState;
-    s.ohcaSubState    = (uint8_t)ohcaSubState;
-    s.mainMenuCursor  = mainMenuCursor;
-    s.backfillCursor  = backfillCursor;
+    // STEP 01: 算時間相關衍生值（lib 不依賴 millis() / 巨集常數）
+    DisplaySnapshotInputs in;
+    in.globalState     = (uint8_t)globalState;
+    in.ohcaState       = (uint8_t)ohcaState;
+    in.ohcaSubState    = (uint8_t)ohcaSubState;
+    in.mainMenuCursor  = mainMenuCursor;
+    in.backfillCursor  = backfillCursor;
+    in.ventVolume      = ventVolume;
+    in.ventPaused      = ventPaused;
+    in.historyCursor       = historyCursor;
+    in.historyScrollOffset = historyScrollOffset;
 
+    // STEP 02: countdownSec — EPI cycle 倒數/超時秒數
     if (ohcaLastEpiMs != 0) {
         const uint32_t since = millis() - ohcaLastEpiMs;
-        s.countdownSec = (since < EPI_CYCLE_MS)
-                       ? (EPI_CYCLE_MS - since) / 1000
-                       : (since - EPI_CYCLE_MS) / 1000;
+        in.countdownSec = (since < EPI_CYCLE_MS)
+                        ? (EPI_CYCLE_MS - since) / 1000
+                        : (since - EPI_CYCLE_MS) / 1000;
     }
+
+    // STEP 03: ventBeat — 6 秒通氣節奏目前秒
     if (ventStartMs != 0 && !ventPaused) {
         const uint32_t since = millis() - ventStartMs;
-        s.ventBeat = (uint8_t)computeVentBeat(since);
+        in.ventBeat = (uint8_t)computeVentBeat(since);
     }
-    s.ventVolume = ventVolume;
-    s.ventPaused = ventPaused;
-    s.historyCursor       = historyCursor;
-    s.historyScrollOffset = historyScrollOffset;
 
-    if (showEpiArmedPrompt)     s.flags |= 0x01;
-    if (showShockArmedPrompt)   s.flags |= 0x02;
-    if (showAmioArmedPrompt)    s.flags |= 0x04;
-    if (ohcaVentOverlayEnabled) s.flags |= 0x08;
-    if (ventEndCheckShown)      s.flags |= 0x10;
-    if (alarmMuted)             s.flags |= 0x20;
-    if (ventBackHintShown)      s.flags |= 0x40;
-    if (endConfirmShown)        s.flags |= 0x100;  // A7：bit 8
-    if (flashState.active)      s.flags |= 0x200;  // Batch 2：flash overlay bit 9
-    if (ventPreShown)           s.flags |= 0x400;  // A8：VENT_PRE bit 10
-    if (historySummaryMode)     s.flags |= 0x800;  // Phase E：歷史 SUMMARY 子畫面 bit 11
+    // STEP 04: ALARMING 半週期閃爍 phase（讓 dedupe 在 ALARMING 期間每半週期觸發重繪）
+    in.alarmingFlashOn = (globalState == GLOBAL_OHCA)
+                      && (ohcaState == OHCA_STATE_ALARMING)
+                      && (((millis() / OHCA_FLASH_HALF_MS) & 1) != 0);
 
-    // ALARMING flash phase：bit 進 snapshot 讓 dedupe 在 ALARMING 期間每半週期觸發一次重繪
-    // （demo flashRed 0.6s 全週期 → OHCA_FLASH_HALF_MS 半週期）
-    const bool alarmingFlashPhase = (globalState == GLOBAL_OHCA)
-                                 && (ohcaState == OHCA_STATE_ALARMING)
-                                 && (((millis() / OHCA_FLASH_HALF_MS) & 1) != 0);
-    if (alarmingFlashPhase) s.flags |= 0x80;
-    return s;
+    // STEP 05: bool flags
+    in.showEpiArmedPrompt    = showEpiArmedPrompt;
+    in.showShockArmedPrompt  = showShockArmedPrompt;
+    in.showAmioArmedPrompt   = showAmioArmedPrompt;
+    in.ohcaVentOverlayEnabled = ohcaVentOverlayEnabled;
+    in.ventEndCheckShown     = ventEndCheckShown;
+    in.alarmMuted            = alarmMuted;
+    in.ventBackHintShown     = ventBackHintShown;
+    in.endConfirmShown       = endConfirmShown;
+    in.flashStateActive      = flashState.active;
+    in.ventPreShown          = ventPreShown;
+    in.historySummaryMode    = historySummaryMode;
+
+    return captureSnapshot(in);
 }
 
 void updateDisplay() {
@@ -1814,12 +1804,12 @@ void updateDisplay() {
             case OHCA_STATE_WARNING:
             case OHCA_STATE_ALARMING:
             case OHCA_STATE_OVERTIME: {
-                const uint32_t now    = millis();
-                const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
+                const uint32_t nowMs  = millis();
+                const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (nowMs - ohcaLastEpiMs);
                 const uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
                 const uint32_t past   = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
                 // ALARMING 閃爍開關直接從 snapshot 讀，避免在 render 內二次取樣 millis()
-                const bool alarmingFlashOn = (lastDisplaySnapshot.flags & 0x80) != 0;
+                const bool alarmingFlashOn = (lastDisplaySnapshot.flags & SNAP_FLAG_ALARMING_FLASH) != 0;
                 if (ohcaState == OHCA_STATE_COUNTDOWN) {
                     drawOhcaCountdownCommon(remain, COLOR_TEXT_PRIMARY, "下次給藥", false);
                 } else if (ohcaState == OHCA_STATE_WARNING) {

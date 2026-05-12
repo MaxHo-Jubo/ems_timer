@@ -26,9 +26,8 @@ vent_output_t decideVentOutput(uint32_t prev_since_ms,
     out.buzz_emphasis     = false;
     out.led_red_flash     = false;
     out.screen_invert_red = false;
-    out.display_number    = 1;
 
-    // STEP 01: 計算當前 beat
+    // STEP 01: 計算當前 beat（display_number 由 beat 決定，不需預設值）
     vent_beat_t cur = computeVentBeat(since_start_ms);
     out.display_number = (uint8_t)cur + 1;
 
