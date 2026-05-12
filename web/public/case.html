@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0a0a0a" />
+  <title>EMS Timer 案件詳細</title>
+  <link rel="stylesheet" href="./css/style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <a class="app-header__nav" href="./cases.html">← 案件列表</a>
+    <span class="app-header__title">案件詳細</span>
+  </header>
+
+  <main class="container container--wide">
+    <div class="card case-meta" id="caseMeta">
+      <div class="case-meta__loading">載入中...</div>
+    </div>
+
+    <nav class="tabs" role="tablist" id="tabs">
+      <button class="tab" role="tab" data-tab="summary" aria-selected="true">交班摘要</button>
+      <button class="tab" role="tab" data-tab="overview">完整總覽</button>
+      <button class="tab" role="tab" data-tab="timeline">Timeline</button>
+      <button class="tab" role="tab" data-tab="notes">備註</button>
+    </nav>
+
+    <section class="tab-panel" id="panel-summary" role="tabpanel">
+      <div class="tab-panel__placeholder">交班摘要載入中...</div>
+    </section>
+
+    <section class="tab-panel hidden" id="panel-overview" role="tabpanel">
+      <div class="tab-panel__placeholder">完整總覽載入中...</div>
+    </section>
+
+    <section class="tab-panel hidden" id="panel-timeline" role="tabpanel">
+      <div class="tab-panel__placeholder">Timeline 載入中...</div>
+    </section>
+
+    <section class="tab-panel hidden" id="panel-notes" role="tabpanel">
+      <div class="tab-panel__placeholder">備註載入中...</div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    Phase F Web 驗證 v0.1
+  </footer>
+
+  <script type="module" src="./js/case-detail.js"></script>
+</body>
+</html>

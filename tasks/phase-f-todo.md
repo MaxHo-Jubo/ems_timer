@@ -7,14 +7,32 @@
 
 ---
 
+## 🎯 當前進度快照（2026-05-12）
+
+**已完成**：
+- ✅ **F-5** 後端骨架（Cloudflare D1 + Pages Functions + cases GET/POST + cases/:id GET/DELETE + notes GET/PUT）
+- ✅ **F-6** 前端骨架（連線頁 + 列表頁 + mock 同步流程驗證 BLE → D1 鏈路）
+- ✅ **F-9** 對齊 SoT §17 完整 UI（9 個子里程碑全綠）
+  - 4 頁籤詳細頁 / 交班摘要 / 完整總覽 14 欄 / Timeline / 備註 5 欄 autosave / 複製 3 處 / 刪除（D1-only） / OHCA-Training 分列表
+
+**下一步 BLE 鏈路**（按韌體優先順序）：
+1. **F-1** 韌體 `ems_pairing` 純函式 TDD（0.5d）
+2. **F-2** 韌體 `ble_nus` NimBLE 包裝（1.5d）
+3. **F-3** 韌體 `case_sync_dispatcher` 狀態機 + **主鍵確認** state（1.5d）
+4. **F-4a** 真 Web Bluetooth 連 nRF Connect mock（0.5d）
+5. **F-4b** 連真韌體（0.5d）
+6. **F-7 + F-8** 端到端整合 + 驗收（1.5d）
+
 ## 🎯 Resume 指引（rate-limit 後）
 
 接續工作流程：
 
 1. **讀 plan 文件**：`docs/phase-f-web-validation-plan.md`（戰略 + 完整脈絡）
-2. **讀本檔**：找第一個未勾 `[ ]` 的項目，從那裡開工
-3. **看 git log**：`git log --oneline | grep "phase-f\|Phase F"`（看上次做到哪 commit）
+2. **讀本檔當前進度快照**：知道做到哪
+3. **看 git log**：`git log --oneline | grep -iE "phase[- ]?f"`（看上次 commit 軌跡）
 4. **若有未 commit 變更**：`git status` 確認還沒收尾的工作
+5. **跑網頁端**：`cd web/ && npm run dev` 自動套 migration + 起服務
+6. **若要部署雲端**：`npm run deploy`（會檢查 placeholder UUID + 套 remote migration + Pages deploy）
 
 ---
 
@@ -226,84 +244,84 @@ curl http://localhost:8788/api/cases
 
 預估 0.5d
 
-- [ ] `web/migrations/0002_notes.sql` — notes 表（5 欄 + updated_at + FK on cases）
-- [ ] `web/functions/api/cases/[id]/notes.ts` — GET 取備註
-- [ ] `web/functions/api/cases/[id]/notes.ts` — PUT 寫備註（INSERT OR REPLACE）
-- [ ] 後端驗證：備註修改不觸發任何寫回裝置的邏輯（D1-only，§17.5 強制）
-- [ ] curl 驗證 GET/PUT 流程
+- [x] `web/migrations/0002_notes.sql` — notes 表（5 欄 + updated_at + FK on cases）
+- [x] `web/functions/api/cases/[id]/notes.ts` — GET 取備註（沒有就回空殼）
+- [x] `web/functions/api/cases/[id]/notes.ts` — PUT 寫備註（INSERT OR REPLACE）
+- [x] 後端驗證：備註修改不觸發任何寫回裝置的邏輯（D1-only，§17.5 強制）
+- [ ] curl 驗證 GET/PUT 流程（待 user 跑）
 
 ### F-9.2 前端：案件詳細頁 4 頁籤框架（對齊 §17.2）
 
 預估 0.5d
 
-- [ ] 路由：`/case/<case_id>` → 4 tab UI
-- [ ] Tab 切換：交班摘要 / 完整總覽 / Timeline / 備註
-- [ ] 預設第一頁 = 交班摘要（§17.2 明示）
-- [ ] URL hash 記錄當前 tab（`#summary` / `#overview` / `#timeline` / `#notes`）方便分享
+- [x] 路由：`/case.html?id=<case_id>` → 4 tab UI（query string，避免 SPA router）
+- [x] Tab 切換：交班摘要 / 完整總覽 / Timeline / 備註
+- [x] 預設第一頁 = 交班摘要（§17.2 明示）
+- [x] URL hash 記錄當前 tab（`#summary` / `#overview` / `#timeline` / `#notes`）
 
 ### F-9.3 前端：交班摘要頁（對齊 §17.3）
 
 預估 1d
 
-- [ ] 從 `/api/cases/:id` 拿到 raw_json + events，前端組摘要
-- [ ] 格式對齊 SoT §17.3 範例（byte-by-byte 對）：
-  - [ ] OHCA 交班摘要 / Training 交班摘要 標題
-  - [ ] 總時間 / EPI / 電擊 / Amiodarone 統計
-  - [ ] 第一次本機 EPI / 最後本機 EPI / 最後本機電擊 時間
-  - [ ] 補登：接手前 EPI ×N / 接手前電擊 ×N / 純補登 EPI ×N
-- [ ] 一鍵複製按鈕（對齊 §17.6）
+- [x] 從 `/api/cases/:id` 拿到 raw_json + events，前端組摘要（buildSummary）
+- [x] 格式對齊 SoT §17.3 範例：
+  - [x] OHCA 交班摘要 / Training 交班摘要 標題
+  - [x] 總時間 / EPI / 電擊 / Amiodarone 統計（含補登）
+  - [x] 第一次本機 EPI / 最後本機 EPI / 最後本機電擊 時間
+  - [x] 補登：接手前 EPI ×N / 接手前電擊 ×N / 純補登 EPI ×N / 純補登電擊 ×N
+- [x] 一鍵複製按鈕（對齊 §17.6）
 
 ### F-9.4 前端：完整總覽頁（對齊 §17.4）
 
 預估 0.5d
 
-- [ ] 13 欄全數呈現：
-  - [ ] 案件 ID / 模式 / 開始時間 / 結束時間 / 總時間
-  - [ ] EPI 詳細 / 電擊詳細 / Amiodarone
-  - [ ] Timeline（連結到 Timeline 頁）
-  - [ ] 同步資訊 / 裝置名稱 / 裝置 ID / 韌體版本 / 同步時間
+- [x] 13 欄全數呈現（grid layout 自適應）：
+  - [x] 案件 ID / 模式 / 開始時間 / 結束時間 / 總時間
+  - [x] EPI 詳細 / 電擊詳細 / Amiodarone
+  - [x] Timeline 計數 / 同步資訊 / 裝置名稱 / 裝置 ID / 韌體版本 / 同步時間
 
 ### F-9.5 前端：Timeline 頁（對齊 pm-dev-spec §四 Phase B）
 
 預估 0.5d
 
-- [ ] 事件依 `elapsed_ms` 升序排
-- [ ] 每筆顯示：事件名稱 / 絕對時間 / 經過時間
-- [ ] **補登事件絕對時間欄位 = `-`**（對齊 pm-dev-spec §四 Phase B）
+- [x] 事件依 `elapsed_ms` 升序排（後端 SQL 已排序）
+- [x] 每筆顯示：絕對時間 / 經過時間 / 事件名稱 / count
+- [x] **補登事件絕對時間 + 經過時間 = `—`**（對齊 pm-dev-spec §四 Phase B）
+- [x] 視覺分組：EPI 紅 / 電擊 琥珀 / Amiodarone 綠 / 補登 半透明
 
 ### F-9.6 前端：備註頁（對齊 §17.5）
 
 預估 0.5d
 
-- [ ] 5 欄表單：到院時間（datetime-local） / ROSC（checkbox） / 交班對象（text） / 特殊狀況（textarea） / 其他（textarea）
-- [ ] 自動存（debounce 1s 後 PUT `/api/cases/:id/notes`）
-- [ ] 明確提示「本欄位不會寫回裝置端」（§17.5 強制）
+- [x] 5 欄表單：到院時間（datetime-local） / ROSC（checkbox） / 交班對象（text） / 特殊狀況（textarea） / 其他（textarea）
+- [x] 自動存（debounce 1s 後 PUT `/api/cases/:id/notes`）+ 狀態指示器
+- [x] 明確提示「本欄位不會寫回裝置端」（§17.5 強制）— 琥珀警告卡片
 
 ### F-9.7 前端：複製功能（對齊 §17.6）
 
 預估 0.5d
 
-- [ ] 「快速複製摘要」按鈕（在交班摘要頁）
-- [ ] 「完整複製 Timeline」按鈕（在 Timeline 頁）
-- [ ] 「交班摘要一鍵複製」按鈕（在案件列表頁的每筆右側）
+- [x] 「一鍵複製交班摘要」按鈕（在交班摘要頁）
+- [x] 「完整複製 Timeline」按鈕（在 Timeline 頁）
+- [x] 「複製摘要」按鈕（在案件列表頁的每筆右側）
 
 ### F-9.8 前端：App 端刪除（對齊 §17.7）
 
 預估 0.5d
 
-- [ ] 案件列表加「刪除」按鈕
-- [ ] 確認對話框：「刪除 App 內案件？不會刪除裝置端資料」（§17.7 原文）
-- [ ] DELETE `/api/cases/:id`（後端：刪 cases + cascade 刪 events + notes）
-- [ ] 刪除後重新拉取列表
+- [x] 案件列表加「刪除」按鈕（紅色 outline 樣式提示破壞性）
+- [x] 確認對話框：「刪除 App 內案件？不會刪除裝置端資料」（§17.7 原文）
+- [x] DELETE `/api/cases/:id`（後端：刪 cases + FK CASCADE 連帶刪 events + notes）
+- [x] 刪除後重新拉取列表
 
 ### F-9.9 前端：OHCA / Training 分列表（對齊 §17.8）
 
 預估 0.5d
 
-- [ ] 案件列表頁加兩個 tab：`[OHCA 案件]` / `[Training 紀錄]`
-- [ ] 預設 OHCA tab
-- [ ] 後端 API：`/api/cases?mode=ohca` / `?mode=training` 篩選
-- [ ] **Training 不可混入 OHCA 列表**（§17.8 強制）
+- [x] 案件列表頁加兩個 tab：`[OHCA 案件]` / `[Training 紀錄]`
+- [x] 預設 OHCA tab（URL hash `#ohca` / `#training` 記憶）
+- [x] 後端 API：`/api/cases?mode=ohca` / `?mode=training` 篩選（白名單防注入）
+- [x] **Training 不可混入 OHCA 列表**（§17.8 強制）
 
 ### F-9 階段驗收
 

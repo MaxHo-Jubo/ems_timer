@@ -14,17 +14,25 @@ const SORT_KEYS = [
   "device_id_asc",
 ];
 
+const MODE_KEYS = ["ohca", "training"];
+
 /**
  * 取列表
  * @param {string} sort - 對齊後端 SORT_WHITELIST 的 key
+ * @param {string|null} mode - 對齊後端 MODE_WHITELIST，null = 不過濾
  * @returns {Promise<{ok: boolean, cases?: any[], error?: string}>}
  */
-export async function fetchCases(sort = "started_at_desc") {
+export async function fetchCases(sort = "started_at_desc", mode = null) {
   if (!SORT_KEYS.includes(sort)) {
     return { ok: false, error: `Invalid sort: ${sort}` };
   }
+  if (mode !== null && !MODE_KEYS.includes(mode)) {
+    return { ok: false, error: `Invalid mode: ${mode}` };
+  }
   try {
-    const res = await fetch(`${API_BASE}/api/cases?sort=${sort}`);
+    const params = new URLSearchParams({ sort });
+    if (mode !== null) params.set("mode", mode);
+    const res = await fetch(`${API_BASE}/api/cases?${params.toString()}`);
     if (!res.ok) {
       return { ok: false, error: `HTTP ${res.status}` };
     }
@@ -57,6 +65,20 @@ export async function postCase(payload) {
 export async function fetchCaseDetail(caseId) {
   try {
     const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}`);
+    return await res.json();
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Network error" };
+  }
+}
+
+/**
+ * 刪除單筆 case（D1-only，不影響韌體端原始紀錄，對齊 SoT §17.7）
+ */
+export async function deleteCase(caseId) {
+  try {
+    const res = await fetch(`${API_BASE}/api/cases/${encodeURIComponent(caseId)}`, {
+      method: "DELETE",
+    });
     return await res.json();
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Network error" };

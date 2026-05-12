@@ -14,7 +14,12 @@
   </header>
 
   <main class="container container--wide">
-    <div class="card">
+    <nav class="tabs" role="tablist" id="modeTabs">
+      <button class="tab" role="tab" data-mode="ohca" aria-selected="true">OHCA 案件</button>
+      <button class="tab" role="tab" data-mode="training">Training 紀錄</button>
+    </nav>
+
+    <div class="tab-panel">
       <div class="card__label">
         共 <span id="caseCount" class="text-mono">—</span> 筆 ｜ 點欄位切換排序
       </div>
@@ -23,16 +28,15 @@
           <thead>
             <tr>
               <th data-sort-key="started_at" data-sort-active="desc">開始時間</th>
-              <th data-sort-key="mode">模式</th>
               <th data-sort-key="device_id">裝置</th>
               <th data-sort-key="event_count">事件數</th>
               <th data-sort-key="synced_at">同步時間</th>
-              <th data-sort-key="started_at" data-show="timestamp_ms">時間戳記 (ms)</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody id="caseTableBody">
             <tr>
-              <td colspan="6" class="case-table__empty">載入中...</td>
+              <td colspan="5" class="case-table__empty">載入中...</td>
             </tr>
           </tbody>
         </table>

@@ -6,6 +6,7 @@
  */
 
 import { postCase, fetchCases } from "./api-client.js";
+import { EVT } from "./event-types.js";
 
 const els = {
   btn: document.getElementById("connectBtn"),
@@ -85,20 +86,32 @@ function bindPairCodeInputs() {
   });
 }
 
-// STEP 02: 產生 mock case payload，給 F-6 驗證 POST 鏈路用
+// STEP 02: 產生 mock case payload（豐富版，給 F-9 §17 UI demo 用）
+// 包含本機 + 接手前補登 + 純補登 + Amiodarone，可在詳細頁看到完整摘要效果
 function buildMockPayload() {
   const now = Date.now();
   const started = now - 15 * 60 * 1000;
   const caseId = `mock-${now}`;
 
-  // STEP 02.01: 假事件序列：EPI x3, 電擊 x2, ROSC
+  // STEP 02.01: 模擬一筆完整 OHCA case
+  // 接手前補登 → 本機 EPI/電擊 4 分鐘節奏 → Amiodarone → 純補登
   const events = [
-    { type: 0, timestamp_ms: started + 30_000, elapsed_ms: 30_000, count: 1 },
-    { type: 1, timestamp_ms: started + 60_000, elapsed_ms: 60_000, count: 1 },
-    { type: 0, timestamp_ms: started + 270_000, elapsed_ms: 270_000, count: 2 },
-    { type: 1, timestamp_ms: started + 300_000, elapsed_ms: 300_000, count: 2 },
-    { type: 0, timestamp_ms: started + 510_000, elapsed_ms: 510_000, count: 3 },
-    { type: 99, timestamp_ms: started + 720_000, elapsed_ms: 720_000, count: 1 },
+    // 補登（無時間戳）— elapsed_ms 為 0 表示無 timing
+    { type: EVT.EPI_PRE_HANDOVER, timestamp_ms: 0, elapsed_ms: 0, count: 1, actual_time_null: true },
+    { type: EVT.SHOCK_PRE_HANDOVER, timestamp_ms: 0, elapsed_ms: 0, count: 2, actual_time_null: true },
+
+    // 本機紀錄（有時間戳）
+    { type: EVT.EPI_LOCAL, timestamp_ms: started + 60_000, elapsed_ms: 60_000, count: 1 },
+    { type: EVT.SHOCK_LOCAL, timestamp_ms: started + 90_000, elapsed_ms: 90_000, count: 1 },
+    { type: EVT.EPI_LOCAL, timestamp_ms: started + 300_000, elapsed_ms: 300_000, count: 1 },
+    { type: EVT.AMIODARONE, timestamp_ms: started + 360_000, elapsed_ms: 360_000, count: 1 },
+    { type: EVT.SHOCK_LOCAL, timestamp_ms: started + 480_000, elapsed_ms: 480_000, count: 1 },
+    { type: EVT.EPI_LOCAL, timestamp_ms: started + 540_000, elapsed_ms: 540_000, count: 1 },
+    { type: EVT.SHOCK_LOCAL, timestamp_ms: started + 720_000, elapsed_ms: 720_000, count: 1 },
+    { type: EVT.EPI_LOCAL, timestamp_ms: started + 780_000, elapsed_ms: 780_000, count: 1 },
+
+    // 純補登（事後想起忘了打的）
+    { type: EVT.EPI_PURE_SUPP, timestamp_ms: 0, elapsed_ms: 0, count: 1, actual_time_null: true },
   ];
 
   return {
@@ -128,12 +141,12 @@ async function simulateSync() {
   await sleep(500);
   updateStep(s2, "done");
 
-  const s3 = log("[mock] 傳輸資料中（6 events）", "active");
+  const payload = buildMockPayload();
+  const s3 = log(`[mock] 傳輸資料中（${payload.events.length} events）`, "active");
   await sleep(600);
   updateStep(s3, "done");
 
   const s4 = log("寫入 Cloudflare D1", "active");
-  const payload = buildMockPayload();
   const result = await postCase(payload);
 
   if (!result.ok) {

@@ -68,6 +68,9 @@ function validatePayload(payload: unknown): payload is CaseSyncPayload {
   return true;
 }
 
+// STEP 03: mode filter 白名單（對齊 SoT §17.8 OHCA / Training 分列表）
+const MODE_WHITELIST = new Set(["ohca", "training"]);
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const url = new URL(context.request.url);
   const sortKey = url.searchParams.get("sort") ?? DEFAULT_SORT;
@@ -77,17 +80,30 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     return errorResponse(`Invalid sort: ${sortKey}`, 400);
   }
 
-  // STEP 01: 查列表，不含 raw_json 與 events（列表頁不需要）
+  // STEP 01: mode filter（可選）
+  const modeParam = url.searchParams.get("mode");
+  let whereClause = "";
+  const bindings: unknown[] = [];
+  if (modeParam) {
+    if (!MODE_WHITELIST.has(modeParam)) {
+      return errorResponse(`Invalid mode: ${modeParam}`, 400);
+    }
+    whereClause = "WHERE mode = ?";
+    bindings.push(modeParam);
+  }
+
+  // STEP 02: 查列表，不含 raw_json 與 events（列表頁不需要）
   const stmt = context.env.DB.prepare(
     `SELECT case_id, mode, device_name, device_id, fw_version,
             started_at, ended_at, synced_at,
             (SELECT COUNT(*) FROM events WHERE events.case_id = cases.case_id) AS event_count
      FROM cases
+     ${whereClause}
      ORDER BY ${orderBy}
      LIMIT 500`,
   );
 
-  const result = await stmt.all();
+  const result = await (bindings.length > 0 ? stmt.bind(...bindings).all() : stmt.all());
   return jsonResponse({ ok: true, cases: result.results });
 };
 

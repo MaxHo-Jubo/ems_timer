@@ -14,15 +14,18 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function validateCaseId(caseId: unknown): caseId is string {
+  return typeof caseId === "string" && caseId.length > 0 && caseId.length <= 64;
+}
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const caseId = context.params.id;
 
-  // STEP 01: 防止異常 id 直接打 DB（雖然 prepare 已有 binding）
-  if (typeof caseId !== "string" || caseId.length === 0 || caseId.length > 64) {
+  if (!validateCaseId(caseId)) {
     return jsonResponse({ ok: false, error: "Invalid case_id" }, 400);
   }
 
-  // STEP 02: 讀 case 主紀錄
+  // STEP 01: 讀 case 主紀錄
   const caseRow = await context.env.DB
     .prepare(`SELECT * FROM cases WHERE case_id = ?`)
     .bind(caseId)
@@ -32,7 +35,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     return jsonResponse({ ok: false, error: "Not found" }, 404);
   }
 
-  // STEP 03: 讀對應 events（按 elapsed_ms 升序，呈現案件時間軸）
+  // STEP 02: 讀對應 events（按 elapsed_ms 升序，呈現案件時間軸）
   const eventsResult = await context.env.DB
     .prepare(
       `SELECT event_type, timestamp_ms, elapsed_ms, count, actual_time_null
@@ -48,4 +51,28 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     case: caseRow,
     events: eventsResult.results,
   });
+};
+
+/**
+ * DELETE /api/cases/:id
+ * 對齊 SoT §17.7：只刪 App/Web 端資料，不影響裝置端原始紀錄
+ * FK CASCADE 會連帶刪 events + notes
+ */
+export const onRequestDelete: PagesFunction<Env> = async (context) => {
+  const caseId = context.params.id;
+
+  if (!validateCaseId(caseId)) {
+    return jsonResponse({ ok: false, error: "Invalid case_id" }, 400);
+  }
+
+  const result = await context.env.DB
+    .prepare(`DELETE FROM cases WHERE case_id = ?`)
+    .bind(caseId)
+    .run();
+
+  if (result.meta.changes === 0) {
+    return jsonResponse({ ok: false, error: "Not found" }, 404);
+  }
+
+  return jsonResponse({ ok: true, case_id: caseId, deleted: true });
 };

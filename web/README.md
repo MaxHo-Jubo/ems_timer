@@ -52,12 +52,32 @@ npm run dev
 
 預設 http://localhost:8788
 
-### 部署
+### 雲端部署
+
+**首次部署**：
 
 ```bash
-npm run db:migrate:remote
+# 1. 建立真實 D1 cloud DB（會回傳 UUID）
+npm run db:create
+
+# 2. 把回傳的 database_id 貼到 wrangler.toml
+#    取代本機開發用的 placeholder "00000000-0000-4000-8000-000000000001"
+
+# 3. 一鍵部署（remote migration + Pages deploy）
 npm run deploy
 ```
+
+**後續更新**：
+
+```bash
+# 只改前端 → 直接 pages deploy
+npm run deploy:pages-only
+
+# 加新 migration → 跑 deploy.sh（會自動 apply remote migration + pages deploy）
+npm run deploy
+```
+
+`deploy.sh` 會先檢查 `wrangler.toml` 不是 placeholder UUID 才會繼續，避免誤把本機開發配置推上雲端。
 
 ## API
 

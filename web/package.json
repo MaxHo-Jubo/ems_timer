@@ -6,7 +6,8 @@
   "scripts": {
     "predev": "wrangler d1 migrations apply ems-timer-cases --local",
     "dev": "wrangler pages dev public",
-    "deploy": "wrangler pages deploy public",
+    "deploy": "./deploy.sh",
+    "deploy:pages-only": "wrangler pages deploy public",
     "db:create": "wrangler d1 create ems-timer-cases",
     "db:migrate": "wrangler d1 migrations apply ems-timer-cases --local",
     "db:migrate:remote": "wrangler d1 migrations apply ems-timer-cases --remote",
