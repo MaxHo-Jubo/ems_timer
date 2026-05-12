@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # ============================================================
 # EMS Timer 韌體燒錄工具（macOS / Linux 版）
-# 用途：將 firmware.bin 燒錄到 ESP32-S3 開發板
+# 用途：將 firmware-merged.bin 燒錄到 ESP32-S3 開發板（offset 0x0）
+#       merged bin 內含 bootloader + partition table + app，自包含燒錄入口
 # 先決條件：
 #   1. 已安裝 Python 3.10+
 #   2. 已安裝 esptool（pip3 install esptool）
@@ -11,18 +12,19 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-FIRMWARE="${SCRIPT_DIR}/firmware.bin"
+FIRMWARE="${SCRIPT_DIR}/firmware-merged.bin"
 
 echo
 echo "==========================================="
-echo "   EMS Timer 韌體燒錄工具 v1.0"
+echo "   EMS Timer 韌體燒錄工具 v1.1"
 echo "==========================================="
 echo
 
-# STEP 01: 檢查 firmware.bin 是否存在
+# STEP 01: 檢查 firmware-merged.bin 是否存在
 if [ ! -f "${FIRMWARE}" ]; then
-    echo "[錯誤] 找不到 firmware.bin"
-    echo "請確認 firmware.bin 與 flash.sh 在同一資料夾"
+    echo "[錯誤] 找不到 firmware-merged.bin"
+    echo "請確認 firmware-merged.bin 與 flash.sh 在同一資料夾"
+    echo "（注意：純 app firmware.bin 不可從 0x0 燒，會蓋掉 bootloader 區）"
     exit 1
 fi
 

@@ -8,7 +8,7 @@ EMS Timer 韌體燒錄包
 ------------------------------------------------------------
 目錄內容
 ------------------------------------------------------------
-firmware.bin        韌體 binary（由開發者編譯）
+firmware-merged.bin 韌體 binary（bootloader + partition + app 三合一，由開發者編譯）
 flash.bat           Windows 一鍵燒錄腳本
 flash.sh            macOS / Linux 一鍵燒錄腳本
 README.txt          本說明文件
@@ -124,7 +124,7 @@ README.txt          本說明文件
 版本資訊
 ------------------------------------------------------------
 
-韌體版本：詳見 firmware.bin 同層的 VERSION.txt（若有）
+韌體版本：詳見 firmware-merged.bin 同層的 VERSION.txt（若有）
 燒錄工具：esptool.py
 目標硬體：ESP32-S3 GOOUUU 開發板
 聯絡窗口：（請洽 EMS Timer 專案開發者）

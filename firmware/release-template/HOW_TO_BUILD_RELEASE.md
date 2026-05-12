@@ -11,16 +11,21 @@ cd firmware
 pio run -e esp32-s3-devkitc-1
 ```
 
-編譯產物路徑：
+編譯產物路徑（post-build hook 自動 merge 並複製到 `firmware/` 根目錄）：
 ```
-.pio/build/esp32-s3-devkitc-1/firmware.bin
+firmware/firmware-merged.bin   # bootloader + partition + app 三合一（給 release）
+firmware/firmware.bin          # 純 app 段，僅供 Wokwi 拖檔，不可從 0x0 燒
 ```
 
-### Step 2：複製 binary 到 release-template
+### Step 2：複製 merged binary 到 release-template
 
 ```bash
-cp .pio/build/esp32-s3-devkitc-1/firmware.bin release-template/
+# 從 firmware/ 根目錄執行；用 merged bin，內含 bootloader/partition/app
+cp firmware-merged.bin release-template/
 ```
+
+> ⚠️ 一定要用 `firmware-merged.bin`，**不可**用純 app 的 `firmware.bin`。
+> esptool `write_flash 0x0 firmware.bin` 會蓋掉 bootloader 區，造成無限重置。
 
 ### Step 3：建立 VERSION.txt（記錄版本資訊）
 
@@ -68,7 +73,7 @@ zip 透過以下任一管道傳給對方：
 
 | 檔案 | 用途 | 給誰看 |
 |------|------|-------|
-| `firmware.bin` | 韌體 binary（**每次建置覆蓋**） | 對方 |
+| `firmware-merged.bin` | 韌體 binary, bootloader + partition + app 三合一（**每次建置覆蓋**） | 對方 |
 | `flash.bat` | Windows 燒錄腳本 | 對方 |
 | `flash.sh` | macOS / Linux 燒錄腳本 | 對方 |
 | `README.txt` | 對方燒錄說明 | 對方 |
@@ -87,7 +92,7 @@ set -e
 cd "$(dirname "$0")/../firmware"
 
 pio run -e esp32-s3-devkitc-1
-cp .pio/build/esp32-s3-devkitc-1/firmware.bin release-template/
+cp firmware-merged.bin release-template/
 
 # 產生 VERSION.txt
 {
@@ -111,6 +116,6 @@ echo "✅ Release 打包完成：ems-timer-firmware-${VERSION}.zip"
 
 ## 版本控管建議
 
-- `release-template/firmware.bin` 加入 `.gitignore`（建置產物不入版控）
+- `release-template/firmware-merged.bin` 加入 `.gitignore`（建置產物不入版控）
 - `release-template/VERSION.txt` 加入 `.gitignore`（每次重新產生）
 - 保留 `flash.bat` / `flash.sh` / `README.txt` / `HOW_TO_BUILD_RELEASE.md` 在版控

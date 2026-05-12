@@ -1,7 +1,8 @@
 @echo off
 REM ============================================================
 REM EMS Timer 韌體燒錄工具（Windows 版）
-REM 用途：將 firmware.bin 燒錄到 ESP32-S3 開發板
+REM 用途：將 firmware-merged.bin 燒錄到 ESP32-S3 開發板（offset 0x0）
+REM       merged bin 內含 bootloader + partition table + app，自包含燒錄入口
 REM 先決條件：
 REM   1. 已安裝 Python 3.10+（安裝時必須勾選「Add to PATH」）
 REM   2. 已安裝 esptool（pip install esptool）
@@ -12,14 +13,15 @@ setlocal
 
 echo.
 echo ===========================================
-echo    EMS Timer 韌體燒錄工具 v1.0
+echo    EMS Timer 韌體燒錄工具 v1.1
 echo ===========================================
 echo.
 
-REM STEP 01: 檢查 firmware.bin 是否存在
-if not exist "%~dp0firmware.bin" (
-    echo [錯誤] 找不到 firmware.bin
-    echo 請確認 firmware.bin 與 flash.bat 在同一資料夾
+REM STEP 01: 檢查 firmware-merged.bin 是否存在
+if not exist "%~dp0firmware-merged.bin" (
+    echo [錯誤] 找不到 firmware-merged.bin
+    echo 請確認 firmware-merged.bin 與 flash.bat 在同一資料夾
+    echo （注意：純 app firmware.bin 不可從 0x0 燒，會蓋掉 bootloader 區）
     echo.
     pause
     exit /b 1
@@ -53,7 +55,7 @@ echo 開始燒錄到 %PORT% ...
 echo （若卡住請按住板子 BOOT 鍵 + 按一下 RESET 鍵 + 放開 BOOT 鍵）
 echo.
 
-%ESPTOOL% --chip esp32s3 --port %PORT% --baud 921600 write_flash 0x0 "%~dp0firmware.bin"
+%ESPTOOL% --chip esp32s3 --port %PORT% --baud 921600 write_flash 0x0 "%~dp0firmware-merged.bin"
 
 if %errorlevel% equ 0 (
     echo.

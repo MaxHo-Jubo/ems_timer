@@ -1172,6 +1172,12 @@ void onShortPress(uint8_t btnIdx) {
                 summaryScrollOffset = 0;
                 return;
             }
+            // STEP 04: SUMMARY 主鍵 — 進 Timeline（對齊 demo V1 §11.13 MAIN || DOWN）
+            if (ohcaState == OHCA_STATE_SUMMARY) {
+                ohcaSubState         = SUBSTATE_TIMELINE;
+                timelineScrollOffset = 0;
+                return;
+            }
             break;
 
         case BTN_UP:
@@ -1683,6 +1689,8 @@ struct DisplaySnapshot {
     uint8_t  ventBeat;           /**< 6sec 通氣節奏目前秒（0-5） */
     uint8_t  ventVolume;
     bool     ventPaused;
+    uint16_t historyCursor;      /**< Phase E：歷史列表 cursor（影響反白條位置與底部 "N/M"） */
+    uint16_t historyScrollOffset;/**< Phase E：歷史列表分頁起點（影響可見列） */
     uint16_t flags;              /**< bit-packed prompt/overlay 狀態（擴成 uint16 容納 bit 8+） */
 };
 
@@ -1709,6 +1717,8 @@ static DisplaySnapshot captureDisplaySnapshot() {
     }
     s.ventVolume = ventVolume;
     s.ventPaused = ventPaused;
+    s.historyCursor       = historyCursor;
+    s.historyScrollOffset = historyScrollOffset;
 
     if (showEpiArmedPrompt)     s.flags |= 0x01;
     if (showShockArmedPrompt)   s.flags |= 0x02;
@@ -1720,6 +1730,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     if (endConfirmShown)        s.flags |= 0x100;  // A7：bit 8
     if (flashState.active)      s.flags |= 0x200;  // Batch 2：flash overlay bit 9
     if (ventPreShown)           s.flags |= 0x400;  // A8：VENT_PRE bit 10
+    if (historySummaryMode)     s.flags |= 0x800;  // Phase E：歷史 SUMMARY 子畫面 bit 11
 
     // ALARMING flash phase：bit 進 snapshot 讓 dedupe 在 ALARMING 期間每半週期觸發一次重繪
     // （demo flashRed 0.6s 全週期 → OHCA_FLASH_HALF_MS 半週期）
@@ -2266,22 +2277,26 @@ void drawOhcaLocked() {
 
 void drawHistoryList() {
     useZhFont();
+    char buf[64];
 
-    // 標題
+    // STEP 01: 標題（對齊 demo V1 §12：總數附在標題後）
+    //   vlw 未收錄全形括號（`（）`），用半形避字型缺字風險
+    snprintf(buf, sizeof(buf), "OHCA 案件 (%u)", (unsigned)historyCount);
     display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("歷史紀錄", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    drawCenteredText(buf, OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    // 無資料 — 提示 + early exit
+    // STEP 02: 無資料 — 提示 + early exit
+    //   副標「結束案件後紀錄」對齊 demo「完成案件後會自動列入」語意，
+    //   全字已在韌體既有字串中驗證 vlw 可顯示
     if (historyCount == 0) {
         display.setTextSize(1);
         drawCenteredText("尚無案件紀錄", SCREEN_H / 2 - 8, COLOR_TEXT_MUTED);
-        drawCenteredText("返回　主功能表",
+        drawCenteredText("結束案件後紀錄",
                          SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
         return;
     }
 
-    // 列出 HISTORY_VISIBLE_ROWS（5）筆，以 historyScrollOffset 為起點
-    char buf[64];
+    // STEP 03: 列出 HISTORY_VISIBLE_ROWS（5）筆，以 historyScrollOffset 為起點
     uint16_t shown = 0;
     for (uint16_t i = historyScrollOffset;
          i < historyCount && shown < HISTORY_VISIBLE_ROWS;
@@ -2310,52 +2325,137 @@ void drawHistoryList() {
         display.drawString(buf, SCREEN_W / 2, y + 8);
     }
 
-    // 底部 hint：分頁訊息 + 操作
-    snprintf(buf, sizeof(buf), "%u/%u  主鍵 詳情　返回 主功能表",
-             (unsigned)(historyCursor + 1),
-             (unsigned)historyCount);
-    drawCenteredText(buf, SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    // STEP 04: 底部操作提示（demo V1 §12 無提示，韌體保留實機可發現性）
+    //   「詳/情」不在 ems_zh_24_vlw.h 222 glyphs 字表內 → 改用 SUMMARY 畫面已驗證的「總覽」
+    drawCenteredText("主鍵 總覽　返回 主功能表",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 void drawOhcaSummary() {
-    // 用 caseSummary 聚合（V1 §11）
+    // STEP 01: 用 caseSummary 聚合（V1 §11）
+    //   - 現場案件結束流程：caseStartMs 為當前 boot 的 millis，可算相對 m:ss
+    //   - 歷史進入（historySummaryMode）：caseStartMs=0，事件 timestamp 來自過去 boot，
+    //     無法換算相對時間 → 時間 row 隱藏（無 RTC 前 by-design，Phase 3 DS3231 上機後再帶絕對時間）
+    const uint64_t startForRel = historySummaryMode ? 0 : (uint64_t)caseStartMs;
     ohca_case_summary_t s;
-    caseSummary_build(&s, events, eventCount, /*case_start*/ 0, /*case_end*/ 0);
+    caseSummary_build(&s, events, eventCount, startForRel, /*case_end*/ 0);
 
     useZhFont();
-
-    // 標題
-    display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("案件總覽", OHCA_BADGE_Y, COLOR_ACCENT_OK);
-
     char buf[64];
 
-    // EPI 區塊
-    snprintf(buf, sizeof(buf), "EPI 共 %u", s.epi_total);
+    // STEP 02: 標題（對齊 demo V1 §11.1）
+    //   「｜OHCA」全形 vertical bar 已在 EPI/電擊細分字串驗證可顯示
     display.setTextSize(1.2f, 1.2f);
-    drawCenteredText(buf, 60, COLOR_TEXT_PRIMARY);
-    snprintf(buf, sizeof(buf), "本機 %u｜接手前 %u｜純補登 %u",
+    drawCenteredText("案件總覽｜OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // STEP 03: 兩欄式 key|value layout（對齊 demo dense summary 風格）
+    const int16_t COL_KEY_X = 12;             // key 左對齊
+    const int16_t COL_VAL_X = SCREEN_W - 12;  // value 右對齊
+    int16_t y = 50;
+    const int16_t LINE_H     = 22;
+    const int16_t SECTION_GAP = 4;
+
+    display.setTextSize(1);
+
+    // ===== EPI 區段 =====
+    // line 1: 區段標題 + 總數（demo: `EPI` 區段 + `總數 N` 兩列；韌體預算緊縮為單列 `EPI 總 N`）
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_left);
+    display.drawString("EPI", COL_KEY_X, y);
+    display.setTextDatum(textdatum_t::middle_right);
+    snprintf(buf, sizeof(buf), "總 %u", s.epi_total);
+    display.drawString(buf, COL_VAL_X, y);
+    y += LINE_H;
+
+    // line 2: 細分（本機/接手前/補登 對齊 demo「本機 / 接手前 / 純補登」）
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::middle_left);
+    display.drawString("本機/接手前/補登", COL_KEY_X, y);
+    display.setTextDatum(textdatum_t::middle_right);
+    snprintf(buf, sizeof(buf), "%u/%u/%u",
              s.epi_local, s.epi_pre_handover, s.epi_pure_supp);
-    display.setTextSize(1);
-    drawCenteredText(buf, 92, COLOR_TEXT_MUTED);
+    display.drawString(buf, COL_VAL_X, y);
+    y += LINE_H;
 
-    // 電擊 區塊
-    snprintf(buf, sizeof(buf), "電擊 共 %u", s.shock_total);
-    display.setTextSize(1.2f, 1.2f);
-    drawCenteredText(buf, 122, COLOR_TEXT_PRIMARY);
-    snprintf(buf, sizeof(buf), "本機 %u｜接手前 %u｜純補登 %u",
+    // line 3: 本機 EPI 相對時間 m:ss（無 case_start → 隱藏）
+    //   demo 拆「第一次本機」「最後本機」兩列，此處合一列 first / last 節省垂直空間
+    if (startForRel > 0 && s.first_epi_local_ms > 0) {
+        const uint32_t f = (uint32_t)((s.first_epi_local_ms - startForRel) / 1000);
+        const uint32_t l = (uint32_t)((s.last_epi_local_ms  - startForRel) / 1000);
+        display.setTextDatum(textdatum_t::middle_left);
+        display.drawString("本機 m:ss", COL_KEY_X, y);
+        if (s.first_epi_local_ms == s.last_epi_local_ms) {
+            snprintf(buf, sizeof(buf), "%lu:%02lu",
+                     (unsigned long)(f / 60), (unsigned long)(f % 60));
+        } else {
+            snprintf(buf, sizeof(buf), "%lu:%02lu / %lu:%02lu",
+                     (unsigned long)(f / 60), (unsigned long)(f % 60),
+                     (unsigned long)(l / 60), (unsigned long)(l % 60));
+        }
+        display.setTextDatum(textdatum_t::middle_right);
+        display.drawString(buf, COL_VAL_X, y);
+        y += LINE_H;
+    }
+    y += SECTION_GAP;
+
+    // ===== 電擊 區段 =====
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_left);
+    display.drawString("電擊", COL_KEY_X, y);
+    display.setTextDatum(textdatum_t::middle_right);
+    snprintf(buf, sizeof(buf), "總 %u", s.shock_total);
+    display.drawString(buf, COL_VAL_X, y);
+    y += LINE_H;
+
+    display.setTextColor(COLOR_TEXT_MUTED);
+    display.setTextDatum(textdatum_t::middle_left);
+    display.drawString("本機/接手前/補登", COL_KEY_X, y);
+    display.setTextDatum(textdatum_t::middle_right);
+    snprintf(buf, sizeof(buf), "%u/%u/%u",
              s.shock_local, s.shock_pre_handover, s.shock_pure_supp);
-    display.setTextSize(1);
-    drawCenteredText(buf, 154, COLOR_TEXT_MUTED);
+    display.drawString(buf, COL_VAL_X, y);
+    y += LINE_H;
 
-    // Amio
-    snprintf(buf, sizeof(buf), "Amiodarone %u", s.amio_total);
-    display.setTextSize(1);
-    drawCenteredText(buf, 184, COLOR_TEXT_MUTED);
+    // 電擊 demo V1 §11.3 不顯示「第一次本機」，只顯示 last
+    if (startForRel > 0 && s.last_shock_local_ms > 0) {
+        const uint32_t l = (uint32_t)((s.last_shock_local_ms - startForRel) / 1000);
+        display.setTextDatum(textdatum_t::middle_left);
+        display.drawString("本機 m:ss", COL_KEY_X, y);
+        display.setTextDatum(textdatum_t::middle_right);
+        snprintf(buf, sizeof(buf), "%lu:%02lu",
+                 (unsigned long)(l / 60), (unsigned long)(l % 60));
+        display.drawString(buf, COL_VAL_X, y);
+        y += LINE_H;
+    }
+    y += SECTION_GAP;
 
-    // 底部 hint
-    drawCenteredText("返回　主功能表",
-                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    // ===== Amio =====
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_left);
+    display.drawString("Amio", COL_KEY_X, y);
+    display.setTextDatum(textdatum_t::middle_right);
+    if (startForRel > 0 && s.last_amio_ms > 0) {
+        const uint32_t l = (uint32_t)((s.last_amio_ms - startForRel) / 1000);
+        snprintf(buf, sizeof(buf), "總 %u  %lu:%02lu",
+                 s.amio_total,
+                 (unsigned long)(l / 60), (unsigned long)(l % 60));
+    } else {
+        snprintf(buf, sizeof(buf), "總 %u", s.amio_total);
+    }
+    display.drawString(buf, COL_VAL_X, y);
+
+    // STEP 04: 底部 hint
+    //   demo V1 §11.13: 「主鍵 / ▼ = Timeline　│　返回 = 主功能表」
+    //   - 現場結束流程：保留 ASCII "Timeline" 字面對齊 demo，去「主功能表」省字寬避免左切
+    //     （vlw 24px bitmap 無法縮小字級，整列縮字得擴字型子集）
+    //   - 歷史進入：Timeline 子畫面未實作 → 隱藏主鍵提示
+    if (historySummaryMode) {
+        drawCenteredText("返回",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    } else {
+        drawCenteredText("主鍵 Timeline　返回",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    }
 }
 
 void drawTwoStepArmedOverlay(const char* what) {
