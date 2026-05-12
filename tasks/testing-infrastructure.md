@@ -13,7 +13,7 @@
 - `#2` L2 整合測試（native）
 - `#4` Static analysis
 - `#3` On-target Unity test
-- `#5` Boot smoke test（依賴 CI；做之前先確認替代方案）
+- `#5` Boot smoke test（無 CI，改 local script `smoke_boot_test.py`）
 
 每完成一項先停下讓使用者確認。
 
@@ -21,7 +21,7 @@
 
 ## 重啟 session 怎麼接
 
-**進度（2026-05-12）**：#1 / #6 / #2 / #4 / #3 **已完成且已 commit**（3 個 commit）。**下次 session 直接做 #5**（見下方「#5」段落，動工前先確認 CI 替代方案）。
+**進度（2026-05-12）**：#1 / #6 / #2 / #4 / #3 / #5 **全部完成**。測試金字塔六層到位，後續可開 Impl-Phase F BLE。
 
 下次 session 開始時：
 
@@ -33,7 +33,7 @@
    pio run -e esp32-s3-devkitc-1   # 應該 Flash 27.1% / RAM 16.4% + [verify] OK x3
    ```
 
-2. **下一步：#5 Boot smoke test**（見下方章節）— **動工前先確認 CI 替代方案**（見 #5 段落「前置條件」）
+2. **#5 跑法**（每次燒主韌體後 cold-boot smoke）：見 #5 段落。
 
 ---
 
@@ -307,18 +307,77 @@ pio test -e esp32-s3-test
 
 ---
 
-## #5 Boot smoke test ⏸ 待辦（做之前先確認 CI 替代方案）
+## #5 Boot smoke test ✅ 已完成（2026-05-12）
 
-**目標**：自動讀 serial output 抓 `Guru Meditation` / `rst:` reset cause / boot loop。
+**前置條件確認**：`.gitlab-ci.yml` 僅有 `pages` job（沒有 runner），GitHub / CircleCI 未設定 → **無 CI 環境**。決定走 **local script 替代方案**：開發者燒完主韌體後手動跑 smoke。
 
-**前置條件**：
-- 確認專案是否有 CI（GitHub Actions / GitLab CI / local script）
-- 若無 CI，評估替代方案：
-  - local `pre-push` hook（push 前自動燒板 + 監聽 5 秒 serial）
-  - PlatformIO `test_speed` 環境 + 手動跑
-  - 不做，依賴 #3 on-target Unity test 涵蓋
+**為何不走 pre-push hook**：GOOUUU ESP32-S3 native USB 沒 RTS/DTR（見 `feedback_goouuu_esp32s3_no_uart_bridge.md`），autoreset 不可靠，全自動 hook 無法可靠地進/出 download mode；硬塞會增加 git workflow 噪音。
 
-**範圍預估（CI 存在時）**：
-- pio run + pio upload + serial monitor 5 秒
-- grep `rst:` 確認 reset cause
-- 抓到 panic 字串就 fail
+**改動**：新增 `firmware/scripts/smoke_boot_test.py`（193 行）
+
+判定規則（任一 FAIL → exit 1）：
+1. **必要 banner**：`[READY] MainMenu`（setup() 跑完的最終訊號，對應 `main.cpp:624`）
+   - **optional**：`[BOOT] EMS Timer Phase A`（`main.cpp:552`）— **native USB cold boot 通常抓不到**，因為 board cold boot ≈ 3s 到 [BOOT]、host open serial 也 ≈ 3s，host attach 之前 board USB endpoint buffer 已被丟。不 fail，僅在報告 note 此情境為預期。
+2. **不得出現 panic 字串**：`Guru Meditation` / `Backtrace:` / `[FATAL]` / `Brownout` / `assert failed` / `abort()` / `CORRUPT HEAP` / `IllegalInstruction` / `LoadProhibited` / `StoreProhibited` / `panic'd`
+3. **boot loop 偵測**：擷取期間 `rst:` reset banner 出現 ≥ 2 次 → fail（第一次是 manual RESET 觸發，預期；多次 = bootloader 在 loop）
+   - 註：native USB 抓不到 ROM bootloader 印的 `rst:`（USB CDC 列舉前的訊息會掉），這層退化為靠 banner missing 抓 boot loop（boot loop 時板子永遠到不了 [READY]）
+
+兩種輸入來源：
+- `--port <serial>` — 即時抓 USB CDC（用 pyserial，PlatformIO penv 已內建）
+- `--log-file <path>` — 讀現成 log（給 regression / CI / 自測）
+
+**自測**（6 個合成 log fixture + 1 個實機 log，全綠）：
+| Case | 預期 | 實測 |
+|---|---|---|
+| Happy path（BOOT + READY + 1× rst:） | exit 0 | ✅ |
+| `Guru Meditation` + `Backtrace:` | exit 1 panic | ✅ |
+| 2× rst: 重複 boot | exit 1 boot-loop | ✅ |
+| 缺 `[READY] MainMenu` | exit 1 banner | ✅ |
+| `[FATAL]` marker | exit 1 panic | ✅ |
+| native USB cold boot 缺 [BOOT] 但有 [READY] | exit 0（optional miss） | ✅ |
+| **實機 cold boot log（2026-05-12）** | exit 0 | ✅ |
+
+**實機驗證紀錄（2026-05-12）**：拔 USB → 插回 USB → script 偵測 port 出現後立即 open serial → 抓到 `[FONT] vlw loaded: 91467 bytes` / `[STORAGE] OK LittleFS mounted + storage_init` / `[REDRAW] gs=0 ...` / `[READY] MainMenu`。`[BOOT]` 因 host attach 延遲 ~3s 而錯過，符合 optional banner 設計。
+
+**踩雷紀錄（後人勿重蹈）**：
+- 第一版設計 `[BOOT]` 為必要 banner，實機跑 → FAIL，才發現 host attach 延遲問題。教訓：smoke 判定要先實機驗證再封版，光靠合成 fixture 蓋不到 USB 時序。
+- GOOUUU ESP32-S3 native USB 按 RESET 鍵後 macOS 的 /dev/cu.usbmodem* 不一定 unbind（host fd 卡 stale），最可靠的觸發 cold boot 方式是**拔 USB cable + 插回**。
+- pio device monitor 在 subprocess（無 TTY）跑會 `termios.error: Operation not supported by device`，要直接用 pyserial。
+
+**實機跑法 SOP**（最可靠流程：拔插 USB 觸發 cold boot，不靠 RESET 鍵）：
+
+```bash
+cd /Users/maxhero/Documents/MaxHero/Projects/ems_timer/firmware
+
+# Step 1：進 download mode（按住 BOOT → 短按 RESET → 放開 BOOT）
+~/.platformio/penv/bin/pio device list
+
+# Step 2：燒主韌體（不跑 monitor）
+~/.platformio/penv/bin/pio run -e esp32-s3-devkitc-1 -t upload \
+    --upload-port /dev/cu.usbmodemXXXX
+
+# Step 3：拔 USB cable → 等 3 秒 → 插回（強制 cold boot + USB re-enumerate）
+#   不要用 RESET 鍵 — native USB 上 RESET 鍵不一定觸發 host 端 USB detach
+
+# Step 4：插回後立刻跑 smoke（給 --duration 15，因為 host attach 約 3s + setup 約 3s）
+ls /dev/cu.usbmodem*
+~/.platformio/penv/bin/python3 scripts/smoke_boot_test.py \
+    --port /dev/cu.usbmodemXXXX --duration 15
+
+# regression / 在線 debug 一份 log 後重跑分析（不開 serial）
+python3 scripts/smoke_boot_test.py --log-file /tmp/boot.log
+```
+
+**注意 timing**：cold boot 完整序列從 USB 插上算約 6 秒（USB enumerate ≈ 1-2s + main.cpp setup() while-Serial 等 ≈ 0-3s + init 跑完到 [READY] ≈ 2-3s）。`--duration` 至少給 15s 才穩。
+
+**抓得到的 bug 類別**：
+- ✅ Phase E bootloader 無限重啟（`rst:` 連續出現 → boot-loop fail）
+- ✅ setup() 階段 `[FATAL] sprite createSprite failed`（OOM / PSRAM 沒抓到）
+- ✅ Guru Meditation / LoadProhibited / StoreProhibited（GPIO 35-37 那類 N16R8 octal PSRAM 踩雷會直接被擋）
+- ✅ Brownout（電源拓樸切換或 USB 供電不足）
+- ✅ setup() 卡在某 init function 沒到 `[READY] MainMenu`（banner missing fail）
+- 🟡 **蓋不到**：runtime 互動造成的 crash（按鈕按下後死、長時間 vent 後 OOM 等）—— 那層留 manual smoke + Impl-Phase F BLE 配對手測
+
+**未來升級空間**（不阻塞）：
+- 拿到 CP2102 模組或 DevKitC-1 板後，可寫 `pre-push` hook 全自動跑（pio upload + smoke serial）
+- 接 GitHub Actions self-hosted runner（接實機）後可移到 CI
