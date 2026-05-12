@@ -158,7 +158,20 @@
   </div>
 
   <div class="one-liner">
-    <strong>一句話：</strong>做完 <strong>Phase F 的網頁端</strong>，從零做到「<strong>丟一個 URL 給人就能看完整案件</strong>」。<strong>雲端資料庫</strong>（Cloudflare D1）通了，SoT §17 規範的全部介面（4 個頁籤、交班摘要、完整總覽、Timeline、備註、複製、刪除、OHCA/Training 分列表）都做完。下一步是讓 ESP32 韌體真的能透過藍牙連到網頁。
+    <strong>一句話：</strong>做完 <strong>Phase F 的網頁端</strong> 並 <strong>正式部署上雲</strong>，從零做到「<strong>丟一個 URL 給人就能看完整案件</strong>」。<strong>雲端資料庫</strong>（Cloudflare D1）通了，SoT §17 規範的全部介面（4 個頁籤、交班摘要、完整總覽、Timeline、備註、複製、刪除、OHCA/Training 分列表）都做完。下一步是讓 ESP32 韌體真的能透過藍牙連到網頁。
+  </div>
+
+  <div class="card">
+    <div class="section-title">🌐 線上網址（PM 可立即開瀏覽器查看）</div>
+    <div class="note-green" style="font-size:16px; padding:18px 20px;">
+      <a class="link" href="https://ems-dosesync-sync.pages.dev" target="_blank" rel="noopener" style="font-weight:700; font-size:18px;">https://ems-dosesync-sync.pages.dev</a>
+    </div>
+    <ul class="check-list" style="margin-top:10px">
+      <li>首頁是同步頁（按大按鈕會跑一筆假案件進雲端 DB）</li>
+      <li>案件列表：<a class="link" href="https://ems-dosesync-sync.pages.dev/cases.html" target="_blank" rel="noopener">/cases.html</a></li>
+      <li>進入任一案件後可看 4 個頁籤（交班摘要 / 完整總覽 / Timeline / 備註）</li>
+      <li>直接用手機開也可（手機版面已適配，最大寬度 480px）</li>
+    </ul>
   </div>
 
   <div class="card">
@@ -220,6 +233,7 @@
   <div class="card">
     <div class="section-title">雲端落地方式</div>
     <ul class="check-list">
+      <li><strong>正式網址</strong>：<a class="link" href="https://ems-dosesync-sync.pages.dev" target="_blank" rel="noopener">ems-dosesync-sync.pages.dev</a>（Cloudflare Pages，全球 CDN + HTTPS 自動配置）</li>
       <li><strong>開發階段</strong>：本機跑 Cloudflare 模擬器（<code>npm run dev</code>），帶假 UUID 不會佔用真實雲端資源</li>
       <li><strong>雲端部署</strong>：寫了 <code>deploy.sh</code> 一鍵腳本，會先檢查設定檔不是 placeholder 才繼續，避免誤推</li>
       <li><strong>免費額度</strong>：Cloudflare D1 提供 5GB 儲存 / 每天 500 萬筆讀取，對救護紀錄量綽綽有餘</li>

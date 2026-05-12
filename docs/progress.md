@@ -25,7 +25,16 @@ total_entries: 5
 
 ### 一句話
 
-做完 **Phase F 的網頁端**，從零做到「**丟一個 URL 給人就能看完整案件**」。**雲端資料庫**（Cloudflare D1）通了，SoT §17 規範的全部介面（4 個頁籤、交班摘要、完整總覽、Timeline、備註、複製、刪除、OHCA/Training 分列表）都做完。下一步是讓 ESP32 韌體真的能透過藍牙連到網頁。
+做完 **Phase F 的網頁端** 並 **正式部署上雲**，從零做到「**丟一個 URL 給人就能看完整案件**」。**雲端資料庫**（Cloudflare D1）通了，SoT §17 規範的全部介面（4 個頁籤、交班摘要、完整總覽、Timeline、備註、複製、刪除、OHCA/Training 分列表）都做完。下一步是讓 ESP32 韌體真的能透過藍牙連到網頁。
+
+### 線上網址（PM 可立即開瀏覽器查看）
+
+🌐 **https://ems-dosesync-sync.pages.dev**
+
+- 首頁是同步頁（按大按鈕會跑一筆假案件進雲端 DB）
+- 案件列表頁：[https://ems-dosesync-sync.pages.dev/cases.html](https://ems-dosesync-sync.pages.dev/cases.html)
+- 進入任一案件後可看 4 個頁籤（交班摘要 / 完整總覽 / Timeline / 備註）
+- 直接用手機開也可（手機版面已適配，最大寬度 480px）
 
 ### 為什麼先做網頁不是 App
 
@@ -68,6 +77,7 @@ total_entries: 5
 
 ### 雲端落地方式
 
+- **正式網址**：[https://ems-dosesync-sync.pages.dev](https://ems-dosesync-sync.pages.dev)（Cloudflare Pages，全球 CDN + HTTPS 自動配置）
 - **開發階段**：本機跑 Cloudflare 模擬器（`npm run dev`），帶假 UUID 不會佔用真實雲端資源
 - **雲端部署**：寫了 `deploy.sh` 一鍵腳本，會先檢查設定檔不是 placeholder 才繼續，避免誤推
 - **免費額度**：Cloudflare D1 提供 5GB 儲存 / 每天 500 萬筆讀取，對救護紀錄量綽綽有餘
