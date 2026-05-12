@@ -104,7 +104,7 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 ```bash
 cd firmware
 pio run -e esp32-s3-devkitc-1
-cp .pio/build/esp32-s3-devkitc-1/firmware.bin release-template/
+cp firmware-merged.bin release-template/
 zip -r ems-timer-firmware-$(date +%Y%m%d).zip release-template/ \
     -x "release-template/HOW_TO_BUILD_RELEASE.md"
 ```

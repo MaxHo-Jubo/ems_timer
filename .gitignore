@@ -13,9 +13,6 @@ dist/
 # Playwright MCP 截圖與報告（本機驗證用）
 .playwright-mcp/
 
-# Wokwi 拖檔用 firmware copy（由 scripts/copy_to_wokwi.py 產生）
-firmware/firmware.elf
-firmware/firmware.bin
+# Release 燒錄用 merged firmware（由 scripts/post_build_merge.py 產生）
 firmware/firmware-merged.bin
-firmware/firmware-*.elf
-firmware/firmware-*.bin
+firmware/firmware-merged-*.bin

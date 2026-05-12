@@ -11,10 +11,10 @@ cd firmware
 pio run -e esp32-s3-devkitc-1
 ```
 
-編譯產物路徑（post-build hook 自動 merge 並複製到 `firmware/` 根目錄）：
+編譯產物路徑（post-build hook 自動 merge 落到 `firmware/` 根目錄）：
 ```
 firmware/firmware-merged.bin   # bootloader + partition + app 三合一（給 release）
-firmware/firmware.bin          # 純 app 段，僅供 Wokwi 拖檔，不可從 0x0 燒
+.pio/build/esp32-s3-devkitc-1/firmware.bin   # 純 app 段（不可從 0x0 燒，會蓋 bootloader）
 ```
 
 ### Step 2：複製 merged binary 到 release-template
