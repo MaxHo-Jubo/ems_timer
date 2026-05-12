@@ -130,22 +130,159 @@
 <div class="header">
   <h1>📋 EMS Timer 進度報告</h1>
   <div class="subtitle">EMS DoseSync Pro — 救護人員給藥計時器</div>
-  <div class="version">PM 版 · 最後更新 2026-05-11</div>
+  <div class="version">PM 版 · 最後更新 2026-05-12</div>
 </div>
 
 <div class="meta-box">
   <div><span class="meta-label">產品：</span><span class="meta-value">EMS DoseSync Pro</span></div>
-  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-11</span></div>
-  <div><span class="meta-label">累計進度：</span><span class="meta-value">3 筆</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-12</span></div>
+  <div><span class="meta-label">累計進度：</span><span class="meta-value">4 筆</span></div>
   <div><span class="meta-label">負責：</span><span class="meta-value">Max Ho</span></div>
 </div>
 
 <div class="toc">
   <div class="toc-title">章節導覽（點擊跳轉到該次進度）</div>
   <div class="toc-list">
+    <a href="#progress-2026-05-12"><span class="toc-date">2026-05-12</span>進度 4 — V1 各階段進度盤點＋測試基礎建設到位</a>
     <a href="#progress-2026-05-11"><span class="toc-date">2026-05-11</span>進度 3 — 用自動化測試掃出 10 個畫面文字溢出並修正</a>
     <a href="#progress-2026-05-09-2"><span class="toc-date">2026-05-09</span>進度 2 — 補登次數選單列表化＋介面文字溢出修整</a>
     <a href="#progress-2026-05-09"><span class="toc-date">2026-05-09</span>進度 1 — 螢幕升級到 2.8 吋並修整體美觀</a>
+  </div>
+</div>
+
+<!-- ========== 進度 4 ========== -->
+<div class="progress-entry" id="progress-2026-05-12">
+  <div class="progress-entry-title">
+    <span class="num">進度 4</span>V1 各階段進度盤點＋測試基礎建設到位<span class="date">2026-05-12</span>
+  </div>
+
+  <div class="one-liner">
+    <strong>一句話：</strong>把 SoT V1 規格的 <strong>8 個階段（A~H）</strong> 跑完一次盤點，<strong>4 個完成 4 個待做</strong>；同時把擋下「燒進韌體才發現問題」的<strong>自動化測試框架</strong>建好 6 層，下一個重點是 <strong>Phase F（藍牙傳手機 App）</strong>。
+  </div>
+
+  <div class="card">
+    <div class="section-title">V1 規格 8 個階段完成度</div>
+    <table>
+      <thead>
+        <tr><th style="width:9%">階段</th><th>功能</th><th style="width:14%">狀態</th><th style="width:14%">完成日</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>A</strong></td>
+          <td>OHCA 核心（EPI 4 分倒數 / 兩段確認 / 預警警報超時）</td>
+          <td>✅ 完成</td>
+          <td>2026-05-04</td>
+        </tr>
+        <tr>
+          <td><strong>B</strong></td>
+          <td>補登（EPI / Amio）/ 案件總覽 / 事件時間軸</td>
+          <td>✅ 完成</td>
+          <td>2026-05-08</td>
+        </tr>
+        <tr>
+          <td><strong>C</strong></td>
+          <td>6 秒通氣節奏（獨立模式 + OHCA 內輔助）</td>
+          <td>✅ 完成</td>
+          <td>2026-05-05</td>
+        </tr>
+        <tr>
+          <td><strong>D</strong></td>
+          <td>Training 訓練模式</td>
+          <td>⬜ 未開工</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>E</strong></td>
+          <td>資料持久化 + 歷史紀錄（重開機資料不遺失）</td>
+          <td><span style="color:#f59e0b; font-weight:700">⚠️ 軟體完成、缺零件</span></td>
+          <td>2026-05-12</td>
+        </tr>
+        <tr>
+          <td><strong>F</strong></td>
+          <td>App 配對碼同步（藍牙傳手機 App）</td>
+          <td>⬜ 未開工</td>
+          <td><strong style="color:#3b82f6">下一個重點</strong></td>
+        </tr>
+        <tr>
+          <td><strong>G</strong></td>
+          <td>系統設定 + Type-C 管理工具（列案件 / 匯出 / 清除）</td>
+          <td>⬜ 未開工</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><strong>H</strong></td>
+          <td>電源管理（充電拓樸 / 邊充邊用 / 低電量警告）</td>
+          <td><span style="color:#ef4444; font-weight:700">⏸ 阻塞中</span></td>
+          <td>等零件採購</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note-green" style="margin-top:14px"><strong>已完成 3 / 8 全綠</strong>（A / B / C）｜<strong style="color:#92400e">1 / 8 半綠</strong>（E 軟體 OK 但缺硬體零件）｜剩餘：D / F / G / H</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">⚠️ 卡採購的兩個階段</div>
+    <table>
+      <thead>
+        <tr><th style="width:14%">階段</th><th>韌體狀態</th><th>卡在哪</th><th>需要的零件</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color:#f59e0b">E</strong><br><span style="font-size:12px; color:#64748b">持久化</span></td>
+          <td>韌體完成、能寫入也能讀回</td>
+          <td><strong>沒有絕對時間戳記</strong></td>
+          <td>DS3231 即時時鐘模組（I2C 接線，給每筆事件記真實年月日時分秒）</td>
+        </tr>
+        <tr>
+          <td><strong style="color:#ef4444">H</strong><br><span style="font-size:12px; color:#64748b">電源管理</span></td>
+          <td>完全未開工</td>
+          <td><strong>沒有電池就沒有充放電可管</strong></td>
+          <td>TP4056 充電 IC、升壓 IC、3.7V 鋰電池、單節保護板</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="note-blue" style="margin-top:14px">
+      <strong>Phase E 現況補充</strong>：目前每筆事件的時間欄位記的是「從這次開機起算的毫秒數」，重開機後相對時間還在但無法對應到真實日期時間。<br>
+      <strong>短期變通</strong>是 Phase F 完成後讓手機 App 連線時下發 epoch 時間做軟體對時；<br>
+      <strong>長期</strong>仍建議買 DS3231 模組焊上去，因為救護現場可能 App 未連線就要記錄事件。
+    </div>
+    <div class="note-blue" style="margin-top:10px">
+      <strong>Phase H 阻塞</strong>：採購到貨後才有東西可以做。採購清單已整理在
+      <a class="link" href="hardware-procurement-v2.html">hardware-procurement-v2.html</a>（PM 可直接看那份決定下單）。
+      在電源模組到位之前，主機只能 USB 直供，量產殼也沒法定型。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">測試基礎建設 6 層</div>
+    <p style="font-size:14px; margin-bottom:12px; line-height:1.7">
+      Phase E 持久化開發時撞到「燒進韌體才發現分區配置不同步、開機就無限重啟」的問題，當下用了不少時間查根因。為避免重複踩同樣的雷，這幾天把測試框架補齊到 6 層，未來新功能燒板前能先被自動化擋下。
+    </p>
+    <table>
+      <thead>
+        <tr><th style="width:18%">層</th><th>抓什麼問題</th><th style="width:10%">狀態</th><th style="width:14%">完成日</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>1️⃣ 建置時驗證</td><td>分區配置超出 Flash 容量 / 韌體 bin 不完整</td><td>✅</td><td>2026-05-12</td></tr>
+        <tr><td>2️⃣ 整合測試</td><td>顯示畫面新增欄位漏同步（Phase E 那種 regression）</td><td>✅</td><td>2026-05-12</td></tr>
+        <tr><td>3️⃣ 實機測試</td><td>真寫進 Flash → 重新掛載 → 資料還在</td><td>✅</td><td>2026-05-12</td></tr>
+        <tr><td>4️⃣ 靜態分析</td><td>死碼 / 隱式型別轉換 / 變數遮蔽</td><td>✅</td><td>2026-05-12</td></tr>
+        <tr><td>5️⃣ 開機健檢</td><td>燒完開不了機 / boot loop / panic</td><td>✅</td><td>2026-05-12</td></tr>
+        <tr><td>6️⃣ 預算監控</td><td>Flash / RAM 用量爆出預算（量產時硬殼會塞不下）</td><td>✅</td><td>2026-05-12</td></tr>
+      </tbody>
+    </table>
+    <div class="note-blue" style="margin-top:14px">目前主韌體實際用量：<strong>Flash 27.1%（533 KB / 1.9 MB）｜RAM 16.4%</strong>，距離量產上限充裕。</div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">後續工作</div>
+    <ul class="check-list">
+      <li class="todo"><strong>Phase F</strong>（App 配對碼同步）— 下一個開工重點，這是讓救護資料能跨裝置查閱的關鍵</li>
+      <li class="todo">Phase D（Training 訓練模式）— 不阻擋 F，但完成後可給新人單獨練習用</li>
+      <li class="todo">Phase G（系統設定 + Type-C 工具）— F 之後跟進</li>
+      <li class="todo">Phase H（電源管理）— 量產前最後一階段，等實機功耗測完</li>
+    </ul>
+    <div class="note-green">接下來開 Phase F 需要 PM 提供：(1) 配對碼互動 UX 確認；(2) 手機 App 那邊由誰負責、用什麼平台；(3) 第一版資料同步要不要先支援單機歷史紀錄查詢，還是直接全雲端。</div>
   </div>
 </div>
 
