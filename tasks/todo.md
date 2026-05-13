@@ -1,8 +1,16 @@
 # EMS Timer 開發進度
 
-> **2026-04-27 重要更新**：V1 規格封版並完成手機互動 Demo。
-> 韌體下次工作從 **Phase A 開工**，既有韌體（`MED_PHASE` / `ems_countdown` / `vent_metronome` / 5 鍵 / 4 模式切換）視為 throwaway prototype 全砍重寫。
-> 詳見 `docs/pm-dev-spec.md` v2.0。
+> **2026-05-13 重整**：todo.md 大瘦身。Impl-Phase A 韌體已完成（2026-05-04），網頁端 Phase F 移至 [`tasks/phase-f-todo.md`](phase-f-todo.md) 為權威來源。本檔聚焦 TFT 整合進行中 + 近期硬體/Demo 工作 + 後續階段 backlog。
+
+---
+
+## 🎯 當前焦點（2026-05-13）
+
+- **網頁端 Phase F**：見 [`tasks/phase-f-todo.md`](phase-f-todo.md)（權威來源，不在此重複）
+  - F-5 / F-6 / F-9 已完成；下一步 F-1 韌體 `ems_pairing` TDD（BLE 鏈路第一棒）
+- **TFT 整合**：Step 2 後續其他畫面 + Step 3 字體放大 + Demo 對齊 batch 1~3 待實機測試（見下）
+- **22 commits 待跑 POST-COMMIT-REVIEW**（baseline `3d44950`，rate-limit 恢復後）
+- **韌體 Phase B~H 規劃**：見 [`docs/pm-dev-spec.md §四`](../docs/pm-dev-spec.md)
 
 ---
 
@@ -265,6 +273,25 @@ e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
 - 🟡 **動畫頻率**：demo CSS keyframes 寫死的閃爍頻率（黃慢、紅快、紅慢），韌體要照搬數字 → 抽出 demo CSS 的 `animation-duration` 數字當韌體常數
 - 🔴 **GPIO 21 衝突**：TFT CS 跟震動馬達同腳。整合時 `ENABLE_VIBRATION = 0` 必須維持；之後 Prod-Phase 要震動回饋的話必須先解 GPIO 衝突（見 `gpio-allocation.md` §3 註記）
 - 🟡 **Refresh strategy**：demo 用 React diff 重繪 DOM，TFT 沒 diff，全螢幕重繪會閃。要實作 partial update（只重繪變動區域）或 double buffer（耗 RAM）
+
+---
+
+## 📋 近期工作（2026-05-12 / 13）
+
+### 已完成
+
+- ✅ **Phase F 網頁端落地**：Cloudflare Pages + D1 部署完成（commit `19bc495`）；F-5 後端骨架 + F-6 前端骨架 + F-9 對齊 SoT §17 完整 UI 全綠（見 `tasks/phase-f-todo.md`）
+- ✅ **進度報告 5 PM HTML**（`docs/progress.html` 累加進度 5：Phase F 網頁端完整落地）
+- ✅ **手機 demo 320×240 文字溢出修正**（Android line-height 1.5→1.2，commit 待 review）
+- ✅ **硬體採購清單 V1 功能標記**（`docs/hardware-procurement-v2.{md,html}` 同步功用欄位 + 非 V1 圖例 + SoT §2.2/§6.6 規格引用）
+- ✅ **HTML 文件未定義 CSS 變數修正**
+
+### 待跑
+
+- [ ] 22 commits POST-COMMIT-REVIEW 五步驟（rate-limit 恢復後，baseline `3d44950`）
+- [ ] push origin（GitLab + GitHub backup）
+- [ ] 硬體採購清單下單（蝦皮 / 露天）— 等 PM 確認方案
+- [ ] **GitLab Pages 驗證**：自架 GitLab 實例 Pages 功能是否啟用（admin 設定），或改用 GitHub Pages
 
 ---
 
