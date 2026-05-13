@@ -40,13 +40,11 @@ StorageState s_state{};
 // ----- Little-endian I/O helpers -----
 
 inline void put_u16_le(uint8_t* p, uint16_t v) {
-    // STEP 01: 寫入 u16 little-endian
     p[0] = (uint8_t)(v & 0xFF);
     p[1] = (uint8_t)((v >> 8) & 0xFF);
 }
 
 inline void put_u32_le(uint8_t* p, uint32_t v) {
-    // STEP 01: 寫入 u32 little-endian
     p[0] = (uint8_t)(v & 0xFF);
     p[1] = (uint8_t)((v >> 8) & 0xFF);
     p[2] = (uint8_t)((v >> 16) & 0xFF);
@@ -54,7 +52,6 @@ inline void put_u32_le(uint8_t* p, uint32_t v) {
 }
 
 inline void put_u64_le(uint8_t* p, uint64_t v) {
-    // STEP 01: 寫入 u64 little-endian
     for (int i = 0; i < 8; ++i) {
         p[i] = (uint8_t)((v >> (i * 8)) & 0xFF);
     }
@@ -259,7 +256,7 @@ uint32_t storage_crc32_update(uint32_t crc,
     if (!buf || len == 0) {
         return crc;
     }
-    // STEP 02: 反轉前一輪結果為 internal accumulator（標準 IEEE 802.3 慣例）
+    // STEP 02: 位元反轉（~ NOT）為 internal accumulator（標準 IEEE 802.3 慣例）
     uint32_t c = ~crc;
     // STEP 03: 逐 byte 處理 8 次 shift + xor with reflected polynomial
     for (size_t i = 0; i < len; ++i) {
@@ -434,8 +431,7 @@ bool storage_index_serialize(const case_meta_t* cases,
         const case_meta_t& m = cases[i];
         JsonObject c = arr.add<JsonObject>();
         c["id"]                 = m.id;
-        c["type"]               = (m.type == EMS_CASE_TYPE_OHCA)
-                                  ? "ohca" : "training";
+        c["type"]               = case_type_to_str(m.type);
         c["start_ms"]           = m.start_ms;
         c["end_ms"]             = m.end_ms;
         c["epi_local"]          = m.epi_local;
@@ -513,9 +509,7 @@ bool storage_index_parse(const char*  json,
         m.id[sizeof(m.id) - 1] = '\0';
 
         const char* tstr = c["type"] | "ohca";
-        m.type = (strcmp(tstr, "training") == 0)
-               ? EMS_CASE_TYPE_TRAINING
-               : EMS_CASE_TYPE_OHCA;
+        m.type = case_type_from_str(tstr);
 
         m.start_ms           = c["start_ms"]           | (uint64_t)0;
         m.end_ms             = c["end_ms"]             | (uint64_t)0;
@@ -539,6 +533,21 @@ bool storage_index_parse(const char*  json,
 // ============================================================
 //  路徑 helpers
 // ============================================================
+
+const char* case_type_to_str(storage_case_type_t type) {
+    switch (type) {
+        case EMS_CASE_TYPE_OHCA:     return "ohca";
+        case EMS_CASE_TYPE_TRAINING: return "training";
+    }
+    return "ohca";
+}
+
+storage_case_type_t case_type_from_str(const char* s) {
+    if (s && strcmp(s, "training") == 0) {
+        return EMS_CASE_TYPE_TRAINING;
+    }
+    return EMS_CASE_TYPE_OHCA;
+}
 
 const char* storage_dir_path(storage_case_type_t type) {
     switch (type) {
@@ -607,11 +616,13 @@ bool storage_init(IStorageBackend* be) {
     }
 
     // STEP 04: 列出實際檔案
-    char ohca_names[EMS_STORAGE_OHCA_CAP][EMS_STORAGE_NAME_MAX];
+    //   static 配置避開 stack 壓力（OHCA 1600B + Training 640B = 2.24KB；
+    //   main task 預設 stack 8KB，TFT/BLE 共用時不可吃太多）
+    static char ohca_names[EMS_STORAGE_OHCA_CAP][EMS_STORAGE_NAME_MAX];
     size_t n_ohca = be->list_dir(be->ctx,
                                  storage_dir_path(EMS_CASE_TYPE_OHCA),
                                  ohca_names, EMS_STORAGE_OHCA_CAP);
-    char train_names[EMS_STORAGE_TRAINING_CAP][EMS_STORAGE_NAME_MAX];
+    static char train_names[EMS_STORAGE_TRAINING_CAP][EMS_STORAGE_NAME_MAX];
     size_t n_train = be->list_dir(be->ctx,
                                   storage_dir_path(EMS_CASE_TYPE_TRAINING),
                                   train_names, EMS_STORAGE_TRAINING_CAP);
@@ -851,20 +862,19 @@ bool storage_format(IStorageBackend* be) {
     if (!be) {
         return false;
     }
-    // STEP 01: 刪所有檔案
-    char names[kTotalCapacity][EMS_STORAGE_NAME_MAX];
-    size_t n = be->list_dir(be->ctx, "/cases/ohca", names, kTotalCapacity);
-    for (size_t i = 0; i < n; ++i) {
-        char path[EMS_STORAGE_PATH_MAX];
-        snprintf(path, sizeof(path), "/cases/ohca/%s", names[i]);
-        be->delete_file(be->ctx, path);
-    }
-    n = be->list_dir(be->ctx, "/cases/training", names, kTotalCapacity);
-    for (size_t i = 0; i < n; ++i) {
-        char path[EMS_STORAGE_PATH_MAX];
-        snprintf(path, sizeof(path), "/cases/training/%s", names[i]);
-        be->delete_file(be->ctx, path);
-    }
+    // STEP 01: 刪所有檔案（OHCA + Training 走相同流程，抽 lambda 避免目錄字串散落）
+    auto purge_dir = [&](storage_case_type_t type) {
+        const char* dir = storage_dir_path(type);
+        char names[kTotalCapacity][EMS_STORAGE_NAME_MAX];
+        size_t n = be->list_dir(be->ctx, dir, names, kTotalCapacity);
+        for (size_t i = 0; i < n; ++i) {
+            char path[EMS_STORAGE_PATH_MAX];
+            snprintf(path, sizeof(path), "%s/%s", dir, names[i]);
+            be->delete_file(be->ctx, path);
+        }
+    };
+    purge_dir(EMS_CASE_TYPE_OHCA);
+    purge_dir(EMS_CASE_TYPE_TRAINING);
     be->delete_file(be->ctx, "/cases/index.json");
     be->delete_file(be->ctx, "/cases/index.json.tmp");
 

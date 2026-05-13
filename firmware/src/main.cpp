@@ -2287,32 +2287,39 @@ void drawHistoryList() {
     }
 
     // STEP 03: 列出 HISTORY_VISIBLE_ROWS（5）筆，以 historyScrollOffset 為起點
+    //   row 高度 28px 大於 summary 22px → 列表強調觸控可辨識性，summary 內聚資訊密度
+    constexpr int16_t HISTORY_LIST_START_Y      = 60;
+    constexpr int16_t HISTORY_ROW_HEIGHT_PX     = 28;
+    constexpr int16_t HISTORY_ROW_SIDE_MARGIN   = 8;   // 高亮 fillRect 左右留白
+    constexpr int16_t HISTORY_ROW_TOP_INSET     = 4;   // 高亮 fillRect 上緣往上延伸
+    constexpr int16_t HISTORY_ROW_HIGHLIGHT_H   = 26;  // 高亮 fillRect 高度（< row 高度避免疊出）
+    constexpr int16_t HISTORY_ROW_TEXT_VOFFSET  = 8;   // 文字 baseline 微調對齊視覺中心
     uint16_t shown = 0;
     for (uint16_t i = historyScrollOffset;
          i < historyCount && shown < HISTORY_VISIBLE_ROWS;
          ++i, ++shown) {
         const case_meta_t& m = historyCases[i];
-        int y = 60 + (int)shown * 28;
+        int y = HISTORY_LIST_START_Y + (int)shown * HISTORY_ROW_HEIGHT_PX;
 
         // cursor 高亮列：填底色
         if (i == historyCursor) {
-            display.fillRect(8, y - 4, SCREEN_W - 16, 26, COLOR_ACCENT_WARN);
+            display.fillRect(HISTORY_ROW_SIDE_MARGIN,
+                             y - HISTORY_ROW_TOP_INSET,
+                             SCREEN_W - HISTORY_ROW_SIDE_MARGIN * 2,
+                             HISTORY_ROW_HIGHLIGHT_H,
+                             COLOR_ACCENT_WARN);
         }
         uint16_t fg = (i == historyCursor) ? COLOR_BG : COLOR_TEXT_PRIMARY;
 
         // 顯示「id 後 5 位 ｜ EPI N ｜ 電擊 N」
-        uint16_t epi_total =
-            (uint16_t)(m.epi_local + m.epi_pre_handover + m.epi_pure_supp);
-        uint16_t shock_total =
-            (uint16_t)(m.shock_local + m.shock_pre_handover + m.shock_pure_supp);
         snprintf(buf, sizeof(buf), "#%s  EPI %u  電擊 %u",
                  m.id + 5,
-                 (unsigned)epi_total,
-                 (unsigned)shock_total);
+                 (unsigned)case_meta_epi_total(m),
+                 (unsigned)case_meta_shock_total(m));
         display.setTextSize(1);
         display.setTextColor(fg);
         display.setTextDatum(textdatum_t::middle_center);
-        display.drawString(buf, SCREEN_W / 2, y + 8);
+        display.drawString(buf, SCREEN_W / 2, y + HISTORY_ROW_TEXT_VOFFSET);
     }
 
     // STEP 04: 底部操作提示（demo V1 §12 無提示，韌體保留實機可發現性）

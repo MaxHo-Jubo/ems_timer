@@ -50,8 +50,11 @@ bool fs_write_file(void* /*ctx*/, const char* path,
 }
 
 bool fs_delete_file(void* /*ctx*/, const char* path) {
-    // LittleFS.remove() 對不存在的檔回 false；對 caller 端統一視為 OK
-    LittleFS.remove(path);
+    // LittleFS.remove() 對不存在的檔回 false；對 caller 端統一視為 OK，
+    // 但若檔案明確存在卻刪不掉（partition 損毀 / 全滿），印 log 而非靜默吞掉
+    if (LittleFS.exists(path) && !LittleFS.remove(path)) {
+        Serial.printf("[FS] WARN delete failed: %s\n", path);
+    }
     return true;
 }
 

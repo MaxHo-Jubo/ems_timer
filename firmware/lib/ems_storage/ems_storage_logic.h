@@ -79,6 +79,12 @@ typedef enum {
     EMS_CASE_TYPE_TRAINING = 1,
 } storage_case_type_t;
 
+/** Case type → 字串（index.json 與 log 共用，避免 raw string 散落） */
+const char* case_type_to_str(storage_case_type_t type);
+
+/** 字串 → case type（找不到回預設 OHCA，配合 index.json 容錯讀取） */
+storage_case_type_t case_type_from_str(const char* s);
+
 // ============================================================
 //  Case metadata（index.json 內每筆 entry）
 // ============================================================
@@ -98,6 +104,16 @@ typedef struct {
     uint16_t event_count;
     uint8_t  bin_v;                         // events.bin schema 版本
 } case_meta_t;
+
+/** EPI 總數聚合（對齊 ohca_case_summary_t::epi_total 定義：local + pre_handover + pure_supp） */
+inline uint16_t case_meta_epi_total(const case_meta_t& m) {
+    return (uint16_t)(m.epi_local + m.epi_pre_handover + m.epi_pure_supp);
+}
+
+/** 電擊總數聚合（對齊 ohca_case_summary_t::shock_total） */
+inline uint16_t case_meta_shock_total(const case_meta_t& m) {
+    return (uint16_t)(m.shock_local + m.shock_pre_handover + m.shock_pure_supp);
+}
 
 // ============================================================
 //  Storage backend interface（依賴注入，分離 LittleFS）
