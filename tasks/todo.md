@@ -9,6 +9,7 @@
 - **網頁端 Phase F**：見 [`tasks/phase-f-todo.md`](phase-f-todo.md)（權威來源，不在此重複）
   - F-5 / F-6 / F-9 已完成；下一步 F-1 韌體 `ems_pairing` TDD（BLE 鏈路第一棒）
 - **TFT 整合**：Step 2 後續其他畫面 + Step 3 字體放大 + Demo 對齊 batch 1~3 待實機測試（見下）
+- **Phase E review-pr Batch 2 待處理**：silent failure / FIFO bug / 失敗哲學（見下方 🔧 章節）
 - **22 commits 待跑 POST-COMMIT-REVIEW**（baseline `3d44950`，rate-limit 恢復後）
 - **韌體 Phase B~H 規劃**：見 [`docs/pm-dev-spec.md §四`](../docs/pm-dev-spec.md)
 
@@ -273,6 +274,72 @@ e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
 - 🟡 **動畫頻率**：demo CSS keyframes 寫死的閃爍頻率（黃慢、紅快、紅慢），韌體要照搬數字 → 抽出 demo CSS 的 `animation-duration` 數字當韌體常數
 - 🔴 **GPIO 21 衝突**：TFT CS 跟震動馬達同腳。整合時 `ENABLE_VIBRATION = 0` 必須維持；之後 Prod-Phase 要震動回饋的話必須先解 GPIO 衝突（見 `gpio-allocation.md` §3 註記）
 - 🟡 **Refresh strategy**：demo 用 React diff 重繪 DOM，TFT 沒 diff，全螢幕重繪會閃。要實作 partial update（只重繪變動區域）或 double buffer（耗 RAM）
+
+---
+
+## 🔧 Phase E review-pr Batch 2 待處理（2026-05-13 立案）
+
+> **背景**：Phase E 持久化（commit `5a2027e` + `a0c5b9c`）跑 `/pr-review-toolkit:review-pr`
+> 5-agent 審查，找到 13 CRITICAL + 23 IMPORTANT + 15 SUGGESTION 共 51 項。低風險批次已處理：
+> - `7ebec92` /simplify 8 項清理
+> - `3ea5884` Batch 1：註解 + magic number 13 項
+> - `8844e9f` Batch 3：補測 13 case + 強化 4 既有
+>
+> **Batch 2 是行為改動 + 醫療安全相關**，需要設計決策 + 實機驗證，故獨立追蹤。
+
+### Group 2A — 純 log 加固（低風險，可直接 commit，1h）
+
+- [ ] **C-3** `enforce_fifo_cap` `delete_file` 失敗加 Serial log warn（孤兒檔留下、配額算錯）
+- [ ] **I-3** `storage_init` `persist_index` 失敗加 log（in-RAM 與 disk 不一致）
+- [ ] **I-4** rebuild 路徑 `fill_meta_from_bin` 損毀檔加 log（CRC/magic/version 壞）；可選：把損壞檔搬到 `/cases/corrupt/` 而非留原處
+- [ ] **I-5** `fs_read_file` short read 加 log（部分讀取 distinguish）
+- [ ] **I-6** `fs_rename_file` remove-to 失敗加 log
+
+### Group 2B — C-1 FIFO bug 修（中風險，需 TDD + 實機驗，1h）
+
+- [ ] **C-1** `storage_save_case:727` 移 `enforce_fifo_cap` 順序 + 加 pre-evict logic
+  - 當前 bug：OHCA=50 + Training=20 滿時新 OHCA 被 `case_count >= kTotalCapacity` 擋下
+  - 修法：在 STEP 01 reject 之前先 `if (count_of_type(type) >= cap_for_type(type)) evict_oldest_of_type(...)`
+  - 副作用：`test_main.cpp` D7 從 `TEST_ASSERT_FALSE(result)` 改為 `TEST_ASSERT_TRUE` + 驗最舊 OHCA seq 被擠掉
+- [ ] **實機驗證**：50 OHCA + 20 Training + 再存 1 OHCA → 應該成功 + 最舊 OHCA seq 1 被擠掉、Training 不受影響
+
+### Group 2C — 醫療失敗哲學重設計（高風險，需 PM 對齊）
+
+> agent 建議的失敗哲學頂層原則：「**資料遺失優於不一致**」→ 寫盤失敗就拒絕進 LOCKED
+> 完成態，強制使用者重試或承認失敗。當前實作三選一全沒選清楚。
+
+- [ ] **PM 對齊**：失敗該硬擋（拒絕 LOCKED）還是 fallback（先保住 in-RAM）？
+- [ ] **C-2** `storage_save_case` `persist_index` 失敗：return false + rollback in-RAM `s_state`（避免重啟孤兒 .bin 被 init purge → 案件徹底消失）
+- [ ] **C-4** `main.cpp:1386` LOCKED 寫盤失敗 UI 反饋
+  - SUMMARY 畫面加紅色「保存失敗」橫條
+  - 蜂鳴器警告
+  - 不讓 user 退出（強制重試或承認失敗）
+- [ ] **I-7** `storage_delete` 失敗時 rollback：先 persist_index 再砍檔（原順序反過來，避免 zombie case）
+- [ ] **實機驗證**：手動觸發 LittleFS 寫入失敗（拉滿 partition）→ UI 看到紅色警告
+
+### Group 2D — 型別大重構（最低優先，不建議近期做）
+
+- [ ] **C-12** `case_meta_t` 9 metric mirror `ohca_case_summary_t` → 抽 `case_metric_counts_t` sub-struct
+- [ ] **I-21** `storage_case_type_t` 升 `enum class : uint8_t` 擋 `(cast)42` 亂塞
+- [ ] **I-22** `case_meta_t::id` 升 `case_id_t` newtype + factory `make_case_id(uint32_t seq)`
+- [ ] **I-23** `IStorageBackend` 改 C++ virtual base 或至少在 `storage_init` 開頭 assert 全 fn ptr 非 NULL
+
+### 對應 commits 與 review 報告
+
+| 階段 | commit | 內容 |
+|------|--------|------|
+| baseline | `5a2027e` + `a0c5b9c` | Phase E 原始實作（feat + fix）|
+| /simplify | `7ebec92` | 8 項清理（純函式內 lambda 抽出、static 名稱、註解修正）|
+| Batch 1 | `3ea5884` | 註解 + magic number 13 項清理 |
+| Batch 3 | `8844e9f` | 補測 13 case（A6-A8 / C5-C6 / D7 / E6-E7 / G1-G5）+ 強化 4 既有 |
+| **Batch 2** | _待開工_ | Group 2A → 2B → 2C → (2D 暫緩) |
+
+### 進場順序建議
+
+1. **Group 2A 先**：純 log 加固、無行為改動、可直接 commit
+2. **Group 2B 中**：C-1 真實 bug 修，TDD 改 D7 → 韌體 build → **實機 + 50+20+1 場景驗證**
+3. **Group 2C 後**：要先跟 PM 對齊失敗哲學（建議延後到 Phase E 整合驗收會議）
+4. **Group 2D 不建議**：型別重構動序列化結構，等 Phase F BLE 整合穩定後再評估
 
 ---
 
