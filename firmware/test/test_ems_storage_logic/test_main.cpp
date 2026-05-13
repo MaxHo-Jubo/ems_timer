@@ -1,17 +1,18 @@
-// EMS DoseSync Pro — Phase E Unit Test: 持久化邏輯（26 cases）
+// EMS DoseSync Pro — Phase E Unit Test: 持久化邏輯
 //
 // 對應規格：
 //   - docs/pm-dev-spec.md §四 Phase E（持久化 / 歷史紀錄）
 //   - plan: ~/.claude/plans/ticklish-exploring-dragonfly.md (Step 1 RED phase)
 //   - lib/ems_storage/ems_storage_logic.h
 //
-// 涵蓋（Group A~F，共 26 cases）：
-//   A — events.bin 序列化（5）
+// 涵蓋（Group A~G，共 40 cases）：
+//   A — events.bin 序列化（8；A6/A7/A8 review-pr B 補洞）
 //   B — CRC32 演算法（3）
-//   C — index.json schema（4）
-//   D — FIFO 邏輯（6）
-//   E — Recovery / robustness（5；E5 = 對齊 spec「從歷史紀錄重新進入案件總覽」）
+//   C — index.json schema（6；C5/C6 review-pr B 補洞）
+//   D — FIFO 邏輯（7；D7 pin C-1 已知 bug 當前行為）
+//   E — Recovery / robustness（7；E6/E7 review-pr B 補洞）
 //   F — Load / list path（3）
+//   G — delete / format / init guards（5；review-pr B 補 public API 漏洞）
 //
 // 測試 framework：Unity（與 test_case_summary.cpp 相同模式）
 //   - test 函式：static void test_*()
@@ -168,6 +169,15 @@ static void A3_serialize_50_events_round_trip() {
         TEST_ASSERT_EQUAL_UINT8(in[i].count, out[i].count);
         TEST_ASSERT_EQUAL(in[i].actual_time_null, out[i].actual_time_null);
     }
+
+    // 第二次 serialize 應產生 byte-identical buffer（驗證 deterministic）
+    //   未來若 struct padding / reserved byte 改動讓 wire format 漂移會抓到
+    uint8_t buf2[sizeof(buf)];
+    size_t out_len2 = 0;
+    TEST_ASSERT_TRUE(storage_bin_serialize(in, EMS_STORAGE_MAX_EVENTS,
+                                           buf2, sizeof(buf2), &out_len2));
+    TEST_ASSERT_EQUAL_UINT32(out_len, out_len2);
+    TEST_ASSERT_EQUAL_INT(0, memcmp(buf, buf2, out_len));
 }
 
 /** A4: 翻轉 payload 一個 bit → CRC 檢出，out_count 設 0 + 不污染 output buffer */
@@ -209,6 +219,50 @@ static void A5_magic_mismatch_detected() {
     ems_event_t out[1];
     uint16_t out_count = 999;
     TEST_ASSERT_FALSE(storage_bin_deserialize(buf, len, out, 1, &out_count));
+    TEST_ASSERT_EQUAL_UINT16(0, out_count);
+}
+
+/** A6: 翻轉 CRC footer byte → CRC 檢出（A4 只測 payload，本 case 測 footer 自身） */
+static void A6_crc_corruption_at_footer() {
+    ems_event_t in[1];
+    buildLocalEvent(&in[0], 1, EVT_EPI_LOCAL, 1000ULL, 0);
+
+    uint8_t buf[64];
+    size_t len = 0;
+    TEST_ASSERT_TRUE(storage_bin_serialize(in, 1, buf, sizeof(buf), &len));
+
+    buf[len - 1] ^= 0x55;  // 翻轉 CRC footer 最後一個 byte
+
+    ems_event_t out[1];
+    uint16_t out_count = 999;
+    TEST_ASSERT_FALSE(storage_bin_deserialize(buf, len, out, 1, &out_count));
+    TEST_ASSERT_EQUAL_UINT16(0, out_count);
+}
+
+/** A7: header version byte 改為未來版本 (2) → 拒絕（避免舊韌體讀新 schema 誤解資料） */
+static void A7_version_byte_mismatch_rejected() {
+    ems_event_t in[1];
+    buildLocalEvent(&in[0], 1, EVT_EPI_LOCAL, 1000ULL, 0);
+
+    uint8_t buf[64];
+    size_t len = 0;
+    TEST_ASSERT_TRUE(storage_bin_serialize(in, 1, buf, sizeof(buf), &len));
+
+    buf[4] = 0x02;  // version byte 改為未來版本 v2（offset 4，小端 LSB）
+
+    ems_event_t out[1];
+    uint16_t out_count = 999;
+    TEST_ASSERT_FALSE(storage_bin_deserialize(buf, len, out, 1, &out_count));
+    TEST_ASSERT_EQUAL_UINT16(0, out_count);
+}
+
+/** A8: buffer 小於 HEADER+FOOTER (12 bytes) → 直接拒絕，不嘗試解析 */
+static void A8_deserialize_truncated_buffer() {
+    uint8_t buf[5] = {0};  // < 8 (HEADER) + 4 (FOOTER)
+
+    ems_event_t out[1];
+    uint16_t out_count = 999;
+    TEST_ASSERT_FALSE(storage_bin_deserialize(buf, sizeof(buf), out, 1, &out_count));
     TEST_ASSERT_EQUAL_UINT16(0, out_count);
 }
 
@@ -356,6 +410,38 @@ static void C4_index_corrupt_json_detected() {
     TEST_ASSERT_EQUAL_UINT16(0, out_count);
 }
 
+/** C5: serialize 緩衝不足 → return false（STEP 03 `n >= json_max` guard） */
+static void C5_index_serialize_buffer_overflow() {
+    case_meta_t in[1];
+    memset(&in[0], 0, sizeof(in[0]));
+    strncpy(in[0].id, "0000000001", sizeof(in[0].id) - 1);
+    in[0].type        = EMS_CASE_TYPE_OHCA;
+    in[0].event_count = 1;
+    in[0].bin_v       = EMS_STORAGE_BIN_VERSION;
+
+    // 故意給小到不夠的 buffer
+    char small[16];
+    size_t len = 0;
+    TEST_ASSERT_FALSE(storage_index_serialize(in, 1, /*next_seq*/ 2,
+                                              small, sizeof(small), &len));
+}
+
+/** C6: case_type_to_str / from_str 雙向 mapping + 未知字串 silent fallback OHCA
+ *  Pin 住已知缺陷（review-pr B C-13）的當前行為，避免 silent regression。
+ *  Spec 取捨：「能讀部分資料」優於「整個 index 拒絕」；修復方案見 Batch 2 討論。 */
+static void C6_case_type_mapping_and_unknown_fallback() {
+    // 已知 mapping 正確
+    TEST_ASSERT_EQUAL_STRING("ohca",     case_type_to_str(EMS_CASE_TYPE_OHCA));
+    TEST_ASSERT_EQUAL_STRING("training", case_type_to_str(EMS_CASE_TYPE_TRAINING));
+    TEST_ASSERT_EQUAL_INT(EMS_CASE_TYPE_OHCA,     case_type_from_str("ohca"));
+    TEST_ASSERT_EQUAL_INT(EMS_CASE_TYPE_TRAINING, case_type_from_str("training"));
+
+    // 未知字串 / nullptr / 空字串 → 全部 silent fallback OHCA（已知缺陷契約）
+    TEST_ASSERT_EQUAL_INT(EMS_CASE_TYPE_OHCA, case_type_from_str("unknown"));
+    TEST_ASSERT_EQUAL_INT(EMS_CASE_TYPE_OHCA, case_type_from_str(""));
+    TEST_ASSERT_EQUAL_INT(EMS_CASE_TYPE_OHCA, case_type_from_str(nullptr));
+}
+
 // ============================================================
 //  Group D — FIFO 邏輯（6 cases，核心）
 // ============================================================
@@ -479,6 +565,43 @@ static void D6_seq_monotonic_after_delete() {
     TEST_ASSERT_EQUAL_STRING("0000000052", list[0].id);
     // 此時 seq 2 也應被擠掉，最舊為 seq 3
     TEST_ASSERT_EQUAL_STRING("0000000003", list[EMS_STORAGE_OHCA_CAP - 1].id);
+
+    // 模擬重啟 → next_seq 應從 index.json 還原（持久化），新存的 seq = 53
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 8888ULL, 1);
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                     list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(EMS_STORAGE_OHCA_CAP, n);
+    TEST_ASSERT_EQUAL_STRING("0000000053", list[0].id);
+}
+
+/** D7: case_count == kTotalCapacity (70) 時新存 OHCA 的當前行為
+ *
+ *  **已知 bug（review-pr B C-1，Batch 2 修復目標）**：
+ *  case_count >= kTotalCapacity guard 擋下，return false。spec 期望走 FIFO 覆蓋。
+ *
+ *  本 test 暫時 pin 住 current behavior 防止 silent regression；
+ *  C-1 修復後（移 enforce_fifo_cap 至 guard 前 + 加 pre-evict）改為
+ *  TEST_ASSERT_TRUE + 驗最舊 OHCA 被擠掉。 */
+static void D7_save_at_global_capacity_current_behavior() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    for (int i = 0; i < EMS_STORAGE_OHCA_CAP; ++i) {
+        save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA,
+                        1000ULL + i * 1000ULL, 1);
+    }
+    for (int i = 0; i < EMS_STORAGE_TRAINING_CAP; ++i) {
+        save_dummy_case(&g_be, EMS_CASE_TYPE_TRAINING,
+                        2000000ULL + i * 1000ULL, 1);
+    }
+
+    // 此時 case_count = OHCA_CAP + TRAINING_CAP = kTotalCapacity
+    // 新存 OHCA → 當前 return false（C-1）
+    ems_event_t evs[1];
+    buildLocalEvent(&evs[0], 1, EVT_EPI_LOCAL, 999999ULL, 0);
+    bool result = storage_save_case(&g_be, EMS_CASE_TYPE_OHCA, evs, 1,
+                                    999999ULL, 999999ULL);
+    // TODO(Batch 2 C-1): 改為 TEST_ASSERT_TRUE + 驗最舊 OHCA 被擠掉
+    TEST_ASSERT_FALSE(result);
 }
 
 // ============================================================
@@ -624,13 +747,86 @@ static void E5_summary_reconstruction_after_persist() {
     TEST_ASSERT_EQUAL_UINT64(before.last_amio_ms,        after.last_amio_ms);
     TEST_ASSERT_EQUAL_UINT64(before.case_start_ms,       after.case_start_ms);
     TEST_ASSERT_EQUAL_UINT64(before.case_end_ms,         after.case_end_ms);
+
+    // case_meta_t（save 時聚合，與 caseSummary_build 為兩條獨立路徑）cross-check
+    //   若未來改 storage_save_case 內欄位填寫但漏改 caseSummary_build（或反之），本 assert 抓得到
+    TEST_ASSERT_EQUAL_UINT16(before.epi_local,        list[0].epi_local);
+    TEST_ASSERT_EQUAL_UINT16(before.epi_pre_handover, list[0].epi_pre_handover);
+    TEST_ASSERT_EQUAL_UINT16(before.epi_pure_supp,    list[0].epi_pure_supp);
+    TEST_ASSERT_EQUAL_UINT16(before.shock_local,      list[0].shock_local);
+    TEST_ASSERT_EQUAL_UINT16(before.amio_total,       list[0].amio);
+}
+
+/** E6: index.json.tmp 含「有效但未 commit」payload + main index 為舊版 → init 丟棄 .tmp
+ *
+ *  Atomic write 契約：rename = commit barrier；若 rename 沒跑，.tmp 即便內容合法
+ *  也代表「partial write」，必須丟棄不能誤認為已完成的寫入。E4 只測 .tmp = garbage
+ *  + main 有效；本 case 測 .tmp 有效但 main 舊（典型 power-loss 在 rename 前）。 */
+static void E6_tmp_valid_payload_purged_on_init() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);
+
+    // 構造一個內容合法但代表「新 commit 還沒完成」的 .tmp
+    case_meta_t fake[1];
+    memset(&fake[0], 0, sizeof(fake[0]));
+    strncpy(fake[0].id, "0000000099", sizeof(fake[0].id) - 1);
+    fake[0].type        = EMS_CASE_TYPE_OHCA;
+    fake[0].epi_local   = 1;
+    fake[0].event_count = 1;
+    fake[0].bin_v       = EMS_STORAGE_BIN_VERSION;
+
+    char fake_json[512];
+    size_t fake_len = 0;
+    TEST_ASSERT_TRUE(storage_index_serialize(fake, 1, /*next_seq*/ 100,
+                                             fake_json, sizeof(fake_json), &fake_len));
+    g_be.write_file(g_be.ctx, "/cases/index.json.tmp",
+                    (const uint8_t*)fake_json, fake_len);
+
+    // init 必須丟掉 .tmp，main 保持原狀（seq 1，不是來自 .tmp 的 seq 99 + next 100）
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    TEST_ASSERT_FALSE(g_be.exists(g_be.ctx, "/cases/index.json.tmp"));
+
+    case_meta_t list[EMS_STORAGE_OHCA_CAP];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[0].id);
+
+    // 再存一筆 → 拿 seq 2（不是 100，證明 .tmp 內 next_seq=100 沒被吸收）
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 3000ULL, 1);
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(2, n);
+    TEST_ASSERT_EQUAL_STRING("0000000002", list[0].id);
+}
+
+/** E7: rebuild 路徑遇非 .bin 結尾 / 非數字 id 檔 → name_is_bin 拒絕，靜默跳過 */
+static void E7_non_bin_files_ignored_during_rebuild() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);  // 合法 seq 1
+
+    // 在 OHCA 目錄塞兩個非合法 .bin 的檔
+    uint8_t garbage[] = "noise";
+    g_be.write_file(g_be.ctx, "/cases/ohca/notes.txt",
+                    garbage, sizeof(garbage) - 1);
+    g_be.write_file(g_be.ctx, "/cases/ohca/abc.bin",  // 非數字 id
+                    garbage, sizeof(garbage) - 1);
+
+    // 刪 index → 強迫走 rebuild 路徑（STEP 05.01）
+    g_be.delete_file(g_be.ctx, "/cases/index.json");
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+
+    // rebuild 後只剩合法 seq 1，垃圾檔被忽略
+    case_meta_t list[EMS_STORAGE_OHCA_CAP];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[0].id);
 }
 
 // ============================================================
 //  Group F — Load / list path（3 cases）
 // ============================================================
 
-/** F1: save 一個多 type 混合的 case → load by id 還原 byte-equal */
+/** F1: save 一個多 type 混合的 case → load by id 還原 byte-equal
+ *  解耦 storage_format_id 內部格式：透過 storage_list 取得實際 id，不 hardcode */
 static void F1_load_events_by_id() {
     TEST_ASSERT_TRUE(storage_init(&g_be));
 
@@ -642,11 +838,17 @@ static void F1_load_events_by_id() {
     TEST_ASSERT_TRUE(storage_save_case(&g_be, EMS_CASE_TYPE_OHCA,
                                        in, 3, 10000ULL, 30000ULL));
 
+    // 從 list 取實際 id（解耦 zero-padded 10-digit 格式）
+    case_meta_t list[EMS_STORAGE_OHCA_CAP];
+    uint16_t n_list = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                                   list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(1, n_list);
+
     ems_event_t out[3];
     memset(out, 0, sizeof(out));
     uint16_t out_count = 0;
     TEST_ASSERT_TRUE(storage_load_events(&g_be, EMS_CASE_TYPE_OHCA,
-                                         "0000000001", out, 3, &out_count));
+                                         list[0].id, out, 3, &out_count));
     TEST_ASSERT_EQUAL_UINT16(3, out_count);
 
     TEST_ASSERT_EQUAL_UINT32(1, out[0].event_id);
@@ -692,6 +894,108 @@ static void F3_list_returns_newest_first() {
 }
 
 // ============================================================
+//  Group G — delete / format / init guards（5 cases，補 review-pr B 漏洞）
+// ============================================================
+
+/** G1: delete 存在的 case → bin 檔被刪 + 從 list 移除 + index 持久化 */
+static void G1_delete_existing_case() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);  // seq 1
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 2000ULL, 1);  // seq 2
+
+    TEST_ASSERT_TRUE(storage_delete(&g_be, EMS_CASE_TYPE_OHCA, "0000000001"));
+
+    TEST_ASSERT_FALSE(g_be.exists(g_be.ctx, "/cases/ohca/0000000001.bin"));
+    TEST_ASSERT_TRUE (g_be.exists(g_be.ctx, "/cases/ohca/0000000002.bin"));
+
+    case_meta_t list[EMS_STORAGE_OHCA_CAP];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                              list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_STRING("0000000002", list[0].id);
+
+    // 模擬重啟，刪除應持久化（不靠 in-RAM state）
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                     list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_STRING("0000000002", list[0].id);
+}
+
+/** G2: delete 不存在的 id → 回 false，state 不動 */
+static void G2_delete_nonexistent_id() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);
+
+    TEST_ASSERT_FALSE(storage_delete(&g_be, EMS_CASE_TYPE_OHCA, "0000009999"));
+
+    case_meta_t list[EMS_STORAGE_OHCA_CAP];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                              list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+}
+
+/** G3: delete 後再 save → next_seq 不倒退（單調遞增契約） */
+static void G3_delete_then_save_seq_monotonic() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);  // seq 1
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 2000ULL, 1);  // seq 2
+
+    TEST_ASSERT_TRUE(storage_delete(&g_be, EMS_CASE_TYPE_OHCA, "0000000002"));
+
+    // 新存應拿 seq 3，不能 reuse 已刪的 seq 2
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 3000ULL, 1);
+    case_meta_t list[EMS_STORAGE_OHCA_CAP];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                              list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(2, n);
+    TEST_ASSERT_EQUAL_STRING("0000000003", list[0].id);
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[1].id);
+}
+
+/** G4: format → 全部檔案 + index 全清 + state 重置 + 下次新 case 從 seq 1
+ *  保護 simplify cleanup 抽出的 purge_dir lambda 不 silent regression */
+static void G4_format_clears_all() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA,     1000ULL, 1);
+    save_dummy_case(&g_be, EMS_CASE_TYPE_TRAINING, 2000ULL, 1);
+
+    TEST_ASSERT_TRUE(storage_format(&g_be));
+
+    // 檔案 + index 全清
+    TEST_ASSERT_FALSE(g_be.exists(g_be.ctx, "/cases/ohca/0000000001.bin"));
+    TEST_ASSERT_FALSE(g_be.exists(g_be.ctx, "/cases/training/0000000002.bin"));
+    TEST_ASSERT_FALSE(g_be.exists(g_be.ctx, "/cases/index.json"));
+    TEST_ASSERT_FALSE(g_be.exists(g_be.ctx, "/cases/index.json.tmp"));
+
+    // in-RAM state 重置
+    case_meta_t list[EMS_STORAGE_OHCA_CAP];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                              list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(0, n);
+    n = storage_list(&g_be, EMS_CASE_TYPE_TRAINING,
+                     list, EMS_STORAGE_TRAINING_CAP);
+    TEST_ASSERT_EQUAL_UINT16(0, n);
+
+    // 重新 init 仍乾淨，新 case 從 seq 1 起算
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 3000ULL, 1);
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                     list, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[0].id);
+}
+
+/** G5: storage_init null guard — nullptr 與全 0 fn ptr 都應 return false */
+static void G5_init_null_backend_fails() {
+    TEST_ASSERT_FALSE(storage_init(nullptr));
+
+    IStorageBackend empty;
+    memset(&empty, 0, sizeof(empty));
+    TEST_ASSERT_FALSE(storage_init(&empty));  // read_file == nullptr
+}
+
+// ============================================================
 //  main
 // ============================================================
 
@@ -704,6 +1008,9 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(A3_serialize_50_events_round_trip);
     RUN_TEST(A4_crc_mismatch_detected);
     RUN_TEST(A5_magic_mismatch_detected);
+    RUN_TEST(A6_crc_corruption_at_footer);
+    RUN_TEST(A7_version_byte_mismatch_rejected);
+    RUN_TEST(A8_deserialize_truncated_buffer);
 
     // Group B — CRC32
     RUN_TEST(B1_crc32_known_vector);
@@ -715,6 +1022,8 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(C2_index_with_one_case);
     RUN_TEST(C3_index_unknown_field_tolerated);
     RUN_TEST(C4_index_corrupt_json_detected);
+    RUN_TEST(C5_index_serialize_buffer_overflow);
+    RUN_TEST(C6_case_type_mapping_and_unknown_fallback);
 
     // Group D — FIFO
     RUN_TEST(D1_save_under_cap);
@@ -723,6 +1032,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(D4_save_overflow_burst);
     RUN_TEST(D5_ohca_training_independent_caps);
     RUN_TEST(D6_seq_monotonic_after_delete);
+    RUN_TEST(D7_save_at_global_capacity_current_behavior);
 
     // Group E — Recovery
     RUN_TEST(E1_missing_index_rebuild_from_files);
@@ -730,11 +1040,20 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(E3_orphan_index_entry_dropped);
     RUN_TEST(E4_tmp_file_recovery);
     RUN_TEST(E5_summary_reconstruction_after_persist);
+    RUN_TEST(E6_tmp_valid_payload_purged_on_init);
+    RUN_TEST(E7_non_bin_files_ignored_during_rebuild);
 
     // Group F — Load / list
     RUN_TEST(F1_load_events_by_id);
     RUN_TEST(F2_load_nonexistent_id);
     RUN_TEST(F3_list_returns_newest_first);
+
+    // Group G — delete / format / init guards（review-pr B 補洞）
+    RUN_TEST(G1_delete_existing_case);
+    RUN_TEST(G2_delete_nonexistent_id);
+    RUN_TEST(G3_delete_then_save_seq_monotonic);
+    RUN_TEST(G4_format_clears_all);
+    RUN_TEST(G5_init_null_backend_fails);
 
     return UNITY_END();
 }
