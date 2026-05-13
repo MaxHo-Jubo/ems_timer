@@ -7,6 +7,8 @@
 //   - s_state.cases[]：所有案件 metadata（時序排列，最舊在 index 0）
 //   - s_state.case_count：陣列實際長度
 //   - s_state.next_seq：下一個 case 拿到的 seq number（單調遞增、OHCA + Training 共用）
+//     → 同類別 id 不連續（被另一類別 case 拿走 seq 會跳號），但全域單調
+//     → 方便跨類別排序與未來 BLE 增量同步（依 seq 取「last seen 之後新增的 case」）
 //   - storage_init() 會清空再從 backend 重建
 
 #include "ems_storage_logic.h"
@@ -78,21 +80,24 @@ inline uint64_t get_u64_le(const uint8_t* p) {
 
 // ----- 是否為 .bin 檔（rebuild 時掃描用） -----
 
+constexpr const char* kBinSuffix    = ".bin";
+constexpr size_t      kBinSuffixLen = 4;  // strlen(".bin")
+
 bool name_is_bin(const char* name, char* out_id, size_t id_max) {
     // STEP 01: 形式驗證 "%010u.bin"
     if (!name) {
         return false;
     }
     size_t n = strlen(name);
-    if (n < EMS_STORAGE_ID_LEN - 1 + 4) {
+    if (n < (EMS_STORAGE_ID_LEN - 1) + kBinSuffixLen) {
         return false;
     }
     // STEP 02: 結尾必須是 ".bin"
-    if (strcmp(name + n - 4, ".bin") != 0) {
+    if (strcmp(name + n - kBinSuffixLen, kBinSuffix) != 0) {
         return false;
     }
     // STEP 03: 抽出 id（".bin" 前的部分）
-    size_t id_len = n - 4;
+    size_t id_len = n - kBinSuffixLen;
     if (id_len + 1 > id_max) {
         return false;
     }
@@ -108,6 +113,10 @@ bool name_is_bin(const char* name, char* out_id, size_t id_max) {
 }
 
 // ----- 從 events.bin 載回事件、用 caseSummary_build 聚合 metadata -----
+//
+// 契約：out_meta->start_ms / end_ms 強制設 0（bin 無 epoch 資訊）。
+// caller 必須能處理 0 = 時戳不可用（drawOhcaSummary historySummaryMode 分支已涵蓋）。
+// Phase 3 DS3231 上機後若改回真 epoch，這個函式仍須保留 0 fallback 給 corrupt 路徑。
 
 bool fill_meta_from_bin(IStorageBackend* be,
                         storage_case_type_t type,
@@ -313,7 +322,10 @@ bool storage_bin_serialize(const ems_event_t* events,
     put_u16_le(out_buf + 4, EMS_STORAGE_BIN_VERSION);
     put_u16_le(out_buf + 6, count);
 
-    // STEP 03: events（fixed-width 24 bytes 含 reserved padding）
+    // STEP 03: events（fixed-width 24 bytes 含兩塊 reserved padding）
+    //   layout：event_id(4) + type(1) + count(1) + actual_time_null(1)
+    //         + reserved(1，p[7]) + ts(8) + elapsed(4) + reserved2(4) = 24
+    //   升版策略：先用 p[7] 1 byte 加 enum/flag，再用 p+20 4 bytes 加 field
     for (uint16_t i = 0; i < count; ++i) {
         uint8_t* p = out_buf
                    + EMS_STORAGE_BIN_HEADER_SIZE
@@ -322,10 +334,10 @@ bool storage_bin_serialize(const ems_event_t* events,
         p[4] = (uint8_t)events[i].type;
         p[5] = events[i].count;
         p[6] = events[i].actual_time_null ? 1 : 0;
-        p[7] = 0;  // reserved
+        p[7] = 0;  // reserved (1 byte，升版用)
         put_u64_le(p + 8,  events[i].timestamp_ms);
         put_u32_le(p + 16, events[i].elapsed_ms);
-        put_u32_le(p + 20, 0);  // reserved2
+        put_u32_le(p + 20, 0);  // reserved2 (4 bytes，升版用)
     }
 
     // STEP 04: CRC32 over header + events
@@ -479,7 +491,8 @@ bool storage_index_parse(const char*  json,
     if (err) {
         return false;
     }
-    // 必須是 object（C4 test：純字串會 parse 失敗，但若 parse 成 array/scalar 仍須拒絕）
+    // 必須是 object：scalar / array / 純字串雖可 deserialize 成功（scalar/string）
+    // 但結構不對；C4 test 確認這條 guard 會拒絕。
     if (!doc.is<JsonObjectConst>()) {
         return false;
     }
@@ -539,9 +552,13 @@ const char* case_type_to_str(storage_case_type_t type) {
         case EMS_CASE_TYPE_OHCA:     return "ohca";
         case EMS_CASE_TYPE_TRAINING: return "training";
     }
-    return "ohca";
+    return "ohca";  // unknown enum value fallback（外部寫入錯誤值的最後一道防線）
 }
 
+// 字串 → case type。**已知缺陷**：未知字串 silent fallback OHCA（避免 index.json
+// 升版時舊韌體完全讀不進）。代價是把 corrupt 字串當合法 OHCA 列出。
+// 對應 spec 取捨：「能讀到部分資料」優於「整個 index 解析失敗」。
+// 補測：test_main.cpp 應加 case verifying this behavior（B3 follow-up）。
 storage_case_type_t case_type_from_str(const char* s) {
     if (s && strcmp(s, "training") == 0) {
         return EMS_CASE_TYPE_TRAINING;
@@ -616,8 +633,9 @@ bool storage_init(IStorageBackend* be) {
     }
 
     // STEP 04: 列出實際檔案
-    //   static 配置避開 stack 壓力（OHCA 1600B + Training 640B = 2.24KB；
-    //   main task 預設 stack 8KB，TFT/BLE 共用時不可吃太多）
+    //   放 static (BSS) 而非函式 local；OHCA 1600B + Training 640B 若放 local 會吃
+    //   28% main task 8KB stack（TFT/BLE callback 也共用，留不得）。
+    //   storage_init 只在 setup 跑一次，BSS 永久佔用 2.24KB 換來 stack peak 安全。
     static char ohca_names[EMS_STORAGE_OHCA_CAP][EMS_STORAGE_NAME_MAX];
     size_t n_ohca = be->list_dir(be->ctx,
                                  storage_dir_path(EMS_CASE_TYPE_OHCA),
@@ -627,8 +645,9 @@ bool storage_init(IStorageBackend* be) {
                                   storage_dir_path(EMS_CASE_TYPE_TRAINING),
                                   train_names, EMS_STORAGE_TRAINING_CAP);
 
+    // STEP 05: 依 index_loaded 走 rebuild（無 index）或雙向 sync（有 index）兩條路徑
     if (!index_loaded) {
-        // STEP 05.A: 沒 index → 從檔案 rebuild
+        // STEP 05.01: 沒 index → 從檔案 rebuild
         for (size_t i = 0; i < n_ohca; ++i) {
             char id[EMS_STORAGE_ID_LEN];
             if (!name_is_bin(ohca_names[i], id, sizeof(id))) {
@@ -664,9 +683,9 @@ bool storage_init(IStorageBackend* be) {
             }
         }
     } else {
-        // STEP 05.B: 有 index → 雙向 sync
+        // STEP 05.02: 有 index → 雙向 sync
 
-        // STEP 05.B.01: 把 index 內檔案不存在的 entry 刪掉
+        // STEP 05.02.01: 把 index 內檔案不存在的 entry 刪掉
         uint16_t write = 0;
         for (uint16_t read = 0; read < s_state.case_count; ++read) {
             char path[EMS_STORAGE_PATH_MAX];
@@ -682,7 +701,7 @@ bool storage_init(IStorageBackend* be) {
         }
         s_state.case_count = write;
 
-        // STEP 05.B.02: 把檔案存在但 index 沒記錄的孤兒刪掉
+        // STEP 05.02.02: 把檔案存在但 index 沒記錄的孤兒刪掉
         auto purge_orphans = [&](storage_case_type_t type,
                                   char names[][EMS_STORAGE_NAME_MAX],
                                   size_t n) {
@@ -782,6 +801,8 @@ bool storage_save_case(IStorageBackend*    be,
     return true;
 }
 
+// 純讀 in-memory s_state，不觸 backend。保留 be 參數是為 API 對稱性
+// （其他 high-level storage_* 都吃 backend）+ 未來若加 lazy-load 留接口。
 uint16_t storage_list(IStorageBackend*    /*be*/,
                       storage_case_type_t type,
                       case_meta_t*        out,

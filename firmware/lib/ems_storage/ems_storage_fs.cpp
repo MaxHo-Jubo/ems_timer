@@ -50,8 +50,11 @@ bool fs_write_file(void* /*ctx*/, const char* path,
 }
 
 bool fs_delete_file(void* /*ctx*/, const char* path) {
-    // LittleFS.remove() 對不存在的檔回 false；對 caller 端統一視為 OK，
-    // 但若檔案明確存在卻刪不掉（partition 損毀 / 全滿），印 log 而非靜默吞掉
+    // 一律 return true 的設計理由：
+    //   1) enforce_fifo_cap 的刪檔失敗不該擋下整個 save_case（救護現場以「保住新案件」優先）
+    //   2) caller 對單檔刪除失敗無 recovery 路徑（再 retry 也是同樣失敗）
+    //   3) 下次 storage_init STEP 05.02.02 雙向 sync 會把孤兒清掉，最終一致性可達
+    // 但「明確存在卻刪不掉」（partition 損毀 / 全滿）必須 log，不可靜默吞掉
     if (LittleFS.exists(path) && !LittleFS.remove(path)) {
         Serial.printf("[FS] WARN delete failed: %s\n", path);
     }

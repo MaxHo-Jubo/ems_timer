@@ -10,7 +10,8 @@
 //   - native test 用 InMemoryBackend 注入 → 跑 Group A~F 25+ cases
 //
 // 彈性設計（PM 講「資料設計要有彈性」）：
-//   - events.bin 每筆 event 預留 4 bytes reserved（升版加欄位不用動 wire format）
+//   - events.bin 每筆 event 預留 5 bytes reserved（p[7] 1 byte + p+20 4 bytes，
+//     升版加欄位不用動 wire format；先用 p[7] 加 1-byte flag/enum，p+20 留 4-byte field）
 //   - index.json 用 ArduinoJson 動態 parse，未知欄位忽略不報錯（C3 test 驗證）
 //   - bin_v / index v 兩個獨立 version → 結構分離升版
 #pragma once
@@ -58,7 +59,12 @@ namespace ems {
      + EMS_STORAGE_MAX_EVENTS * EMS_STORAGE_WIRE_EVENT_SIZE   \
      + EMS_STORAGE_BIN_FOOTER_SIZE)
 
-/** index.json buffer 預估大小（OHCA 50 + Training 20 = 70 cases × ~160B + 包裝 ~64B） */
+/** index.json buffer 預估大小
+ *  保守估算：每筆 case object（13 欄位 + key 名）serialize 後約 200~220B。
+ *  70 cases 滿載 (OHCA 50 + Training 20) × ~220B + 包裝 80B ≈ 15.5KB（**超過 12KB**）。
+ *  TODO(Phase E follow-up)：實際量測一筆 case serialize 後字串長度，若 70 cases 全滿
+ *  時 storage_index_serialize 回 false，bump 至 16384 或加 size-check guard。當前測試
+ *  只到 D2/D3/D5（最多 70 筆 mix）未實測 70 cases 全 case_meta_t 完整填寫的序列化長度。 */
 #define EMS_STORAGE_INDEX_BUFFER_SIZE 12288
 
 /** Case id 字串長度（10 位 zero-padded + NUL） */
@@ -90,17 +96,21 @@ storage_case_type_t case_type_from_str(const char* s);
 // ============================================================
 
 typedef struct {
-    char     id[EMS_STORAGE_ID_LEN];        // "0000000003" + NUL
+    char     id[EMS_STORAGE_ID_LEN];        // "0000000003" + NUL（10 位 zero-padded）
     storage_case_type_t type;
-    uint64_t start_ms;                      // 案件開始 epoch ms（0 = 無 RTC 對時）
-    uint64_t end_ms;                        // 案件結束 epoch ms
+    uint64_t start_ms;                      // 案件開始 epoch ms
+                                            //   0 = 時戳不可用（未對時 / rebuild 路徑無法還原；
+                                            //   caller 須當作「歷史進入無 RTC」處理）
+    uint64_t end_ms;                        // 案件結束 epoch ms（同 start_ms 規則）
     uint16_t epi_local;
     uint16_t epi_pre_handover;
     uint16_t epi_pure_supp;
     uint16_t shock_local;
     uint16_t shock_pre_handover;
     uint16_t shock_pure_supp;
-    uint16_t amio;
+    uint16_t amio;                          // Amio 統一計總，不分 local/pre_handover/pure_supp
+                                            //   對齊 ohca_case_summary_t::amio_total；
+                                            //   V1 §11.4 未要求細分
     uint16_t event_count;
     uint8_t  bin_v;                         // events.bin schema 版本
 } case_meta_t;

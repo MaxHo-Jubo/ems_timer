@@ -1382,7 +1382,8 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
         && prev != OHCA_STATE_LOCKED
         && g_storage_ready
         && !g_locked_saved) {
-        // case_start_ms / case_end_ms 用 0：目前無 RTC，timestamp 留給 Phase 3 DS3231
+        // case_start_ms / case_end_ms 傳 0：caseStartMs 是 boot 後的 millis() 不是 epoch；
+        // 重啟後無對齊基準，當絕對時戳會誤導。等 Phase 3 DS3231 上機後改傳 rtc.nowEpochMs()
         bool ok = storage_save_case(&g_storage_be, EMS_CASE_TYPE_OHCA,
                                     events, eventCount,
                                     /*case_start_ms*/ 0,
@@ -2294,6 +2295,7 @@ void drawHistoryList() {
     constexpr int16_t HISTORY_ROW_TOP_INSET     = 4;   // 高亮 fillRect 上緣往上延伸
     constexpr int16_t HISTORY_ROW_HIGHLIGHT_H   = 26;  // 高亮 fillRect 高度（< row 高度避免疊出）
     constexpr int16_t HISTORY_ROW_TEXT_VOFFSET  = 8;   // 文字 baseline 微調對齊視覺中心
+    constexpr size_t  HISTORY_ID_DISPLAY_TAIL   = 5;   // 10 位 zero-padded id 顯示後 5 位（前面通常為 0）
     uint16_t shown = 0;
     for (uint16_t i = historyScrollOffset;
          i < historyCount && shown < HISTORY_VISIBLE_ROWS;
@@ -2313,7 +2315,7 @@ void drawHistoryList() {
 
         // 顯示「id 後 5 位 ｜ EPI N ｜ 電擊 N」
         snprintf(buf, sizeof(buf), "#%s  EPI %u  電擊 %u",
-                 m.id + 5,
+                 m.id + (EMS_STORAGE_ID_LEN - 1 - HISTORY_ID_DISPLAY_TAIL),
                  (unsigned)case_meta_epi_total(m),
                  (unsigned)case_meta_shock_total(m));
         display.setTextSize(1);
