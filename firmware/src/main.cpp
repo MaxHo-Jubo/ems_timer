@@ -1390,7 +1390,16 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
                                     /*case_end_ms*/   0);
         Serial.printf("[STORAGE] save case (%u events) %s\n",
                       eventCount, ok ? "OK" : "FAILED");
-        g_locked_saved = true;
+        // C-4 最小修：只有成功才設 true。原本 unconditional = true 導致失敗永不重試 +
+        // 救護員以為紀錄齊全（silent data loss）。失敗時 g_locked_saved 留 false，
+        // 下個 tick 進來條件仍成立 → 自動 retry。
+        // 完整修法（紅色 UI 警告 + 蜂鳴 + 重試按鈕 + 失敗哲學 A/B/C）需 PM 對齊，
+        // 見 tasks/todo.md §🔧 Group 2C C-4。
+        g_locked_saved = ok;
+        if (!ok) {
+            Serial.println("[STORAGE] WARN save failed; will auto-retry next tick "
+                           "(C-4 minimal fix; PM-aligned UI feedback TBD)");
+        }
     }
     if (ohcaState != OHCA_STATE_LOCKED
         && ohcaState != OHCA_STATE_SUMMARY) {

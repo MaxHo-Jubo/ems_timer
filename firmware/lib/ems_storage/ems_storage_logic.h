@@ -59,13 +59,12 @@ namespace ems {
      + EMS_STORAGE_MAX_EVENTS * EMS_STORAGE_WIRE_EVENT_SIZE   \
      + EMS_STORAGE_BIN_FOOTER_SIZE)
 
-/** index.json buffer 預估大小
+/** index.json buffer 大小
  *  保守估算：每筆 case object（13 欄位 + key 名）serialize 後約 200~220B。
- *  70 cases 滿載 (OHCA 50 + Training 20) × ~220B + 包裝 80B ≈ 15.5KB（**超過 12KB**）。
- *  TODO(Phase E follow-up)：實際量測一筆 case serialize 後字串長度，若 70 cases 全滿
- *  時 storage_index_serialize 回 false，bump 至 16384 或加 size-check guard。當前測試
- *  只到 D2/D3/D5（最多 70 筆 mix）未實測 70 cases 全 case_meta_t 完整填寫的序列化長度。 */
-#define EMS_STORAGE_INDEX_BUFFER_SIZE 12288
+ *  70 cases 滿載 (OHCA 50 + Training 20) × ~220B + 包裝 80B ≈ 15.5KB → 取 16384 留 buffer。
+ *  bump 自 12288（Phase E review-pr B C-2 暴露：原值在 70 cases 全滿時 storage_index_serialize
+ *  return false，被 silent ignore 導致下次 reboot 案件 purge。BSS +4KB，ESP32 8MB PSRAM 無感）。 */
+#define EMS_STORAGE_INDEX_BUFFER_SIZE 16384
 
 /** Case id 字串長度（10 位 zero-padded + NUL） */
 #define EMS_STORAGE_ID_LEN          11

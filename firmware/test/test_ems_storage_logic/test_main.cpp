@@ -1055,6 +1055,63 @@ static bool fail_rename(void* /*ctx*/, const char* /*from*/, const char* /*to*/)
     return false;
 }
 
+/** G7: C-2 修復 — storage_save_case persist_index 失敗應 rollback RAM
+ *      + 砍剛寫的 events.bin + next_seq 不退（成 hole 保 D6 invariant）
+ *
+ *  bug 描述（修前）：events.bin 寫成功 → s_state 更新 → persist 失敗 → return true
+ *  騙 caller 成功；下次 reboot 走 sync 分支發現孤兒 events.bin → purge → 案件徹底消失。
+ *
+ *  修法：persist 失敗 → case_count-- + delete events.bin + return false。
+ *  next_seq 不退 → 失敗的 seq 變 hole（與 D6 「seq 永遠單調」對齊 +
+ *  Phase F BLE 增量同步「pull >last_seq」邏輯安全）。 */
+static void G7_save_persist_fail_rolls_back_with_hole() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+
+    // STEP 01: 先存第 1 筆 happy path（seq=1）
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);
+    case_meta_t list[5];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[0].id);
+
+    // STEP 02: inject rename fail → 第 2 筆 save 必失敗
+    auto orig_rename = g_be.rename_file;
+    g_be.rename_file = fail_rename;
+
+    ems_event_t evs[1];
+    buildLocalEvent(&evs[0], 1, EVT_EPI_LOCAL, 2000ULL, 0);
+    bool ok = storage_save_case(&g_be, EMS_CASE_TYPE_OHCA, evs, 1,
+                                2000ULL, 2000ULL);
+    TEST_ASSERT_FALSE_MESSAGE(ok, "C-2: persist 失敗 storage_save_case 應 return false");
+
+    // STEP 03: RAM 仍 1 筆（剛新增的 seq=2 被 rollback）
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(1, n, "C-2: rollback 後 RAM 仍應只有 1 筆");
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[0].id);
+
+    // STEP 04: events.bin 0000000002.bin 不該殘留（避免成孤兒）
+    TEST_ASSERT_FALSE_MESSAGE(g_be.exists(g_be.ctx, "/cases/ohca/0000000002.bin"),
+                              "C-2: 失敗時剛寫的 events.bin 應被 cleanup");
+
+    // STEP 05: restore rename，第 3 筆 save 應拿 seq=3（不重用 seq=2，hole 行為）
+    g_be.rename_file = orig_rename;
+
+    buildLocalEvent(&evs[0], 1, EVT_EPI_LOCAL, 3000ULL, 0);
+    ok = storage_save_case(&g_be, EMS_CASE_TYPE_OHCA, evs, 1, 3000ULL, 3000ULL);
+    TEST_ASSERT_TRUE_MESSAGE(ok, "C-2: restore 後 save 應成功");
+
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16(2, n);
+    // list[0] 是最新 → 應為 seq=3（不是 seq=2 重用）
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("0000000003", list[0].id,
+                                     "C-2: next_seq 應不退（seq=2 為 hole, 下一筆拿 seq=3）");
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[1].id);
+
+    // disk 也對應：seq=2 hole 永不存在、seq=3 存在
+    TEST_ASSERT_FALSE(g_be.exists(g_be.ctx, "/cases/ohca/0000000002.bin"));
+    TEST_ASSERT_TRUE(g_be.exists(g_be.ctx, "/cases/ohca/0000000003.bin"));
+}
+
 /** G6: I-7 修復 — storage_delete persist_index 失敗應 rollback RAM 並保留 disk 檔
  *
  *  bug 描述（修前）：storage_delete 順序是「先砍檔 → 再 persist_index」，
@@ -1149,6 +1206,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(G4_format_clears_all);
     RUN_TEST(G5_init_null_backend_fails);
     RUN_TEST(G6_delete_persist_fail_rolls_back);
+    RUN_TEST(G7_save_persist_fail_rolls_back_with_hole);
 
     return UNITY_END();
 }

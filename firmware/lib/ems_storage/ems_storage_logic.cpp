@@ -827,7 +827,17 @@ bool storage_save_case(IStorageBackend*    be,
 
     // STEP 07: 持久化 index.json
     //   FIFO 容量強制已在 STEP 01.5 pre-evict 處理，此處無需再呼叫。
-    persist_index(be);
+    //   C-2 修：persist 失敗 → rollback case_count + 砍剛寫的 events.bin + return false。
+    //   next_seq 不退（保 D6「seq 單調遞增」不變式 + Phase F BLE 增量同步「pull >last_seq」
+    //   安全），失敗的 seq 變 hole，下次 save 自然跳過。
+    if (!persist_index(be)) {
+        EMS_STORAGE_LOG("[STORAGE] WARN save persist failed; rollback "
+                        "(seq=%u becomes hole) type=%d id=%s\n",
+                        (unsigned)seq, (int)type, id);
+        s_state.case_count--;          // 退掉剛 append 的 case_meta slot
+        be->delete_file(be->ctx, path); // 避免 events.bin 成孤兒被 init purge
+        return false;
+    }
 
     return true;
 }
