@@ -9,8 +9,8 @@
 - **網頁端 Phase F**：見 [`tasks/phase-f-todo.md`](phase-f-todo.md)（權威來源，不在此重複）
   - F-5 / F-6 / F-9 已完成；下一步 F-1 韌體 `ems_pairing` TDD（BLE 鏈路第一棒）
 - **TFT 整合**：Step 2 後續其他畫面 + Step 3 字體放大 + Demo 對齊 batch 1~3 待實機測試（見下）
-- **Phase E review-pr Batch 2 待處理**：silent failure / FIFO bug / 失敗哲學（見下方 🔧 章節）
-- **22 commits 待跑 POST-COMMIT-REVIEW**（baseline `3d44950`，rate-limit 恢復後）
+- **Phase E review-pr Batch 2**：工程層全部完成（2A/2B/2C 工程 4 commits，2026-05-14）；剩 Group 2C UI 反饋等 PM 對齊失敗哲學 A/B/C（見下方 🔧 章節）
+- **22 commits 待跑 POST-COMMIT-REVIEW**（baseline `3d44950`，rate-limit 恢復後）；本次新增 4 commits（`40bad66`/`97e38fc`/`9426004`/`4b91e3c`）為 review 行動本身，可選擇略過 5 步驟
 - **韌體 Phase B~H 規劃**：見 [`docs/pm-dev-spec.md §四`](../docs/pm-dev-spec.md)
 
 ---
@@ -241,6 +241,14 @@ e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
 3d44950  demo.html 字級對齊韌體 PM 反饋放大調整 ← 🎯 review baseline
 ```
 
+**baseline 之後新增的 Phase E review-pr Batch 2 工程修復（2026-05-14，不另外 review，本身就是 review 行動）**：
+```
+40bad66  Phase E 批次 2A — 5 處 silent failure 加 log
+97e38fc  Phase E 批次 2B — C-1 FIFO bug 修 + D7 翻轉 + D8 新增
+9426004  Phase E 批次 2C/I-7 — storage_delete 順序反轉 + rollback
+4b91e3c  Phase E 批次 2C/C-2+C-4 — save persist rollback + LOCKED auto-retry + buffer 16KB
+```
+
 ### Rate limit 恢復後接續清單（按優先序）
 
 1. ~~EndCheck/Locked/Summary 中文化~~ ✅ commit 8fced41
@@ -287,37 +295,53 @@ e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
 >
 > **Batch 2 是行為改動 + 醫療安全相關**，需要設計決策 + 實機驗證，故獨立追蹤。
 
-### Group 2A — 純 log 加固（低風險，可直接 commit，1h）
+### Group 2A — 純 log 加固 ✅ **已完成（2026-05-14 commit `40bad66`）**
 
-- [ ] **C-3** `enforce_fifo_cap` `delete_file` 失敗加 Serial log warn（孤兒檔留下、配額算錯）
-- [ ] **I-3** `storage_init` `persist_index` 失敗加 log（in-RAM 與 disk 不一致）
-- [ ] **I-4** rebuild 路徑 `fill_meta_from_bin` 損毀檔加 log（CRC/magic/version 壞）；可選：把損壞檔搬到 `/cases/corrupt/` 而非留原處
-- [ ] **I-5** `fs_read_file` short read 加 log（部分讀取 distinguish）
-- [ ] **I-6** `fs_rename_file` remove-to 失敗加 log
+- [x] **C-3** `enforce_fifo_cap` 加 `[STORAGE] FIFO evict type=N id=X` audit log（fs 層 delete_file always return true，logic 層補語意層 trace）
+- [x] **I-3** `storage_init` persist_index 失敗加 warn（含「下次 save 會修復」備註）
+- [x] **I-4** rebuild 路徑 `fill_meta_from_bin` 損毀檔加 warn（OHCA / Training 各一條）
+- [x] **I-5** `fs_read_file` short read 加 warn 印 `path/expected/actual`
+- [x] **I-6** `fs_rename_file` remove-to 失敗加 warn
+- [x] 新增 `EMS_STORAGE_LOG` macro（`#ifdef ARDUINO` 包 Serial.printf；native test 0 開銷）
 
-### Group 2B — C-1 FIFO bug 修（中風險，需 TDD + 實機驗，1h）
+### Group 2B — C-1 FIFO bug 修 ✅ **已完成（2026-05-14 commit `97e38fc`）**
 
-- [ ] **C-1** `storage_save_case:727` 移 `enforce_fifo_cap` 順序 + 加 pre-evict logic
-  - 當前 bug：OHCA=50 + Training=20 滿時新 OHCA 被 `case_count >= kTotalCapacity` 擋下
-  - 修法：在 STEP 01 reject 之前先 `if (count_of_type(type) >= cap_for_type(type)) evict_oldest_of_type(...)`
-  - 副作用：`test_main.cpp` D7 從 `TEST_ASSERT_FALSE(result)` 改為 `TEST_ASSERT_TRUE` + 驗最舊 OHCA seq 被擠掉
-- [ ] **實機驗證**：50 OHCA + 20 Training + 再存 1 OHCA → 應該成功 + 最舊 OHCA seq 1 被擠掉、Training 不受影響
+- [x] **C-1** `storage_save_case` STEP 01.5 加 pre-evict + `enforce_fifo_cap` while 條件 `>` → `>=`
+  - 修法：把 enforce_fifo_cap call 從 STEP 07 搬到 STEP 01.5（pre-write），拿掉 STEP 01 `case_count >= kTotalCapacity` guard（cap 算術保證 case_count + 1 <= kTotalCapacity）
+- [x] **TDD**：D7 翻轉 `TEST_ASSERT_FALSE` → `TEST_ASSERT_TRUE`（OHCA seq=1 被擠 + Training 不動 + 新 seq=71 存在）；新增 D8 對稱情境（Training 被擠 + OHCA 不動）
+- [ ] **實機驗證**：50 OHCA + 20 Training + 1 OHCA → 應成功 + 最舊 OHCA seq 1 被擠掉、Training 不動（native test 已 cover，實機留 Phase F 整合驗收）
 
-### Group 2C — 醫療失敗哲學重設計（高風險，需 PM 對齊）
+### Group 2C — 醫療失敗哲學重設計（部分完成）
 
 > agent 建議的失敗哲學頂層原則：「**資料遺失優於不一致**」→ 寫盤失敗就拒絕進 LOCKED
 > 完成態，強制使用者重試或承認失敗。當前實作三選一全沒選清楚。
 
-- [ ] **PM 對齊**：失敗該硬擋（拒絕 LOCKED）還是 fallback（先保住 in-RAM）？
-- [ ] **C-2** `storage_save_case` `persist_index` 失敗：return false + rollback in-RAM `s_state`（避免重啟孤兒 .bin 被 init purge → 案件徹底消失）
-- [ ] **C-4** `main.cpp:1386` LOCKED 寫盤失敗 UI 反饋
+#### ✅ 工程層 invariant 修復（不等 PM）
+
+- [x] **I-7** `storage_delete` 順序反轉 + persist 失敗 rollback（2026-05-14 commit `9426004`）
+  - snapshot case_meta → shift left RAM → persist_index 失敗 shift right + 寫回 snapshot + return false → 成功才砍檔
+  - 新增 G6 test 注入 `rename_file = fail_rename` 驗 rollback
+- [x] **C-2** `storage_save_case` persist 失敗 rollback（2026-05-14 commit `4b91e3c`）
+  - case_count-- + delete events.bin + return false + log；`next_seq` 不退（保 D6 單調 invariant + Phase F BLE 增量同步安全），失敗的 seq 成 hole
+  - 新增 G7 test 驗 rollback + hole 行為（restore 後下一筆拿 seq+1 不重用）
+- [x] **C-4 最小修** `main.cpp:1393` `g_locked_saved = ok`（2026-05-14 commit `4b91e3c`）
+  - 只在成功設 true → 下個 tick 自動 retry；失敗印「will auto-retry」trace
+  - 完整 UI 反饋（紅色警告 + 蜂鳴 + 重試按鈕）留下方 PM 對齊
+- [x] **EMS_STORAGE_INDEX_BUFFER_SIZE 12288 → 16384** follow-up：C-2 改成 check persist return 後暴露既有 buffer overflow bug（header 註解明示 TODO），bump 解 70 cases 場景
+
+#### ⏳ 需 PM 對齊（暫緩到 Phase E 整合驗收會議）
+
+- [ ] **PM 對齊**：失敗該硬擋（拒絕 LOCKED）還是 fallback（先保住 in-RAM）？三選一：
+  - **A. 硬擋**：寫失敗就拒絕 LOCKED，使用者必須重試或承認失敗（一致性最強，但 partition 真壞 → 卡死無法結案）
+  - **B. fallback**：寫失敗印 warning + 繼續 LOCKED，下次或重啟試 retry（救護不中斷，但突然斷電 → 紀錄全失）
+  - **C. 妥協**：LOCKED 仍進入但 SUMMARY 紅色警告 + 蜂鳴；提供「重試」按鈕；3 次失敗才放棄（平衡，但實作複雜度最高）
+- [ ] **C-4 完整修** UI 反饋（依 PM 對齊結果實作）：
   - SUMMARY 畫面加紅色「保存失敗」橫條
-  - 蜂鳴器警告
-  - 不讓 user 退出（強制重試或承認失敗）
-- [ ] **I-7** `storage_delete` 失敗時 rollback：先 persist_index 再砍檔（原順序反過來，避免 zombie case）
+  - 蜂鳴器 pattern（連續 vs 間歇）
+  - 重試按鈕 / 三次失敗才放棄
 - [ ] **實機驗證**：手動觸發 LittleFS 寫入失敗（拉滿 partition）→ UI 看到紅色警告
 
-### Group 2D — 型別大重構（最低優先，不建議近期做）
+### Group 2D — 型別大重構（暫緩到 Phase F BLE 整合穩定後）
 
 - [ ] **C-12** `case_meta_t` 9 metric mirror `ohca_case_summary_t` → 抽 `case_metric_counts_t` sub-struct
 - [ ] **I-21** `storage_case_type_t` 升 `enum class : uint8_t` 擋 `(cast)42` 亂塞
@@ -332,14 +356,20 @@ e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
 | /simplify | `7ebec92` | 8 項清理（純函式內 lambda 抽出、static 名稱、註解修正）|
 | Batch 1 | `3ea5884` | 註解 + magic number 13 項清理 |
 | Batch 3 | `8844e9f` | 補測 13 case（A6-A8 / C5-C6 / D7 / E6-E7 / G1-G5）+ 強化 4 既有 |
-| **Batch 2** | _待開工_ | Group 2A → 2B → 2C → (2D 暫緩) |
+| **Batch 2A** | `40bad66` | 5 處 silent failure 加 log + `EMS_STORAGE_LOG` macro |
+| **Batch 2B** | `97e38fc` | C-1 FIFO pre-evict + D7 翻轉 + D8 新增 |
+| **Batch 2C/I-7** | `9426004` | storage_delete 順序反轉 + rollback + G6 |
+| **Batch 2C/C-2+C-4** | `4b91e3c` | save persist rollback + LOCKED auto-retry + index buffer 12→16KB + G7 |
+
+**累計成果**：native test 263 cases / 262 PASSED（test_storage_hw native ERROR 為 baseline 既有）；ESP32 build SUCCESS，Flash 27.1% / RAM 19.5%（前 16.4%，+8KB BSS 給 index buffer）
 
 ### 進場順序建議
 
-1. **Group 2A 先**：純 log 加固、無行為改動、可直接 commit
-2. **Group 2B 中**：C-1 真實 bug 修，TDD 改 D7 → 韌體 build → **實機 + 50+20+1 場景驗證**
-3. **Group 2C 後**：要先跟 PM 對齊失敗哲學（建議延後到 Phase E 整合驗收會議）
-4. **Group 2D 不建議**：型別重構動序列化結構，等 Phase F BLE 整合穩定後再評估
+1. ✅ **Group 2A 已完成**
+2. ✅ **Group 2B 已完成**（native test cover 完整，實機 50+20+1 場景留 Phase F 整合驗收）
+3. ✅ **Group 2C 工程層**（I-7 + C-2 + C-4 最小修）**已完成**
+4. ⏳ **Group 2C UI 層**：等 PM 對齊失敗哲學 A/B/C → 決定 C-4 完整修法 → SUMMARY 紅色警告 + 蜂鳴 pattern + 重試流程
+5. **Group 2D 不建議近期做**：型別重構動序列化結構，等 Phase F BLE 整合穩定後再評估
 
 ---
 
