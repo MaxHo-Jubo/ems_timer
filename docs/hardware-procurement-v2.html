@@ -144,12 +144,13 @@
 <div class="header">
   <h1>🛒 EMS DoseSync 硬體採購清單 v2</h1>
   <div class="subtitle">PM 6 條需求對齊 · 兩條升級路徑對照 · 給 PM 下單參考</div>
-  <div class="version">v2.2 · 2026-05-07 · Max Ho</div>
+  <div class="version">v2.3 · 2026-05-14 · Max Ho</div>
 </div>
 
 <div class="meta-box">
   <div><span class="meta-label">適用階段：</span><span class="meta-value">Dev-Phase 2 / Prod-Phase pilot</span></div>
   <div><span class="meta-label">建立日期：</span><span class="meta-value">2026-05-07</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-13</span></div>
   <div><span class="meta-label">負責人：</span><span class="meta-value">Max Ho</span></div>
   <div><span class="meta-label">關聯文件：</span><span class="meta-value">power-module-purchase.md</span></div>
 </div>
@@ -157,6 +158,7 @@
 <div class="toc">
   <div class="toc-title">目錄</div>
   <div class="toc-list">
+    <a href="#sec-0">⭐ 目前硬體清單與狀態（2026-05-13）</a>
     <a href="#sec-1">1. PM 6 條需求</a>
     <a href="#sec-2">2. 採購品項總表</a>
     <a href="#sec-3">3. 總結</a>
@@ -170,6 +172,178 @@
     <a href="#sec-11">11. 採購建議</a>
     <a href="#sec-12">12. 風險與注意</a>
     <a href="#sec-13">13. 版本紀錄</a>
+  </div>
+</div>
+
+<!-- §0 目前硬體現況快照 -->
+<div class="section" id="sec-0">
+  <h2 class="section-title"><span class="num" style="background: var(--purple);">⭐</span>目前開發硬體清單與狀態（2026-05-13 快照）</h2>
+  <div class="card">
+    <div class="note note-blue">
+      此表為 <strong>Dev-Phase 1.5 / Dev-Phase 2 階段現況快照</strong>。採購規格細節與升級路徑決策見 §2~§5；本表只回答「我手上有什麼、缺什麼、接到哪了」。
+    </div>
+
+    <h3 class="sub-title">硬體清單（11 項）</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>品項</th><th>功用</th><th>規格</th><th>採購連結</th><th>採購狀態</th><th>麵包板狀態</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="num-col">1</td>
+          <td><strong>ESP32-S3 主控板</strong></td>
+          <td>主控與韌體執行</td>
+          <td>GOOUUU N16R8（16MB Flash + 8MB PSRAM）</td>
+          <td><a href="https://tw.shp.ee/xdJy5BZM" class="link" target="_blank">蝦皮 A ↗</a> / <a href="https://tw.shp.ee/xe8JBeP9" class="link" target="_blank">蝦皮 B ↗</a></td>
+          <td><span class="badge badge-green">✅ 已採購</span></td>
+          <td><span class="badge badge-pass">✅ 已接線開發中</span></td>
+        </tr>
+        <tr>
+          <td class="num-col">2</td>
+          <td><strong>TFT 顯示器</strong></td>
+          <td>畫面顯示</td>
+          <td>2.8" LCD ST7789（SPI、240×320）</td>
+          <td><a href="https://tw.shp.ee/sKFkcM6G" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-green">✅ 已採購</span></td>
+          <td><span class="badge badge-pass">✅ 已接線開發中</span></td>
+        </tr>
+        <tr>
+          <td class="num-col">3</td>
+          <td><strong>按鈕 ×8</strong></td>
+          <td>操作輸入</td>
+          <td>無段開關（self-reset tact）</td>
+          <td><a href="https://tw.shp.ee/1WVkt5YW" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-green">✅ 已採購</span></td>
+          <td><span class="badge badge-pass">✅ 已接線開發中</span></td>
+        </tr>
+        <tr>
+          <td class="num-col">4</td>
+          <td><strong>蜂鳴器</strong></td>
+          <td>音效提示與警報</td>
+          <td>主動式</td>
+          <td><a href="https://tw.shp.ee/tbiAuZu1" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-green">✅ 已採購</span></td>
+          <td><span class="badge badge-pass">✅ 已接線開發中</span></td>
+        </tr>
+        <tr>
+          <td class="num-col">5</td>
+          <td><strong>麥克風</strong></td>
+          <td><span class="badge badge-red">🚫 非 V1 功能</span><br><span style="color:var(--text-secondary);font-size:13px;">錄音輸入</span></td>
+          <td>INMP441 I2S</td>
+          <td><a href="https://tw.shp.ee/pswf1Wjk" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-green">✅ 已採購</span></td>
+          <td><span class="badge badge-amber">⏳ 未接（Dev-Phase 1.5 重試）</span></td>
+        </tr>
+        <tr>
+          <td class="num-col">6</td>
+          <td><strong>MicroSD 卡模組</strong></td>
+          <td><span class="badge badge-red">🚫 非 V1 功能</span><br><span style="color:var(--text-secondary);font-size:13px;">錄音儲存</span></td>
+          <td>SPI</td>
+          <td><a href="https://tw.shp.ee/2bFc1wkQ" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-green">✅ 已採購</span></td>
+          <td><span class="badge badge-amber">⏳ 未接（Dev-Phase 1.5 整合）</span></td>
+        </tr>
+        <tr>
+          <td class="num-col">7</td>
+          <td><strong>震動馬達</strong></td>
+          <td><span class="badge badge-red">🚫 非 V1 功能</span><br><span style="color:var(--text-secondary);font-size:13px;">觸覺警示</span></td>
+          <td>3V（韌體配置 GPIO 21）</td>
+          <td><a href="https://tw.shp.ee/EWeTxgsm" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-green">✅ 已採購</span></td>
+          <td><span class="badge badge-amber">⏳ 未接</span></td>
+        </tr>
+        <tr>
+          <td class="num-col">8</td>
+          <td><strong>RTC 模組</strong></td>
+          <td>離線時間校準</td>
+          <td>DS3231 I2C</td>
+          <td><a href="https://tw.shp.ee/QUJCyUiS" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-blue">🚚 已下單未到貨</span></td>
+          <td><span class="badge badge-amber">⏳ 待到貨（Dev-Phase 3）</span></td>
+        </tr>
+        <tr class="path-a">
+          <td class="num-col">9</td>
+          <td><strong>電池</strong></td>
+          <td>離線供電</td>
+          <td>LiPo 1000mAh + 保護板 + PH2.0（<strong>左紅右黑</strong>）</td>
+          <td><a href="https://reurl.cc/R28yZr" class="link" target="_blank">賣場 ↗</a></td>
+          <td><span class="badge badge-blue">🚚 已下單未到貨（5/14 下單）</span></td>
+          <td><span class="badge badge-amber">⏳ 待到貨</span></td>
+        </tr>
+        <tr class="path-a">
+          <td class="num-col">10</td>
+          <td><strong>電池模組</strong>（量產候選）</td>
+          <td>充放電 + 5V 升壓 + 真實 load-sharing</td>
+          <td>PowerBoost 1000 C</td>
+          <td><a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天 ↗</a></td>
+          <td><span class="badge badge-blue">🚚 已下單未到貨（5/14 下單，<strong>預計 ~6/4 到貨</strong>）</span></td>
+          <td><span class="badge badge-amber">⏳ 待到貨（3~4 週）</span></td>
+        </tr>
+        <tr class="path-a">
+          <td class="num-col">11</td>
+          <td><strong>排針（公頭）</strong></td>
+          <td>PowerBoost 焊接用</td>
+          <td>2.54mm 單排直插公頭 40pin</td>
+          <td><a href="https://reurl.cc/zQoGqV" class="link" target="_blank">賣場 ↗</a></td>
+          <td><span class="badge badge-red">❌ 未下單</span></td>
+          <td><span class="badge badge-amber">⏳ 待採購（焊在 PowerBoost）</span></td>
+        </tr>
+        <tr class="path-a">
+          <td class="num-col">12</td>
+          <td><strong>聯騰 TP4056 一體版</strong>（pilot 主驗證）</td>
+          <td>充電 + 升壓 5V（PowerBoost 到貨前的 pilot 替代）</td>
+          <td>MTARDTP4056S（TP4056 + DW01 + 8205A + SX1308 升壓 + Type-C）</td>
+          <td><a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮 ↗</a></td>
+          <td><span class="badge badge-blue">🚚 已下單未到貨（5/14 下單）</span></td>
+          <td><span class="badge badge-amber">⏳ 待到貨（1~3 天）</span></td>
+        </tr>
+        <tr class="path-a">
+          <td class="num-col">13</td>
+          <td><strong>MAX17048 燃料計</strong>（選配 / UX 加值）</td>
+          <td>電量百分比 + 剩餘時間 + 低電量警告（精度 ±1%）</td>
+          <td>Adafruit MAX17048 PID 5580、I2C <code>0x36</code>、雙 JST-PH + STEMMA QT</td>
+          <td><a href="https://www.taiwansensor.com.tw/product/%E9%8B%B0%E9%9B%BB%E6%B1%A0%E5%AE%B9%E9%87%8F%E7%9B%A3%E6%B8%AC%E6%A8%A1%E7%B5%84-max17048-li-poly%EF%BC%8Fli-ion-%E9%9B%BB%E9%87%8F%E8%A8%88%EF%BC%88stemma-qt-qwiic-%E6%8F%92%E5%BA%A7/" class="link" target="_blank">TaiwanSensor ↗</a></td>
+          <td><span class="badge badge-amber">⏸ <strong>延後採購</strong>（觸發條件見 <a href="power-module-purchase.md" class="link">power-module-purchase.md §10.4</a>）</span></td>
+          <td><span class="badge badge-amber">⏳ 未接</span></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note note-blue">
+      <strong>圖例</strong>：
+      <span class="badge badge-green">✅ 已採購</span>
+      <span class="badge badge-blue">🚚 已下單未到貨</span>
+      <span class="badge badge-amber">⏸ 延後採購</span>
+      <span class="badge badge-red">❌ 未下單</span>
+      ｜
+      <span class="badge badge-pass">✅ 已接線</span>
+      <span class="badge badge-amber">⏳ 尚未進入麵包板</span>
+      ｜
+      <span class="badge badge-red">🚫 非 V1 功能</span>（保留至 Dev-Phase 1.5+ / V1.1 啟用）
+    </div>
+
+    <div class="note note-red">
+      <strong>🚫 非 V1 功能說明</strong>：麥克風（#5）、SD 卡（#6）、震動馬達（#7）依 <strong>SoT V1 §2.2「V1 排除功能」</strong>與 <strong>§6.6「EPI 預警與警報」</strong>原規格皆未納入 V1 功能範圍（V1 警報只用 蜂鳴 + LED 兩模態）。已採購之零件保留至 <strong>Dev-Phase 1.5</strong>（麥克風 + SD 卡重試）與 <strong>V1.1 擴充</strong>（震動三模態警示）啟用，不影響 V1 PM 出貨範圍。
+    </div>
+
+    <h3 class="sub-title">排針規格確認</h3>
+    <p>PowerBoost 1000 C 焊孔需要 <strong>2.54mm 間距、單排、直插（straight）、公頭（male）排針</strong>，業界俗稱「萬用排針」。</p>
+    <table>
+      <thead><tr><th>規格項</th><th>值</th><th>為何</th></tr></thead>
+      <tbody>
+        <tr><td><strong>間距</strong></td><td><code>2.54mm</code>（0.1 inch）</td><td>業界標準。PowerBoost / 麵包板 / 杜邦線全部都這個間距</td></tr>
+        <tr><td><strong>排數</strong></td><td>單排（1 row）</td><td>雙排（2×40）插不進 PowerBoost 的單列焊孔</td></tr>
+        <tr><td><strong>方向</strong></td><td>直插（straight）</td><td>90° 彎角排針會撞到下一層模組，本案無需彎角</td></tr>
+        <tr><td><strong>性別</strong></td><td>公頭（male / pin）</td><td>模組焊公頭、針腳朝下插麵包板（麵包板本身是排母）</td></tr>
+        <tr><td><strong>長度</strong></td><td>40-pin 一條（可徒手剪斷）</td><td>Adafruit 原廠 PowerBoost 1000 C 共 10 焊孔（主排 6 + USB 2 + BAT/LBO pad 2），剪 1 條 40-pin 焊完還剩 30-pin 備用</td></tr>
+        <tr><td><strong>高度</strong></td><td>預設 11.5mm（針身 8.5mm + 塑膠基座 2.5mm）</td><td>標準規格，賣家若不標就是這個</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-red">
+      ⚠️ <strong>下單前確認賣場標示</strong>：點開 <a href="https://reurl.cc/zQoGqV" class="link" target="_blank">排針賣場 ↗</a> 確認商品名稱含「<strong>2.54mm 1×40P 直插公排針</strong>」或同義字串。若標示是排<strong>母</strong>（female / socket）、<strong>雙排</strong>（2×40 / 2.54×2）、<strong>彎角 90°</strong>（right-angle）任一項，皆不適用。露天/蝦皮搜尋關鍵字：「<code>2.54 排針 單排 40P</code>」。
+    </div>
   </div>
 </div>
 
@@ -257,10 +431,14 @@
   <h2 class="section-title"><span class="num">3</span>總結</h2>
   <div class="card">
     <div class="recommend-box">
-      <div class="rec-title">✅ 建議下單</div>
+      <div class="rec-title">🚚 2026-05-14 採購已執行</div>
       <div class="rec-body">
-        電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">連結</a>）+ <strong>電池模組 PowerBoost 1000 C</strong>（路徑 A，<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天</a>）+ MCP23017 已焊版（<a href="https://reurl.cc/j6a4m2" class="link" target="_blank">連結</a>）+ 排針（<a href="https://reurl.cc/zQoGqV" class="link" target="_blank">連結</a>）。
+        電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">連結</a>）+ <strong>PowerBoost 1000 C</strong>（<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天</a>，預計 ~6/4 到貨）+ <strong>聯騰 TP4056 一體版</strong>（<a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮</a>，1~3 天到貨先行 pilot 驗證）均已下單。
       </div>
+    </div>
+
+    <div class="note note-amber">
+      <strong>⏸ 尚未下單</strong>：MCP23017 已焊版（<a href="https://reurl.cc/j6a4m2" class="link" target="_blank">連結</a>）、排針（<a href="https://reurl.cc/zQoGqV" class="link" target="_blank">連結</a>）、<strong>MAX17048 燃料計</strong>（<a href="https://www.taiwansensor.com.tw/product/%E9%8B%B0%E9%9B%BB%E6%B1%A0%E5%AE%B9%E9%87%8F%E7%9B%A3%E6%B8%AC%E6%A8%A1%E7%B5%84-max17048-li-poly%EF%BC%8Fli-ion-%E9%9B%BB%E9%87%8F%E8%A8%88%EF%BC%88stemma-qt-qwiic-%E6%8F%92%E5%BA%A7/" class="link" target="_blank">TaiwanSensor</a>，延後採購等聯騰穩定後評估）。
     </div>
 
     <div class="skip-box">
@@ -328,7 +506,7 @@
       <table>
         <tbody>
           <tr><td><strong>主控板</strong></td><td>維持 GOOUUU ESP32-S3（Dev-Phase 1 已驗證）</td></tr>
-          <tr><td><strong>電源變更</strong></td><td>蓮騰 TP4056 二合一 → PowerBoost 1000 C</td></tr>
+          <tr><td><strong>電源變更</strong></td><td>聯騰 TP4056 二合一 → PowerBoost 1000 C</td></tr>
           <tr><td><strong>接口</strong></td><td><span class="badge badge-amber">micro USB（非 Type-C）</span></td></tr>
           <tr><td><strong>5V 輸出</strong></td><td><span class="badge badge-pass">✅ 拔 USB 後仍有穩定 5V</span></td></tr>
           <tr><td><strong>邊充邊用</strong></td><td><span class="badge badge-pass">✅ load-sharing</span></td></tr>
@@ -511,10 +689,10 @@
         <tr><td>排針（一包多用）</td><td>30</td><td>30</td></tr>
         <tr class="total-row"><td><strong>新增成本（不含模組/開發板）</strong></td><td><strong>~230</strong></td><td><strong>~230</strong></td></tr>
         <tr><td>既有 GOOUUU 主控板</td><td>沿用</td><td>閒置</td></tr>
-        <tr><td>既有蓮騰 TP4056</td><td>閒置</td><td>閒置</td></tr>
+        <tr><td>既有聯騰 TP4056</td><td>閒置</td><td>閒置</td></tr>
       </tbody>
     </table>
-    <div class="note">⚠️ 路徑 B 會讓既有 GOOUUU + 蓮騰 TP4056 閒置（NT$~150 沉沒成本）。</div>
+    <div class="note">⚠️ 路徑 B 會讓既有 GOOUUU + 聯騰 TP4056 閒置（NT$~150 沉沒成本）。</div>
   </div>
 </div>
 
@@ -548,10 +726,11 @@
       <div class="rec-body">
         <strong>下單清單</strong>：
         <ul style="margin: 8px 0 8px 20px;">
-          <li>電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">蝦皮 ↗</a>）</li>
-          <li>電池模組 PowerBoost 1000 C ×1（<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天 ↗</a>）</li>
-          <li>MCP23017 已焊版 ×1（<a href="https://reurl.cc/j6a4m2" class="link" target="_blank">蝦皮 ↗</a>）— <em>為未來預留，現階段不接也行</em></li>
-          <li>排針 ×1 包（<a href="https://reurl.cc/zQoGqV" class="link" target="_blank">蝦皮 ↗</a>）</li>
+          <li>電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-blue">🚚 已下單（5/14）</span></li>
+          <li>電池模組 PowerBoost 1000 C ×1（<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天 ↗</a>）— <span class="badge badge-blue">🚚 已下單（5/14，預計 ~6/4 到貨）</span></li>
+          <li><strong>聯騰 TP4056 一體版 ×1</strong>（PowerBoost 到貨前的 pilot 替代，<a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-blue">🚚 已下單（5/14，1~3 天到貨）</span></li>
+          <li>MCP23017 已焊版 ×1（<a href="https://reurl.cc/j6a4m2" class="link" target="_blank">蝦皮 ↗</a>）— <em>為未來預留，現階段不接也行</em> <span class="badge badge-red">❌ 未下單</span></li>
+          <li>排針 ×1 包（<a href="https://reurl.cc/zQoGqV" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-red">❌ 未下單</span></li>
         </ul>
         <strong>理由</strong>：
         <ol style="margin: 8px 0 0 20px;">
@@ -559,6 +738,7 @@
           <li><strong>韌體 0 行改動</strong>，95 個現有 test 全綠狀態保留</li>
           <li>Dev-Phase 2 真正要做的是 BLE 通訊，<strong>不該為了硬體換板打斷節奏</strong></li>
           <li>MCP23017 提早採購備料，等 Prod-Phase 真要切 SparkFun 時不用等貨</li>
+          <li><strong>聯騰一體版作為 PowerBoost 到貨前的 pilot 主驗證</strong>，焊接工少、debug 風險低，雙模組到齊後做 load-sharing 對比驗證</li>
         </ol>
       </div>
     </div>
@@ -611,13 +791,15 @@
         <tr><td>2026-05-07</td><td>v2.1</td><td>賣場條目命名對齊 PM 提供：電池模組明確標示 PowerBoost 1000 C、開發板+電池模組明確標示 SparkFun Thing Plus-ESP32-S3</td><td>Max Ho</td></tr>
         <tr><td>2026-05-07</td><td>v2.1-html</td><td>HTML 版產出，排版對齊 power-module-purchase.html</td><td>Max Ho</td></tr>
         <tr><td>2026-05-07</td><td>v2.2</td><td>「給 PM 的 TL;DR」改名「總結」並前移至 §3，§3~§11 全數後延一號；§12 風險與注意事項保留為倒數第二章</td><td>Max Ho</td></tr>
+        <tr><td>2026-05-13</td><td>v2.2-html</td><td>頁首新增 §0「目前開發硬體清單與狀態」11 項快照表（含採購/接線狀態 + 蝦皮連結）；補上排針規格 6 項確認清單 + 下單前檢核點；對應 markdown v2.2</td><td>Max Ho</td></tr>
+        <tr><td>2026-05-14</td><td>v2.3</td><td>更新採購狀態：#9 電池、#10 PowerBoost 1000C 均於 5/14 下單；新增 #12 聯騰 TP4056 一體版（5/14 下單，PowerBoost 到貨前 pilot 主驗證）與 #13 MAX17048 燃料計（延後採購，觸發條件指向 power-module-purchase.md §10.4）；§3 總結與 §11 短期決策反映採購進度；對應 markdown v2.3</td><td>Max Ho</td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <div class="footer">
-  EMS Timer 硬體採購清單 v2.1 · 2026-05-07 · Max Ho<br>
+  EMS Timer 硬體採購清單 v2.3 · 2026-05-14 · Max Ho<br>
   本文件對應 Markdown 版：<code>docs/hardware-procurement-v2.md</code>
 </div>
 

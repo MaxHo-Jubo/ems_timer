@@ -124,7 +124,7 @@
 <div class="header">
   <h1>⚡ EMS Timer 電源模組採購與組裝指南</h1>
   <div class="subtitle">3.7V 鋰電池 + TP4056 充電升壓 + 邊充邊用</div>
-  <div class="version">v1.4 · 2026-05-07 · Max Ho</div>
+  <div class="version">v1.5 · 2026-05-14 · Max Ho</div>
 </div>
 
 <div class="meta-box">
@@ -146,7 +146,9 @@
     <a href="#sec-7">7. 安全提醒</a>
     <a href="#sec-8">8. 後續整合到 SoT</a>
     <a href="#sec-9">9. 未來升級路線</a>
-    <a href="#sec-10">10. 版本紀錄</a>
+    <a href="#sec-10">10. 目前採購決策（2026-05-14 快照）</a>
+    <a href="#sec-11">11. 量產 PCB 設計建議</a>
+    <a href="#sec-12">12. 版本紀錄</a>
   </div>
 </div>
 
@@ -244,7 +246,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
       <li>極性「左紅右黑」（接頭正面、卡榫朝上時）</li>
     </ul>
 
-    <p style="font-weight: 600; margin: 16px 0 8px;">充電升壓模組（蓮騰 MTARDTP4056S）</p>
+    <p style="font-weight: 600; margin: 16px 0 8px;">充電升壓模組（聯騰 MTARDTP4056S）</p>
     <ul class="check-list">
       <li>TP4056 充電 IC（充電電流預設 1A = 1C）</li>
       <li>Type-C 輸入</li>
@@ -355,7 +357,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
   <h2 class="section-title"><span class="num">5</span>組裝步驟</h2>
   <div class="card">
 
-    <h3 class="sub-title">5.1 焊接 PH2.0 母座到蓮騰板</h3>
+    <h3 class="sub-title">5.1 焊接 PH2.0 母座到聯騰板</h3>
     <div class="step-box">
       <ol>
         <li><strong>決定方向：</strong>母座<strong>卡榫朝外</strong>（朝向板子邊緣），方便插拔</li>
@@ -384,7 +386,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
     <table>
       <thead>
         <tr>
-          <th>蓮騰板</th>
+          <th>聯騰板</th>
           <th>ESP32-S3 GOOUUU</th>
         </tr>
       </thead>
@@ -475,7 +477,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
   <div class="card">
     <p>採購驗證通過後，需更新以下文件：</p>
     <ul class="check-list" style="margin-top: 12px;">
-      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §20.4.3 補充充電 IC 為「蓮騰 MTARDTP4056S（TP4056 + 升壓二合一）」</li>
+      <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §20.4.3 補充充電 IC 為「聯騰 MTARDTP4056S（TP4056 + 升壓二合一）」</li>
       <li><code>docs/EMS_DoseSync_Pro_Prototype_V1.md</code> §21.1 主要硬體清單新增本電源模組</li>
       <li><code>docs/pcb-outsourcing-guide.md</code> PCB 預留要求補充 PH2.0 母座焊盤位置</li>
       <li><code>docs/gpio-allocation.md</code> 確認 VIN 接腳對應正確</li>
@@ -495,7 +497,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
     <h3 class="sub-title">9.1 觸發升級的時機</h3>
     <p>當以下情況之一發生時，建議重新評估升級到 §9.2 / §9.3 方案：</p>
     <ul class="check-list">
-      <li class="warn">蓮騰板 USB-C 切換時 ESP32 反覆重開機（pass-through 不真實）</li>
+      <li class="warn">聯騰板 USB-C 切換時 ESP32 反覆重開機（pass-through 不真實）</li>
       <li class="warn">進入 Prod-Phase 量產階段（5 ~ 10 台以上）</li>
       <li class="warn">想在 OLED 顯示電量百分比 / 剩餘時間</li>
       <li class="warn">同時規劃整合 RTC（Phase 3 DS3231）</li>
@@ -651,7 +653,7 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
       <thead>
         <tr>
           <th>項目</th>
-          <th>現行（蓮騰 + 523450 + DIY）</th>
+          <th>現行（聯騰 + 523450 + DIY）</th>
           <th>A: PowerBoost 1000C</th>
           <th>B: PiSugar 3</th>
           <th>C: SparkFun Thing Plus-ESP32-S3</th>
@@ -1070,9 +1072,214 @@ Time left: ~3h 20m (放電中)</pre>
   </div>
 </div>
 
-<!-- §10 -->
+<!-- §10 目前採購決策 -->
 <div class="section" id="sec-10">
-  <h2 class="section-title"><span class="num">10</span>版本紀錄</h2>
+  <h2 class="section-title"><span class="num">10</span>目前採購決策（2026-05-14 快照）</h2>
+  <div class="card">
+
+    <h3 class="sub-title">10.1 Pilot 階段雙軌策略</h3>
+    <table>
+      <thead><tr><th>模組</th><th>角色</th><th>狀態</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>聯騰 MTARDTP4056S 一體版</strong></td>
+          <td>主驗證模組</td>
+          <td><span class="badge badge-blue">🚚 已下單（5/14，1~3 天到貨）</span></td>
+          <td>馬上驗證 BLE / TFT / button 功能、確認電源切換穩定度</td>
+        </tr>
+        <tr>
+          <td><strong>PowerBoost 1000C</strong></td>
+          <td>對照組 + 量產候選</td>
+          <td><span class="badge badge-blue">🚚 已下單（5/14，預計 ~6/4 到貨）</span></td>
+          <td>對比聯騰山寨板，驗證真實 load-sharing 行為</td>
+        </tr>
+        <tr>
+          <td><strong>MAX17048 燃料計</strong></td>
+          <td>UX 加值</td>
+          <td><span class="badge badge-amber">⏸ 延後採購</span></td>
+          <td>等電源穩定 + PM 確認 UX 後再買（見 §10.4）</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">10.2 處理順序</h3>
+    <ol style="margin: 8px 0 0 20px; line-height: 1.7;">
+      <li>採購聯騰一體版（買 2 片：1 用 1 備）</li>
+      <li>焊接 PH2.0 母座 + 校壓 5.00V ± 0.05V + 鎖膠</li>
+      <li>接 ESP32-S3 VIN，跑 §5.4 四項整合測試</li>
+      <li>觀察「USB-C 拔插時 ESP32 是否 reset」（山寨板最常見的雷）</li>
+      <li>救護現場跑半天～一天，確認穩定無 reset</li>
+      <li>PowerBoost 到貨後重做 Step 3~4，對比 load-sharing 行為差異</li>
+      <li>確認電源拓樸後 → 採購 MAX17048（時機見 §10.4）</li>
+    </ol>
+
+    <h3 class="sub-title">10.3 為何選聯騰一體版 vs「TP4056 純充電板 + MT3608 升壓板」兩片串接</h3>
+    <table>
+      <thead><tr><th>維度</th><th>聯騰一體版</th><th>TP4056 + MT3608 兩片串接</th></tr></thead>
+      <tbody>
+        <tr><td>IC 顆數</td><td>4 顆整合一片</td><td>4 顆分兩片</td></tr>
+        <tr><td>焊接點</td><td>4 點 + 1 trim pot 校壓</td><td>8 點 + 1 trim pot 校壓</td></tr>
+        <tr><td>雜訊耦合</td><td>一片內走線、乾淨</td><td>兩片間靠杜邦/飛線、容易吃雜訊</td></tr>
+        <tr><td>失敗模式</td><td>少</td><td>多一個「串接線壓降觸發 MT3608 brown-out 重啟 ESP32」雷</td></tr>
+        <tr><td>Load-sharing</td><td>IC 內部協調（不完美但有）</td><td>兩片獨立工作（更差）</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-green">
+      → <strong>聯騰一體版焊接工少一倍、debug 風險低</strong>，量產之前都用這個。
+    </div>
+
+    <h3 class="sub-title">10.4 MAX17048 採購觸發點</h3>
+    <p>不急著買，<strong>等下面任一條件滿足再下單</strong>：</p>
+    <table>
+      <thead><tr><th>觸發條件</th><th>為何要等</th></tr></thead>
+      <tbody>
+        <tr><td>聯騰版整合測試全綠</td><td>不穩定的電源會干擾 MAX17048 量測，先確認電源沒問題</td></tr>
+        <tr><td>PM 確認 UX 要顯示百分比 / 剩餘時間</td><td>若 PM 說「電量圖示閃就夠」（對齊 SoT §13.17 字面），MAX17048 可省</td></tr>
+        <tr><td>開始實作 Impl-Phase H（電源管理）</td><td>那時才會真正寫到 fuel gauge UI 程式碼</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      <strong>推薦型號</strong>：Adafruit MAX17048（PID 5580）— 雙 JST-PH 接口可直接串在電池與 PowerBoost 之間、STEMMA QT 免焊 I2C、Adafruit_MAX1704X lib 直接套。
+    </div>
+
+    <h3 class="sub-title">10.5 聯騰版未支援的功能（要記在工程已知缺陷）</h3>
+    <table>
+      <thead><tr><th>功能</th><th>聯騰能做嗎</th><th>解法</th></tr></thead>
+      <tbody>
+        <tr><td>長按 Power 鍵硬體關機</td><td><span class="badge badge-red">❌ 沒 EN pin</span></td><td>軟體 <code>esp_deep_sleep_start()</code> 暫代</td></tr>
+        <tr><td>低電量警告</td><td><span class="badge badge-red">❌ 沒 LBO pin</span></td><td>待 MAX17048 上線或走 ADC 粗估</td></tr>
+        <tr><td>真實 load-sharing</td><td><span class="badge badge-amber">⚠️ 不完美</span></td><td>PowerBoost 取代或量產自製 PCB 解決</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+<!-- §11 量產 PCB 設計建議 -->
+<div class="section" id="sec-11">
+  <h2 class="section-title"><span class="num">11</span>量產 PCB 設計建議（Prod-Phase）</h2>
+  <div class="card">
+
+    <div class="note note-blue">
+      <strong>目標</strong>：當 pilot 跑滿 5~10 台、Dev-Phase 1~4 全綠後，自製 PCB 時的電源拓樸與 IC 選型建議。
+    </div>
+
+    <h3 class="sub-title">11.1 推薦拓樸：Buck-Boost 3.3V 直驅</h3>
+    <p><strong>核心 insight</strong>：EMS Timer 全系統元件（ESP32-S3 / ST7789 TFT / SD 卡 / INMP441 / 蜂鳴器 / 震動）<strong>沒有真正需要 5V 的</strong>。量產不必沿用 GOOUUU 開發板「升壓到 5V 再降回 3.3V」的繞路設計。</p>
+    <pre class="ascii-flow">USB-C ─► [充電 IC] ─► LiPo 3.7V ─► [Buck-Boost 3.3V] ─► ESP32-S3 3V3 pin + 全周邊
+            │              │
+            └──► [保護 IC]  └──► [燃料計] ──► I2C ──► ESP32</pre>
+
+    <h3 class="sub-title">11.2 三條候選拓樸對比</h3>
+    <table>
+      <thead><tr><th>維度</th><th>A: 5V 路線（沿用 GOOUUU 思路）</th><th>B: Buck-Boost 3.3V ⭐ 推薦</th><th>C: PMIC 一片解決</th></tr></thead>
+      <tbody>
+        <tr><td>拓樸</td><td>充電 + 升壓 5V + LDO 3.3V</td><td>充電 + Buck-Boost 3.3V</td><td>PMIC 三合一</td></tr>
+        <tr><td>IC 顆數</td><td>3 顆主動</td><td><strong>2 顆主動</strong></td><td><strong>1 顆主動</strong></td></tr>
+        <tr><td>PCB 面積</td><td>~25×30mm</td><td>~20×20mm</td><td>~15×15mm</td></tr>
+        <tr><td>效率</td><td>~80%（兩級轉換）</td><td><strong>~93%</strong>（一級）</td><td>~85%</td></tr>
+        <tr><td>Noise</td><td>高（LDO 散熱）</td><td>低</td><td>高（IP5306 行動電源 IC）</td></tr>
+        <tr><td>待機行為</td><td>正常</td><td>正常</td><td><span class="badge badge-red">❌ IP5306 無負載 10 秒自動關機，救護待機災難</span></td></tr>
+        <tr><td>工程風險</td><td>低（業界主流）</td><td>中（buck-boost layout 較敏感）</td><td>高（待機問題 + noise）</td></tr>
+        <tr><td>BOM 成本</td><td>NT$60/台</td><td>NT$70/台</td><td>NT$50/台</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-green">
+      → <strong>B 路線是 EMS Timer 量產正解</strong>。C 雖然便宜，但 IP5306 待機自動關機對救護場景是 deal-breaker。
+    </div>
+
+    <h3 class="sub-title">11.3 拓樸 B 具體 IC 選型</h3>
+    <table>
+      <thead><tr><th>角色</th><th>推薦 IC</th><th>為何選它</th><th>單價</th></tr></thead>
+      <tbody>
+        <tr><td><strong>充電 IC</strong></td><td><strong>MCP73831</strong></td><td>Microchip 工業級、SOT-23-5 小封裝、單電阻調充電電流、PowerBoost 同款</td><td>NT$20</td></tr>
+        <tr><td><strong>電池保護</strong></td><td><strong>DW01 + 8205A</strong></td><td>經典組合、便宜可靠；或直接買含保護板的電池</td><td>NT$10</td></tr>
+        <tr><td><strong>Buck-Boost</strong></td><td><strong>TPS63802</strong></td><td>TI、輸入 1.3~5.5V、輸出 1.8~5.5V、2A、95% 效率、開關 2.5MHz（電感小）</td><td>NT$60</td></tr>
+        <tr><td><strong>燃料計</strong>（選配）</td><td><strong>MAX17048</strong></td><td>I2C <code>0x36</code>、能讀 0~100% + 充放電速率、Adafruit/SparkFun 同款 lib</td><td>NT$50</td></tr>
+        <tr><td><strong>靜電保護</strong></td><td><strong>PRTR5V0U2X</strong></td><td>USB-C D+/D- ESD 保護、量產必加</td><td>NT$5</td></tr>
+        <tr><td><strong>被動元件</strong></td><td>電感 1.5μH + Caps + Rs</td><td>TDK / Murata、不要買淘寶散裝</td><td>NT$15</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      <strong>單台電源 BOM 約 NT$160</strong>（含燃料計）/ <strong>NT$110</strong>（不含）。
+    </div>
+
+    <h3 class="sub-title">11.4 PCB Layout 三大關鍵</h3>
+    <p>Buck-Boost IC 是高頻開關電路（2.5MHz），layout 錯了會 EMI 爆炸、自激震盪、過熱。</p>
+
+    <p style="margin-top: 12px;"><strong>1. 開關迴路面積最小化</strong></p>
+    <pre class="ascii-flow">[IC SW pin] ─► [電感] ─► [輸出 cap] ─► GND
+                                      ↑
+                                  這條迴路要短到讓你心痛</pre>
+    <ul style="margin: 8px 0 0 20px;">
+      <li>電感、輸入 cap、輸出 cap <strong>三個元件貼著 IC</strong>，距離 &lt; 2mm</li>
+      <li>迴路面積大 = 天線 = EMI 過 EMC 不了</li>
+    </ul>
+
+    <p style="margin-top: 12px;"><strong>2. GND Plane 不切斷</strong></p>
+    <ul style="margin: 8px 0 0 20px;">
+      <li>4 層板（建議）：Top（信號）+ GND + Power + Bottom（信號）</li>
+      <li>開關電路下方 GND <strong>必須完整不切斷</strong>，否則迴流路徑變長 → 雜訊</li>
+      <li>2 層板（省錢）：Bottom 全 GND plane、不要走訊號</li>
+    </ul>
+
+    <p style="margin-top: 12px;"><strong>3. 充電 IC 散熱</strong></p>
+    <ul style="margin: 8px 0 0 20px;">
+      <li>MCP73831 充 500mA 時會發燙（~3°C 上升）</li>
+      <li>IC 下方鋪銅、用 thermal via 連到 bottom GND plane</li>
+      <li>不做散熱 = 充電速度降速、IC 壽命短</li>
+    </ul>
+
+    <h3 class="sub-title">11.5 進入量產前的 Pilot 必驗測試（為 PCB 鋪路）</h3>
+    <p><strong>現在 / PowerBoost 階段就要做</strong>，這些測試直接決定量產 PCB 設計：</p>
+    <table>
+      <thead><tr><th>測試</th><th>方法</th><th>量產決策影響</th></tr></thead>
+      <tbody>
+        <tr><td>TFT 在 3.3V 夠亮嗎</td><td>拔掉 5V，飛線從 GOOUUU 3V3 pin 拉到 TFT VIN</td><td>夠亮 → 拓樸 B；不夠 → 加 5V 升壓專餵 TFT</td></tr>
+        <tr><td>蜂鳴器 3.3V 夠大聲</td><td>同上條件下測救護現場噪音中聽不聽得到</td><td>不夠 → 加 5V 升壓 or 換更大聲的蜂鳴器</td></tr>
+        <tr><td>SD 卡 3.3V 寫入</td><td>同上</td><td>SD 本來就 3.3V，這是 sanity check</td></tr>
+        <tr><td>LiPo 4.2V 餵 3V3 pin</td><td>直接 LiPo → 3V3 pin、不接 LDO，觀察是否異常</td><td>確認 ESP32-S3 3V3 規格上限是否真的 3.6V hard limit</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-amber">
+      → 測試結果直接決定量產 PCB 要不要保留 5V 升壓電路，<strong>做這個測試的 ROI 比什麼都高</strong>。
+    </div>
+
+    <h3 class="sub-title">11.6 進入量產的觸發條件</h3>
+    <p>5 個條件全部滿足才進量產 PCB 打樣：</p>
+    <table>
+      <thead><tr><th>條件</th><th>判準</th></tr></thead>
+      <tbody>
+        <tr><td>功能凍結</td><td>Dev-Phase 1~4 全綠、PM 不再加需求</td></tr>
+        <tr><td>Pilot 跑滿 5~10 台</td><td>救護現場至少跑過 1 個月、收 ≥ 3 次 bug feedback</td></tr>
+        <tr><td>BOM 穩定 6 個月</td><td>所有零件無 EOL 風險、有第二供應商</td></tr>
+        <tr><td>韌體 OTA 機制驗證</td><td>SD 卡或 BLE OTA 能讓救護員自己升級</td></tr>
+        <tr><td>外殼設計凍結</td><td>開模費（~NT$50k~150k）能攤平</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-red">
+      任一條件未滿足就回 pilot 多跑幾台，<strong>不要急著進 SMT 量產</strong>。
+    </div>
+
+    <h3 class="sub-title">11.7 量產拓樸選擇決策流程</h3>
+    <pre class="ascii-flow">Pilot Step 5「TFT/蜂鳴器/SD 卡 3.3V 驗證」結果：
+   │
+   ├─► 全 PASS → 拓樸 B（Buck-Boost 3.3V 直驅）
+   │              IC: MCP73831 + TPS63802 + (MAX17048)
+   │              BOM: ~NT$110~160/台
+   │
+   ├─► 蜂鳴器不夠大聲 → 拓樸 A 變體（保留 5V 升壓專餵蜂鳴器）
+   │                    主邏輯仍走 3.3V，5V 只供蜂鳴器
+   │
+   └─► TFT 背光不夠亮 → 評估換 TFT 或加 5V 升壓專餵 LED
+                          量產 PCB 加 small boost IC（TPS61023）</pre>
+
+  </div>
+</div>
+
+<!-- §12 版本紀錄 -->
+<div class="section" id="sec-12">
+  <h2 class="section-title"><span class="num">12</span>版本紀錄</h2>
   <div class="card">
     <table>
       <thead>
@@ -1110,8 +1317,14 @@ Time left: ~3h 20m (放電中)</pre>
         </tr>
         <tr>
           <td>2026-05-07</td>
-          <td><span class="badge badge-green">v1.4</span></td>
+          <td><span class="badge badge-blue">v1.4</span></td>
           <td><strong>補回 §9.8 缺漏章節</strong>：板載周邊整合、SD 卡 OTA + Partition table、MCP23017 接線、Flash 預算、MAX17048 使用、切換回填清單。對齊 hardware-procurement-v2.md</td>
+          <td>Max Ho</td>
+        </tr>
+        <tr>
+          <td>2026-05-14</td>
+          <td><span class="badge badge-green">v1.5</span></td>
+          <td>修正製造商名稱「蓮騰」→「聯騰」（LIAN TENG ELECTRONIC）；新增 §10 目前採購決策快照（雙軌 pilot 策略、MAX17048 延後採購觸發點、聯騰版未支援功能清單）；新增 §11 量產 PCB 設計建議（buck-boost 3.3V 拓樸、IC 選型、PCB layout 三大關鍵、量產觸發條件）</td>
           <td>Max Ho</td>
         </tr>
       </tbody>
@@ -1120,7 +1333,7 @@ Time left: ~3h 20m (放電中)</pre>
 </div>
 
 <div class="footer">
-  EMS Timer · 電源模組採購與組裝指南 · v1.2 · 2026-05-06
+  EMS Timer · 電源模組採購與組裝指南 · v1.5 · 2026-05-14
 </div>
 
 </body>
