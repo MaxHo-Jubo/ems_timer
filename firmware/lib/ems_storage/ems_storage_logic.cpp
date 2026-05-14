@@ -20,6 +20,15 @@
 
 #include "ems_case_summary.h"
 
+// 邏輯層 native test 與 ESP32 共用同檔；native 無 Arduino.h 不能用 Serial。
+// 包成 macro 後 native 編譯時化為 no-op，ESP32 編譯走 Serial.printf。
+#ifdef ARDUINO
+#include <Arduino.h>
+#define EMS_STORAGE_LOG(fmt, ...) Serial.printf(fmt, ##__VA_ARGS__)
+#else
+#define EMS_STORAGE_LOG(fmt, ...) ((void)0)
+#endif
+
 namespace ems {
 
 // ============================================================
@@ -223,9 +232,14 @@ void enforce_fifo_cap(IStorageBackend* be, storage_case_type_t type) {
         }
 
         // STEP 02.02: 刪 events.bin
+        //   fs 層的 delete_file 永遠 return true（見 ems_storage_fs.cpp 註解），
+        //   失敗 trace 已在 fs 層印 path 級別 warn；此處印 logic 層 audit log，
+        //   讓使用者看 log 能 trace「為什麼這筆案件突然消失」= FIFO 淘汰。
         char path[EMS_STORAGE_PATH_MAX];
         storage_build_event_path(path, sizeof(path), type,
                                  s_state.cases[oldest].id);
+        EMS_STORAGE_LOG("[STORAGE] FIFO evict type=%d id=%s\n",
+                        (int)type, s_state.cases[oldest].id);
         be->delete_file(be->ctx, path);
 
         // STEP 02.03: 從陣列移除
@@ -663,6 +677,10 @@ bool storage_init(IStorageBackend* be) {
                     s_state.next_seq = seq + 1;
                 }
                 s_state.case_count++;
+            } else {
+                // CRC mismatch / magic 錯 / version 不支援 → silent skip 會讓使用者看不到資料消失原因
+                // 損壞檔暫留原處（後續可考慮搬到 /cases/corrupt/，列 todo 不在此 batch 處理）
+                EMS_STORAGE_LOG("[STORAGE] WARN rebuild skip corrupt OHCA id=%s\n", id);
             }
         }
         for (size_t i = 0; i < n_train; ++i) {
@@ -680,6 +698,8 @@ bool storage_init(IStorageBackend* be) {
                     s_state.next_seq = seq + 1;
                 }
                 s_state.case_count++;
+            } else {
+                EMS_STORAGE_LOG("[STORAGE] WARN rebuild skip corrupt Training id=%s\n", id);
             }
         }
     } else {
@@ -722,7 +742,13 @@ bool storage_init(IStorageBackend* be) {
     }
 
     // STEP 06: 持久化 clean state（覆寫任何不一致的 index.json）
-    persist_index(be);
+    //   persist 失敗時 in-RAM s_state 與 disk index.json 會不一致：下次 reboot
+    //   會走 rebuild 路徑（或讀到舊 index）導致 case 數對不上。先 warn，下次
+    //   storage_save_case 成功時會順帶覆寫修復。
+    if (!persist_index(be)) {
+        EMS_STORAGE_LOG("[STORAGE] WARN storage_init persist_index failed "
+                        "(RAM != disk; expect next save to repair)\n");
+    }
 
     return true;
 }

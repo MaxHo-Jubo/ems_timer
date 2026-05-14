@@ -35,7 +35,14 @@ bool fs_read_file(void* /*ctx*/, const char* path,
     if (out_len) {
         *out_len = n;
     }
-    return (n == sz);
+    if (n != sz) {
+        // short read 與「open 失敗」回傳值無法區分；明確標出「讀到一半」幫忙 diagnose
+        // index.json 載入 / fill_meta_from_bin 失敗時可用此訊息辨別 partition 故障
+        Serial.printf("[FS] WARN short read: %s expected=%u actual=%u\n",
+                      path, (unsigned)sz, (unsigned)n);
+        return false;
+    }
+    return true;
 }
 
 bool fs_write_file(void* /*ctx*/, const char* path,
@@ -68,7 +75,11 @@ bool fs_exists(void* /*ctx*/, const char* path) {
 bool fs_rename_file(void* /*ctx*/, const char* from, const char* to) {
     // 若 to 已存在，LittleFS rename 失敗 → 先刪
     if (LittleFS.exists(to)) {
-        LittleFS.remove(to);
+        if (!LittleFS.remove(to)) {
+            // remove 失敗 → 後續 rename 一定失敗。log 出來方便 diagnose
+            // partition 故障，避免只看到 rename failed 卻不知道根因在 remove
+            Serial.printf("[FS] WARN rename pre-remove failed: %s\n", to);
+        }
     }
     return LittleFS.rename(from, to);
 }
