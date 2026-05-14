@@ -1050,6 +1050,44 @@ static void G5_init_null_backend_fails() {
     TEST_ASSERT_FALSE(storage_init(&empty));  // read_file == nullptr
 }
 
+/** 注入用：rename_file 一律 fail，模擬 atomic commit 失敗 */
+static bool fail_rename(void* /*ctx*/, const char* /*from*/, const char* /*to*/) {
+    return false;
+}
+
+/** G6: I-7 修復 — storage_delete persist_index 失敗應 rollback RAM 並保留 disk 檔
+ *
+ *  bug 描述（修前）：storage_delete 順序是「先砍檔 → 再 persist_index」，
+ *  persist 失敗時 disk 已沒檔但 RAM 仍移除 → 雖然下次 reboot self-healing，
+ *  中間態使用者看到「案件存在但讀不到 events」。
+ *
+ *  修法：snapshot case_meta → shift 移除 RAM → persist_index 失敗 rollback
+ *  並 return false → 成功才砍檔。 */
+static void G6_delete_persist_fail_rolls_back() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);
+
+    // 注入 rename_file fail → persist_index 的 STEP 03 rename 失敗 → 整個 persist 失敗
+    auto orig_rename = g_be.rename_file;
+    g_be.rename_file = fail_rename;
+
+    bool ok = storage_delete(&g_be, EMS_CASE_TYPE_OHCA, "0000000001");
+
+    g_be.rename_file = orig_rename;  // 恢復避免汙染後續 test
+
+    TEST_ASSERT_FALSE_MESSAGE(ok, "I-7: persist 失敗 storage_delete 應 return false");
+
+    // RAM 仍應有該 case（rollback 成功）
+    case_meta_t list[5];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(1, n, "I-7: rollback 後 RAM 還應有 1 筆");
+    TEST_ASSERT_EQUAL_STRING("0000000001", list[0].id);
+
+    // disk events.bin 不該被砍（先 persist 失敗 → 還沒到砍檔那步）
+    TEST_ASSERT_TRUE_MESSAGE(g_be.exists(g_be.ctx, "/cases/ohca/0000000001.bin"),
+                             "I-7: persist 失敗時 events.bin 不該被砍");
+}
+
 // ============================================================
 //  main
 // ============================================================
@@ -1110,6 +1148,7 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(G3_delete_then_save_seq_monotonic);
     RUN_TEST(G4_format_clears_all);
     RUN_TEST(G5_init_null_backend_fails);
+    RUN_TEST(G6_delete_persist_fail_rolls_back);
 
     return UNITY_END();
 }

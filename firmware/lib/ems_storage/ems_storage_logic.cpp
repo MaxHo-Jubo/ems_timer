@@ -894,19 +894,37 @@ bool storage_delete(IStorageBackend*    be,
         return false;
     }
 
-    // STEP 01: 刪檔
-    char path[EMS_STORAGE_PATH_MAX];
-    storage_build_event_path(path, sizeof(path), type, id);
-    be->delete_file(be->ctx, path);
+    // I-7 修：順序「先 persist 再砍檔」+ 失敗 rollback。原本「先砍檔 → persist」
+    // 在 persist 失敗時 disk 已沒檔但 index 還記著 → 中間態使用者看到「案件
+    // 存在但讀不到 events」（雖最終 self-healing）。
 
-    // STEP 02: 從 state 移除
+    // STEP 01: snapshot 要被移除的 case_meta_t（為 rollback 準備）
+    case_meta_t snapshot = s_state.cases[(uint16_t)idx];
+
+    // STEP 02: 從 state 移除（shift left）
     for (uint16_t i = (uint16_t)idx; i + 1 < s_state.case_count; ++i) {
         s_state.cases[i] = s_state.cases[i + 1];
     }
     s_state.case_count--;
 
-    // STEP 03: 持久化
-    persist_index(be);
+    // STEP 03: 持久化 index → 失敗則 rollback RAM 並 return false
+    if (!persist_index(be)) {
+        // STEP 03.01: shift right 把後段擠回去，重置 snapshot 到原位置
+        for (uint16_t i = s_state.case_count; i > (uint16_t)idx; --i) {
+            s_state.cases[i] = s_state.cases[i - 1];
+        }
+        s_state.cases[(uint16_t)idx] = snapshot;
+        s_state.case_count++;
+        EMS_STORAGE_LOG("[STORAGE] WARN delete persist failed; RAM rolled back "
+                        "type=%d id=%s\n", (int)type, id);
+        return false;
+    }
+
+    // STEP 04: persist 成功才砍檔（砍檔失敗 = 孤兒檔，storage_init 會清；
+    //   fs 層的 delete_file 永遠 return true，失敗 trace 已在 fs 層 path 級 warn）
+    char path[EMS_STORAGE_PATH_MAX];
+    storage_build_event_path(path, sizeof(path), type, id);
+    be->delete_file(be->ctx, path);
     return true;
 }
 
