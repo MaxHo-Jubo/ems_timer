@@ -217,8 +217,10 @@ void enforce_fifo_cap(IStorageBackend* be, storage_case_type_t type) {
         }
     }
 
-    // STEP 02: 超過 cap 就把該 type 最舊一筆（陣列最前面）擠掉
-    while (typed > cap) {
+    // STEP 02: 擠到 < cap（pre-evict 語意：騰位給即將寫入的新 case）
+    //   原本 `> cap` 對應「先寫再擠」的 post-write 用法；現改為 pre-write 呼叫，
+    //   需要把該類別擠到 cap-1 才能讓新案件寫入後剛好回到 cap。
+    while (typed >= cap) {
         // STEP 02.01: 找最舊 index
         uint16_t oldest = UINT16_MAX;
         for (uint16_t i = 0; i < s_state.case_count; ++i) {
@@ -769,9 +771,14 @@ bool storage_save_case(IStorageBackend*    be,
     if (count > EMS_STORAGE_MAX_EVENTS) {
         return false;
     }
-    if (s_state.case_count >= kTotalCapacity) {
-        return false;
-    }
+    // 不檢查 case_count >= kTotalCapacity：pre-evict 後同類別必 < cap，
+    // 而 cap_for_type(OHCA) + cap_for_type(TRAINING) == kTotalCapacity，
+    // 故 case_count + 1 <= kTotalCapacity 由 cap 算術保證。
+
+    // STEP 01.5: pre-evict 同類別最舊 case（救護現場：FIFO 不能擋住新案件）
+    //   原本 STEP 07 post-write 呼叫會在總容量 guard 後失效；改成 pre-write 確保
+    //   即使跨類別 case_count 已滿，新案件仍能透過擠掉同類別最舊一筆騰位寫入。
+    enforce_fifo_cap(be, type);
 
     // STEP 02: 配發 seq 與 id
     uint32_t seq = s_state.next_seq;
@@ -818,10 +825,8 @@ bool storage_save_case(IStorageBackend*    be,
     m.bin_v              = EMS_STORAGE_BIN_VERSION;
     s_state.case_count++;
 
-    // STEP 07: FIFO 容量強制
-    enforce_fifo_cap(be, type);
-
-    // STEP 08: 持久化 index.json
+    // STEP 07: 持久化 index.json
+    //   FIFO 容量強制已在 STEP 01.5 pre-evict 處理，此處無需再呼叫。
     persist_index(be);
 
     return true;

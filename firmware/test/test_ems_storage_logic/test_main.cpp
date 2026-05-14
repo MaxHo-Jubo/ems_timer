@@ -575,33 +575,88 @@ static void D6_seq_monotonic_after_delete() {
     TEST_ASSERT_EQUAL_STRING("0000000053", list[0].id);
 }
 
-/** D7: case_count == kTotalCapacity (70) 時新存 OHCA 的當前行為
+/** D7: case_count == kTotalCapacity (70) 時存新 OHCA → 同類別 FIFO 擠掉最舊 OHCA
  *
- *  **已知 bug（review-pr B C-1，Batch 2 修復目標）**：
- *  case_count >= kTotalCapacity guard 擋下，return false。spec 期望走 FIFO 覆蓋。
- *
- *  本 test 暫時 pin 住 current behavior 防止 silent regression；
- *  C-1 修復後（移 enforce_fifo_cap 至 guard 前 + 加 pre-evict）改為
- *  TEST_ASSERT_TRUE + 驗最舊 OHCA 被擠掉。 */
-static void D7_save_at_global_capacity_current_behavior() {
+ *  **C-1 修復後行為**（review-pr B Batch 2，commit pending）：
+ *  - storage_save_case 入口 pre-evict 同類別最舊一筆，騰位給新案件
+ *  - Training 完全不受影響（cap_for_type 對稱性）
+ *  - seq 仍單調遞增（next_seq=71，最舊 OHCA seq=1 被刪 → 最舊變 seq=2） */
+static void D7_save_at_global_capacity_evicts_oldest_same_type() {
     TEST_ASSERT_TRUE(storage_init(&g_be));
     for (int i = 0; i < EMS_STORAGE_OHCA_CAP; ++i) {
         save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA,
-                        1000ULL + i * 1000ULL, 1);
+                        1000ULL + i * 1000ULL, 1);  // seq 1~50
     }
     for (int i = 0; i < EMS_STORAGE_TRAINING_CAP; ++i) {
         save_dummy_case(&g_be, EMS_CASE_TYPE_TRAINING,
-                        2000000ULL + i * 1000ULL, 1);
+                        2000000ULL + i * 1000ULL, 1);  // seq 51~70
     }
 
     // 此時 case_count = OHCA_CAP + TRAINING_CAP = kTotalCapacity
-    // 新存 OHCA → 當前 return false（C-1）
     ems_event_t evs[1];
     buildLocalEvent(&evs[0], 1, EVT_EPI_LOCAL, 999999ULL, 0);
     bool result = storage_save_case(&g_be, EMS_CASE_TYPE_OHCA, evs, 1,
                                     999999ULL, 999999ULL);
-    // TODO(Batch 2 C-1): 改為 TEST_ASSERT_TRUE + 驗最舊 OHCA 被擠掉
-    TEST_ASSERT_FALSE(result);
+    TEST_ASSERT_TRUE_MESSAGE(result, "C-1 修復後跨類別滿 + 新 OHCA 應 FIFO 成功");
+
+    // OHCA 仍 50 筆；最舊 seq=1 被擠掉、新 seq=71 存在
+    case_meta_t list_o[EMS_STORAGE_OHCA_CAP];
+    uint16_t no = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                               list_o, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16(EMS_STORAGE_OHCA_CAP, no);
+    TEST_ASSERT_FALSE_MESSAGE(g_be.exists(g_be.ctx, "/cases/ohca/0000000001.bin"),
+                              "最舊 OHCA seq=1 應被擠掉");
+    TEST_ASSERT_TRUE_MESSAGE(g_be.exists(g_be.ctx, "/cases/ohca/0000000071.bin"),
+                             "新 OHCA seq=71 應存在");
+
+    // Training 完全不動（仍 20 筆，seq 51~70 完整）
+    case_meta_t list_t[EMS_STORAGE_TRAINING_CAP];
+    uint16_t nt = storage_list(&g_be, EMS_CASE_TYPE_TRAINING,
+                               list_t, EMS_STORAGE_TRAINING_CAP);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(EMS_STORAGE_TRAINING_CAP, nt,
+                                     "Training 不該因 OHCA FIFO 受影響");
+    TEST_ASSERT_TRUE(g_be.exists(g_be.ctx, "/cases/training/0000000051.bin"));
+    TEST_ASSERT_TRUE(g_be.exists(g_be.ctx, "/cases/training/0000000070.bin"));
+}
+
+/** D8: D7 對稱情境 — 跨類別滿時存新 Training → 擠掉最舊 Training，OHCA 不動
+ *
+ *  cover D7 沒測到的方向（D3 + D5 + D7 三角形補完最後一邊）。 */
+static void D8_save_at_global_capacity_evicts_oldest_training() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    for (int i = 0; i < EMS_STORAGE_OHCA_CAP; ++i) {
+        save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA,
+                        1000ULL + i * 1000ULL, 1);  // seq 1~50
+    }
+    for (int i = 0; i < EMS_STORAGE_TRAINING_CAP; ++i) {
+        save_dummy_case(&g_be, EMS_CASE_TYPE_TRAINING,
+                        2000000ULL + i * 1000ULL, 1);  // seq 51~70
+    }
+
+    ems_event_t evs[1];
+    buildLocalEvent(&evs[0], 1, EVT_EPI_LOCAL, 888888ULL, 0);
+    bool result = storage_save_case(&g_be, EMS_CASE_TYPE_TRAINING, evs, 1,
+                                    888888ULL, 888888ULL);
+    TEST_ASSERT_TRUE_MESSAGE(result, "C-1 修復後跨類別滿 + 新 Training 應 FIFO 成功");
+
+    // Training 仍 20 筆；最舊 seq=51 被擠、新 seq=71 存在
+    case_meta_t list_t[EMS_STORAGE_TRAINING_CAP];
+    uint16_t nt = storage_list(&g_be, EMS_CASE_TYPE_TRAINING,
+                               list_t, EMS_STORAGE_TRAINING_CAP);
+    TEST_ASSERT_EQUAL_UINT16(EMS_STORAGE_TRAINING_CAP, nt);
+    TEST_ASSERT_FALSE_MESSAGE(g_be.exists(g_be.ctx, "/cases/training/0000000051.bin"),
+                              "最舊 Training seq=51 應被擠掉");
+    TEST_ASSERT_TRUE_MESSAGE(g_be.exists(g_be.ctx, "/cases/training/0000000071.bin"),
+                             "新 Training seq=71 應存在");
+
+    // OHCA 完全不動
+    case_meta_t list_o[EMS_STORAGE_OHCA_CAP];
+    uint16_t no = storage_list(&g_be, EMS_CASE_TYPE_OHCA,
+                               list_o, EMS_STORAGE_OHCA_CAP);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(EMS_STORAGE_OHCA_CAP, no,
+                                     "OHCA 不該因 Training FIFO 受影響");
+    TEST_ASSERT_TRUE(g_be.exists(g_be.ctx, "/cases/ohca/0000000001.bin"));
+    TEST_ASSERT_TRUE(g_be.exists(g_be.ctx, "/cases/ohca/0000000050.bin"));
 }
 
 // ============================================================
@@ -1032,7 +1087,8 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(D4_save_overflow_burst);
     RUN_TEST(D5_ohca_training_independent_caps);
     RUN_TEST(D6_seq_monotonic_after_delete);
-    RUN_TEST(D7_save_at_global_capacity_current_behavior);
+    RUN_TEST(D7_save_at_global_capacity_evicts_oldest_same_type);
+    RUN_TEST(D8_save_at_global_capacity_evicts_oldest_training);
 
     // Group E — Recovery
     RUN_TEST(E1_missing_index_rebuild_from_files);
