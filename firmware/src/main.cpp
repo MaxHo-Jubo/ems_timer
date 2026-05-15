@@ -61,6 +61,8 @@
 #include "ems_storage_fs.h"      // Phase E：LittleFS adapter
 #include "ems_display_snapshot.h"// L2 regression：DisplaySnapshot 純邏輯
 #include "ems_time_sync.h"       // Phase F MVP1：BLE 對時純邏輯
+#include "ems_sync_dispatcher.h" // Phase F MVP2：配對碼 + 同步流程狀態機
+#include <ArduinoJson.h>         // Phase F MVP2：BLE RX 訊息 type 分流
 
 // Phase F MVP1：BLE NUS peripheral（ESP32 Arduino framework 內建）
 #include <BLEDevice.h>
@@ -291,17 +293,19 @@ enum GlobalState : uint8_t {
     GLOBAL_TRAINING_PLACEHOLDER = 3,  // Phase D 待實作
     GLOBAL_HISTORY_PLACEHOLDER  = 4,  // Phase E 待實作
     GLOBAL_SETTINGS_PLACEHOLDER = 5,  // Phase G 待實作
+    GLOBAL_SYNC                 = 6,  // Phase F MVP2：BLE 同步資料（配對碼 + dispatcher 流程）
 };
 static GlobalState globalState = GLOBAL_MAIN_MENU;
 
-/** 主功能表 5 項（SoT V1 §3.1） */
-static const uint8_t MAIN_MENU_COUNT = 5;
+/** 主功能表 6 項（SoT V1 §3.1 + Phase F MVP2 同步資料） */
+static const uint8_t MAIN_MENU_COUNT = 6;
 static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
     "OHCA 案件",
     "6 秒通氣節奏",
     "訓練模式",
     "歷史紀錄",
     "系統設定",
+    "同步資料",
 };
 static uint8_t mainMenuCursor = 0;
 
@@ -362,6 +366,12 @@ static uint8_t            g_ble_rx_buf[BLE_RX_BUF_MAX];
 static volatile size_t    g_ble_rx_len         = 0;
 static portMUX_TYPE       g_ble_rx_mux         = portMUX_INITIALIZER_UNLOCKED;
 static ems::TimeSyncState g_ts_state;  // 對時 state：只在 main loop task 讀寫
+
+// ===== Phase F MVP2：BLE 同步流程狀態機 =====
+//   pairing + dispatcher 都已 native test 覆蓋（21 + 20 cases）。
+//   只在 main loop task 讀寫（dispatcher 內部 pairing_generate 用 static counter，
+//   多 task 呼叫會 race；遵守 ble_callback_non_blocking 將 BLE input enqueue 到 main loop）。
+static ems::SyncContext   g_sync_ctx;
 
 // ===== Phase E：歷史紀錄 UI =====
 static case_meta_t historyCases[EMS_STORAGE_OHCA_CAP];
@@ -644,33 +654,58 @@ static void process_pending_ble_rx() {
     g_ble_rx_ready = false;
     portEXIT_CRITICAL(&g_ble_rx_mux);
 
-    // STEP 02: 呼叫純邏輯 lib 處理（已驗 19 cases）
-    char ack_buf[BLE_ACK_BUF_MAX];
-    size_t ack_len = 0;
-    ems::TimeSyncResult r = ems::time_sync_handle(
-        &g_ts_state,
-        local_buf, local_len,
-        millis(),
-        /*rtc_present=*/false,  // MVP1 無 DS3231 整合
-        ack_buf, sizeof(ack_buf), &ack_len);
+    // STEP 02: 解析 JSON 取 type 欄位做訊息分流
+    //   time_sync_handle / sync_dispatcher_dispatch_input 各自還會 parse 一次自己
+    //   關心的欄位，此處只看 type 一個 string，重複 parse 成本可忽略
+    JsonDocument doc;
+    DeserializationError parse_err = deserializeJson(doc, local_buf, local_len);
+    if (parse_err) {
+        Serial.printf("[BLE] drop malformed JSON (%u bytes)\n", (unsigned)local_len);
+        return;
+    }
+    const char* type = doc["type"].is<const char*>() ? doc["type"].as<const char*>() : "";
 
-    // STEP 03: 印一行結果便於 dev 對照（主韌體 loop 已擁擠，不印 RX/TX 全文）
-    const char* result_str =
-        (r == ems::TimeSyncResult::Applied)  ? "Applied"  :
-        (r == ems::TimeSyncResult::Rejected) ? "Rejected" :
-                                               "ParseError";
-    Serial.printf("[BLE] time_sync %s ack_len=%u\n", result_str, (unsigned)ack_len);
-
-    // STEP 04: ParseError 規格規定不送 ACK（spec §2.3）；ack_len=0 同
-    if (ack_len == 0) {
+    // STEP 03: type=time_sync → 既有 MVP1 對時路徑（不變）
+    if (strcmp(type, "time_sync") == 0) {
+        char ack_buf[BLE_ACK_BUF_MAX];
+        size_t ack_len = 0;
+        ems::TimeSyncResult r = ems::time_sync_handle(
+            &g_ts_state,
+            local_buf, local_len,
+            millis(),
+            /*rtc_present=*/false,
+            ack_buf, sizeof(ack_buf), &ack_len);
+        const char* result_str =
+            (r == ems::TimeSyncResult::Applied)  ? "Applied"  :
+            (r == ems::TimeSyncResult::Rejected) ? "Rejected" :
+                                                   "ParseError";
+        Serial.printf("[BLE] time_sync %s ack_len=%u\n", result_str, (unsigned)ack_len);
+        if (ack_len > 0 && g_ble_tx_char != nullptr && g_ble_client_connected) {
+            g_ble_tx_char->setValue(reinterpret_cast<uint8_t*>(ack_buf), ack_len);
+            g_ble_tx_char->notify();
+        }
         return;
     }
 
-    // STEP 05: notify ACK 出去
-    if (g_ble_tx_char != nullptr && g_ble_client_connected) {
-        g_ble_tx_char->setValue(reinterpret_cast<uint8_t*>(ack_buf), ack_len);
-        g_ble_tx_char->notify();
+    // STEP 04: type=pair_verify → Phase F MVP2 配對碼驗證
+    //   payload: {"type":"pair_verify","input":"NNNN"}
+    if (strcmp(type, "pair_verify") == 0) {
+        const char* input = doc["input"].is<const char*>() ? doc["input"].as<const char*>() : "";
+        size_t input_len = strlen(input);
+        ems::DispatchInputResult r = ems::sync_dispatcher_dispatch_input(
+            &g_sync_ctx, input, input_len, millis());
+        const char* result_str =
+            (r == ems::DispatchInputResult::Accepted)          ? "Accepted"  :
+            (r == ems::DispatchInputResult::Rejected)          ? "Rejected"  :
+            (r == ems::DispatchInputResult::LockedOut)         ? "LockedOut" :
+                                                                 "IgnoredWrongState";
+        Serial.printf("[BLE] pair_verify %s state=%u\n",
+                      result_str, (unsigned)g_sync_ctx.state);
+        return;
     }
+
+    // STEP 05: 未知 type
+    Serial.printf("[BLE] unknown type='%s' drop\n", type);
 }
 
 // ============================================================
@@ -792,6 +827,9 @@ void setup() {
         Serial.printf("[BLE] advertising as %s\n", BLE_DEVICE_NAME);
     }
 
+    // STEP 04.7: Phase F MVP2 — sync dispatcher 初始 IDLE
+    ems::sync_dispatcher_init(&g_sync_ctx, millis());
+
     // STEP 05: 初始顯示
     updateDisplay();
     Serial.println("[READY] MainMenu");
@@ -802,6 +840,39 @@ void loop() {
     //   time_sync 立即生效，讓接下來 handleButtons 觸發的事件 timestamp 用真實 epoch
     if (g_ble_rx_ready) {
         process_pending_ble_rx();
+    }
+
+    // STEP 00.5: Phase F MVP2 — sync dispatcher observer（僅在 GLOBAL_SYNC 內活）
+    //   - BLE 連線邊緣 → dispatch BLE_CONNECTED / BLE_DISCONNECTED
+    //   - 每 tick dispatch TICK 給 timeout 判斷
+    //   - SENDING 入口 stub：set_total_chunks(0) + CHUNK_ACKED → 立即 DONE
+    //   - DONE/ERROR 顯示完自然回 IDLE → 退主選單
+    if (globalState == GLOBAL_SYNC) {
+        static bool prev_ble_conn = false;
+        bool cur_ble_conn = g_ble_client_connected;
+        if (cur_ble_conn != prev_ble_conn) {
+            ems::sync_dispatcher_dispatch(&g_sync_ctx,
+                cur_ble_conn ? ems::SyncEvent::BLE_CONNECTED : ems::SyncEvent::BLE_DISCONNECTED,
+                millis());
+            prev_ble_conn = cur_ble_conn;
+        }
+        ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::TICK, millis());
+
+        static ems::SyncState prev_sync_state = ems::SyncState::IDLE;
+        ems::SyncState cur_sync_state = g_sync_ctx.state;
+        if (cur_sync_state != prev_sync_state) {
+            Serial.printf("[SYNC] state %u -> %u\n",
+                          (unsigned)prev_sync_state, (unsigned)cur_sync_state);
+        }
+        if (cur_sync_state == ems::SyncState::SENDING && prev_sync_state != ems::SyncState::SENDING) {
+            // MVP2 stub：不真送資料，0 chunk + 立即 ACK → DONE
+            ems::sync_dispatcher_set_total_chunks(&g_sync_ctx, 0);
+            ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::CHUNK_ACKED, millis());
+        }
+        if (cur_sync_state == ems::SyncState::IDLE && prev_sync_state != ems::SyncState::IDLE) {
+            globalState = GLOBAL_MAIN_MENU;  // DONE/ERROR 顯示完自然 → IDLE → 退主選單
+        }
+        prev_sync_state = g_sync_ctx.state;
     }
 
     handleButtons();
@@ -957,6 +1028,15 @@ void onShortPress(uint8_t btnIdx) {
                         globalState         = GLOBAL_HISTORY_PLACEHOLDER;
                         break;
                     case 4: globalState = GLOBAL_SETTINGS_PLACEHOLDER; break;
+                    case 5:  // Phase F MVP2：同步資料
+                        globalState = GLOBAL_SYNC;
+                        ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::START, millis());
+                        // 進入時若已連線：手動推進到 AWAITING_INPUT（連線旗標已是 true，loop observer 的邊緣偵測不會觸發）
+                        if (g_ble_client_connected) {
+                            ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::BLE_CONNECTED, millis());
+                        }
+                        Serial.printf("[SYNC] enter state=%u\n", (unsigned)g_sync_ctx.state);
+                        break;
                 }
                 break;
             default:
@@ -1101,6 +1181,18 @@ void onShortPress(uint8_t btnIdx) {
     if (globalState >= GLOBAL_TRAINING_PLACEHOLDER && globalState <= GLOBAL_SETTINGS_PLACEHOLDER) {
         if (btnIdx == BTN_BACK) {
             enterMainMenu();
+        }
+        return;
+    }
+
+    // ===== Phase F MVP2：同步資料 =====
+    //   - BTN_PRIMARY 在 AWAITING_MAIN_KEY → MAIN_KEY_PRESS（dispatcher 推進 SENDING）
+    //   - BTN_BACK 在非 SENDING → BACK_KEY_PRESS（dispatcher 回 IDLE → 主功能表）
+    if (globalState == GLOBAL_SYNC) {
+        if (btnIdx == BTN_PRIMARY && g_sync_ctx.state == ems::SyncState::AWAITING_MAIN_KEY) {
+            ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::MAIN_KEY_PRESS, millis());
+        } else if (btnIdx == BTN_BACK && g_sync_ctx.state != ems::SyncState::SENDING) {
+            ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::BACK_KEY_PRESS, millis());
         }
         return;
     }
@@ -1922,6 +2014,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.ventPreShown          = ventPreShown;
     in.historySummaryMode    = historySummaryMode;
     in.bleConnected          = g_ble_client_connected;  // Phase F MVP1
+    in.syncState             = (uint8_t)g_sync_ctx.state;  // Phase F MVP2
 
     return captureSnapshot(in);
 }
@@ -1977,6 +2070,21 @@ void updateDisplay() {
 
     if (globalState == GLOBAL_MAIN_MENU) {
         drawMainMenu();
+    } else if (globalState == GLOBAL_SYNC) {
+        // Phase F MVP2 W2：placeholder 顯示，W3 改 drawSyncScreen
+        display.setFont(&fonts::Font0);
+        display.setTextSize(2);
+        display.setTextColor(COLOR_TEXT_PRIMARY);
+        display.setCursor(16, 12);
+        display.print("SYNC");
+        useZhFont();
+        display.setTextSize(1.2f, 1.2f);
+        display.setTextColor(COLOR_ACCENT_OK);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "state=%u code=%s",
+                 (unsigned)g_sync_ctx.state, g_sync_ctx.pairing_code.digits);
+        display.setTextDatum(textdatum_t::middle_center);
+        display.drawString(buf, SCREEN_W / 2, SCREEN_H / 2);
     } else if (globalState == GLOBAL_OHCA) {
         // Phase B: sub-state 子流程畫面優先
         if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.pushSprite(0, 0); return; }
