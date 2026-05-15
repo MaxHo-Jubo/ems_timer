@@ -16,8 +16,8 @@
   - 4 頁籤詳細頁 / 交班摘要 / 完整總覽 14 欄 / Timeline / 備註 5 欄 autosave / 複製 3 處 / 刪除（D1-only） / OHCA-Training 分列表
 
 **下一步 BLE 鏈路**（按韌體優先順序）：
-1. **F-1** 韌體 `ems_pairing` 純函式 TDD（0.5d）
-2. **F-2** 韌體 `ble_nus` NimBLE 包裝（1.5d）
+1. ~~**F-1** 韌體 `ems_pairing` 純函式 TDD（0.5d）~~ ✅ 2026-05-15 完成（15 unit tests）
+2. **F-2** 韌體 `ble_nus` NimBLE 包裝（1.5d） ← **下一步**
 3. **F-3** 韌體 `case_sync_dispatcher` 狀態機 + **主鍵確認** state（1.5d）
 4. **F-4a** 真 Web Bluetooth 連 nRF Connect mock（0.5d）
 5. **F-4b** 連真韌體（0.5d）
@@ -135,19 +135,19 @@ curl http://localhost:8788/api/cases
 
 > **可與 F-5/F-6 並行**（純邏輯不依賴 BLE）。
 
-- [ ] `firmware/lib/ems_pairing/ems_pairing.h` — interface（plan §7.1）
-- [ ] `firmware/test/test_pairing/test_main.cpp` — Unity tests（RED）
-  - [ ] `generate()` 產 4 位數 + `now + 120_000` TTL
-  - [ ] `verify()` 正確碼 + 未過期 → true
-  - [ ] `verify()` 錯誤碼 → false
-  - [ ] `verify()` 過期 → false
-  - [ ] `is_expired()` 邊界（`now == expires_at` 視為過期）
-  - [ ] 1ms 內連續 `generate()` 必須產生不同碼（用 entropy + counter）
-  - [ ] **3 次失敗 lockout**（plan §10）
-- [ ] `firmware/lib/ems_pairing/ems_pairing.cpp` — 實作（GREEN）
-- [ ] `pio test -e native -f test_pairing` 全綠
+- [x] `firmware/lib/ems_pairing/ems_pairing.h` — interface（plan §7.1）
+- [x] `firmware/test/test_pairing/test_main.cpp` — Unity tests（RED）
+  - [x] `generate()` 產 4 位數 + `now + 120_000` TTL
+  - [x] `verify()` 正確碼 + 未過期 → true
+  - [x] `verify()` 錯誤碼 → false
+  - [x] `verify()` 過期 → false
+  - [x] `is_expired()` 邊界（`now == expires_at` 視為過期）
+  - [x] 1ms 內連續 `generate()` 必須產生不同碼（用 entropy + counter）
+  - [x] **3 次失敗 lockout**（plan §10）
+- [x] `firmware/lib/ems_pairing/ems_pairing.cpp` — 實作（GREEN）
+- [x] `pio test -e native -f test_pairing` 全綠（15 tests / 加碼 null input + 長度錯 + lockout cap + regen clear lockout）
 
-**驗收**：unit test 全綠，覆蓋率含 happy path + 過期 + lockout。
+**驗收**：unit test 全綠，覆蓋率含 happy path + 過期 + lockout。✅ 2026-05-15 完成，278 native tests / 277 PASSED（test_storage_hw baseline ERROR 不在此範圍）。
 
 ---
 

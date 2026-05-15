@@ -313,7 +313,7 @@ bool is_expired(const PairingCode& code, uint64_t now_ms);
 - `generate()` 產出 4 位數字 + `now + 120_000` TTL
 - `verify()` 正確碼 + 未過期 → true
 - `verify()` 錯誤碼 → false
-- `is_expired()` `now > expires_at` → true
+- `is_expired()` `now >= expires_at` → true（inclusive 邊界，對齊 phase-f-todo.md F-1）
 - 重新 `generate()` 必須產生新碼（即使在 1ms 內呼叫兩次）
 
 ### 7.2 `firmware/lib/ble_nus/`（新建）
