@@ -70,7 +70,7 @@
 #include <BLEUtils.h>
 #include <BLE2902.h>
 
-#include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 222 glyphs (95 ASCII + 127 CJK)
+#include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 258 glyphs (95 ASCII + 163 CJK; Phase F MVP2 補 29 字)
 
 using namespace ems;
 
@@ -297,14 +297,13 @@ enum GlobalState : uint8_t {
 };
 static GlobalState globalState = GLOBAL_MAIN_MENU;
 
-/** 主功能表 6 項（SoT V1 §3.1 + Phase F MVP2 同步資料） */
-static const uint8_t MAIN_MENU_COUNT = 6;
+/** 主功能表 5 項（SoT V1 §3.1 封版；MVP2 用「同步資料」暫代 Phase G「系統設定」placeholder） */
+static const uint8_t MAIN_MENU_COUNT = 5;
 static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
     "OHCA 案件",
     "6 秒通氣節奏",
     "訓練模式",
     "歷史紀錄",
-    "系統設定",
     "同步資料",
 };
 static uint8_t mainMenuCursor = 0;
@@ -1028,8 +1027,7 @@ void onShortPress(uint8_t btnIdx) {
                         historySummaryMode  = false;
                         globalState         = GLOBAL_HISTORY_PLACEHOLDER;
                         break;
-                    case 4: globalState = GLOBAL_SETTINGS_PLACEHOLDER; break;
-                    case 5:  // Phase F MVP2：同步資料
+                    case 4:  // Phase F MVP2：同步資料（替代 Phase G 系統設定 placeholder 位置）
                         globalState = GLOBAL_SYNC;
                         ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::START, millis());
                         // 進入時若已連線：手動推進到 AWAITING_INPUT（連線旗標已是 true，loop observer 的邊緣偵測不會觸發）
