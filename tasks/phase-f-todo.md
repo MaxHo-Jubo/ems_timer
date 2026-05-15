@@ -16,8 +16,9 @@
   - 4 頁籤詳細頁 / 交班摘要 / 完整總覽 14 欄 / Timeline / 備註 5 欄 autosave / 複製 3 處 / 刪除（D1-only） / OHCA-Training 分列表
 
 **下一步 BLE 鏈路**（按韌體優先順序）：
-1. ~~**F-1** 韌體 `ems_pairing` 純函式 TDD（0.5d）~~ ✅ 2026-05-15 完成（15 unit tests）
-2. **F-2** 韌體 `ble_nus` NimBLE 包裝（1.5d） ← **下一步**
+1. ~~**F-1** 韌體 `ems_pairing` 純函式 TDD（0.5d）~~ ✅ 2026-05-15 完成（21 unit tests，含 review 修正）
+2. **F-2** 韌體 `ble_nus`（1.5d）— 純邏輯部分 ✅ 2026-05-15（ble_chunker 16 + ble_rx_queue 12 tests）；NimBLE 整合層待實機 session
+3. **F-3** 韌體 `case_sync_dispatcher` 狀態機（1.5d） ← **下一步**（純邏輯狀態機可 native TDD）
 3. **F-3** 韌體 `case_sync_dispatcher` 狀態機 + **主鍵確認** state（1.5d）
 4. **F-4a** 真 Web Bluetooth 連 nRF Connect mock（0.5d）
 5. **F-4b** 連真韌體（0.5d）
@@ -157,14 +158,18 @@ curl http://localhost:8788/api/cases
 
 > **依賴**：F-1（pairing 已驗）+ 確定要接真韌體。
 
-- [ ] 評估是否棄用既有 `firmware/lib/ble_nus`（pm-dev-spec §六提到的 Phase F 過渡），決定重寫 or 強化
-- [ ] `BleNusService::begin()` advertise + GATT setup
-- [ ] `BleNusService::tick()` callback 解耦（dequeue 在 main loop，**callback 不阻塞**，對齊 feedback memory `ble_callback_non_blocking`）
-- [ ] `BleNusService::send()` chunked notify（協商 MTU 到 247）
-- [ ] hello world sketch：advertise 並 echo RX
-- [ ] 實機用 nRF Connect 驗證連線 + 收發
+- [x] 評估既有 `firmware/lib/ble_nus`：pm-dev-spec §14.1 提到「延用既有」實際不存在 → 全新建立
+- [x] **F-2 純邏輯子模組（native TDD 可覆蓋）**：
+  - [x] `firmware/lib/ble_chunker/` — chunk_size_from_mtu / chunk_count / chunk_at（16 tests）
+  - [x] `firmware/lib/ble_rx_queue/` — SPSC ring buffer init/push/pop/empty/full/size（12 tests）
+- [ ] **F-2 實機整合層（需 ESP32 + nRF Connect，留待實機 session）**：
+  - [ ] `BleNusService::begin()` advertise + GATT setup（NimBLE-Arduino）
+  - [ ] `BleNusService::tick()` 把 ble_rx_queue dequeue 接到 callback
+  - [ ] `BleNusService::send()` 用 ble_chunker 切分 + MTU 247 協商
+  - [ ] hello world sketch：advertise 並 echo RX
+  - [ ] 實機用 nRF Connect 驗證連線 + 收發
 
-**驗收**：手機 nRF Connect 掃到 `DSP-xxxx`，連線後可雙向收發字串。
+**驗收**：手機 nRF Connect 掃到 `DSP-xxxx`，連線後可雙向收發字串（純邏輯部分 28 unit tests ✅ 2026-05-15）。
 
 ---
 
