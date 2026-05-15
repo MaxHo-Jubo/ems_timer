@@ -389,8 +389,8 @@ OLED 畫面分類（對應 V1 §6.4 / §6.7 / §11 / §13.6 等）：
   "started_at_ms": 1745740800000,
   "ended_at_ms":   1745741700000,
   "events": [
-    { "type": 0, "timestamp_ms": ..., "elapsed_ms": ..., "count": 1, "actual_time_null": false },
-    { "type": 3, "timestamp_ms": ..., "elapsed_ms": ..., "count": 2, "actual_time_null": true  }
+    { "event_id": 1, "type": 0, "timestamp_ms": ..., "elapsed_ms": ..., "count": 1, "actual_time_null": false },
+    { "event_id": 2, "type": 3, "timestamp_ms": ..., "elapsed_ms": ..., "count": 2, "actual_time_null": true  }
   ],
   "summary": { ... ohca_case_summary_t ... }
 }

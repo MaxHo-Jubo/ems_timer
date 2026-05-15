@@ -193,9 +193,14 @@ curl http://localhost:8788/api/cases
   - [x] ERROR → IDLE：ERROR_DISPLAY_MS = 2s
   - [x] BLE_DISCONNECTED 任一非 IDLE state → ERROR
   - [x] BACK_KEY 任一非 IDLE/SENDING state → IDLE（SENDING 中無法中止）
-- [ ] **F-3 整合層（需 ESP32 + 既有 firmware/src/main.cpp + TFT，留待實機 session）**：
-  - [ ] `firmware/src/case_sync_dispatcher.cpp` 包裝 NimBLE service + 接 dispatcher
-  - [ ] 從 `ems_storage` 讀最新 case → 序列化 JSON（對齊 pm-dev-spec §14.1）
+- [x] **F-3 JSON 序列化 lib**（`firmware/lib/case_sync_serializer/`，6 unit tests，2026-05-15）：
+  - [x] 對齊 pm-dev-spec §14.1 case_sync schema
+  - [x] CaseSyncMeta struct + case_sync_serialize_to_json() 純函式
+  - [x] 涵蓋：empty case / events array / summary fields / buffer 不足 / nullptr 字串 / training mode
+  - [x] ArduinoJson 7 DynamicJsonDocument 動態擴張
+- [ ] **F-3 src/ 整合層（需 ESP32 + 既有 firmware/src/main.cpp + TFT，留待實機 session）**：
+  - [ ] `firmware/src/case_sync_dispatcher.cpp` 包裝 NimBLE service + 接 ems_sync_dispatcher
+  - [ ] 從 `ems_storage` 讀最新 case → 用 case_sync_serializer 產 JSON → 用 ble_chunker 切分 → BleNusService 推送
   - [ ] UI：案件總覽頁加「同步」入口 + 各 state TFT 畫面
   - [ ] 中斷重試 = 整筆重傳（plan §11 F-8 驗收要求）
 
