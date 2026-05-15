@@ -564,6 +564,7 @@ void applyOhcaOutput(const ohca_output_t& out);
 
 void updateDisplay();
 void drawMainMenu();
+static void drawSyncScreen();
 void drawOhcaStartFlash();
 void drawOhcaWaitFirstEpi();
 void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* label, bool flashOn);
@@ -2071,20 +2072,7 @@ void updateDisplay() {
     if (globalState == GLOBAL_MAIN_MENU) {
         drawMainMenu();
     } else if (globalState == GLOBAL_SYNC) {
-        // Phase F MVP2 W2：placeholder 顯示，W3 改 drawSyncScreen
-        display.setFont(&fonts::Font0);
-        display.setTextSize(2);
-        display.setTextColor(COLOR_TEXT_PRIMARY);
-        display.setCursor(16, 12);
-        display.print("SYNC");
-        useZhFont();
-        display.setTextSize(1.2f, 1.2f);
-        display.setTextColor(COLOR_ACCENT_OK);
-        char buf[64];
-        snprintf(buf, sizeof(buf), "state=%u code=%s",
-                 (unsigned)g_sync_ctx.state, g_sync_ctx.pairing_code.digits);
-        display.setTextDatum(textdatum_t::middle_center);
-        display.drawString(buf, SCREEN_W / 2, SCREEN_H / 2);
+        drawSyncScreen();
     } else if (globalState == GLOBAL_OHCA) {
         // Phase B: sub-state 子流程畫面優先
         if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.pushSprite(0, 0); return; }
@@ -2227,6 +2215,83 @@ static void drawCenteredText(const char* text, int16_t y, uint16_t color) {
     display.setTextColor(color);
     display.setTextDatum(textdatum_t::top_center);
     display.drawString(text, SCREEN_W / 2, y);
+}
+
+/**
+ * Phase F MVP2：同步資料 6 個 state 畫面渲染。
+ *
+ * 字級對齊既有 OHCA 螢幕：vlw 中文 size 1.2~1.8x、ASCII 配對碼用 vlw 2.5x（≈60px）。
+ * ERROR reason 由 caller 從 pairing_code.failure_count 推導（dispatcher 不存原因）。
+ */
+static void drawSyncScreen() {
+    useZhFont();
+
+    switch (g_sync_ctx.state) {
+        case ems::SyncState::AWAITING_CONNECT: {
+            display.setTextSize(1.5f, 1.5f);
+            drawCenteredText("等待 BLE 連線", 50, COLOR_TEXT_PRIMARY);
+            display.setTextSize(1.0f, 1.0f);
+            drawCenteredText("請開啟網頁端", 150, COLOR_TEXT_MUTED);
+            break;
+        }
+        case ems::SyncState::AWAITING_INPUT: {
+            display.setTextSize(1.2f, 1.2f);
+            drawCenteredText("請於網頁輸入", 30, COLOR_TEXT_PRIMARY);
+            // 4 位配對碼大字（vlw size 2.5 ≈ 60px 等寬，足以遠距讀取）
+            display.setTextSize(2.5f, 2.5f);
+            display.setTextColor(COLOR_ACCENT_OK);
+            display.setTextDatum(textdatum_t::middle_center);
+            display.drawString(g_sync_ctx.pairing_code.digits, SCREEN_W / 2, SCREEN_H / 2);
+            display.setTextSize(1.0f, 1.0f);
+            drawCenteredText("120 秒內有效", 210, COLOR_TEXT_MUTED);
+            break;
+        }
+        case ems::SyncState::AWAITING_MAIN_KEY: {
+            display.setTextSize(1.2f, 1.2f);
+            drawCenteredText("驗證成功", 40, COLOR_ACCENT_OK);
+            display.setTextSize(1.8f, 1.8f);
+            drawCenteredText("按主鍵開始", 100, COLOR_TEXT_PRIMARY);
+            display.setTextSize(1.0f, 1.0f);
+            drawCenteredText("30 秒未按取消", 200, COLOR_TEXT_MUTED);
+            break;
+        }
+        case ems::SyncState::SENDING: {
+            display.setTextSize(1.5f, 1.5f);
+            drawCenteredText("傳輸中…", 80, COLOR_TEXT_PRIMARY);
+            display.setTextSize(1.0f, 1.0f);
+            drawCenteredText("DEMO 模式", 150, COLOR_TEXT_MUTED);
+            break;
+        }
+        case ems::SyncState::DONE: {
+            display.setTextSize(1.5f, 1.5f);
+            drawCenteredText("同步完成", 50, COLOR_ACCENT_OK);
+            // 大字 OK（vlw 2.5x ASCII 與配對碼同字級）
+            display.setTextSize(2.5f, 2.5f);
+            display.setTextColor(COLOR_ACCENT_OK);
+            display.setTextDatum(textdatum_t::middle_center);
+            display.drawString("OK", SCREEN_W / 2, 140);
+            display.setTextSize(1.0f, 1.0f);
+            drawCenteredText("（DEMO）", 210, COLOR_TEXT_MUTED);
+            break;
+        }
+        case ems::SyncState::ERROR: {
+            display.setTextSize(1.5f, 1.5f);
+            drawCenteredText("同步失敗", 50, COLOR_ACCENT_ALERT);
+            display.setTextSize(1.2f, 1.2f);
+            // dispatcher 不存原因 — 由 caller 看 failure_count 自行判定
+            const char* reason = (g_sync_ctx.pairing_code.failure_count >= ems::PAIRING_MAX_FAILURES)
+                               ? "輸入錯誤鎖定"
+                               : "連線中斷或逾時";
+            drawCenteredText(reason, 120, COLOR_TEXT_PRIMARY);
+            display.setTextSize(1.0f, 1.0f);
+            drawCenteredText("即將回主選單", 200, COLOR_TEXT_MUTED);
+            break;
+        }
+        case ems::SyncState::IDLE:
+        default:
+            // observer 已將 globalState 設回 MAIN_MENU，理論上不會走到這
+            break;
+    }
 }
 
 void drawOhcaStartFlash() {
