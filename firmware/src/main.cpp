@@ -314,7 +314,8 @@ static uint32_t     ohcaLastEpiMs     = 0;     // 上次 EPI 確認的 millis()
 static uint32_t     ohcaPrevSinceMs   = 0;     // 上一輪 since 值（給邊緣偵測）
 static uint32_t     startFlashStartMs = 0;     // START_FLASH 1s 計時
 static bool         alarmMuted        = false; // ALARMING/OVERTIME 是否已被消音
-static uint32_t     caseStartMs       = 0;     // case 開始 millis()
+static uint32_t     caseStartMs       = 0;     // case 開始 millis()（uptime；給 elapsed_ms 算用）
+static uint64_t     caseStartEpochMs  = 0;     // case 開始 epoch ms（time_sync 後計算；給 summary 相對時間顯示用；0 = 案件未開始 / 未對時）
 
 /** START_FLASH 階段顯示 1s */
 static const uint32_t START_FLASH_DURATION_MS = 1000;
@@ -919,6 +920,7 @@ void onShortPress(uint8_t btnIdx) {
                         dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, 0);
                         startFlashStartMs = millis();
                         caseStartMs       = millis();
+                        caseStartEpochMs  = ems::time_sync_current_epoch_ms(&g_ts_state, caseStartMs);  // 對時前 = 0
                         eventCount        = 0;
                         nextEventId       = 1;
                         ohcaLastEpiMs     = 0;
@@ -2532,10 +2534,12 @@ void drawHistoryList() {
 
 void drawOhcaSummary() {
     // STEP 01: 用 caseSummary 聚合（V1 §11）
-    //   - 現場案件結束流程：caseStartMs 為當前 boot 的 millis，可算相對 m:ss
-    //   - 歷史進入（historySummaryMode）：caseStartMs=0，事件 timestamp 來自過去 boot，
-    //     無法換算相對時間 → 時間 row 隱藏（無 RTC 前 by-design，Phase 3 DS3231 上機後再帶絕對時間）
-    const uint64_t startForRel = historySummaryMode ? 0 : (uint64_t)caseStartMs;
+    //   - 現場案件結束流程：caseStartEpochMs 為對時後的案件起點 epoch；未對時則 0
+    //   - 歷史進入（historySummaryMode）：caseStartEpochMs=0，timestamp 來自過去 boot，
+    //     無法換算相對時間 → 時間 row 隱藏（spec §4.1 未對時行為，by-design）
+    //   - Phase F MVP1 前用 caseStartMs (uptime)，與 epoch timestamp_ms 混算會爆掉
+    //     （顯示天文數字）；本 fix 切到 caseStartEpochMs 統一為 epoch 基準
+    const uint64_t startForRel = historySummaryMode ? 0 : caseStartEpochMs;
     ohca_case_summary_t s;
     caseSummary_build(&s, events, eventCount, startForRel, /*case_end*/ 0);
 
