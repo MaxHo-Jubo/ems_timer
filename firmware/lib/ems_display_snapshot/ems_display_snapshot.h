@@ -36,6 +36,7 @@ struct DisplaySnapshot {
     uint8_t  globalState;
     uint8_t  ohcaState;
     uint8_t  ohcaSubState;
+    uint8_t  syncState;          ///< Phase F MVP2：ems::SyncState 列舉值（0=IDLE）
     uint8_t  mainMenuCursor;
     uint8_t  backfillCursor;     ///< QuickMenu/Backfill/Drug 共用同一變數
     uint32_t countdownSec;       ///< OHCA 倒數/超時當前顯示秒數
@@ -77,6 +78,7 @@ struct DisplaySnapshotInputs {
     uint8_t  globalState     = 0;
     uint8_t  ohcaState       = 0;
     uint8_t  ohcaSubState    = 0;
+    uint8_t  syncState       = 0;  // Phase F MVP2：ems::SyncState 列舉值
     uint8_t  mainMenuCursor  = 0;
     uint8_t  backfillCursor  = 0;
     uint8_t  ventVolume      = 0;
@@ -117,6 +119,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     s.globalState         = in.globalState;
     s.ohcaState           = in.ohcaState;
     s.ohcaSubState        = in.ohcaSubState;
+    s.syncState           = in.syncState;
     s.mainMenuCursor      = in.mainMenuCursor;
     s.backfillCursor      = in.backfillCursor;
     s.countdownSec        = in.countdownSec;

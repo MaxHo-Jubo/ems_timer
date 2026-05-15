@@ -65,6 +65,11 @@ static void test_ohca_sub_state_change_triggers_redraw() {
     ASSERT_FIELD_TRIGGERS_CHANGE(ohcaSubState, 2);
 }
 
+static void test_sync_state_change_triggers_redraw() {
+    // Phase F MVP2：sync 狀態機 6 個 state 切換必須觸發重繪
+    ASSERT_FIELD_TRIGGERS_CHANGE(syncState, 3);
+}
+
 static void test_main_menu_cursor_change_triggers_redraw() {
     ASSERT_FIELD_TRIGGERS_CHANGE(mainMenuCursor, 1);
 }
@@ -247,6 +252,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_global_state_change_triggers_redraw);
     RUN_TEST(test_ohca_state_change_triggers_redraw);
     RUN_TEST(test_ohca_sub_state_change_triggers_redraw);
+    RUN_TEST(test_sync_state_change_triggers_redraw);
     RUN_TEST(test_main_menu_cursor_change_triggers_redraw);
     RUN_TEST(test_backfill_cursor_change_triggers_redraw);
     RUN_TEST(test_vent_volume_change_triggers_redraw);
