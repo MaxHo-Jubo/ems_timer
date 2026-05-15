@@ -2077,6 +2077,14 @@ void drawMainMenu() {
     display.setCursor(16, 12);
     display.print("EMS DOSESYNC PRO");
 
+    // STEP 01.01: Phase F MVP1 — BLE 連線狀態圖示（標題列右側）
+    //   連線中：綠色「BT」字樣；未連線：留空（不畫即可，主畫面已為黑底）
+    if (g_ble_client_connected) {
+        display.setTextColor(COLOR_ACCENT_OK);
+        display.setCursor(SCREEN_W - 36, 12);  // 2 字元 × 10px size 2 = 20px，留 16px 右邊距
+        display.print("BT");
+    }
+
     // STEP 02: 標題下分隔線 y=36，灰色橫貫
     display.drawLine(16, 36, SCREEN_W - 16, 36, COLOR_TEXT_DIM);
 
