@@ -7,7 +7,7 @@
 
 ---
 
-## 🎯 當前進度快照（2026-05-15）
+## 🎯 當前進度快照（2026-05-15 晚間）
 
 **已完成（網頁端）**：
 - ✅ **F-5** 後端骨架（Cloudflare D1 + Pages Functions + cases GET/POST + cases/:id GET/DELETE + notes GET/PUT）
@@ -19,13 +19,39 @@
 - ✅ **F-2 純邏輯** `ble_chunker` 17 tests + `ble_rx_queue` 16 tests = 33 tests
 - ✅ **F-3 純邏輯** `ems_sync_dispatcher` 29 tests + `case_sync_serializer` 8 tests = 37 tests
 
+**已完成（Phase F MVP1，2026-05-15 晚間，commits `c55a687` → `8794e23`）**：
+- ✅ MVP1 W1 `DisplaySnapshot::flags` 加 `SNAP_FLAG_BLE_CONNECTED = 0x1000`（TDD 紅綠完整 + 2 unit tests）
+- ✅ MVP1 W2 主韌體整合 BLE NUS peripheral + `time_sync` handler（process_pending_ble_rx + setup BLE init + loop drain + `recordLocalEvent`/`recordSuppEvent` timestamp 切到真實 epoch）
+- ✅ MVP1 W3 主畫面右上角 BT 字樣（連線中綠色 / 斷線空白）
+- ✅ MVP1 fix `drawOhcaSummary` 時間基準混算（caseStartEpochMs 新增，補 W2 epoch/uptime 混算 bug）
+- ✅ 配套：`firmware/src_ble_time_sync_smoke/` smoke env、`docs/ble-tester/` 網頁端測試工具、`docs/ble-time-sync-protocol.md` spec
+
+**已完成（Phase F MVP2，2026-05-15 晚間，commits `829ec2e` → `078d3b2`）**：
+- ✅ MVP2 W1 `DisplaySnapshot` 加 `syncState` 欄位（TDD 紅綠完整 + 1 unit test）
+- ✅ MVP2 W2 主韌體整合 `ems_sync_dispatcher` + `ems_pairing`：
+  · `GlobalState::GLOBAL_SYNC` enum、`g_sync_ctx` 全域 + `sync_dispatcher_init`
+  · loop observer（state edge、BLE_CONNECTED 邊緣偵測、TICK、SENDING stub）
+  · BLE RX 訊息 type 分流（time_sync / pair_verify / unknown）
+  · 按鍵 wiring（BTN_PRIMARY in AWAITING_MAIN_KEY → MAIN_KEY_PRESS / BTN_BACK 非 SENDING → BACK_KEY_PRESS）
+  · captureDisplaySnapshot 寫入 g_sync_ctx.state
+- ✅ MVP2 W3 `drawSyncScreen` 6 個 state TFT 渲染（4 位大字配對碼、ERROR reason 分流）
+- ✅ 配套：主選單超界 fix + vlw 補 29 個 MVP2 新字（258 glyphs，Flash 61.3%）
+
+**⚠️ MVP2 已知未對齊 SoT 項目（下次 session 處理）**：
+- ❌ **MVP2-Followup**（task #20）：主選單第 5 項「同步資料」違反 SoT §3.1 封版（應為「系統設定」）
+  - SoT §11.1 規定同步入口在 OHCA 案件總覽選單（「同步至 App」+「傳輸資料」），不是主選單獨立項
+  - SoT §10.4 規定案件結束鎖定後才「可同步至 App」，與裝置層級全域功能語意不同
+  - 修法：還原 MAIN_MENU_LABELS[4]=「系統設定」、`drawOhcaSummary` 加可游標 sub-menu、同步入口從案件總覽進入
+  - 已加 TODO 註解於 `firmware/src/main.cpp` MAIN_MENU_LABELS 上方
+
 **🎯 韌體面已盡（無實機不可繼續）**：剩 F-2 NimBLE 整合層 / F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8 全部需要 ESP32 實機 + NimBLE-Arduino + nRF Connect + 網頁端三方協作驗證。
 
-**Resume 時可開工**（下次有實機 session）：
-1. NimBLE-Arduino `BleNusService` 包裝（用既有 ble_chunker + ble_rx_queue 純邏輯）
-2. `firmware/src/case_sync_dispatcher.cpp` 整合（讀 ems_storage → case_sync_serializer → ble_chunker → BleNusService）
-3. TFT UI：案件總覽頁同步入口 + 各 state 畫面
-4. 實機 + nRF Connect + Web Bluetooth 端到端
+**Resume 時可開工**（下次 session）：
+1. **MVP2-Followup** task #20：同步入口遷移到案件總覽，還原系統設定 placeholder（**先做**，對齊 SoT 後再進新功能）
+2. **MVP3** chunked data 真送（移除 SENDING stub，整合 case_sync_serializer + ble_chunker；SENDING 入口 caseSummary_build → serialize → chunker → notify + 等 ACK）
+3. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
+4. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
+5. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
 
 ## 🎯 Resume 指引（rate-limit 後）
 

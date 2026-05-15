@@ -297,14 +297,21 @@ enum GlobalState : uint8_t {
 };
 static GlobalState globalState = GLOBAL_MAIN_MENU;
 
-/** 主功能表 5 項（SoT V1 §3.1 封版；MVP2 用「同步資料」暫代 Phase G「系統設定」placeholder） */
+/** 主功能表 5 項（SoT V1 §3.1 封版）
+ *
+ * ⚠️ TODO（next session, tasks/phase-f-todo.md MVP2-Followup）：
+ *   當前第 5 項「同步資料」**違反 SoT** — SoT §3.1 封版是「系統設定」，
+ *   §11.1 規定同步入口在 OHCA 案件總覽（「同步至 App」+「傳輸資料」）。
+ *   MVP2 為求驗證 dispatcher 端對端鏈路便宜行事用主選單入口；
+ *   下次 session 還原為「系統設定」並把入口遷移到 drawOhcaSummary 的可游標 sub-menu。
+ */
 static const uint8_t MAIN_MENU_COUNT = 5;
 static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
     "OHCA 案件",
     "6 秒通氣節奏",
     "訓練模式",
     "歷史紀錄",
-    "同步資料",
+    "同步資料",  // TODO MVP2-Followup：還原「系統設定」，同步入口移 §11.1 案件總覽
 };
 static uint8_t mainMenuCursor = 0;
 
