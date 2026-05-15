@@ -60,6 +60,13 @@
 #include "ems_storage_logic.h"   // Phase E：持久化邏輯層
 #include "ems_storage_fs.h"      // Phase E：LittleFS adapter
 #include "ems_display_snapshot.h"// L2 regression：DisplaySnapshot 純邏輯
+#include "ems_time_sync.h"       // Phase F MVP1：BLE 對時純邏輯
+
+// Phase F MVP1：BLE NUS peripheral（ESP32 Arduino framework 內建）
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
 
 #include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 222 glyphs (95 ASCII + 127 CJK)
 
@@ -252,6 +259,28 @@ static const uint16_t LONG_PRESS_MS_PER_BTN[8] = {
 };
 
 // ============================================================
+// Phase F MVP1：BLE NUS peripheral 常數
+// 對齊 docs/ble-time-sync-protocol.md §1 / docs/ble-tester/index.html
+// 與 firmware/src_ble_time_sync_smoke/main.cpp 共用同一組 UUID
+// ============================================================
+
+// NUS（Nordic UART Service）UUID 與兩個 characteristics
+static constexpr const char* NUS_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
+static constexpr const char* NUS_RX_UUID      = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";  // App→Device Write
+static constexpr const char* NUS_TX_UUID      = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";  // Device→App Notify
+
+// 廣播名稱（正式版裝置名，與 smoke firmware「EMS-DoseSync-Smoke」區分）
+static constexpr const char* BLE_DEVICE_NAME = "EMS-DoseSync-Pro";
+
+// BLE RX/ACK buffer 上限：time_sync JSON ~100 bytes，ACK ~150 bytes，留 ~3-5x 餘裕
+static constexpr size_t BLE_RX_BUF_MAX  = 512;
+static constexpr size_t BLE_ACK_BUF_MAX = 512;
+
+// BLE advertising 偏好連線間隔（單位 × 1.25 ms），與 smoke firmware 一致以利 iOS 連線
+static constexpr uint16_t BLE_CONN_INTERVAL_MIN = 0x06;  // 7.5 ms
+static constexpr uint16_t BLE_CONN_INTERVAL_MAX = 0x12;  // 22.5 ms
+
+// ============================================================
 // 全域狀態機（pm-dev-spec §2）
 // ============================================================
 
@@ -318,6 +347,20 @@ static uint32_t    nextEventId  = 1;  // 案件內流水號，從 1 起
 static IStorageBackend g_storage_be;
 static bool g_storage_ready    = false;
 static bool g_locked_saved     = false;  // LOCKED 防重複存
+
+// ===== Phase F MVP1：BLE NUS peripheral state =====
+//   ESP32 BLE callback 跑在 GATT task（與 main loop 不同 task，常不同核），
+//   volatile 不足以擋跨 task race。用 portMUX_TYPE spinlock 保護 g_rx_buf：
+//   - GATT task onWrite：memcpy + 旗標 in 臨界區
+//   - main loop drain：原子取出 + 清旗標 in 臨界區
+static BLEServer*         g_ble_server         = nullptr;
+static BLECharacteristic* g_ble_tx_char        = nullptr;
+static volatile bool      g_ble_client_connected = false;
+static volatile bool      g_ble_rx_ready       = false;
+static uint8_t            g_ble_rx_buf[BLE_RX_BUF_MAX];
+static volatile size_t    g_ble_rx_len         = 0;
+static portMUX_TYPE       g_ble_rx_mux         = portMUX_INITIALIZER_UNLOCKED;
+static ems::TimeSyncState g_ts_state;  // 對時 state：只在 main loop task 讀寫
 
 // ===== Phase E：歷史紀錄 UI =====
 static case_meta_t historyCases[EMS_STORAGE_OHCA_CAP];
@@ -535,6 +578,101 @@ void drawAmioConfirmPrompt();
 void drawTimeline();
 
 // ============================================================
+// Phase F MVP1：BLE GATT callbacks + RX queue drain
+// 設計遵守 feedback_ble_callback_non_blocking：onWrite 只 memcpy + 旗標，
+// 實際 time_sync_handle 推給 main loop 跑（避免阻塞 GATT task）
+// ============================================================
+
+/**
+ * BLE Server 生命週期 callback。
+ * 連線斷掉後立即重啟廣播，方便 web 端重連測試。
+ */
+class BleServerCallbacks : public BLEServerCallbacks {
+    void onConnect(BLEServer* /*pServer*/) override {
+        // STEP 01: 標記連線狀態，main loop 印 log + 更新 BLE 圖示
+        g_ble_client_connected = true;
+    }
+    void onDisconnect(BLEServer* /*pServer*/) override {
+        // STEP 01: 標記斷線
+        g_ble_client_connected = false;
+        // STEP 02: 立即重啟廣播，否則裝置會「躲」起來無法被掃到
+        BLEDevice::startAdvertising();
+    }
+};
+
+/**
+ * RX characteristic write callback。
+ * 跑在 ESP32 BLE GATT task — 嚴禁阻塞操作。
+ * 只做 memcpy 到 g_ble_rx_buf + 旗標 in portMUX 臨界區，
+ * 實際 JSON 處理推給 main loop 的 process_pending_ble_rx()。
+ */
+class BleRxCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pChar) override {
+        // STEP 01: 取得 callback 提供的 raw bytes（binary，未必 null-terminated）
+        std::string value = pChar->getValue();
+        size_t len = value.length();
+        if (len == 0 || len > BLE_RX_BUF_MAX) {
+            return;
+        }
+
+        // STEP 02: 拷貝 + 旗標統一在 portMUX 臨界區（擋 main loop drain race）
+        portENTER_CRITICAL(&g_ble_rx_mux);
+        if (g_ble_rx_ready) {
+            // STEP 02.01: 已有未排空的訊息就丟新的（main loop 下個 tick 即排空）
+            portEXIT_CRITICAL(&g_ble_rx_mux);
+            return;
+        }
+        memcpy(g_ble_rx_buf, value.data(), len);
+        g_ble_rx_len = len;
+        g_ble_rx_ready = true;
+        portEXIT_CRITICAL(&g_ble_rx_mux);
+    }
+};
+
+/**
+ * Main loop 排空 BLE RX：解析 time_sync JSON → 更新 g_ts_state → notify ACK。
+ * 呼叫前已確認 g_ble_rx_ready=true。
+ */
+static void process_pending_ble_rx() {
+    // STEP 01: 原子取出 buffer 後立即清旗標（portMUX 擋 GATT task 同時寫入）
+    uint8_t local_buf[BLE_RX_BUF_MAX];
+    size_t local_len;
+    portENTER_CRITICAL(&g_ble_rx_mux);
+    local_len = g_ble_rx_len;
+    memcpy(local_buf, g_ble_rx_buf, local_len);
+    g_ble_rx_ready = false;
+    portEXIT_CRITICAL(&g_ble_rx_mux);
+
+    // STEP 02: 呼叫純邏輯 lib 處理（已驗 19 cases）
+    char ack_buf[BLE_ACK_BUF_MAX];
+    size_t ack_len = 0;
+    ems::TimeSyncResult r = ems::time_sync_handle(
+        &g_ts_state,
+        local_buf, local_len,
+        millis(),
+        /*rtc_present=*/false,  // MVP1 無 DS3231 整合
+        ack_buf, sizeof(ack_buf), &ack_len);
+
+    // STEP 03: 印一行結果便於 dev 對照（主韌體 loop 已擁擠，不印 RX/TX 全文）
+    const char* result_str =
+        (r == ems::TimeSyncResult::Applied)  ? "Applied"  :
+        (r == ems::TimeSyncResult::Rejected) ? "Rejected" :
+                                               "ParseError";
+    Serial.printf("[BLE] time_sync %s ack_len=%u\n", result_str, (unsigned)ack_len);
+
+    // STEP 04: ParseError 規格規定不送 ACK（spec §2.3）；ack_len=0 同
+    if (ack_len == 0) {
+        return;
+    }
+
+    // STEP 05: notify ACK 出去
+    if (g_ble_tx_char != nullptr && g_ble_client_connected) {
+        g_ble_tx_char->setValue(reinterpret_cast<uint8_t*>(ack_buf), ack_len);
+        g_ble_tx_char->notify();
+    }
+}
+
+// ============================================================
 // setup() / loop()
 // ============================================================
 
@@ -619,12 +757,52 @@ void setup() {
         Serial.println("[STORAGE] WARN LittleFS mount failed");
     }
 
+    // STEP 04.6: Phase F MVP1 — BLE NUS peripheral 初始化
+    //   失敗只 log warn 不擋 boot（對齊 storage_init 容錯模式）。
+    //   廣播後待 web 端（docs/ble-tester/）連線送 time_sync 才會有 epoch；
+    //   未對時前事件 timestamp_ms = 0（spec §4.1）。
+    ems::time_sync_init(&g_ts_state);
+    BLEDevice::init(BLE_DEVICE_NAME);
+    g_ble_server = BLEDevice::createServer();
+    if (g_ble_server == nullptr) {
+        Serial.println("[BLE] WARN createServer failed, time_sync 將不可用");
+    } else {
+        g_ble_server->setCallbacks(new BleServerCallbacks());
+
+        BLEService* ble_service = g_ble_server->createService(NUS_SERVICE_UUID);
+
+        BLECharacteristic* ble_rx_char = ble_service->createCharacteristic(
+            NUS_RX_UUID,
+            BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+        ble_rx_char->setCallbacks(new BleRxCallbacks());
+
+        g_ble_tx_char = ble_service->createCharacteristic(
+            NUS_TX_UUID,
+            BLECharacteristic::PROPERTY_NOTIFY);
+        g_ble_tx_char->addDescriptor(new BLE2902());  // CCCD：讓 client 訂閱 notify
+
+        ble_service->start();
+        BLEAdvertising* ble_advertising = BLEDevice::getAdvertising();
+        ble_advertising->addServiceUUID(NUS_SERVICE_UUID);
+        ble_advertising->setScanResponse(true);
+        ble_advertising->setMinPreferred(BLE_CONN_INTERVAL_MIN);
+        ble_advertising->setMaxPreferred(BLE_CONN_INTERVAL_MAX);
+        BLEDevice::startAdvertising();
+        Serial.printf("[BLE] advertising as %s\n", BLE_DEVICE_NAME);
+    }
+
     // STEP 05: 初始顯示
     updateDisplay();
     Serial.println("[READY] MainMenu");
 }
 
 void loop() {
+    // STEP 00: Phase F MVP1 — 排空 BLE RX queue
+    //   time_sync 立即生效，讓接下來 handleButtons 觸發的事件 timestamp 用真實 epoch
+    if (g_ble_rx_ready) {
+        process_pending_ble_rx();
+    }
+
     handleButtons();
     updateOhcaTick();
     updateVentTick();
@@ -1464,11 +1642,13 @@ void recordLocalEvent(ems_event_type_t type) {
         Serial.println("[EVT] full, drop");
         return;
     }
+    // Phase F MVP1：對時後 timestamp_ms = 真實 epoch；未對時 = 0（spec §4.1）
+    //   elapsed_ms 仍走 millis()，不受對時影響（spec §0）
     uint32_t now     = millis();
+    uint64_t now_ts  = ems::time_sync_current_epoch_ms(&g_ts_state, now);
     uint32_t elapsed = (caseStartMs == 0) ? 0 : (now - caseStartMs);
-    // Phase A 無 RTC：用 millis() 當 timestamp_ms 佔位（Dev-Phase 3 升 DS3231 後改 epoch）
     buildLocalEvent(&events[eventCount], nextEventId++, type,
-                    /*timestamp_ms*/ (uint64_t)now, elapsed);
+                    /*timestamp_ms*/ now_ts, elapsed);
     eventCount++;
 }
 
@@ -1482,10 +1662,12 @@ void recordSuppEvent(supp_type_t supp_type, uint8_t count) {
         Serial.printf("[EVT] invalid supp count: type=%u count=%u\n", supp_type, count);
         return;
     }
+    // Phase F MVP1：對時後 recorded_at_ms = 真實 epoch；未對時 = 0（spec §4.1）
     uint32_t now     = millis();
+    uint64_t now_ts  = ems::time_sync_current_epoch_ms(&g_ts_state, now);
     uint32_t elapsed = (caseStartMs == 0) ? 0 : (now - caseStartMs);
     buildSuppEvent(&events[eventCount], nextEventId++, supp_type, count,
-                   /*recorded_at_ms*/ (uint64_t)now, elapsed);
+                   /*recorded_at_ms*/ now_ts, elapsed);
     eventCount++;
 }
 
@@ -1737,6 +1919,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.flashStateActive      = flashState.active;
     in.ventPreShown          = ventPreShown;
     in.historySummaryMode    = historySummaryMode;
+    in.bleConnected          = g_ble_client_connected;  // Phase F MVP1
 
     return captureSnapshot(in);
 }
