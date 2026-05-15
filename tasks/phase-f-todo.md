@@ -17,8 +17,9 @@
 
 **下一步 BLE 鏈路**（按韌體優先順序）：
 1. ~~**F-1** 韌體 `ems_pairing` 純函式 TDD（0.5d）~~ ✅ 2026-05-15 完成（21 unit tests，含 review 修正）
-2. **F-2** 韌體 `ble_nus`（1.5d）— 純邏輯部分 ✅ 2026-05-15（ble_chunker 16 + ble_rx_queue 12 tests）；NimBLE 整合層待實機 session
-3. **F-3** 韌體 `case_sync_dispatcher` 狀態機（1.5d） ← **下一步**（純邏輯狀態機可 native TDD）
+2. **F-2** 韌體 `ble_nus`（1.5d）— 純邏輯部分 ✅ 2026-05-15（ble_chunker 17 + ble_rx_queue 16 tests，含 review 修正）；NimBLE 整合層待實機 session
+3. **F-3** 韌體 `case_sync_dispatcher` 狀態機（1.5d）— 純邏輯狀態機 ✅ 2026-05-15（ems_sync_dispatcher 20 tests）；整合層（NimBLE service + JSON 序列化 + TFT UI）待實機 session
+4. **F-2/F-3 整合層 + F-4a/F-4b/F-7/F-8** — 全部需實機 + 網頁端 + nRF Connect 三方協作，韌體面已盡可做
 3. **F-3** 韌體 `case_sync_dispatcher` 狀態機 + **主鍵確認** state（1.5d）
 4. **F-4a** 真 Web Bluetooth 連 nRF Connect mock（0.5d）
 5. **F-4b** 連真韌體（0.5d）
@@ -179,19 +180,26 @@ curl http://localhost:8788/api/cases
 
 > **依賴**：F-1 + F-2 + `ems_storage`（已完成）。
 
-- [ ] 狀態機（plan §7.3，對齊 **SoT §16.5**）：
-  `IDLE → AWAITING_CONNECT → CODE_DISPLAYED → AWAITING_INPUT → AWAITING_MAIN_KEY → SENDING → DONE` + ERROR 分支
-- [ ] **AWAITING_MAIN_KEY** state：配對碼比對通過後，螢幕顯示「App 已連線，按主鍵開始同步」，等主鍵 single-press
-- [ ] AWAITING_MAIN_KEY 30 秒 timeout（避免使用者忘按而卡住）
-- [ ] 從 `ems_storage` 讀最新 case → 序列化 JSON
-- [ ] 序列化驗證：JSON schema 對齊 `pm-dev-spec §14.1`
-- [ ] UI 整合：案件總覽頁加「同步」入口
-- [ ] 各 state TFT 畫面（配對碼倒數 / 等主鍵 / 同步中進度 / 完成提示 1 秒）
-- [ ] 120s timeout 處理（CODE_DISPLAYED / AWAITING_INPUT 各自 deadline）
-- [ ] 中斷重試 = 整筆重傳（plan §11 F-8 驗收要求）
-- [ ] 返回鍵可中止（SENDING 階段除外）
+- [x] **F-3 純邏輯狀態機**（`firmware/lib/ems_sync_dispatcher/`，20 unit tests，2026-05-15）：
+  - [x] States 簡化合併 CODE_DISPLAYED → AWAITING_INPUT（顯示是 entry action，state 本質是等輸入）：
+        `IDLE / AWAITING_CONNECT / AWAITING_INPUT / AWAITING_MAIN_KEY / SENDING / DONE / ERROR`
+  - [x] Events：START / BLE_CONNECTED / BLE_DISCONNECTED / MAIN_KEY_PRESS / BACK_KEY_PRESS / CHUNK_ACKED / TICK
+  - [x] dispatch_input 專用入口（payload 帶 byte buffer 避免 enum 掛 payload）
+  - [x] AWAITING_INPUT entry action：pairing_generate（120s TTL）
+  - [x] AWAITING_INPUT → ERROR：120s pairing 過期 / 3 次失敗 lockout
+  - [x] AWAITING_MAIN_KEY → ERROR：30s MAIN_KEY_TIMEOUT_MS
+  - [x] SENDING → DONE：sent_chunks_count >= total_chunks
+  - [x] DONE → IDLE：DONE_DISPLAY_MS = 1s
+  - [x] ERROR → IDLE：ERROR_DISPLAY_MS = 2s
+  - [x] BLE_DISCONNECTED 任一非 IDLE state → ERROR
+  - [x] BACK_KEY 任一非 IDLE/SENDING state → IDLE（SENDING 中無法中止）
+- [ ] **F-3 整合層（需 ESP32 + 既有 firmware/src/main.cpp + TFT，留待實機 session）**：
+  - [ ] `firmware/src/case_sync_dispatcher.cpp` 包裝 NimBLE service + 接 dispatcher
+  - [ ] 從 `ems_storage` 讀最新 case → 序列化 JSON（對齊 pm-dev-spec §14.1）
+  - [ ] UI：案件總覽頁加「同步」入口 + 各 state TFT 畫面
+  - [ ] 中斷重試 = 整筆重傳（plan §11 F-8 驗收要求）
 
-**驗收**：實機按「同步」→ 螢幕顯示配對碼 → nRF Connect 連線 + 輸入正確碼 → **螢幕跳「按主鍵開始同步」→ 按主鍵** → 收到完整 JSON。
+**驗收**：實機按「同步」→ 螢幕顯示配對碼 → nRF Connect 連線 + 輸入正確碼 → **螢幕跳「按主鍵開始同步」→ 按主鍵** → 收到完整 JSON（純邏輯狀態機 20 unit tests ✅ 2026-05-15）。
 
 ---
 
