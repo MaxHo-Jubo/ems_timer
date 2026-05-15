@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0a0a0a">
+<title>EMS DoseSync Pro — BLE Tester</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    background: #0a0a0a; color: #e5e5e5; min-height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Noto Sans TC", sans-serif;
+    line-height: 1.5;
+  }
+  body { padding: 16px; max-width: 720px; margin: 0 auto; }
+
+  h1 { font-size: 20px; letter-spacing: 1px; color: #fff; margin-bottom: 4px; }
+  h1 .accent { color: #4ade80; }
+  .subtitle { font-size: 12px; color: #64748b; margin-bottom: 20px; }
+
+  /* === Status bar === */
+  .status-bar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 14px; background: #050505;
+    border: 1px solid #1f2937; border-radius: 6px;
+    margin-bottom: 16px; font-size: 13px;
+  }
+  .status-dot { width: 10px; height: 10px; border-radius: 50%; background: #475569; }
+  .status-dot.connected { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+  .status-dot.connecting { background: #fbbf24; animation: pulse 1s infinite; }
+  .status-dot.error { background: #ef4444; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+  .status-text { flex: 1; }
+  .device-name { color: #94a3b8; font-family: "Courier New", monospace; font-size: 12px; }
+
+  /* === Card === */
+  .card {
+    background: #0f172a; border: 1px solid #1f2937; border-radius: 8px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .card-title {
+    font-size: 14px; color: #cbd5e1; letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom: 12px;
+    border-bottom: 1px solid #1f2937; padding-bottom: 8px;
+  }
+
+  /* === Form fields === */
+  .field { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; font-size: 13px; }
+  .field label { width: 120px; color: #94a3b8; }
+  .field input, .field textarea {
+    flex: 1; background: #050505; border: 1px solid #1f2937;
+    color: #e5e5e5; padding: 6px 10px; border-radius: 4px;
+    font-family: "Courier New", monospace; font-size: 12px;
+  }
+  .field textarea { min-height: 60px; resize: vertical; }
+  .field .value-readonly {
+    flex: 1; padding: 6px 10px; background: #050505;
+    border: 1px solid #1f2937; border-radius: 4px;
+    color: #fbbf24; font-family: "Courier New", monospace; font-size: 12px;
+  }
+
+  /* === Buttons === */
+  button {
+    background: #1e3a5f; color: #93c5fd; border: 1px solid #2563eb;
+    padding: 8px 16px; border-radius: 4px; font-size: 13px;
+    cursor: pointer; font-weight: 600; letter-spacing: 1px;
+    transition: all 0.15s;
+  }
+  button:hover:not(:disabled) { background: #2563eb; color: #fff; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  button.primary { background: #16a34a; color: #fff; border-color: #16a34a; }
+  button.primary:hover:not(:disabled) { background: #15803d; }
+  button.danger { background: #7f1d1d; color: #fca5a5; border-color: #b91c1c; }
+  button.danger:hover:not(:disabled) { background: #b91c1c; color: #fff; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+  /* === ACK display === */
+  .ack-result {
+    margin-top: 12px; padding: 10px 12px;
+    background: #050505; border-left: 3px solid #4ade80;
+    border-radius: 4px; font-family: "Courier New", monospace; font-size: 12px;
+    white-space: pre-wrap; color: #e5e5e5;
+  }
+  .ack-result.rejected { border-left-color: #fbbf24; }
+  .ack-result.error    { border-left-color: #ef4444; }
+  .ack-rtt { color: #94a3b8; font-size: 11px; margin-top: 4px; }
+
+  /* === Log === */
+  .log-box {
+    background: #050505; border: 1px solid #1f2937; border-radius: 4px;
+    padding: 8px; height: 220px; overflow-y: auto;
+    font-family: "Courier New", monospace; font-size: 11px;
+    line-height: 1.4;
+  }
+  .log-line { display: flex; gap: 8px; padding: 2px 0; border-bottom: 1px solid #0f172a; }
+  .log-time { color: #64748b; flex-shrink: 0; }
+  .log-dir-rx { color: #4ade80; }
+  .log-dir-tx { color: #93c5fd; }
+  .log-dir-sys { color: #fbbf24; }
+  .log-dir-err { color: #ef4444; }
+  .log-text { word-break: break-all; }
+
+  /* === Browser warning === */
+  .warning {
+    background: #422006; border: 1px solid #92400e; color: #fbbf24;
+    padding: 12px 14px; border-radius: 6px; font-size: 12px;
+    margin-bottom: 16px; display: none;
+  }
+  .warning.show { display: block; }
+
+  /* === Footer === */
+  footer {
+    text-align: center; color: #475569; font-size: 11px;
+    margin-top: 24px; padding-top: 16px;
+    border-top: 1px solid #1f2937;
+  }
+  footer a { color: #64748b; }
+</style>
+</head>
+<body>
+  <h1>EMS DoseSync Pro <span class="accent">— BLE Tester</span></h1>
+  <div class="subtitle">Web Bluetooth · NUS · time_sync 對時驗證</div>
+
+  <div id="browser-warning" class="warning">
+    ⚠️ 此瀏覽器不支援 Web Bluetooth API。請改用 Chrome / Edge / Opera 桌面版（iOS Safari、Firefox 不支援）。
+  </div>
+
+  <div class="status-bar">
+    <span id="status-dot" class="status-dot"></span>
+    <span id="status-text" class="status-text">未連線</span>
+    <span id="device-name" class="device-name"></span>
+  </div>
+
+  <!-- 連線控制 -->
+  <div class="card">
+    <div class="card-title">連線</div>
+    <div class="btn-row">
+      <button id="btn-connect" class="primary">Connect (掃描 NUS)</button>
+      <button id="btn-disconnect" class="danger" disabled>Disconnect</button>
+    </div>
+    <div class="field" style="margin-top:10px;">
+      <label>Service UUID</label>
+      <span class="value-readonly">6E400001-B5A3-F393-E0A9-E50E24DCCA9E</span>
+    </div>
+  </div>
+
+  <!-- Time Sync -->
+  <div class="card">
+    <div class="card-title">Time Sync（spec §2.1）</div>
+    <div class="field">
+      <label>epoch_ms</label>
+      <span id="field-epoch" class="value-readonly">—</span>
+    </div>
+    <div class="field">
+      <label>tz_offset_min</label>
+      <input id="field-tz" type="number" value="480" />
+    </div>
+    <div class="field">
+      <label>req_id</label>
+      <input id="field-reqid" type="text" maxlength="16" />
+    </div>
+    <div class="btn-row">
+      <button id="btn-send-timesync" disabled>Send time_sync</button>
+      <button id="btn-refresh-epoch">Refresh epoch</button>
+    </div>
+    <div id="ack-display" class="ack-result" style="display:none;"></div>
+  </div>
+
+  <!-- 自由訊息 -->
+  <div class="card">
+    <div class="card-title">自由訊息（debug）</div>
+    <div class="field">
+      <label style="align-self:flex-start;">Payload</label>
+      <textarea id="field-raw" placeholder='{"type":"time_sync","epoch_ms":...}'></textarea>
+    </div>
+    <div class="btn-row">
+      <button id="btn-send-raw" disabled>Send raw</button>
+      <button id="btn-clear-log">Clear log</button>
+    </div>
+  </div>
+
+  <!-- RX / TX Log -->
+  <div class="card">
+    <div class="card-title">通訊紀錄</div>
+    <div id="log" class="log-box"></div>
+  </div>
+
+  <footer>
+    spec: <a href="../ble-time-sync-protocol.md">ble-time-sync-protocol.md</a>
+    · firmware lib: <code>firmware/lib/ems_time_sync/</code>
+    · <a href="/">首頁</a>
+  </footer>
+
+<script>
+'use strict';
+
+// === NUS UUIDs（spec §1，與韌體 ems_pairing / phase-f plan 對齊）===
+const NUS_SERVICE  = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+const NUS_RX_CHAR  = '6e400002-b5a3-f393-e0a9-e50e24dcca9e'; // App → Device（write）
+const NUS_TX_CHAR  = '6e400003-b5a3-f393-e0a9-e50e24dcca9e'; // Device → App（notify）
+
+// 連線狀態
+const state = {
+  device: null,
+  server: null,
+  rxChar: null,           // 寫入 device 的 characteristic
+  txChar: null,           // 從 device notify 的 characteristic
+  pendingTimeSync: null,  // { reqId, sentAt } — 用於計算 RTT
+};
+
+// DOM refs
+const $ = id => document.getElementById(id);
+const els = {
+  warning: $('browser-warning'),
+  dot: $('status-dot'),
+  status: $('status-text'),
+  deviceName: $('device-name'),
+  btnConnect: $('btn-connect'),
+  btnDisconnect: $('btn-disconnect'),
+  btnSendTs: $('btn-send-timesync'),
+  btnRefreshEpoch: $('btn-refresh-epoch'),
+  btnSendRaw: $('btn-send-raw'),
+  btnClearLog: $('btn-clear-log'),
+  fieldEpoch: $('field-epoch'),
+  fieldTz: $('field-tz'),
+  fieldReqId: $('field-reqid'),
+  fieldRaw: $('field-raw'),
+  ackDisplay: $('ack-display'),
+  log: $('log'),
+};
+
+// === Logging ===
+function logLine(dir, text) {
+  const t = new Date();
+  const hh = String(t.getHours()).padStart(2, '0');
+  const mm = String(t.getMinutes()).padStart(2, '0');
+  const ss = String(t.getSeconds()).padStart(2, '0');
+  const ms = String(t.getMilliseconds()).padStart(3, '0');
+  const stamp = `${hh}:${mm}:${ss}.${ms}`;
+
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML =
+    `<span class="log-time">${stamp}</span>` +
+    `<span class="log-dir-${dir}">${dir.toUpperCase()}</span>` +
+    `<span class="log-text"></span>`;
+  line.querySelector('.log-text').textContent = text;
+  els.log.appendChild(line);
+  els.log.scrollTop = els.log.scrollHeight;
+}
+
+// === 狀態顯示 ===
+function setStatus(label, dotClass) {
+  els.status.textContent = label;
+  els.dot.className = 'status-dot' + (dotClass ? ' ' + dotClass : '');
+}
+
+function setConnected(connected) {
+  els.btnConnect.disabled = connected;
+  els.btnDisconnect.disabled = !connected;
+  els.btnSendTs.disabled = !connected;
+  els.btnSendRaw.disabled = !connected;
+}
+
+// === Epoch / req_id 預設值 ===
+function refreshEpoch() {
+  const epoch = Date.now();
+  els.fieldEpoch.textContent = String(epoch);
+  els.fieldEpoch.dataset.value = String(epoch);
+}
+
+function genReqId() {
+  // 4 位隨機 16 進位，spec §2.1 限制 ≤ 16 字元
+  const r = Math.floor(Math.random() * 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+  return `ts-${r}`;
+}
+
+// === 連線流程 ===
+async function connect() {
+  if (!navigator.bluetooth) {
+    logLine('err', '此瀏覽器無 navigator.bluetooth');
+    return;
+  }
+  setStatus('掃描中...', 'connecting');
+  logLine('sys', '請在瀏覽器彈窗中選裝置');
+
+  try {
+    state.device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [NUS_SERVICE] }],
+      optionalServices: [NUS_SERVICE],
+    });
+    state.device.addEventListener('gattserverdisconnected', onDisconnected);
+    logLine('sys', `選定裝置：${state.device.name || '(無名稱)'}`);
+    els.deviceName.textContent = state.device.name || state.device.id;
+
+    setStatus('連線中...', 'connecting');
+    state.server = await state.device.gatt.connect();
+
+    const service = await state.server.getPrimaryService(NUS_SERVICE);
+    state.rxChar  = await service.getCharacteristic(NUS_RX_CHAR);
+    state.txChar  = await service.getCharacteristic(NUS_TX_CHAR);
+
+    await state.txChar.startNotifications();
+    state.txChar.addEventListener('characteristicvaluechanged', onNotify);
+
+    setStatus('已連線', 'connected');
+    setConnected(true);
+    logLine('sys', '連線成功，已訂閱 TX notify');
+  } catch (err) {
+    setStatus('連線失敗', 'error');
+    logLine('err', err.message || String(err));
+  }
+}
+
+function onDisconnected() {
+  setStatus('已斷線', 'error');
+  els.deviceName.textContent = '';
+  setConnected(false);
+  state.server = null;
+  state.rxChar = null;
+  state.txChar = null;
+  logLine('sys', '裝置斷線');
+}
+
+async function disconnect() {
+  if (state.device && state.device.gatt.connected) {
+    state.device.gatt.disconnect();
+  }
+}
+
+// === TX：送資料給 device ===
+async function sendBytes(jsonStr) {
+  if (!state.rxChar) {
+    logLine('err', '未連線');
+    return;
+  }
+  // 韌體端依 \n 切句（ble_rx_queue 慣例）；自動補
+  const payload = jsonStr.endsWith('\n') ? jsonStr : jsonStr + '\n';
+  const bytes = new TextEncoder().encode(payload);
+  await state.rxChar.writeValueWithoutResponse(bytes);
+  logLine('tx', payload.trim());
+}
+
+async function sendTimeSync() {
+  // 每次按鈕都重抓 epoch，避免延後變舊
+  refreshEpoch();
+  const epoch = Number(els.fieldEpoch.dataset.value);
+  const tz = Number(els.fieldTz.value);
+  let reqId = els.fieldReqId.value.trim();
+  if (!reqId) {
+    reqId = genReqId();
+    els.fieldReqId.value = reqId;
+  }
+
+  const msg = {
+    type: 'time_sync',
+    epoch_ms: epoch,
+    tz_offset_min: tz,
+    req_id: reqId,
+  };
+  state.pendingTimeSync = { reqId, sentAt: performance.now() };
+  els.ackDisplay.style.display = 'none';
+
+  await sendBytes(JSON.stringify(msg));
+}
+
+async function sendRaw() {
+  const text = els.fieldRaw.value.trim();
+  if (!text) {
+    logLine('err', 'Payload 為空');
+    return;
+  }
+  await sendBytes(text);
+}
+
+// === RX：收 notify ===
+function onNotify(evt) {
+  const bytes = new Uint8Array(evt.target.value.buffer);
+  const text = new TextDecoder().decode(bytes).trim();
+  if (!text) {
+    return;
+  }
+  logLine('rx', text);
+
+  // 嘗試解析 JSON 並對映 time_sync_ack
+  let doc = null;
+  try {
+    doc = JSON.parse(text);
+  } catch (e) {
+    return;  // 不是 JSON 就只看 log
+  }
+
+  if (doc && doc.type === 'time_sync_ack') {
+    handleAck(doc);
+  }
+}
+
+function handleAck(doc) {
+  let rttMs = null;
+  if (state.pendingTimeSync && doc.req_id === state.pendingTimeSync.reqId) {
+    rttMs = Math.round(performance.now() - state.pendingTimeSync.sentAt);
+    state.pendingTimeSync = null;
+  }
+
+  const applied = !!doc.applied;
+  const source = doc.source || '(unknown)';
+  const pretty = JSON.stringify(doc, null, 2);
+
+  els.ackDisplay.className = 'ack-result' + (applied ? '' : ' rejected');
+  els.ackDisplay.textContent = pretty +
+    (rttMs !== null ? `\n\n# RTT ≈ ${rttMs} ms · source=${source}` : '');
+  els.ackDisplay.style.display = 'block';
+}
+
+// === Init ===
+function init() {
+  if (!navigator.bluetooth) {
+    els.warning.classList.add('show');
+    els.btnConnect.disabled = true;
+  }
+  refreshEpoch();
+  els.fieldReqId.value = genReqId();
+
+  els.btnConnect.addEventListener('click', connect);
+  els.btnDisconnect.addEventListener('click', disconnect);
+  els.btnSendTs.addEventListener('click', sendTimeSync);
+  els.btnRefreshEpoch.addEventListener('click', () => {
+    refreshEpoch();
+    els.fieldReqId.value = genReqId();
+  });
+  els.btnSendRaw.addEventListener('click', sendRaw);
+  els.btnClearLog.addEventListener('click', () => { els.log.innerHTML = ''; });
+
+  setStatus('未連線');
+  logLine('sys', 'BLE Tester 已就緒');
+  logLine('sys', `NUS service = ${NUS_SERVICE}`);
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
