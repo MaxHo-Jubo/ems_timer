@@ -7,23 +7,25 @@
 
 ---
 
-## 🎯 當前進度快照（2026-05-12）
+## 🎯 當前進度快照（2026-05-15）
 
-**已完成**：
+**已完成（網頁端）**：
 - ✅ **F-5** 後端骨架（Cloudflare D1 + Pages Functions + cases GET/POST + cases/:id GET/DELETE + notes GET/PUT）
 - ✅ **F-6** 前端骨架（連線頁 + 列表頁 + mock 同步流程驗證 BLE → D1 鏈路）
 - ✅ **F-9** 對齊 SoT §17 完整 UI（9 個子里程碑全綠）
-  - 4 頁籤詳細頁 / 交班摘要 / 完整總覽 14 欄 / Timeline / 備註 5 欄 autosave / 複製 3 處 / 刪除（D1-only） / OHCA-Training 分列表
 
-**下一步 BLE 鏈路**（按韌體優先順序）：
-1. ~~**F-1** 韌體 `ems_pairing` 純函式 TDD（0.5d）~~ ✅ 2026-05-15 完成（21 unit tests，含 review 修正）
-2. **F-2** 韌體 `ble_nus`（1.5d）— 純邏輯部分 ✅ 2026-05-15（ble_chunker 17 + ble_rx_queue 16 tests，含 review 修正）；NimBLE 整合層待實機 session
-3. **F-3** 韌體 `case_sync_dispatcher` 狀態機（1.5d）— 純邏輯狀態機 ✅ 2026-05-15（ems_sync_dispatcher 20 tests）；整合層（NimBLE service + JSON 序列化 + TFT UI）待實機 session
-4. **F-2/F-3 整合層 + F-4a/F-4b/F-7/F-8** — 全部需實機 + 網頁端 + nRF Connect 三方協作，韌體面已盡可做
-3. **F-3** 韌體 `case_sync_dispatcher` 狀態機 + **主鍵確認** state（1.5d）
-4. **F-4a** 真 Web Bluetooth 連 nRF Connect mock（0.5d）
-5. **F-4b** 連真韌體（0.5d）
-6. **F-7 + F-8** 端到端整合 + 驗收（1.5d）
+**已完成（韌體面純邏輯，91 native tests）**：
+- ✅ **F-1** `ems_pairing` 21 tests（generate / verify enum 5 result / 120s TTL / 3 次 lockout / regen 解除）
+- ✅ **F-2 純邏輯** `ble_chunker` 17 tests + `ble_rx_queue` 16 tests = 33 tests
+- ✅ **F-3 純邏輯** `ems_sync_dispatcher` 29 tests + `case_sync_serializer` 8 tests = 37 tests
+
+**🎯 韌體面已盡（無實機不可繼續）**：剩 F-2 NimBLE 整合層 / F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8 全部需要 ESP32 實機 + NimBLE-Arduino + nRF Connect + 網頁端三方協作驗證。
+
+**Resume 時可開工**（下次有實機 session）：
+1. NimBLE-Arduino `BleNusService` 包裝（用既有 ble_chunker + ble_rx_queue 純邏輯）
+2. `firmware/src/case_sync_dispatcher.cpp` 整合（讀 ems_storage → case_sync_serializer → ble_chunker → BleNusService）
+3. TFT UI：案件總覽頁同步入口 + 各 state 畫面
+4. 實機 + nRF Connect + Web Bluetooth 端到端
 
 ## 🎯 Resume 指引（rate-limit 後）
 
