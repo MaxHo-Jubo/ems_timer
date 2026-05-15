@@ -122,6 +122,8 @@ RUNNING 進入 → 啟動 240 秒倒數
 
 **目標：** 沿用 NUS + JSON，但傳輸格式升級對應新的 event_t
 
+> 📌 對時訊息（`time_sync` / `time_sync_ack`）獨立規格見 [`ble-time-sync-protocol.md`](ble-time-sync-protocol.md)，本節僅涵蓋 `event` / `dump` 等資料訊息。
+
 ```json
 {
   "event_id": 1,
@@ -189,9 +191,10 @@ PM 新版流程圖硬體規格寫的是 **2.4" TFT LCD 全彩液晶顯示**，�
 
 ### 3B — DS3231 RTC 整合（原計畫）
 
-- I2C 接線（與 OLED 共用 bus）
+- I2C 接線（GPIO 42=SDA / 41=SCL，原 OLED bus，TFT 升級後釋出 — 見 [`gpio-allocation.md §5.4`](gpio-allocation.md)）
 - 開機時從 RTC 讀取時間，不依賴 BLE 對時
-- 若 BLE 連線則以 App 下發的 epoch 校正 RTC
+- 若 BLE 連線則以 App 下發的 epoch 校正 RTC（細節見 [`ble-time-sync-protocol.md §4.2`](ble-time-sync-protocol.md)）
+- 硬體驗證：smoke test envs `i2c-scan` / `rtc-demo`（見 `firmware/src_i2c_scan/` 與 `firmware/src_rtc_demo/`）
 
 ---
 
