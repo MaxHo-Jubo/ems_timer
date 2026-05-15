@@ -175,8 +175,14 @@ static void test_flag_history_summary_sets_bit_0x0800() {
     TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_HISTORY_SUMMARY, captureSnapshot(in).flags);
 }
 
+static void test_flag_ble_connected_sets_bit_0x1000() {
+    DisplaySnapshotInputs in;
+    in.bleConnected = true;
+    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_BLE_CONNECTED, captureSnapshot(in).flags);
+}
+
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 12 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 13 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -193,6 +199,7 @@ static void test_all_flags_on_combine_all_bits() {
     in.flashStateActive      = true;
     in.ventPreShown          = true;
     in.historySummaryMode    = true;
+    in.bleConnected          = true;
 
     const uint16_t expected = SNAP_FLAG_EPI_ARMED
                             | SNAP_FLAG_SHOCK_ARMED
@@ -205,18 +212,20 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_END_CONFIRM
                             | SNAP_FLAG_FLASH_ACTIVE
                             | SNAP_FLAG_VENT_PRE
-                            | SNAP_FLAG_HISTORY_SUMMARY;
+                            | SNAP_FLAG_HISTORY_SUMMARY
+                            | SNAP_FLAG_BLE_CONNECTED;
     TEST_ASSERT_EQUAL_UINT16(expected, captureSnapshot(in).flags);
 }
 
 static void test_all_flags_bit_masks_are_unique() {
-    // 確保 12 個 mask 沒有撞號（OR 全部應等於 set bit count = 12）
+    // 確保 13 個 mask 沒有撞號（OR 全部應等於 set bit count = 13）
     const uint16_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
                        | SNAP_FLAG_VENT_BACK_HINT | SNAP_FLAG_ALARMING_FLASH
                        | SNAP_FLAG_END_CONFIRM | SNAP_FLAG_FLASH_ACTIVE
-                       | SNAP_FLAG_VENT_PRE | SNAP_FLAG_HISTORY_SUMMARY;
+                       | SNAP_FLAG_VENT_PRE | SNAP_FLAG_HISTORY_SUMMARY
+                       | SNAP_FLAG_BLE_CONNECTED;
     // popcount
     int bits = 0;
     for (uint16_t m = all; m; m >>= 1) {
@@ -224,7 +233,7 @@ static void test_all_flags_bit_masks_are_unique() {
             bits++;
         }
     }
-    TEST_ASSERT_EQUAL_INT(12, bits);
+    TEST_ASSERT_EQUAL_INT(13, bits);
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -260,6 +269,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_flag_flash_active_sets_bit_0x0200);
     RUN_TEST(test_flag_vent_pre_sets_bit_0x0400);
     RUN_TEST(test_flag_history_summary_sets_bit_0x0800);
+    RUN_TEST(test_flag_ble_connected_sets_bit_0x1000);
 
     // Group 4: combine + uniqueness
     RUN_TEST(test_all_flags_on_combine_all_bits);

@@ -62,6 +62,7 @@ enum DisplaySnapshotFlag : uint16_t {
     SNAP_FLAG_FLASH_ACTIVE    = 0x0200,
     SNAP_FLAG_VENT_PRE        = 0x0400,
     SNAP_FLAG_HISTORY_SUMMARY = 0x0800,
+    SNAP_FLAG_BLE_CONNECTED   = 0x1000,  // Phase F MVP1：BLE client 連線中
 };
 
 
@@ -100,6 +101,7 @@ struct DisplaySnapshotInputs {
     bool flashStateActive      = false;
     bool ventPreShown          = false;
     bool historySummaryMode    = false;
+    bool bleConnected          = false;  // Phase F MVP1：g_client_connected 鏡射
 };
 
 
@@ -137,6 +139,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.flashStateActive)       s.flags |= SNAP_FLAG_FLASH_ACTIVE;
     if (in.ventPreShown)           s.flags |= SNAP_FLAG_VENT_PRE;
     if (in.historySummaryMode)     s.flags |= SNAP_FLAG_HISTORY_SUMMARY;
+    if (in.bleConnected)           s.flags |= SNAP_FLAG_BLE_CONNECTED;
 
     return s;
 }
