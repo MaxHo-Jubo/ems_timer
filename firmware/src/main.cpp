@@ -33,7 +33,7 @@
  *
  *   ❌ Phase D — Training 模式
  *   ❌ Phase E — 持久化 / 歷史紀錄（LittleFS partition + FIFO 覆蓋）
- *   ❌ Phase F — BLE 同步（NUS + JSON 過渡 / 配對碼）
+ *   🟡 Phase F — BLE 同步（NUS + JSON 過渡 / 配對碼）：MVP1 對時 + MVP2 dispatcher + Followup §11.1/§16.5 入口完成；MVP3 chunked data 真送待實機
  *   ❌ Phase G — 系統設定（亮度 / 系統音量 / 通氣音量 NVS）
  *   ❌ Phase H — 電源管理（螢幕常亮 / Deep Sleep）
  *
@@ -2044,6 +2044,13 @@ static DisplaySnapshot captureDisplaySnapshot() {
                         ? (EPI_CYCLE_MS - since) / 1000
                         : (since - EPI_CYCLE_MS) / 1000;
     }
+    // STEP 02.01: GLOBAL_SYNC AWAITING_INPUT 期間複用 countdownSec 帶配對碼剩餘秒
+    //   （drawSyncScreen 自行讀 expires_at_ms 渲染；此處只為觸發 memcmp 每秒 dedup miss）
+    if (globalState == GLOBAL_SYNC && g_sync_ctx.state == ems::SyncState::AWAITING_INPUT) {
+        const uint64_t now_ms = (uint64_t)millis();
+        const uint64_t exp_ms = g_sync_ctx.pairing_code.expires_at_ms;
+        in.countdownSec = (exp_ms > now_ms) ? (uint32_t)((exp_ms - now_ms) / 1000) : 0;
+    }
 
     // STEP 03: ventBeat — 6 秒通氣節奏目前秒
     if (ventStartMs != 0 && !ventPaused) {
@@ -2289,15 +2296,23 @@ static void drawSyncScreen() {
             break;
         }
         case ems::SyncState::AWAITING_INPUT: {
+            // SoT §16.4 配對碼畫面：標題 + 4 位大字 + 提示 + 剩餘秒數倒數
             display.setTextSize(1.2f, 1.2f);
-            drawCenteredText("請於網頁輸入", 30, COLOR_TEXT_PRIMARY);
+            drawCenteredText("App 配對碼", 30, COLOR_TEXT_PRIMARY);
             // 4 位配對碼大字（vlw size 2.5 ≈ 60px 等寬，足以遠距讀取）
             display.setTextSize(2.5f, 2.5f);
             display.setTextColor(COLOR_ACCENT_OK);
             display.setTextDatum(textdatum_t::middle_center);
             display.drawString(g_sync_ctx.pairing_code.digits, SCREEN_W / 2, SCREEN_H / 2);
+            // 提示與倒數（per-frame 由 captureDisplaySnapshot 覆寫 countdownSec 觸發每秒重繪）
             display.setTextSize(1.0f, 1.0f);
-            drawCenteredText("120 秒內有效", 210, COLOR_TEXT_MUTED);
+            drawCenteredText("請於 App 輸入", 180, COLOR_TEXT_MUTED);
+            const uint64_t now_ms = (uint64_t)millis();
+            const uint64_t exp_ms = g_sync_ctx.pairing_code.expires_at_ms;
+            const uint32_t remaining_sec = (exp_ms > now_ms) ? (uint32_t)((exp_ms - now_ms) / 1000) : 0;
+            char buf[32];
+            snprintf(buf, sizeof(buf), "剩餘 %u 秒", (unsigned)remaining_sec);
+            drawCenteredText(buf, 210, COLOR_TEXT_MUTED);
             break;
         }
         case ems::SyncState::AWAITING_MAIN_KEY: {
@@ -2317,28 +2332,41 @@ static void drawSyncScreen() {
             break;
         }
         case ems::SyncState::DONE: {
+            // SoT §16.5「同步完成 / 本案件已傳輸」
+            // DEMO 字樣：當前 SENDING 是 stub（0 chunks 立即 ACK），MVP3 真送後可移除
             display.setTextSize(1.5f, 1.5f);
-            drawCenteredText("同步完成", 50, COLOR_ACCENT_OK);
-            // 大字 OK（vlw 2.5x ASCII 與配對碼同字級）
-            display.setTextSize(2.5f, 2.5f);
-            display.setTextColor(COLOR_ACCENT_OK);
-            display.setTextDatum(textdatum_t::middle_center);
-            display.drawString("OK", SCREEN_W / 2, 140);
+            drawCenteredText("同步完成", 60, COLOR_ACCENT_OK);
+            display.setTextSize(1.2f, 1.2f);
+            drawCenteredText("本案件已傳輸", 130, COLOR_TEXT_PRIMARY);
             display.setTextSize(1.0f, 1.0f);
             drawCenteredText("（DEMO）", 210, COLOR_TEXT_MUTED);
             break;
         }
         case ems::SyncState::ERROR: {
+            // SoT §16.4 配對碼逾時 / §16.9 同步失敗 — dispatcher 不存原因，由 caller 看
+            // failure_count + expires_at_ms 兩個訊號分流（無法精確區分 30s 主鍵 timeout vs BLE 斷）
             display.setTextSize(1.5f, 1.5f);
-            drawCenteredText("同步失敗", 50, COLOR_ACCENT_ALERT);
+            const uint64_t now_ms = (uint64_t)millis();
+            const uint64_t exp_ms = g_sync_ctx.pairing_code.expires_at_ms;
+            const bool locked_out = g_sync_ctx.pairing_code.failure_count >= ems::PAIRING_MAX_FAILURES;
+            const bool expired    = (exp_ms > 0) && (exp_ms <= now_ms);
+            const char* title;
+            const char* detail;
+            if (locked_out) {
+                title  = "輸入錯誤鎖定";
+                detail = "請從案件總覽重試";
+            } else if (expired) {
+                title  = "配對碼已失效";
+                detail = "請重新產生";
+            } else {
+                title  = "同步失敗";
+                detail = "連線中斷";
+            }
+            drawCenteredText(title, 50, COLOR_ACCENT_ALERT);
             display.setTextSize(1.2f, 1.2f);
-            // dispatcher 不存原因 — 由 caller 看 failure_count 自行判定
-            const char* reason = (g_sync_ctx.pairing_code.failure_count >= ems::PAIRING_MAX_FAILURES)
-                               ? "輸入錯誤鎖定"
-                               : "連線中斷或逾時";
-            drawCenteredText(reason, 120, COLOR_TEXT_PRIMARY);
+            drawCenteredText(detail, 120, COLOR_TEXT_PRIMARY);
             display.setTextSize(1.0f, 1.0f);
-            drawCenteredText("即將回主選單", 200, COLOR_TEXT_MUTED);
+            drawCenteredText("即將回案件總覽", 200, COLOR_TEXT_MUTED);
             break;
         }
         case ems::SyncState::IDLE:
