@@ -103,6 +103,11 @@ static void test_history_scroll_offset_change_triggers_redraw_phase_e_regression
     ASSERT_FIELD_TRIGGERS_CHANGE(historyScrollOffset, 10);
 }
 
+// Phase F MVP2-Followup 回溯：OHCA 案件總覽 sub-menu cursor 移動 bug 同類別
+static void test_summary_submenu_cursor_change_triggers_redraw_phase_f_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(summarySubmenuCursor, 1);
+}
+
 // ============================================================
 //  Group 3: 每個 bool flag → 唯一 bit mask 對應
 //  （regression：新增 flag 但忘記分配 bit 或 bit 撞號）
@@ -261,6 +266,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_vent_beat_change_triggers_redraw);
     RUN_TEST(test_history_cursor_change_triggers_redraw_phase_e_regression);
     RUN_TEST(test_history_scroll_offset_change_triggers_redraw_phase_e_regression);
+    RUN_TEST(test_summary_submenu_cursor_change_triggers_redraw_phase_f_regression);
 
     // Group 3: bool flag → bit mask
     RUN_TEST(test_flag_epi_armed_sets_bit_0x0001);

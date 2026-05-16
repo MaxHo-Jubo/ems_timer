@@ -299,11 +299,9 @@ static GlobalState globalState = GLOBAL_MAIN_MENU;
 
 /** 主功能表 5 項（SoT V1 §3.1 封版）
  *
- * ⚠️ TODO（next session, tasks/phase-f-todo.md MVP2-Followup）：
- *   當前第 5 項「同步資料」**違反 SoT** — SoT §3.1 封版是「系統設定」，
- *   §11.1 規定同步入口在 OHCA 案件總覽（「同步至 App」+「傳輸資料」）。
- *   MVP2 為求驗證 dispatcher 端對端鏈路便宜行事用主選單入口；
- *   下次 session 還原為「系統設定」並把入口遷移到 drawOhcaSummary 的可游標 sub-menu。
+ * 同步入口位置：SoT §11.1 規定「同步至 App」在 OHCA 案件總覽 sub-menu，
+ * 不在主功能表（§10.4：案件結束鎖定後才可同步，屬個案級行為非裝置級全域功能）。
+ * 入口由 drawOhcaSummary 的 cursor sub-menu 觸發 GLOBAL_SYNC。
  */
 static const uint8_t MAIN_MENU_COUNT = 5;
 static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
@@ -311,7 +309,7 @@ static const char* const MAIN_MENU_LABELS[MAIN_MENU_COUNT] = {
     "6 秒通氣節奏",
     "訓練模式",
     "歷史紀錄",
-    "同步資料",  // TODO MVP2-Followup：還原「系統設定」，同步入口移 §11.1 案件總覽
+    "系統設定",
 };
 static uint8_t mainMenuCursor = 0;
 
@@ -379,6 +377,11 @@ static ems::TimeSyncState g_ts_state;  // 對時 state：只在 main loop task �
 //   多 task 呼叫會 race；遵守 ble_callback_non_blocking 將 BLE input enqueue 到 main loop）。
 static ems::SyncContext   g_sync_ctx;
 
+// 同步結束（DONE/ERROR → IDLE）後 globalState 拉回此值（SoT §16.5「自動回案件總覽」）。
+// 唯一寫入點：handleSummarySubmenuPrimary（且 re-entry guard 擋 globalState==GLOBAL_SYNC 自指）。
+// 預設 GLOBAL_MAIN_MENU 保險：若任何路徑進 SYNC 沒設此值，至少回到主功能表不卡死。
+static GlobalState        g_sync_return_to = GLOBAL_MAIN_MENU;
+
 // ===== Phase E：歷史紀錄 UI =====
 static case_meta_t historyCases[EMS_STORAGE_OHCA_CAP];
 static uint16_t historyCount        = 0;
@@ -415,6 +418,36 @@ static uint8_t          backfillCursor     = 0;  // 子選單 cursor
 static uint8_t          backfillCount      = 1;  // 1..suppCountMax
 static uint32_t         backfillSuccessShownMs = 0;  // 顯示「成功」起點
 static const uint32_t   BACKFILL_SUCCESS_MS = 2000;
+
+/** OHCA 案件總覽 sub-menu（SoT V1 §11.1）
+ *
+ * SoT §11.1 完整定義 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 事件時間軸 / 同步至 App / 傳輸資料）。
+ * 當前實作 SUMMARY_SUBMENU_COUNT 項；補項時 enum 接續加，drawOhcaSummary cursor 上限同步擴。
+ *
+ * 歷史模式（historySummaryMode）下 Timeline 子畫面未實作 → 該項以停用色顯示，
+ * 主鍵按下不轉子畫面（cursor 仍可移動以查 sub-menu 範圍）。
+ */
+enum SummarySubmenuItem : uint8_t {
+    SUMMARY_SUBMENU_TIMELINE = 0,  // 事件時間軸
+    SUMMARY_SUBMENU_SYNC     = 1,  // 同步至 App（GLOBAL_SYNC）
+    SUMMARY_SUBMENU_COUNT
+};
+// 範圍 0..SUMMARY_SUBMENU_COUNT-1；OHCA 案件結束 SUMMARY 與歷史 SUMMARY 共用同一 cursor。
+static uint8_t summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
+
+// drawOhcaSummary sub-menu 視覺常數（hoist 至 file scope 讓 static_assert 可見）
+constexpr int16_t SUMMARY_SUBMENU_ROW_H          = 24;
+constexpr int16_t SUMMARY_SUBMENU_LEFT_PAD       = 28;
+constexpr int16_t SUMMARY_SUBMENU_CURSOR_GLYPH_W = 16;  // ">" 游標符號左偏寬度
+constexpr int16_t SUMMARY_SUBMENU_BOTTOM_MARGIN  = 8;   // sub-menu 末列距底部 hint anchor 像素
+
+// 編譯期保護：補項到 SUMMARY_SUBMENU_COUNT 時 SUBMENU_Y_BASE 不可變負（會壓出畫面頂端）。
+// 若觸發此 assert：縮 SUMMARY_SUBMENU_ROW_H、改 layout 或分頁顯示（vlw 24px bitmap 無法縮字）。
+static_assert(
+    SCREEN_H - OHCA_COUNTER_BOTTOM - SUMMARY_SUBMENU_BOTTOM_MARGIN
+        - SUMMARY_SUBMENU_ROW_H * SUMMARY_SUBMENU_COUNT >= 0,
+    "OHCA SUMMARY sub-menu rows overflow screen — see SoT V1 §11.1 layout note"
+);
 
 /** Timeline 子畫面 scroll offset */
 static uint16_t timelineScrollOffset = 0;
@@ -587,6 +620,7 @@ void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms,
                   float subtitleSize = FLASH_SUBTITLE_SIZE_DEFAULT);
 void drawPlaceholder(const char* title, const char* phase);
 void drawHistoryList();
+static void handleSummarySubmenuPrimary();
 void drawDrugMenu();
 void drawBackfillType();
 void drawBackfillCount();
@@ -877,7 +911,11 @@ void loop() {
             ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::CHUNK_ACKED, millis());
         }
         if (cur_sync_state == ems::SyncState::IDLE && prev_sync_state != ems::SyncState::IDLE) {
-            globalState = GLOBAL_MAIN_MENU;  // DONE/ERROR 顯示完自然 → IDLE → 退主選單
+            // SoT §16.5：「同步完成 → 顯示 1 秒 → 自動回案件總覽」
+            // caller globalState 由 handleSummarySubmenuPrimary 在進 SYNC 前記入 g_sync_return_to
+            // （GLOBAL_OHCA 結束鎖定 SUMMARY / GLOBAL_HISTORY_PLACEHOLDER 歷史 SUMMARY）。
+            // ERROR → IDLE 也走此路徑（SoT §16.9 同步失敗亦留在原案件總覽供重試）。
+            globalState = g_sync_return_to;
         }
         prev_sync_state = g_sync_ctx.state;
     }
@@ -1034,14 +1072,8 @@ void onShortPress(uint8_t btnIdx) {
                         historySummaryMode  = false;
                         globalState         = GLOBAL_HISTORY_PLACEHOLDER;
                         break;
-                    case 4:  // Phase F MVP2：同步資料（替代 Phase G 系統設定 placeholder 位置）
-                        globalState = GLOBAL_SYNC;
-                        ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::START, millis());
-                        // 進入時若已連線：手動推進到 AWAITING_INPUT（連線旗標已是 true，loop observer 的邊緣偵測不會觸發）
-                        if (g_ble_client_connected) {
-                            ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::BLE_CONNECTED, millis());
-                        }
-                        Serial.printf("[SYNC] enter state=%u\n", (unsigned)g_sync_ctx.state);
+                    case 4:  // 系統設定（Phase G placeholder）
+                        globalState = GLOBAL_SETTINGS_PLACEHOLDER;
                         break;
                 }
                 break;
@@ -1128,11 +1160,28 @@ void onShortPress(uint8_t btnIdx) {
 
     // ===== Phase E：歷史紀錄（已實作，覆蓋共用佔位處理） =====
     if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
-        // STEP 01: SUMMARY 子畫面 — BACK 回列表
+        // STEP 01: SUMMARY 子畫面 — sub-menu cursor + BACK 回列表（SoT §10.4「可同步至 App」涵蓋歷史）
         if (historySummaryMode) {
-            if (btnIdx == BTN_BACK) {
-                historySummaryMode = false;
-                eventCount = 0;     // 清掉 history 載回來的事件，避免汙染下個 OHCA case
+            switch (btnIdx) {
+                case BTN_UP:
+                    summarySubmenuCursor =
+                        (summarySubmenuCursor + SUMMARY_SUBMENU_COUNT - 1) % SUMMARY_SUBMENU_COUNT;
+                    break;
+                case BTN_DOWN:
+                    summarySubmenuCursor =
+                        (summarySubmenuCursor + 1) % SUMMARY_SUBMENU_COUNT;
+                    break;
+                case BTN_PRIMARY:
+                    handleSummarySubmenuPrimary();
+                    break;
+                case BTN_BACK:
+                    historySummaryMode = false;
+                    eventCount = 0;     // 清掉 history 載回來的事件，避免汙染下個 OHCA case
+                    break;
+                default:
+                    // EPI/SHOCK/RECORD/POWER 在歷史 SUMMARY 無作用，留 trace 避免「裝置死當」誤判
+                    Serial.printf("[HIST_SUMMARY] ignored btn=%u\n", btnIdx);
+                    break;
             }
             return;
         }
@@ -1167,7 +1216,8 @@ void onShortPress(uint8_t btnIdx) {
                                                   events, MAX_EVENTS, &loaded);
                     if (ok) {
                         eventCount = loaded;
-                        historySummaryMode = true;
+                        historySummaryMode   = true;
+                        summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
                         Serial.printf("[STORAGE] loaded case %s (%u events)\n",
                                       historyCases[historyCursor].id,
                                       loaded);
@@ -1448,13 +1498,13 @@ void onShortPress(uint8_t btnIdx) {
             // STEP 03: LOCKED 主鍵 — 翻 SUMMARY
             if (ohcaState == OHCA_STATE_LOCKED) {
                 dispatchOhcaEvent(OHCA_EVT_TO_SUMMARY, 0);
-                summaryScrollOffset = 0;
+                summaryScrollOffset  = 0;
+                summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
                 return;
             }
-            // STEP 04: SUMMARY 主鍵 — 進 Timeline（對齊 demo V1 §11.13 MAIN || DOWN）
+            // STEP 04: SUMMARY 主鍵 — 觸發 sub-menu 當前 cursor 對應行為（SoT V1 §11.1）
             if (ohcaState == OHCA_STATE_SUMMARY) {
-                ohcaSubState         = SUBSTATE_TIMELINE;
-                timelineScrollOffset = 0;
+                handleSummarySubmenuPrimary();
                 return;
             }
             break;
@@ -1464,9 +1514,8 @@ void onShortPress(uint8_t btnIdx) {
                 // 3 項循環：CONFIRM(0) ↔ BACKFILL(1) ↔ CANCEL(2)
                 endCheckCursor = (EndCheckCursor)((endCheckCursor + 2) % 3);
             } else if (ohcaState == OHCA_STATE_SUMMARY) {
-                // Phase B: SUMMARY 上鍵 → 進 Timeline 子畫面
-                ohcaSubState         = SUBSTATE_TIMELINE;
-                timelineScrollOffset = 0;
+                summarySubmenuCursor =
+                    (summarySubmenuCursor + SUMMARY_SUBMENU_COUNT - 1) % SUMMARY_SUBMENU_COUNT;
             }
             break;
 
@@ -1474,8 +1523,7 @@ void onShortPress(uint8_t btnIdx) {
             if (ohcaState == OHCA_STATE_END_CHECK && !endConfirmShown) {
                 endCheckCursor = (EndCheckCursor)((endCheckCursor + 1) % 3);
             } else if (ohcaState == OHCA_STATE_SUMMARY) {
-                ohcaSubState         = SUBSTATE_TIMELINE;
-                timelineScrollOffset = 0;
+                summarySubmenuCursor = (summarySubmenuCursor + 1) % SUMMARY_SUBMENU_COUNT;
             }
             break;
 
@@ -1981,8 +2029,9 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.globalState     = (uint8_t)globalState;
     in.ohcaState       = (uint8_t)ohcaState;
     in.ohcaSubState    = (uint8_t)ohcaSubState;
-    in.mainMenuCursor  = mainMenuCursor;
-    in.backfillCursor  = backfillCursor;
+    in.mainMenuCursor       = mainMenuCursor;
+    in.backfillCursor       = backfillCursor;
+    in.summarySubmenuCursor = summarySubmenuCursor;
     in.ventVolume      = ventVolume;
     in.ventPaused      = ventPaused;
     in.historyCursor       = historyCursor;
@@ -2710,6 +2759,59 @@ void drawHistoryList() {
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
+/**
+ * SUMMARY sub-menu 主鍵分派（SoT V1 §11.1）。
+ *
+ * 共用於 OHCA 結束鎖定後 SUMMARY（globalState=GLOBAL_OHCA）與歷史模式 SUMMARY
+ * （globalState=GLOBAL_HISTORY_PLACEHOLDER + historySummaryMode）。
+ *
+ * 同步返回語意（SoT §16.5「自動回案件總覽」、§16.9 失敗亦留原處）：
+ *   進 GLOBAL_SYNC 前記下 caller globalState 到 g_sync_return_to，
+ *   loop observer 於 DONE/ERROR → IDLE 邊緣讀此值拉回原案件總覽。
+ */
+static void handleSummarySubmenuPrimary() {
+    switch (summarySubmenuCursor) {
+        // STEP 01: 事件時間軸（歷史模式子畫面未實作 → noop + trace）
+        case SUMMARY_SUBMENU_TIMELINE:
+            if (historySummaryMode) {
+                Serial.println("[SUMMARY] timeline disabled in history mode (noop)");
+                return;
+            }
+            ohcaSubState         = SUBSTATE_TIMELINE;
+            timelineScrollOffset = 0;
+            return;
+        // STEP 02: 同步至 App（SoT §10.4 / §11.1 入口；§16.5 結束自動回案件總覽）
+        case SUMMARY_SUBMENU_SYNC:
+            // STEP 02.01: re-entry guard — 已在 GLOBAL_SYNC 期間別覆寫 return_to，
+            //   否則 loop observer DONE/ERROR → IDLE 邊緣會把 caller SUMMARY 永久遺失。
+            if (globalState != GLOBAL_SYNC) {
+                g_sync_return_to = globalState;
+            } else {
+                Serial.println("[SYNC] re-entry detected, keep g_sync_return_to");
+            }
+            globalState = GLOBAL_SYNC;
+            ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::START, millis());
+            if (g_ble_client_connected) {
+                ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::BLE_CONNECTED, millis());
+            }
+            // STEP 02.02: dispatch rollback — dispatcher 為 void 介面，若 START 被狀態機拒絕
+            //   state 仍是 IDLE → 畫面已切 GLOBAL_SYNC 但流程沒走 = 卡死。回退到 return_to。
+            if (g_sync_ctx.state == ems::SyncState::IDLE) {
+                Serial.printf("[SYNC] dispatcher rejected START, rollback to %u\n",
+                              (unsigned)g_sync_return_to);
+                globalState = g_sync_return_to;
+                return;
+            }
+            Serial.printf("[SYNC] enter state=%u (return_to=%u)\n",
+                          (unsigned)g_sync_ctx.state, (unsigned)g_sync_return_to);
+            return;
+        // STEP 03: 未知 cursor 值（enum 擴充忘加 case 防呆）
+        default:
+            Serial.printf("[SUMMARY] unhandled cursor=%u\n", summarySubmenuCursor);
+            return;
+    }
+}
+
 void drawOhcaSummary() {
     // STEP 01: 用 caseSummary 聚合（V1 §11）
     //   - 現場案件結束流程：caseStartEpochMs 為對時後的案件起點 epoch；未對時則 0
@@ -2825,17 +2927,37 @@ void drawOhcaSummary() {
     }
     display.drawString(buf, COL_VAL_X, y);
 
-    // STEP 04: 底部 hint
-    //   demo V1 §11.13: 「主鍵 / ▼ = Timeline　│　返回 = 主功能表」
-    //   - 現場結束流程：保留 ASCII "Timeline" 字面對齊 demo，去「主功能表」省字寬避免左切
-    //     （vlw 24px bitmap 無法縮小字級，整列縮字得擴字型子集）
-    //   - 歷史進入：Timeline 子畫面未實作 → 隱藏主鍵提示
-    if (historySummaryMode) {
-        drawCenteredText("返回",
-                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
-    } else {
-        drawCenteredText("主鍵 Timeline　返回",
-                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    // STEP 04: sub-menu cursor 列（SoT V1 §11.1，視覺常數見 file scope SUMMARY_SUBMENU_*）
+    //   歷史模式（historySummaryMode）下 Timeline 子畫面未實作 → Timeline 項顯示停用色，
+    //   按主鍵 noop（handleSummarySubmenuPrimary 直接 return）；同步項仍可用。
+    const int16_t SUBMENU_Y_BASE = SCREEN_H - OHCA_COUNTER_BOTTOM
+                                   - SUMMARY_SUBMENU_BOTTOM_MARGIN
+                                   - SUMMARY_SUBMENU_ROW_H * SUMMARY_SUBMENU_COUNT;
+    const char* const SUBMENU_LABELS[SUMMARY_SUBMENU_COUNT] = {
+        "事件時間軸",  // SUMMARY_SUBMENU_TIMELINE
+        "同步至 App",  // SUMMARY_SUBMENU_SYNC
+    };
+
+    display.setTextSize(1);
+    for (uint8_t i = 0; i < SUMMARY_SUBMENU_COUNT; ++i) {
+        const int16_t rowY    = SUBMENU_Y_BASE + i * SUMMARY_SUBMENU_ROW_H;
+        const bool    cursor  = (i == summarySubmenuCursor);
+        const bool    disabled = (i == SUMMARY_SUBMENU_TIMELINE && historySummaryMode);
+
+        uint16_t color;
+        if (disabled) {
+            color = cursor ? COLOR_TEXT_MUTED : COLOR_TEXT_DIM;
+        } else {
+            color = cursor ? COLOR_ACCENT_OK : COLOR_TEXT_PRIMARY;
+        }
+
+        display.setTextColor(color);
+        display.setTextDatum(textdatum_t::middle_left);
+        display.drawString(cursor ? ">" : " ",
+                           SUMMARY_SUBMENU_LEFT_PAD - SUMMARY_SUBMENU_CURSOR_GLYPH_W,
+                           rowY + SUMMARY_SUBMENU_ROW_H / 2);
+        display.drawString(SUBMENU_LABELS[i],
+                           SUMMARY_SUBMENU_LEFT_PAD, rowY + SUMMARY_SUBMENU_ROW_H / 2);
     }
 }
 

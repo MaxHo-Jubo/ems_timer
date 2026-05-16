@@ -37,21 +37,27 @@
 - ✅ MVP2 W3 `drawSyncScreen` 6 個 state TFT 渲染（4 位大字配對碼、ERROR reason 分流）
 - ✅ 配套：主選單超界 fix + vlw 補 29 個 MVP2 新字（258 glyphs，Flash 61.3%）
 
-**⚠️ MVP2 已知未對齊 SoT 項目（下次 session 處理）**：
-- ❌ **MVP2-Followup**（task #20）：主選單第 5 項「同步資料」違反 SoT §3.1 封版（應為「系統設定」）
-  - SoT §11.1 規定同步入口在 OHCA 案件總覽選單（「同步至 App」+「傳輸資料」），不是主選單獨立項
-  - SoT §10.4 規定案件結束鎖定後才「可同步至 App」，與裝置層級全域功能語意不同
-  - 修法：還原 MAIN_MENU_LABELS[4]=「系統設定」、`drawOhcaSummary` 加可游標 sub-menu、同步入口從案件總覽進入
-  - 已加 TODO 註解於 `firmware/src/main.cpp` MAIN_MENU_LABELS 上方
+**已完成（Phase F MVP2-Followup，2026-05-16）**：
+- ✅ **task #20 對齊 SoT §3.1 / §10.4 / §11.1 / §16.5**：
+  · 還原 `MAIN_MENU_LABELS[4] = "系統設定"`、主選單 case 4 → `GLOBAL_SETTINGS_PLACEHOLDER`
+  · 新增 `SummarySubmenuItem` enum + `summarySubmenuCursor`（最小集 2 項：事件時間軸 / 同步至 App）
+  · `drawOhcaSummary` 底部 hint 改可游標 sub-menu 列；歷史模式 Timeline 項顯示停用色 noop
+  · `handleSummarySubmenuPrimary()` 共用 helper：OHCA + 歷史模式 SUMMARY 都走同一入口
+  · 同步入口從 OHCA SUMMARY sub-menu 第 2 項觸發 `globalState=GLOBAL_SYNC + dispatch START`（+已連線 BLE_CONNECTED）
+  · 新增 `g_sync_return_to` 記錄 caller globalState；loop observer DONE/ERROR → IDLE 邊緣拉回原案件總覽（對齊 SoT §16.5「自動回案件總覽」/§16.9 失敗亦留原處）
+  · 編譯 Flash 61.3% / RAM 27.5%；native tests 374/375 PASSED（test_storage_hw 為既有 baseline ERROR）
 
 **🎯 韌體面已盡（無實機不可繼續）**：剩 F-2 NimBLE 整合層 / F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8 全部需要 ESP32 實機 + NimBLE-Arduino + nRF Connect + 網頁端三方協作驗證。
 
 **Resume 時可開工**（下次 session）：
-1. **MVP2-Followup** task #20：同步入口遷移到案件總覽，還原系統設定 placeholder（**先做**，對齊 SoT 後再進新功能）
-2. **MVP3** chunked data 真送（移除 SENDING stub，整合 case_sync_serializer + ble_chunker；SENDING 入口 caseSummary_build → serialize → chunker → notify + 等 ACK）
-3. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
-4. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
-5. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
+1. **MVP3** chunked data 真送（移除 SENDING stub，整合 case_sync_serializer + ble_chunker；SENDING 入口 caseSummary_build → serialize → chunker → notify + 等 ACK + 對齊 §16.9 失敗/§16.8 中斷重試）
+2. **SUMMARY sub-menu 擴充**（後續 Phase）：補齊 SoT §11.1 完整 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 傳輸資料 → 各自子畫面）。註：完整 6 項 + 統計區一頁裝不下 320×240（vlw 24px bitmap 無法縮小），需分頁或縮統計區設計。`SUMMARY_SUBMENU_*` 視覺常數已 hoist 到 file scope + static_assert 防溢出。
+3. **可測試性重構**（pr-test-analyzer 建議）：抽 `decideSummaryAction(cursor, historyMode, bleConnected) → enum action` 純函式進 lib，讓 dispatch 邏輯可 unit test（目前 handleSummarySubmenuPrimary 跟所有 main.cpp UI logic 一樣綁 static state 無法 isolate）
+4. **GlobalState narrow**（type-design-analyzer 建議）：`g_sync_return_to` 改用 `enum SyncReturnTo { SYNC_RETURN_OHCA, SYNC_RETURN_HISTORY, SYNC_RETURN_MAIN }` + 單一 setter，避免 `GLOBAL_SYNC` 自指等非法值。當前已加 re-entry guard 擋自指，但 narrow type 是更根本的修法
+5. **dispatcher 改 bool accepted**（silent-failure-hunter S2）：`sync_dispatcher_dispatch` 改回 bool / out-param，呼叫端能感知 reject 而不用後驗 state。屬跨檔大改，留獨立 PR
+6. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
+7. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
+8. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
 
 ## 🎯 Resume 指引（rate-limit 後）
 
