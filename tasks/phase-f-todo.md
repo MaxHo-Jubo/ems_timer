@@ -37,15 +37,34 @@
 - ✅ MVP2 W3 `drawSyncScreen` 6 個 state TFT 渲染（4 位大字配對碼、ERROR reason 分流）
 - ✅ 配套：主選單超界 fix + vlw 補 29 個 MVP2 新字（258 glyphs，Flash 61.3%）
 
-**已完成（Phase F MVP2-Followup，2026-05-16）**：
-- ✅ **task #20 對齊 SoT §3.1 / §10.4 / §11.1 / §16.5**：
-  · 還原 `MAIN_MENU_LABELS[4] = "系統設定"`、主選單 case 4 → `GLOBAL_SETTINGS_PLACEHOLDER`
-  · 新增 `SummarySubmenuItem` enum + `summarySubmenuCursor`（最小集 2 項：事件時間軸 / 同步至 App）
-  · `drawOhcaSummary` 底部 hint 改可游標 sub-menu 列；歷史模式 Timeline 項顯示停用色 noop
-  · `handleSummarySubmenuPrimary()` 共用 helper：OHCA + 歷史模式 SUMMARY 都走同一入口
-  · 同步入口從 OHCA SUMMARY sub-menu 第 2 項觸發 `globalState=GLOBAL_SYNC + dispatch START`（+已連線 BLE_CONNECTED）
-  · 新增 `g_sync_return_to` 記錄 caller globalState；loop observer DONE/ERROR → IDLE 邊緣拉回原案件總覽（對齊 SoT §16.5「自動回案件總覽」/§16.9 失敗亦留原處）
-  · 編譯 Flash 61.3% / RAM 27.5%；native tests 374/375 PASSED（test_storage_hw 為既有 baseline ERROR）
+**已完成（Phase F MVP2-Followup，2026-05-16，commit `fba6007`，已 push origin）**：
+
+核心改動（對齊 SoT §3.1 / §10.4 / §11.1 / §16.5 / §16.9）：
+- ✅ 還原 `MAIN_MENU_LABELS[4] = "系統設定"`、主選單 case 4 → `GLOBAL_SETTINGS_PLACEHOLDER`
+- ✅ 新增 `SummarySubmenuItem` enum + `summarySubmenuCursor`（最小集 2 項：事件時間軸 / 同步至 App）
+- ✅ `drawOhcaSummary` 底部 hint 改可游標 sub-menu 列；歷史模式 Timeline 項顯示停用色 noop
+- ✅ `handleSummarySubmenuPrimary()` 共用 helper：OHCA + 歷史模式 SUMMARY 都走同一入口
+- ✅ 同步入口從 OHCA SUMMARY sub-menu 第 2 項觸發 `globalState=GLOBAL_SYNC + dispatch START`（+已連線 BLE_CONNECTED）
+- ✅ 新增 `g_sync_return_to` 記錄 caller globalState；loop observer DONE/ERROR → IDLE 邊緣拉回原案件總覽（SoT §16.5「自動回案件總覽」/ §16.9 失敗亦回原處）
+
+POST-COMMIT-REVIEW 5 步驟（CLAUDE.md mandatory）：
+- ✅ Step 1 eslint — C++ 專案無 .eslintrc，跳過
+- ✅ Step 2 `/simplify`（3 agent reuse/quality/efficiency 平行）抓 6 finding 全修進 amend：
+  · CRITICAL：DisplaySnapshot 缺 `summarySubmenuCursor` 欄位 → 補欄位 + input + 映射 + L2 regression test `test_summary_submenu_cursor_change_triggers_redraw_phase_f_regression`
+  · CRITICAL：`handleSummarySubmenuPrimary` JSDoc stale 改寫
+  · 補 STEP 01/02 註解、drawOhcaSummary STEP 04 註解限定 historySummaryMode、magic `16` 抽 `SUMMARY_SUBMENU_CURSOR_GLYPH_W`
+- ✅ Step 3 pr-reviewer lite — **品質評分 28/30** 🟢（Magic Number 4 / 邏輯註解一致 5 / 函式註解 5 / 變數註解 4 / 註解錯字 5 / 系統穩定 5）
+- ✅ Step 4 `/pr-review-toolkit:review-pr`（5 agent code/comment/silent-failure/test/type 平行）抓 7 finding 全修：
+  · CRITICAL C1：`g_sync_return_to` re-entry guard（擋 globalState==GLOBAL_SYNC 自指）
+  · CRITICAL C2：dispatcher START 拒絕 rollback（dispatch 後檢查 state，仍 IDLE 即回 `g_sync_return_to`）
+  · IMPORTANT I1/I2/I3：3 個 Serial trace（helper default / Timeline 歷史 noop / 歷史 SUMMARY default break）
+  · IMPORTANT U1：`SUMMARY_SUBMENU_*` 視覺常數 hoist 至 file scope + `static_assert` 防 SUBMENU_Y_BASE 溢出
+  · IMPORTANT comment-analyzer：`g_sync_return_to` 註解鎖定唯一寫入點
+- ✅ Step 5 macOS 通知
+
+驗證：
+- 編譯 Flash 61.4% / RAM 27.5%
+- Native tests **375/376 PASSED**（+1 新 regression test；test_storage_hw 為既有 baseline ERROR 不變）
 
 **🎯 韌體面已盡（無實機不可繼續）**：剩 F-2 NimBLE 整合層 / F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8 全部需要 ESP32 實機 + NimBLE-Arduino + nRF Connect + 網頁端三方協作驗證。
 
