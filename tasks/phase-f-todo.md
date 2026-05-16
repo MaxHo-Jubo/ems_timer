@@ -66,6 +66,41 @@ POST-COMMIT-REVIEW 5 步驟（CLAUDE.md mandatory）：
 - 編譯 Flash 61.4% / RAM 27.5%
 - Native tests **375/376 PASSED**（+1 新 regression test；test_storage_hw 為既有 baseline ERROR 不變）
 
+**已完成（Phase F MVP2-Followup A+B，2026-05-16，commits `aabb891` + `4d7943d`，已 push origin）**：
+
+A: drawSyncScreen 文字對齊 SoT §16.4/§16.5
+- ✅ AWAITING_INPUT「App 配對碼 / 大字 / 請於 App 輸入 / 剩餘 N 秒」（含倒數，每秒重繪）
+- ✅ ERROR 分流 4 路：lockout / expired / 啟動失敗 / 連線中斷
+- ✅ DONE「同步完成 / 本案件已傳輸」（含 `TODO[phase-f-mvp3-cleanup]` DEMO 字樣移除標記）
+- ✅ main.cpp banner Phase F 從 ❌ → 🟡 反映實際進度
+
+B: 同步狀態持久化對齊 SoT §11.1/§16.6
+- ✅ `case_meta_t.synced_at_ms` 新欄位（INDEX_VERSION 1→2，向後相容）
+- ✅ `storage_set_case_synced_at()` 新 lib API + 3 native tests（H1-H3）
+- ✅ `ems::pairing_remaining_sec()` 新 helper（替代雙處重複算式）+ 5 native tests
+- ✅ main.cpp dispatcher SENDING→DONE 邊緣寫回 storage（嚴格 prev==SENDING forward-safety）
+- ✅ drawOhcaSummary 加「同步狀態：App未同步/已同步」+「同步時間：HH:MM」（未對時不顯示時間避免誤導）
+- ✅ drawHistoryList 每筆加「同」標記（vlw 既有字）
+- ✅ persist 失敗時 caller reset g_current_case_synced_at_ms + Serial WARN（UI 與 disk 一致）
+
+POST-COMMIT-REVIEW 5 步驟（全跑）：
+- ✅ Step 2 /simplify（3 agent）抓 4 finding 修：pairing_remaining_sec 抽 helper / magic 28/14 / 未對時不顯示 HH:MM / else if 排他
+- ✅ Step 3 pr-reviewer lite — **品質評分 26/30 → 27/30** 🟢
+- ✅ Step 4 review-pr（5 agent）抓 8 finding 修：
+  · CRITICAL else if 排他 = SYNC countdown dead code（comment-analyzer 抓到 simplify 引入的真 bug）
+  · CRITICAL storage_list n=0 silent + g_current_case_synced_at_ms 寫但 disk 未持久（UI/disk 不一致風險）
+  · CRITICAL pairing_remaining_sec 無 unit test → 補 5 cases
+  · IMPORTANT historyCases mirror miss trace / ERROR 第四路「啟動失敗」/ DEMO TODO marker / DONE 嚴格 prev==SENDING
+- ✅ Step 5 macOS 通知
+
+驗證：Flash 61.4% / native tests 383/384 PASSED（+5 remaining_sec +3 H1-H3；test_storage_hw baseline ERROR 不變）
+
+**新增 followup（review chain 抓出大重構機會，超本 task scope）**：
+- type-design 三大 refactor：
+  1. `case_meta_t.synced_at_ms` 拆 `struct SyncStamp { bool synced; uint64_t epoch_ms; }` 或限制 EPOCH 下界
+  2. `g_sync_target_case_id` + `g_sync_target_case_type` 封 `struct SyncTarget` + chokepoint setter
+  3. 移除 `g_current_case_synced_at_ms` mirror，drawOhcaSummary 直接走 single source of truth（s_state.cases）
+
 **🎯 韌體面已盡（無實機不可繼續）**：剩 F-2 NimBLE 整合層 / F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8 全部需要 ESP32 實機 + NimBLE-Arduino + nRF Connect + 網頁端三方協作驗證。
 
 **Resume 時可開工**（下次 session）：
@@ -74,9 +109,11 @@ POST-COMMIT-REVIEW 5 步驟（CLAUDE.md mandatory）：
 3. **可測試性重構**（pr-test-analyzer 建議）：抽 `decideSummaryAction(cursor, historyMode, bleConnected) → enum action` 純函式進 lib，讓 dispatch 邏輯可 unit test（目前 handleSummarySubmenuPrimary 跟所有 main.cpp UI logic 一樣綁 static state 無法 isolate）
 4. **GlobalState narrow**（type-design-analyzer 建議）：`g_sync_return_to` 改用 `enum SyncReturnTo { SYNC_RETURN_OHCA, SYNC_RETURN_HISTORY, SYNC_RETURN_MAIN }` + 單一 setter，避免 `GLOBAL_SYNC` 自指等非法值。當前已加 re-entry guard 擋自指，但 narrow type 是更根本的修法
 5. **dispatcher 改 bool accepted**（silent-failure-hunter S2）：`sync_dispatcher_dispatch` 改回 bool / out-param，呼叫端能感知 reject 而不用後驗 state。屬跨檔大改，留獨立 PR
-6. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
-7. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
-8. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
+6. **type-design 三大 refactor**（review-pr type-design-analyzer）：`SyncStamp` struct / `SyncTarget` chokepoint / 移除 `g_current_case_synced_at_ms` mirror — 改善型別表達正交概念
+7. **SoT §16.7 再次同步確認 dialog**（task B6 拆出未做）：已同步案件再按同步 → 「此案件已同步 / 是否再次同步？」確認 dialog → 主鍵=進 SYNC / 返回=取消
+8. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
+9. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
+10. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
 
 ## 🎯 Resume 指引（rate-limit 後）
 
