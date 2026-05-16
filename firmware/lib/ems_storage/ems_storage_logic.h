@@ -43,8 +43,11 @@ namespace ems {
 /** events.bin schema 版本 */
 #define EMS_STORAGE_BIN_VERSION     1
 
-/** index.json schema 版本 */
-#define EMS_STORAGE_INDEX_VERSION   1
+/** index.json schema 版本
+ *  v1 → v2：加 `synced_at_ms` 欄位（SoT §16.6 同步狀態持久化）。向後相容：v1 載入時
+ *  缺 key 取 default 0 = 未同步。寫入端統一寫 v2。
+ */
+#define EMS_STORAGE_INDEX_VERSION   2
 
 /** 單筆 event 在 wire 上的固定寬度（含 reserved padding，跨 compiler 穩定） */
 #define EMS_STORAGE_WIRE_EVENT_SIZE 24
@@ -112,6 +115,8 @@ typedef struct {
                                             //   V1 §11.4 未要求細分
     uint16_t event_count;
     uint8_t  bin_v;                         // events.bin schema 版本
+    uint64_t synced_at_ms;                  // SoT §16.6 同步時間 epoch ms（0 = 未同步）；
+                                            //   index v1 載入時缺 key 預設 0 = 未同步
 } case_meta_t;
 
 /** EPI 總數聚合（對齊 ohca_case_summary_t::epi_total 定義：local + pre_handover + pure_supp） */
@@ -301,6 +306,21 @@ bool storage_load_events(IStorageBackend*    be,
                          ems_event_t*        out_events,
                          uint16_t            out_max,
                          uint16_t*           out_count);
+
+/**
+ * 標記指定 case 已同步至 App（SoT §16.6 同步狀態持久化）。
+ * 更新 in-memory s_state 並 persist index.json。events.bin 不動。
+ *
+ * @param be              backend
+ * @param type            案件類型
+ * @param id              10 位 zero-padded id 字串
+ * @param synced_at_ms    同步時間 epoch ms（0 = 未同步；caller 通常傳 millis()）
+ * @return true 成功；false = id 不存在 / persist 失敗
+ */
+bool storage_set_case_synced_at(IStorageBackend*    be,
+                                storage_case_type_t type,
+                                const char*         id,
+                                uint64_t            synced_at_ms);
 
 /** 刪除指定 id 的案件（檔案 + index entry） */
 bool storage_delete(IStorageBackend*    be,

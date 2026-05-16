@@ -382,6 +382,17 @@ static ems::SyncContext   g_sync_ctx;
 // 預設 GLOBAL_MAIN_MENU 保險：若任何路徑進 SYNC 沒設此值，至少回到主功能表不卡死。
 static GlobalState        g_sync_return_to = GLOBAL_MAIN_MENU;
 
+// SoT §16.6 同步狀態目標 — 進 SYNC 前由 handleSummarySubmenuPrimary 記下；
+// SENDING → DONE 邊緣由 loop observer 呼叫 storage_set_case_synced_at 寫回。
+// 空字串 = 無 target（fallback：跳過 storage 寫入）。
+static char                  g_sync_target_case_id[EMS_STORAGE_ID_LEN] = {};
+static storage_case_type_t   g_sync_target_case_type = EMS_CASE_TYPE_OHCA;
+
+// drawOhcaSummary 顯示「同步狀態 / 同步時間」用的當前 case 同步時戳（epoch ms，0 = 未同步）。
+// OHCA 現場模式：dispatcher DONE 邊緣寫入 / 案件啟動時 reset 0。
+// 歷史模式：drawOhcaSummary 改從 historyCases[historyCursor].synced_at_ms 直接讀。
+static uint64_t              g_current_case_synced_at_ms = 0;
+
 // ===== Phase E：歷史紀錄 UI =====
 static case_meta_t historyCases[EMS_STORAGE_OHCA_CAP];
 static uint16_t historyCount        = 0;
@@ -910,6 +921,48 @@ void loop() {
             ems::sync_dispatcher_set_total_chunks(&g_sync_ctx, 0);
             ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::CHUNK_ACKED, millis());
         }
+        if (cur_sync_state == ems::SyncState::DONE
+            && prev_sync_state == ems::SyncState::SENDING) {
+            // SoT §16.6 寫回同步狀態：嚴格 SENDING → DONE 邊緣（forward-safety：避免未來
+            // dispatcher 新增 AWAITING_INPUT→DONE 等非正常路徑誤觸發持久化）
+            //   time_sync 對時後回真實 epoch ms；未對時則回 0（drawOhcaSummary
+            //   以 EPOCH_2020 下界判定，0 與 uptime 都不顯示 HH:MM 避免誤導）
+            const uint64_t synced_at_ms = ems::time_sync_current_epoch_ms(
+                &g_ts_state, millis());
+            bool persisted = false;
+            if (g_storage_ready && g_sync_target_case_id[0] != '\0') {
+                persisted = storage_set_case_synced_at(&g_storage_be,
+                                                      g_sync_target_case_type,
+                                                      g_sync_target_case_id,
+                                                      synced_at_ms);
+                Serial.printf("[SYNC] persist synced_at id=%s %s\n",
+                              g_sync_target_case_id, persisted ? "OK" : "FAILED");
+            } else {
+                Serial.printf("[SYNC] WARN no persist target (ready=%d id=%s)\n",
+                              (int)g_storage_ready,
+                              g_sync_target_case_id[0] == '\0' ? "<empty>" : g_sync_target_case_id);
+            }
+            // 同步狀態 UI mirror 只在 persist 成功時更新，避免 UI 顯示「已同步」但重啟回滾
+            // （SoT §11.1/§16.6 持久化承諾：UI 與 disk 必須一致）
+            if (persisted) {
+                g_current_case_synced_at_ms = synced_at_ms;
+                if (historySummaryMode) {
+                    bool mirror_hit = false;
+                    for (uint16_t i = 0; i < historyCount; ++i) {
+                        if (strncmp(historyCases[i].id, g_sync_target_case_id,
+                                    sizeof(historyCases[i].id)) == 0) {
+                            historyCases[i].synced_at_ms = synced_at_ms;
+                            mirror_hit = true;
+                            break;
+                        }
+                    }
+                    if (!mirror_hit) {
+                        Serial.printf("[SYNC] WARN history mirror miss id=%s count=%u\n",
+                                      g_sync_target_case_id, (unsigned)historyCount);
+                    }
+                }
+            }
+        }
         if (cur_sync_state == ems::SyncState::IDLE && prev_sync_state != ems::SyncState::IDLE) {
             // SoT §16.5：「同步完成 → 顯示 1 秒 → 自動回案件總覽」
             // caller globalState 由 handleSummarySubmenuPrimary 在進 SYNC 前記入 g_sync_return_to
@@ -1042,6 +1095,7 @@ void onShortPress(uint8_t btnIdx) {
                         ohcaLastEpiMs     = 0;
                         ohcaPrevSinceMs   = 0;
                         alarmMuted        = false;
+                        g_current_case_synced_at_ms = 0;  // SoT §16.6 新 case 起始為「App未同步」
                         resetSubState();
                         Serial.println("[OHCA] Case start (START_FLASH)");
                         break;
@@ -2044,12 +2098,12 @@ static DisplaySnapshot captureDisplaySnapshot() {
                         ? (EPI_CYCLE_MS - since) / 1000
                         : (since - EPI_CYCLE_MS) / 1000;
     }
-    // STEP 02.01: GLOBAL_SYNC AWAITING_INPUT 期間複用 countdownSec 帶配對碼剩餘秒
-    //   （drawSyncScreen 自行讀 expires_at_ms 渲染；此處只為觸發 memcmp 每秒 dedup miss）
+    // STEP 02.02: GLOBAL_SYNC AWAITING_INPUT 期間覆寫 countdownSec 帶配對碼剩餘秒
+    //   獨立 if 而非 else if：OHCA case 結束後 ohcaLastEpiMs 不會被清零，STEP 02 仍會寫入；
+    //   進 SYNC 後此處用「後寫勝」覆蓋，確保 snapshot dedup 對 SYNC 倒數有反應。
+    //   drawSyncScreen 自行算渲染值（不讀 snapshot.countdownSec），此處純為觸發每秒 dedup miss。
     if (globalState == GLOBAL_SYNC && g_sync_ctx.state == ems::SyncState::AWAITING_INPUT) {
-        const uint64_t now_ms = (uint64_t)millis();
-        const uint64_t exp_ms = g_sync_ctx.pairing_code.expires_at_ms;
-        in.countdownSec = (exp_ms > now_ms) ? (uint32_t)((exp_ms - now_ms) / 1000) : 0;
+        in.countdownSec = ems::pairing_remaining_sec(g_sync_ctx.pairing_code, (uint64_t)millis());
     }
 
     // STEP 03: ventBeat — 6 秒通氣節奏目前秒
@@ -2307,9 +2361,8 @@ static void drawSyncScreen() {
             // 提示與倒數（per-frame 由 captureDisplaySnapshot 覆寫 countdownSec 觸發每秒重繪）
             display.setTextSize(1.0f, 1.0f);
             drawCenteredText("請於 App 輸入", 180, COLOR_TEXT_MUTED);
-            const uint64_t now_ms = (uint64_t)millis();
-            const uint64_t exp_ms = g_sync_ctx.pairing_code.expires_at_ms;
-            const uint32_t remaining_sec = (exp_ms > now_ms) ? (uint32_t)((exp_ms - now_ms) / 1000) : 0;
+            const uint32_t remaining_sec = ems::pairing_remaining_sec(
+                g_sync_ctx.pairing_code, (uint64_t)millis());
             char buf[32];
             snprintf(buf, sizeof(buf), "剩餘 %u 秒", (unsigned)remaining_sec);
             drawCenteredText(buf, 210, COLOR_TEXT_MUTED);
@@ -2333,7 +2386,7 @@ static void drawSyncScreen() {
         }
         case ems::SyncState::DONE: {
             // SoT §16.5「同步完成 / 本案件已傳輸」
-            // DEMO 字樣：當前 SENDING 是 stub（0 chunks 立即 ACK），MVP3 真送後可移除
+            // TODO[phase-f-mvp3-cleanup]: SENDING stub 改真送 chunked data 後移除「（DEMO）」字樣
             display.setTextSize(1.5f, 1.5f);
             drawCenteredText("同步完成", 60, COLOR_ACCENT_OK);
             display.setTextSize(1.2f, 1.2f);
@@ -2350,6 +2403,9 @@ static void drawSyncScreen() {
             const uint64_t exp_ms = g_sync_ctx.pairing_code.expires_at_ms;
             const bool locked_out = g_sync_ctx.pairing_code.failure_count >= ems::PAIRING_MAX_FAILURES;
             const bool expired    = (exp_ms > 0) && (exp_ms <= now_ms);
+            // 第四路：START 失敗或 pre-AWAITING_INPUT 直接 ERROR → pairing_code 全 0
+            //   區分「啟動失敗」與「連線中斷」避免誤導救護員
+            const bool start_failed = (exp_ms == 0) && (g_sync_ctx.pairing_code.failure_count == 0);
             const char* title;
             const char* detail;
             if (locked_out) {
@@ -2358,6 +2414,9 @@ static void drawSyncScreen() {
             } else if (expired) {
                 title  = "配對碼已失效";
                 detail = "請重新產生";
+            } else if (start_failed) {
+                title  = "啟動失敗";
+                detail = "請確認 BLE 與儲存";
             } else {
                 title  = "同步失敗";
                 detail = "連線中斷";
@@ -2770,11 +2829,14 @@ void drawHistoryList() {
         }
         uint16_t fg = (i == historyCursor) ? COLOR_BG : COLOR_TEXT_PRIMARY;
 
-        // 顯示「id 後 5 位 ｜ EPI N ｜ 電擊 N」
-        snprintf(buf, sizeof(buf), "#%s  EPI %u  電擊 %u",
+        // 顯示「id 後 5 位 ｜ EPI N ｜ 電擊 N ｜ 同步狀態」（SoT §16.6 歷史紀錄含同步狀態）
+        //   「同」字為「已同步」縮寫；vlw 字型既有，避免引入新字元擴子集
+        const char* sync_mark = (m.synced_at_ms > 0) ? "  同" : "";
+        snprintf(buf, sizeof(buf), "#%s  EPI %u  電擊 %u%s",
                  m.id + (EMS_STORAGE_ID_LEN - 1 - HISTORY_ID_DISPLAY_TAIL),
                  (unsigned)case_meta_epi_total(m),
-                 (unsigned)case_meta_shock_total(m));
+                 (unsigned)case_meta_shock_total(m),
+                 sync_mark);
         display.setTextSize(1);
         display.setTextColor(fg);
         display.setTextDatum(textdatum_t::middle_center);
@@ -2817,6 +2879,26 @@ static void handleSummarySubmenuPrimary() {
             } else {
                 Serial.println("[SYNC] re-entry detected, keep g_sync_return_to");
             }
+            // STEP 02.02: 記下同步目標 case id（SoT §16.6 寫回 storage 用）
+            //   歷史模式：用 historyCases[historyCursor].id
+            //   OHCA 現場結束鎖定 SUMMARY：取 storage_list newest（剛 LOCKED 寫入的）
+            g_sync_target_case_id[0]  = '\0';
+            g_sync_target_case_type   = EMS_CASE_TYPE_OHCA;
+            if (historySummaryMode && historyCursor < historyCount) {
+                strncpy(g_sync_target_case_id,
+                        historyCases[historyCursor].id,
+                        sizeof(g_sync_target_case_id) - 1);
+                g_sync_target_case_type = historyCases[historyCursor].type;
+            } else if (g_storage_ready) {
+                case_meta_t latest;
+                if (storage_list(&g_storage_be, EMS_CASE_TYPE_OHCA, &latest, 1) > 0) {
+                    strncpy(g_sync_target_case_id, latest.id, sizeof(g_sync_target_case_id) - 1);
+                } else {
+                    // 無已 LOCKED 的 OHCA case 可標記同步（首次開機 / FIFO 全清）→ trace
+                    // 同步流程仍會跑（dispatcher 不依賴 storage），但 DONE 邊緣不會寫回。
+                    Serial.println("[SYNC] WARN no LOCKED OHCA case to tag synced_at");
+                }
+            }
             globalState = GLOBAL_SYNC;
             ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::START, millis());
             if (g_ble_client_connected) {
@@ -2858,6 +2940,40 @@ void drawOhcaSummary() {
     //   「｜OHCA」全形 vertical bar 已在 EPI/電擊細分字串驗證可顯示
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("案件總覽｜OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // STEP 02.01: 同步狀態列（SoT §11.1「同步狀態：App未同步」/§16.6 「同步時間」）
+    //   歷史模式從 historyCases mirror 取；現場模式從 g_current_case_synced_at_ms 取。
+    //   時間顯示策略：synced_at_ms 需為真實 epoch（time_sync 對時後）才顯示 HH:MM；
+    //   對時前用 millis() uptime 寫入會被當「日時」誤判，故只顯示「App已同步」不帶時間。
+    {
+        constexpr int16_t SYNC_STATUS_Y         = OHCA_BADGE_Y + 14;  // 標題下方一行
+        constexpr int16_t SYNC_STATUS_LINE_H    = 14;                 // vlw 0.85x 行高
+        constexpr uint64_t EPOCH_2020_01_01_MS  = 1577836800000ULL;   // epoch sanity 下界
+        const uint64_t synced_at = historySummaryMode
+            ? (historyCursor < historyCount ? historyCases[historyCursor].synced_at_ms : 0)
+            : g_current_case_synced_at_ms;
+        const bool synced_at_is_real_epoch = (synced_at >= EPOCH_2020_01_01_MS);
+
+        display.setTextSize(0.85f, 0.85f);
+        display.setTextDatum(textdatum_t::top_center);
+        if (synced_at == 0) {
+            display.setTextColor(COLOR_TEXT_MUTED);
+            display.drawString("同步狀態：App未同步", SCREEN_W / 2, SYNC_STATUS_Y);
+        } else {
+            display.setTextColor(COLOR_ACCENT_OK);
+            display.drawString("同步狀態：App已同步", SCREEN_W / 2, SYNC_STATUS_Y);
+            if (synced_at_is_real_epoch) {
+                const uint32_t total_min = (uint32_t)((synced_at / 1000) / 60);
+                const uint8_t  hh = (uint8_t)((total_min / 60) % 24);
+                const uint8_t  mm = (uint8_t)(total_min % 60);
+                char buf[24];
+                snprintf(buf, sizeof(buf), "同步時間：%02u:%02u", hh, mm);
+                display.setTextColor(COLOR_TEXT_MUTED);
+                display.drawString(buf, SCREEN_W / 2, SYNC_STATUS_Y + SYNC_STATUS_LINE_H);
+            }
+            // 未對時時不顯示時間欄位（避免 millis()/1000/60 算出誤導性 HH:MM）
+        }
+    }
 
     // STEP 03: 兩欄式 key|value layout（對齊 demo dense summary 風格）
     const int16_t COL_KEY_X = 12;             // key 左對齊

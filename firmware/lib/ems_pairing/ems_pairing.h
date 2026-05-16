@@ -121,4 +121,14 @@ bool pairing_is_expired(const PairingCode& code, uint64_t now_ms);
  */
 bool pairing_is_locked_out(const PairingCode& code);
 
+/**
+ * 計算配對碼剩餘秒數（SoT §16.4「剩餘 NN 秒」UI 用）。
+ * 邊界：now_ms >= expires_at_ms → 0（不負值）。
+ *
+ * @param code     配對碼狀態
+ * @param now_ms   當前時間（ms epoch）
+ * @return         剩餘秒數（向下取整），已過期或無效時為 0
+ */
+uint32_t pairing_remaining_sec(const PairingCode& code, uint64_t now_ms);
+
 }  // namespace ems

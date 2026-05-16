@@ -471,6 +471,7 @@ bool storage_index_serialize(const case_meta_t* cases,
         c["amio"]               = m.amio;
         c["event_count"]        = m.event_count;
         c["bin_v"]              = m.bin_v;
+        c["synced_at_ms"]       = m.synced_at_ms;  // SoT §16.6 同步時間（0 = 未同步）
     }
 
     // STEP 03: 序列化到 buffer
@@ -551,6 +552,8 @@ bool storage_index_parse(const char*  json,
         m.amio               = c["amio"]               | (uint16_t)0;
         m.event_count        = c["event_count"]        | (uint16_t)0;
         m.bin_v              = c["bin_v"]              | (uint8_t)EMS_STORAGE_BIN_VERSION;
+        // v1 索引缺 synced_at_ms → 0 = 未同步（向後相容）
+        m.synced_at_ms       = c["synced_at_ms"]       | (uint64_t)0;
         i++;
     }
     if (out_count) {
@@ -753,6 +756,36 @@ bool storage_init(IStorageBackend* be) {
     }
 
     return true;
+}
+
+bool storage_set_case_synced_at(IStorageBackend*    be,
+                                storage_case_type_t type,
+                                const char*         id,
+                                uint64_t            synced_at_ms) {
+    // STEP 01: 參數檢查
+    if (!be || !id || id[0] == '\0') {
+        return false;
+    }
+    // STEP 02: 在 s_state 找對應 id+type；s_state 是 storage_init 載入的權威 in-memory 索引
+    for (uint16_t i = 0; i < s_state.case_count; ++i) {
+        case_meta_t& m = s_state.cases[i];
+        if (m.type == type && strncmp(m.id, id, sizeof(m.id)) == 0) {
+            m.synced_at_ms = synced_at_ms;
+            // STEP 03: persist；失敗時不 rollback in-RAM（下次 save 會順帶覆寫修復，
+            //   同 storage_save_case STEP 07 失敗策略；但避免 in-RAM 與 disk 短期不一致
+            //   導致重複觸發 SYNC，明確回 false 給 caller 自行決策）
+            if (!persist_index(be)) {
+                EMS_STORAGE_LOG("[STORAGE] WARN set_synced persist failed type=%d id=%s\n",
+                                (int)type, id);
+                return false;
+            }
+            return true;
+        }
+    }
+    // STEP 04: id 找不到 — caller 多半傳了已 evict 的舊 case 或筆誤
+    EMS_STORAGE_LOG("[STORAGE] WARN set_synced id not found type=%d id=%s\n",
+                    (int)type, id);
+    return false;
 }
 
 bool storage_save_case(IStorageBackend*    be,

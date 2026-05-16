@@ -1146,6 +1146,74 @@ static void G6_delete_persist_fail_rolls_back() {
 }
 
 // ============================================================
+//  Group H — Sync status persistence（Phase F MVP2-Followup B，SoT §16.6）
+// ============================================================
+
+/** H1: set_synced_at 成功寫入 → storage_list 拿到對應值；persist 後重 init 仍存在 */
+static void H1_set_synced_at_round_trip() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1745740800000ULL, 3);
+
+    case_meta_t list[5];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_UINT64(0, list[0].synced_at_ms);
+    const char* id = list[0].id;
+
+    const uint64_t synced_at = 1745741000000ULL;
+    bool ok = storage_set_case_synced_at(&g_be, EMS_CASE_TYPE_OHCA, id, synced_at);
+    TEST_ASSERT_TRUE_MESSAGE(ok, "H1: set_synced_at 應成功");
+
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_UINT64(synced_at, list[0].synced_at_ms);
+
+    // 重 init 模擬 reboot → 從 disk 重讀 → 同步狀態仍持久
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_UINT64_MESSAGE(synced_at, list[0].synced_at_ms,
+        "H1: reboot 後 synced_at_ms 應從 index.json 讀回");
+}
+
+/** H2: set_synced_at 未知 id → 回 false，其他 case 不受影響 */
+static void H2_set_synced_at_unknown_id() {
+    TEST_ASSERT_TRUE(storage_init(&g_be));
+    save_dummy_case(&g_be, EMS_CASE_TYPE_OHCA, 1000ULL, 1);
+
+    bool ok = storage_set_case_synced_at(&g_be, EMS_CASE_TYPE_OHCA,
+                                         "9999999999", 12345ULL);
+    TEST_ASSERT_FALSE_MESSAGE(ok, "H2: 未知 id 應回 false");
+
+    case_meta_t list[5];
+    uint16_t n = storage_list(&g_be, EMS_CASE_TYPE_OHCA, list, 5);
+    TEST_ASSERT_EQUAL_UINT16(1, n);
+    TEST_ASSERT_EQUAL_UINT64(0, list[0].synced_at_ms);
+}
+
+/** H3: v1 index.json（缺 synced_at_ms key）載入時欄位預設 0（向後相容） */
+static void H3_index_v1_missing_synced_field_defaults_zero() {
+    // 模擬 v1 index：手動構 JSON 不含 synced_at_ms
+    const char* v1_json =
+        "{\"v\":1,\"next_seq\":2,\"cases\":["
+        "{\"id\":\"0000000001\",\"type\":\"ohca\",\"start_ms\":1000,"
+        "\"end_ms\":2000,\"epi_local\":1,\"epi_pre_handover\":0,"
+        "\"epi_pure_supp\":0,\"shock_local\":0,\"shock_pre_handover\":0,"
+        "\"shock_pure_supp\":0,\"amio\":0,\"event_count\":1,\"bin_v\":1}"
+        "]}";
+
+    case_meta_t out[2];
+    uint16_t out_count = 0;
+    uint32_t out_next_seq = 0;
+    bool ok = storage_index_parse(v1_json, strlen(v1_json),
+                                  out, 2, &out_count, &out_next_seq);
+    TEST_ASSERT_TRUE_MESSAGE(ok, "H3: v1 索引應正常解析");
+    TEST_ASSERT_EQUAL_UINT16(1, out_count);
+    TEST_ASSERT_EQUAL_UINT64_MESSAGE(0, out[0].synced_at_ms,
+        "H3: v1 缺 synced_at_ms key → 預設 0 = 未同步");
+}
+
+// ============================================================
 //  main
 // ============================================================
 
@@ -1207,6 +1275,11 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(G5_init_null_backend_fails);
     RUN_TEST(G6_delete_persist_fail_rolls_back);
     RUN_TEST(G7_save_persist_fail_rolls_back_with_hole);
+
+    // Group H — Sync status persistence（Phase F MVP2-Followup B，SoT §16.6）
+    RUN_TEST(H1_set_synced_at_round_trip);
+    RUN_TEST(H2_set_synced_at_unknown_id);
+    RUN_TEST(H3_index_v1_missing_synced_field_defaults_zero);
 
     return UNITY_END();
 }

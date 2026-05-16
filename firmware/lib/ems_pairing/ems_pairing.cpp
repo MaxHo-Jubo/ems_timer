@@ -92,4 +92,11 @@ bool pairing_is_locked_out(const PairingCode& code) {
     return code.failure_count >= PAIRING_MAX_FAILURES;
 }
 
+uint32_t pairing_remaining_sec(const PairingCode& code, uint64_t now_ms) {
+    if (code.expires_at_ms <= now_ms) {
+        return 0;
+    }
+    return (uint32_t)((code.expires_at_ms - now_ms) / 1000);
+}
+
 }  // namespace ems

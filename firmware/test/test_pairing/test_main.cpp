@@ -264,6 +264,36 @@ static void test_regenerate_clears_lockout() {
 }
 
 // ============================================================
+//  pairing_remaining_sec — SoT §16.4 倒數秒數（Phase F MVP2-Followup simplify R4）
+// ============================================================
+
+static void test_remaining_sec_happy_path() {
+    PairingCode code = pairing_generate(0);  // expires_at = 120000
+    TEST_ASSERT_EQUAL_UINT32(90, pairing_remaining_sec(code, 30000));
+}
+
+static void test_remaining_sec_at_expiry_returns_zero() {
+    PairingCode code = pairing_generate(0);  // expires_at = 120000
+    TEST_ASSERT_EQUAL_UINT32(0, pairing_remaining_sec(code, 120000));
+}
+
+static void test_remaining_sec_past_expiry_returns_zero() {
+    PairingCode code = pairing_generate(0);  // expires_at = 120000
+    TEST_ASSERT_EQUAL_UINT32(0, pairing_remaining_sec(code, 200000));
+}
+
+static void test_remaining_sec_full_ttl_just_after_generate() {
+    PairingCode code = pairing_generate(0);  // expires_at = 120000
+    TEST_ASSERT_EQUAL_UINT32(120, pairing_remaining_sec(code, 0));
+}
+
+static void test_remaining_sec_zeroed_code_returns_zero() {
+    // 防禦：未初始化（全 0）的 PairingCode 應回 0 而非 underflow（expires_at_ms=0 <= now）
+    PairingCode code{};
+    TEST_ASSERT_EQUAL_UINT32(0, pairing_remaining_sec(code, 5000));
+}
+
+// ============================================================
 //  Test runner
 // ============================================================
 
@@ -290,5 +320,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_lockout_does_not_increment_failure_count_further);
     RUN_TEST(test_lockout_blocks_correct_code_after_expiry);
     RUN_TEST(test_regenerate_clears_lockout);
+    RUN_TEST(test_remaining_sec_happy_path);
+    RUN_TEST(test_remaining_sec_at_expiry_returns_zero);
+    RUN_TEST(test_remaining_sec_past_expiry_returns_zero);
+    RUN_TEST(test_remaining_sec_full_ttl_just_after_generate);
+    RUN_TEST(test_remaining_sec_zeroed_code_returns_zero);
     return UNITY_END();
 }
