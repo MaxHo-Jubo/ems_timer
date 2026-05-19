@@ -108,7 +108,14 @@ Resume 清單 #3~#7 一次完成（純邏輯重構，不需實機）：
 
 驗證：Flash 61.4% / native tests **400/401 PASSED**（+16 新 tests；test_storage_hw baseline ERROR 不變）
 
-**🎯 韌體面已盡（無實機不可繼續）**：剩 F-2 NimBLE 整合層 / F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8 全部需要 ESP32 實機 + NimBLE-Arduino + nRF Connect + 網頁端三方協作驗證。
+**已完成（Phase F F-2 BLE NUS lib 實機整合，2026-05-19，commit `391e402`，已 push origin）**：
+- ✅ F-2 實機整合層：BleNus class 封裝 begin/poll/send/connected
+- ✅ main.cpp BLE inline code 抽出至 lib（-145 行 / +250 行含 lib）
+- ✅ 實機 nRF Connect 驗證通過（advertising / 連線 / time_sync / 斷線重連）
+
+驗證：Flash 61.4% / native tests 400/401 PASSED
+
+**🎯 下一步需實機**：F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8。
 
 **Resume 時可開工**（下次 session）：
 1. **MVP3** chunked data 真送（移除 SENDING stub，整合 case_sync_serializer + ble_chunker；SENDING 入口 caseSummary_build → serialize → chunker → notify + 等 ACK + 對齊 §16.9 失敗/§16.8 中斷重試）
@@ -256,14 +263,16 @@ curl http://localhost:8788/api/cases
 - [x] **F-2 純邏輯子模組（native TDD 可覆蓋）**：
   - [x] `firmware/lib/ble_chunker/` — chunk_size_from_mtu / chunk_count / chunk_at（16 tests）
   - [x] `firmware/lib/ble_rx_queue/` — SPSC ring buffer init/push/pop/empty/full/size（12 tests）
-- [ ] **F-2 實機整合層（需 ESP32 + nRF Connect，留待實機 session）**：
-  - [ ] `BleNusService::begin()` advertise + GATT setup（NimBLE-Arduino）
-  - [ ] `BleNusService::tick()` 把 ble_rx_queue dequeue 接到 callback
-  - [ ] `BleNusService::send()` 用 ble_chunker 切分 + MTU 247 協商
-  - [ ] hello world sketch：advertise 並 echo RX
-  - [ ] 實機用 nRF Connect 驗證連線 + 收發
+- [x] **F-2 實機整合層（2026-05-19，commit `391e402`，已 push origin）**：
+  - [x] `BleNus::begin()` — BLE init + NUS service + advertise（ESP32 Arduino 內建 BLE stack）
+  - [x] `BleNus::poll(callback)` — main loop 排空 RX queue，portMUX spinlock thread-safety
+  - [x] `BleNus::send()` — TX notify 推資料給 client
+  - [x] main.cpp 從 ~120 行 inline BLE 簡化為 `g_ble` 實例 + `on_ble_rx` callback
+  - [x] 實機 nRF Connect 驗證通過：advertising ✅ / 連線 ✅ / time_sync RX→ACK TX ✅ / 斷線重連 ✅
+  - 備註：採用 ESP32 Arduino 內建 BLE stack（非 NimBLE），NimBLE 遷移列為 optional 評估項
+  - 備註：ble_chunker / ble_rx_queue 純邏輯 lib 已完成但尚未接入 BleNus（MVP3 chunked data 真送時整合）
 
-**驗收**：手機 nRF Connect 掃到 `DSP-xxxx`，連線後可雙向收發字串（純邏輯部分 28 unit tests ✅ 2026-05-15）。
+**驗收**：手機 nRF Connect 掃到 `EMS-DoseSync-Pro`，連線後可雙向收發（純邏輯 28 unit tests ✅ 2026-05-15 / 實機驗證 ✅ 2026-05-19）。
 
 ---
 
