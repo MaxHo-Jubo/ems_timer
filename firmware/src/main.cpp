@@ -65,11 +65,8 @@
 #include "summary_action.h"      // Phase F Followup：summary sub-menu 決策純函式
 #include <ArduinoJson.h>         // Phase F MVP2：BLE RX 訊息 type 分流
 
-// Phase F MVP1：BLE NUS peripheral（ESP32 Arduino framework 內建）
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+// Phase F MVP1：BLE NUS peripheral（封裝於 lib/ble_nus）
+#include "ble_nus.h"
 
 #include "ems_zh_24_vlw.h"  // Sarasa Mono TC Bold 24px vlw, 258 glyphs (95 ASCII + 163 CJK; Phase F MVP2 補 29 字)
 
@@ -262,26 +259,9 @@ static const uint16_t LONG_PRESS_MS_PER_BTN[8] = {
 };
 
 // ============================================================
-// Phase F MVP1：BLE NUS peripheral 常數
-// 對齊 docs/ble-time-sync-protocol.md §1 / docs/ble-tester/index.html
-// 與 firmware/src_ble_time_sync_smoke/main.cpp 共用同一組 UUID
-// ============================================================
-
-// NUS（Nordic UART Service）UUID 與兩個 characteristics
-static constexpr const char* NUS_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
-static constexpr const char* NUS_RX_UUID      = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";  // App→Device Write
-static constexpr const char* NUS_TX_UUID      = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";  // Device→App Notify
-
-// 廣播名稱（正式版裝置名，與 smoke firmware「EMS-DoseSync-Smoke」區分）
-static constexpr const char* BLE_DEVICE_NAME = "EMS-DoseSync-Pro";
-
-// BLE RX/ACK buffer 上限：time_sync JSON ~100 bytes，ACK ~150 bytes，留 ~3-5x 餘裕
-static constexpr size_t BLE_RX_BUF_MAX  = 512;
-static constexpr size_t BLE_ACK_BUF_MAX = 512;
-
-// BLE advertising 偏好連線間隔（單位 × 1.25 ms），與 smoke firmware 一致以利 iOS 連線
-static constexpr uint16_t BLE_CONN_INTERVAL_MIN = 0x06;  // 7.5 ms
-static constexpr uint16_t BLE_CONN_INTERVAL_MAX = 0x12;  // 22.5 ms
+// Phase F MVP1：BLE 常數（NUS UUID / 連線間隔已移至 lib/ble_nus）
+static constexpr const char* BLE_DEVICE_NAME = "EMS-DoseSync-Pro";  // 廣播名稱
+static constexpr size_t BLE_ACK_BUF_MAX = 512;                      // time_sync ACK buffer
 
 // ============================================================
 // 全域狀態機（pm-dev-spec §2）
@@ -380,18 +360,8 @@ static IStorageBackend g_storage_be;
 static bool g_storage_ready    = false;
 static bool g_locked_saved     = false;  // LOCKED 防重複存
 
-// ===== Phase F MVP1：BLE NUS peripheral state =====
-//   ESP32 BLE callback 跑在 GATT task（與 main loop 不同 task，常不同核），
-//   volatile 不足以擋跨 task race。用 portMUX_TYPE spinlock 保護 g_rx_buf：
-//   - GATT task onWrite：memcpy + 旗標 in 臨界區
-//   - main loop drain：原子取出 + 清旗標 in 臨界區
-static BLEServer*         g_ble_server         = nullptr;
-static BLECharacteristic* g_ble_tx_char        = nullptr;
-static volatile bool      g_ble_client_connected = false;
-static volatile bool      g_ble_rx_ready       = false;
-static uint8_t            g_ble_rx_buf[BLE_RX_BUF_MAX];
-static volatile size_t    g_ble_rx_len         = 0;
-static portMUX_TYPE       g_ble_rx_mux         = portMUX_INITIALIZER_UNLOCKED;
+// ===== Phase F MVP1：BLE NUS peripheral（封裝於 lib/ble_nus） =====
+static ems::BleNus g_ble;
 static ems::TimeSyncState g_ts_state;  // 對時 state：只在 main loop task 讀寫
 
 // ===== Phase F MVP2：BLE 同步流程狀態機 =====
@@ -668,89 +638,30 @@ void drawAmioConfirmPrompt();
 void drawTimeline();
 
 // ============================================================
-// Phase F MVP1：BLE GATT callbacks + RX queue drain
-// 設計遵守 feedback_ble_callback_non_blocking：onWrite 只 memcpy + 旗標，
-// 實際 time_sync_handle 推給 main loop 跑（避免阻塞 GATT task）
+// Phase F MVP1：BLE RX 訊息分流（由 g_ble.poll() 觸發）
 // ============================================================
 
 /**
- * BLE Server 生命週期 callback。
- * 連線斷掉後立即重啟廣播，方便 web 端重連測試。
+ * BLE RX callback：解析 JSON type 欄位做訊息分流。
+ * 由 g_ble.poll() 在 main loop 呼叫（非 GATT task）。
  */
-class BleServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer* /*pServer*/) override {
-        // STEP 01: 標記連線狀態，main loop 印 log + 更新 BLE 圖示
-        g_ble_client_connected = true;
-    }
-    void onDisconnect(BLEServer* /*pServer*/) override {
-        // STEP 01: 標記斷線
-        g_ble_client_connected = false;
-        // STEP 02: 立即重啟廣播，否則裝置會「躲」起來無法被掃到
-        BLEDevice::startAdvertising();
-    }
-};
-
-/**
- * RX characteristic write callback。
- * 跑在 ESP32 BLE GATT task — 嚴禁阻塞操作。
- * 只做 memcpy 到 g_ble_rx_buf + 旗標 in portMUX 臨界區，
- * 實際 JSON 處理推給 main loop 的 process_pending_ble_rx()。
- */
-class BleRxCallbacks : public BLECharacteristicCallbacks {
-    void onWrite(BLECharacteristic* pChar) override {
-        // STEP 01: 取得 callback 提供的 raw bytes（binary，未必 null-terminated）
-        std::string value = pChar->getValue();
-        size_t len = value.length();
-        if (len == 0 || len > BLE_RX_BUF_MAX) {
-            return;
-        }
-
-        // STEP 02: 拷貝 + 旗標統一在 portMUX 臨界區（擋 main loop drain race）
-        portENTER_CRITICAL(&g_ble_rx_mux);
-        if (g_ble_rx_ready) {
-            // STEP 02.01: 已有未排空的訊息就丟新的（main loop 下個 tick 即排空）
-            portEXIT_CRITICAL(&g_ble_rx_mux);
-            return;
-        }
-        memcpy(g_ble_rx_buf, value.data(), len);
-        g_ble_rx_len = len;
-        g_ble_rx_ready = true;
-        portEXIT_CRITICAL(&g_ble_rx_mux);
-    }
-};
-
-/**
- * Main loop 排空 BLE RX：解析 time_sync JSON → 更新 g_ts_state → notify ACK。
- * 呼叫前已確認 g_ble_rx_ready=true。
- */
-static void process_pending_ble_rx() {
-    // STEP 01: 原子取出 buffer 後立即清旗標（portMUX 擋 GATT task 同時寫入）
-    uint8_t local_buf[BLE_RX_BUF_MAX];
-    size_t local_len;
-    portENTER_CRITICAL(&g_ble_rx_mux);
-    local_len = g_ble_rx_len;
-    memcpy(local_buf, g_ble_rx_buf, local_len);
-    g_ble_rx_ready = false;
-    portEXIT_CRITICAL(&g_ble_rx_mux);
-
-    // STEP 02: 解析 JSON 取 type 欄位做訊息分流
-    //   time_sync_handle / sync_dispatcher_dispatch_input 各自還會 parse 一次自己
-    //   關心的欄位，此處只看 type 一個 string，重複 parse 成本可忽略
+static void on_ble_rx(const uint8_t* data, size_t len) {
+    // STEP 01: 解析 JSON 取 type 欄位
     JsonDocument doc;
-    DeserializationError parse_err = deserializeJson(doc, local_buf, local_len);
+    DeserializationError parse_err = deserializeJson(doc, data, len);
     if (parse_err) {
-        Serial.printf("[BLE] drop malformed JSON (%u bytes)\n", (unsigned)local_len);
+        Serial.printf("[BLE] drop malformed JSON (%u bytes)\n", (unsigned)len);
         return;
     }
     const char* type = doc["type"].is<const char*>() ? doc["type"].as<const char*>() : "";
 
-    // STEP 03: type=time_sync → 既有 MVP1 對時路徑（不變）
+    // STEP 02: type=time_sync → MVP1 對時
     if (strcmp(type, "time_sync") == 0) {
         char ack_buf[BLE_ACK_BUF_MAX];
         size_t ack_len = 0;
         ems::TimeSyncResult r = ems::time_sync_handle(
             &g_ts_state,
-            local_buf, local_len,
+            data, len,
             millis(),
             /*rtc_present=*/false,
             ack_buf, sizeof(ack_buf), &ack_len);
@@ -759,15 +670,13 @@ static void process_pending_ble_rx() {
             (r == ems::TimeSyncResult::Rejected) ? "Rejected" :
                                                    "ParseError";
         Serial.printf("[BLE] time_sync %s ack_len=%u\n", result_str, (unsigned)ack_len);
-        if (ack_len > 0 && g_ble_tx_char != nullptr && g_ble_client_connected) {
-            g_ble_tx_char->setValue(reinterpret_cast<uint8_t*>(ack_buf), ack_len);
-            g_ble_tx_char->notify();
+        if (ack_len > 0) {
+            g_ble.send(reinterpret_cast<uint8_t*>(ack_buf), ack_len);
         }
         return;
     }
 
-    // STEP 04: type=pair_verify → Phase F MVP2 配對碼驗證
-    //   payload: {"type":"pair_verify","input":"NNNN"}
+    // STEP 03: type=pair_verify → MVP2 配對碼驗證
     if (strcmp(type, "pair_verify") == 0) {
         const char* input = doc["input"].is<const char*>() ? doc["input"].as<const char*>() : "";
         size_t input_len = strlen(input);
@@ -783,7 +692,7 @@ static void process_pending_ble_rx() {
         return;
     }
 
-    // STEP 05: 未知 type
+    // STEP 04: 未知 type
     Serial.printf("[BLE] unknown type='%s' drop\n", type);
 }
 
@@ -877,33 +786,8 @@ void setup() {
     //   廣播後待 web 端（docs/ble-tester/）連線送 time_sync 才會有 epoch；
     //   未對時前事件 timestamp_ms = 0（spec §4.1）。
     ems::time_sync_init(&g_ts_state);
-    BLEDevice::init(BLE_DEVICE_NAME);
-    g_ble_server = BLEDevice::createServer();
-    if (g_ble_server == nullptr) {
-        Serial.println("[BLE] WARN createServer failed, time_sync 將不可用");
-    } else {
-        g_ble_server->setCallbacks(new BleServerCallbacks());
-
-        BLEService* ble_service = g_ble_server->createService(NUS_SERVICE_UUID);
-
-        BLECharacteristic* ble_rx_char = ble_service->createCharacteristic(
-            NUS_RX_UUID,
-            BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
-        ble_rx_char->setCallbacks(new BleRxCallbacks());
-
-        g_ble_tx_char = ble_service->createCharacteristic(
-            NUS_TX_UUID,
-            BLECharacteristic::PROPERTY_NOTIFY);
-        g_ble_tx_char->addDescriptor(new BLE2902());  // CCCD：讓 client 訂閱 notify
-
-        ble_service->start();
-        BLEAdvertising* ble_advertising = BLEDevice::getAdvertising();
-        ble_advertising->addServiceUUID(NUS_SERVICE_UUID);
-        ble_advertising->setScanResponse(true);
-        ble_advertising->setMinPreferred(BLE_CONN_INTERVAL_MIN);
-        ble_advertising->setMaxPreferred(BLE_CONN_INTERVAL_MAX);
-        BLEDevice::startAdvertising();
-        Serial.printf("[BLE] advertising as %s\n", BLE_DEVICE_NAME);
+    if (!g_ble.begin(BLE_DEVICE_NAME)) {
+        Serial.println("[BLE] WARN init failed, time_sync 將不可用");
     }
 
     // STEP 04.7: Phase F MVP2 — sync dispatcher 初始 IDLE
@@ -917,9 +801,7 @@ void setup() {
 void loop() {
     // STEP 00: Phase F MVP1 — 排空 BLE RX queue
     //   time_sync 立即生效，讓接下來 handleButtons 觸發的事件 timestamp 用真實 epoch
-    if (g_ble_rx_ready) {
-        process_pending_ble_rx();
-    }
+    g_ble.poll(on_ble_rx);
 
     // STEP 00.5: Phase F MVP2 — sync dispatcher observer（僅在 GLOBAL_SYNC 內活）
     //   - BLE 連線邊緣 → dispatch BLE_CONNECTED / BLE_DISCONNECTED
@@ -928,7 +810,7 @@ void loop() {
     //   - DONE/ERROR 顯示完自然回 IDLE → 退主選單
     if (globalState == GLOBAL_SYNC) {
         static bool prev_ble_conn = false;
-        bool cur_ble_conn = g_ble_client_connected;
+        bool cur_ble_conn = g_ble.connected();
         if (cur_ble_conn != prev_ble_conn) {
             ems::sync_dispatcher_dispatch(&g_sync_ctx,
                 cur_ble_conn ? ems::SyncEvent::BLE_CONNECTED : ems::SyncEvent::BLE_DISCONNECTED,
@@ -2155,7 +2037,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.flashStateActive      = flashState.active;
     in.ventPreShown          = ventPreShown;
     in.historySummaryMode    = historySummaryMode;
-    in.bleConnected          = g_ble_client_connected;  // Phase F MVP1
+    in.bleConnected          = g_ble.connected();  // Phase F MVP1
     in.syncState             = (uint8_t)g_sync_ctx.state;  // Phase F MVP2
 
     return captureSnapshot(in);
@@ -2318,7 +2200,7 @@ void drawMainMenu() {
 
     // STEP 01.01: Phase F MVP1 — BLE 連線狀態圖示（標題列右側）
     //   連線中：綠色「BT」字樣；未連線：留空（不畫即可，主畫面已為黑底）
-    if (g_ble_client_connected) {
+    if (g_ble.connected()) {
         display.setTextColor(COLOR_ACCENT_OK);
         display.setCursor(SCREEN_W - 36, 12);  // 2 字元 × 10px size 2 = 20px，留 16px 右邊距
         display.print("BT");
@@ -2939,7 +2821,7 @@ static void handleSummarySubmenuPrimary() {
             globalState = GLOBAL_SYNC;
             const bool started = ems::sync_dispatcher_dispatch(
                 &g_sync_ctx, ems::SyncEvent::START, millis());
-            if (started && g_ble_client_connected) {
+            if (started && g_ble.connected()) {
                 ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::BLE_CONNECTED, millis());
             }
             // STEP 02.04: dispatch rejected → rollback（bool 介面直接知道是否被接受）
