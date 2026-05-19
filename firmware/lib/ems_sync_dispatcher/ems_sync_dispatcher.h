@@ -124,8 +124,9 @@ void sync_dispatcher_init(SyncContext* ctx, uint64_t now_ms);
  * @param ctx     狀態機
  * @param event   事件
  * @param now_ms  當前時間（用於更新 last_state_change_ms + timeout 判斷）
+ * @return true 如果 state 發生了 transition；false 表示事件被忽略（state 不變）
  */
-void sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms);
+bool sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms);
 
 /**
  * 配對碼輸入專用 dispatch（payload 帶 byte buffer）。

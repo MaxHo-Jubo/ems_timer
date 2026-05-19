@@ -336,6 +336,63 @@ static void test_zero_total_chunks_first_ack_triggers_done() {
 }
 
 // ============================================================
+//  dispatch bool return value
+// ============================================================
+
+/** START 從 IDLE → AWAITING_CONNECT 回 true */
+static void test_dispatch_returns_true_on_transition() {
+    SyncContext ctx = make_ctx();
+    bool r = sync_dispatcher_dispatch(&ctx, SyncEvent::START, 1000);
+    TEST_ASSERT_TRUE(r);
+    TEST_ASSERT_EQUAL(SyncState::AWAITING_CONNECT, ctx.state);
+}
+
+/** CHUNK_ACKED 在 IDLE 沒 transition 回 false */
+static void test_dispatch_returns_false_on_no_transition() {
+    SyncContext ctx = make_ctx();
+    bool r = sync_dispatcher_dispatch(&ctx, SyncEvent::CHUNK_ACKED, 1000);
+    TEST_ASSERT_FALSE(r);
+    TEST_ASSERT_EQUAL(SyncState::IDLE, ctx.state);
+}
+
+/** BLE_DISCONNECTED 從活躍 state → ERROR 回 true */
+static void test_dispatch_returns_true_on_ble_disconnect_transition() {
+    SyncContext ctx = make_ctx();
+    drive_to_awaiting_input(&ctx, 1000);
+    bool r = sync_dispatcher_dispatch(&ctx, SyncEvent::BLE_DISCONNECTED, 2000);
+    TEST_ASSERT_TRUE(r);
+    TEST_ASSERT_EQUAL(SyncState::ERROR, ctx.state);
+}
+
+/** BLE_DISCONNECTED 從 IDLE 沒 transition 回 false */
+static void test_dispatch_returns_false_on_ble_disconnect_from_idle() {
+    SyncContext ctx = make_ctx();
+    bool r = sync_dispatcher_dispatch(&ctx, SyncEvent::BLE_DISCONNECTED, 1000);
+    TEST_ASSERT_FALSE(r);
+    TEST_ASSERT_EQUAL(SyncState::IDLE, ctx.state);
+}
+
+/** BACK_KEY 從 SENDING 沒 transition 回 false */
+static void test_dispatch_returns_false_on_back_key_in_sending() {
+    SyncContext ctx = make_ctx();
+    drive_to_awaiting_main_key(&ctx, 1000);
+    sync_dispatcher_set_total_chunks(&ctx, 3);
+    sync_dispatcher_dispatch(&ctx, SyncEvent::MAIN_KEY_PRESS, 3000);
+    bool r = sync_dispatcher_dispatch(&ctx, SyncEvent::BACK_KEY_PRESS, 3100);
+    TEST_ASSERT_FALSE(r);
+    TEST_ASSERT_EQUAL(SyncState::SENDING, ctx.state);
+}
+
+/** BACK_KEY 從 AWAITING_INPUT → IDLE 回 true */
+static void test_dispatch_returns_true_on_back_key_transition() {
+    SyncContext ctx = make_ctx();
+    drive_to_awaiting_input(&ctx, 1000);
+    bool r = sync_dispatcher_dispatch(&ctx, SyncEvent::BACK_KEY_PRESS, 2000);
+    TEST_ASSERT_TRUE(r);
+    TEST_ASSERT_EQUAL(SyncState::IDLE, ctx.state);
+}
+
+// ============================================================
 //  Test runner
 // ============================================================
 
@@ -370,5 +427,12 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_start_in_error_ignored);
     RUN_TEST(test_error_state_preserves_sent_count_for_ui);
     RUN_TEST(test_zero_total_chunks_first_ack_triggers_done);
+    // dispatch bool return value
+    RUN_TEST(test_dispatch_returns_true_on_transition);
+    RUN_TEST(test_dispatch_returns_false_on_no_transition);
+    RUN_TEST(test_dispatch_returns_true_on_ble_disconnect_transition);
+    RUN_TEST(test_dispatch_returns_false_on_ble_disconnect_from_idle);
+    RUN_TEST(test_dispatch_returns_false_on_back_key_in_sending);
+    RUN_TEST(test_dispatch_returns_true_on_back_key_transition);
     return UNITY_END();
 }

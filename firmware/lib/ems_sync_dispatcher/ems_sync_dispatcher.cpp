@@ -55,28 +55,31 @@ void sync_dispatcher_init(SyncContext* ctx, uint64_t now_ms) {
     // pairing_code 未 generate 前是 garbage，狀態機保證進 AWAITING_INPUT 才會用到
 }
 
-void sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms) {
-    // STEP 01: 全域事件：BLE 斷線 + BACK 鍵 跨 state 處理優先
+bool sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms) {
+    // STEP 01: 記住進入前的 state，用於偵測 transition
+    const SyncState prev = ctx->state;
+
+    // STEP 02: 全域事件：BLE 斷線 + BACK 鍵 跨 state 處理優先
     if (event == SyncEvent::BLE_DISCONNECTED) {
         handle_ble_disconnect(ctx, now_ms);
-        return;
+        return ctx->state != prev;
     }
     if (event == SyncEvent::BACK_KEY_PRESS) {
         handle_back_key(ctx, now_ms);
-        return;
+        return ctx->state != prev;
     }
 
-    // STEP 02: 按 state 分流 transition
+    // STEP 03: 按 state 分流 transition
     switch (ctx->state) {
         case SyncState::IDLE:
-            // STEP 02.01: IDLE 只接 START，其他事件忽略
+            // STEP 03.01: IDLE 只接 START，其他事件忽略
             if (event == SyncEvent::START) {
                 enter(ctx, SyncState::AWAITING_CONNECT, now_ms);
             }
             break;
 
         case SyncState::AWAITING_CONNECT:
-            // STEP 02.02: 等 BLE 連線；連上 → AWAITING_INPUT（順帶 generate 配對碼）
+            // STEP 03.02: 等 BLE 連線；連上 → AWAITING_INPUT（順帶 generate 配對碼）
             if (event == SyncEvent::BLE_CONNECTED) {
                 ctx->pairing_code = pairing_generate(now_ms);
                 enter(ctx, SyncState::AWAITING_INPUT, now_ms);
@@ -84,14 +87,14 @@ void sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms
             break;
 
         case SyncState::AWAITING_INPUT:
-            // STEP 02.03: 等網頁送配對碼（走 dispatch_input）；TICK 檢查 pairing 過期
+            // STEP 03.03: 等網頁送配對碼（走 dispatch_input）；TICK 檢查 pairing 過期
             if (event == SyncEvent::TICK && pairing_is_expired(ctx->pairing_code, now_ms)) {
                 enter_error(ctx, now_ms);
             }
             break;
 
         case SyncState::AWAITING_MAIN_KEY:
-            // STEP 02.04: 主鍵按下 → SENDING；TICK 檢查 30s timeout
+            // STEP 03.04: 主鍵按下 → SENDING；TICK 檢查 30s timeout
             if (event == SyncEvent::MAIN_KEY_PRESS) {
                 ctx->sent_chunks_count = 0;
                 enter(ctx, SyncState::SENDING, now_ms);
@@ -102,7 +105,7 @@ void sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms
             break;
 
         case SyncState::SENDING:
-            // STEP 02.05: chunk acked 推進 count；達 total → DONE
+            // STEP 03.05: chunk acked 推進 count；達 total → DONE
             if (event == SyncEvent::CHUNK_ACKED) {
                 ++ctx->sent_chunks_count;
                 if (ctx->sent_chunks_count >= ctx->total_chunks) {
@@ -112,7 +115,7 @@ void sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms
             break;
 
         case SyncState::DONE:
-            // STEP 02.06: 顯示 DONE_DISPLAY_MS 後退 IDLE
+            // STEP 03.06: 顯示 DONE_DISPLAY_MS 後退 IDLE
             if (event == SyncEvent::TICK &&
                 now_ms - ctx->last_state_change_ms >= DONE_DISPLAY_MS) {
                 enter_idle(ctx, now_ms);
@@ -120,13 +123,15 @@ void sync_dispatcher_dispatch(SyncContext* ctx, SyncEvent event, uint64_t now_ms
             break;
 
         case SyncState::ERROR:
-            // STEP 02.07: 顯示 ERROR_DISPLAY_MS 後退 IDLE
+            // STEP 03.07: 顯示 ERROR_DISPLAY_MS 後退 IDLE
             if (event == SyncEvent::TICK &&
                 now_ms - ctx->last_state_change_ms >= ERROR_DISPLAY_MS) {
                 enter_idle(ctx, now_ms);
             }
             break;
     }
+
+    return ctx->state != prev;
 }
 
 DispatchInputResult sync_dispatcher_dispatch_input(SyncContext* ctx, const char* input,

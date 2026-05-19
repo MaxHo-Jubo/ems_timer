@@ -119,6 +119,17 @@ typedef struct {
                                             //   index v1 載入時缺 key 預設 0 = 未同步
 } case_meta_t;
 
+// 2020-01-01T00:00:00Z epoch ms — synced_at_ms 低於此值不視為有效 epoch（含 0 = 未同步）
+constexpr uint64_t SYNCED_AT_EPOCH_FLOOR_MS = 1577836800000ULL;
+
+/**
+ * 判斷 case 是否已同步。
+ * synced_at_ms == 0 明確表示未同步；非零但低於 EPOCH_FLOOR 亦不視為有效同步時戳。
+ */
+inline bool case_meta_is_synced(const case_meta_t& m) {
+    return m.synced_at_ms >= SYNCED_AT_EPOCH_FLOOR_MS;
+}
+
 /** EPI 總數聚合（對齊 ohca_case_summary_t::epi_total 定義：local + pre_handover + pure_supp） */
 inline uint16_t case_meta_epi_total(const case_meta_t& m) {
     return (uint16_t)(m.epi_local + m.epi_pre_handover + m.epi_pure_supp);

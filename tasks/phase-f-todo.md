@@ -95,25 +95,28 @@ POST-COMMIT-REVIEW 5 步驟（全跑）：
 
 驗證：Flash 61.4% / native tests 383/384 PASSED（+5 remaining_sec +3 H1-H3；test_storage_hw baseline ERROR 不變）
 
-**新增 followup（review chain 抓出大重構機會，超本 task scope）**：
-- type-design 三大 refactor：
-  1. `case_meta_t.synced_at_ms` 拆 `struct SyncStamp { bool synced; uint64_t epoch_ms; }` 或限制 EPOCH 下界
-  2. `g_sync_target_case_id` + `g_sync_target_case_type` 封 `struct SyncTarget` + chokepoint setter
-  3. 移除 `g_current_case_synced_at_ms` mirror，drawOhcaSummary 直接走 single source of truth（s_state.cases）
+**已完成（Phase F MVP2-Followup 型別安全重構，2026-05-19）**：
+
+Resume 清單 #3~#7 一次完成（純邏輯重構，不需實機）：
+- ✅ #3 `decide_summary_action()` 純函式抽至 `firmware/lib/summary_action/`（10 unit tests）
+- ✅ #5 `sync_dispatcher_dispatch` void → bool return（+6 tests，既有 27 tests 全綠）
+- ✅ #6a `case_meta_is_synced()` helper + `SYNCED_AT_EPOCH_FLOOR_MS` 常數（取代 inline `> 0` / `>= EPOCH_2020` 判斷）
+- ✅ #4 `g_sync_return_to` 從 `GlobalState`（7 值）→ `SyncReturnTo`（3 值 narrow enum）
+- ✅ #6b `SyncTarget` struct 封裝 `g_sync_target_case_id` + `g_sync_target_case_type`
+- ✅ #6c `g_current_case_synced_at_ms` 改名 `g_ohca_live_synced_at_ms`（語意明確化）
+- ✅ #7 `CONFIRM_RESYNC` action（SoT §16.7）— 決策路徑可測，dialog UI 待 TFT 實機 fallthrough
+
+驗證：Flash 61.4% / native tests **400/401 PASSED**（+16 新 tests；test_storage_hw baseline ERROR 不變）
 
 **🎯 韌體面已盡（無實機不可繼續）**：剩 F-2 NimBLE 整合層 / F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8 全部需要 ESP32 實機 + NimBLE-Arduino + nRF Connect + 網頁端三方協作驗證。
 
 **Resume 時可開工**（下次 session）：
 1. **MVP3** chunked data 真送（移除 SENDING stub，整合 case_sync_serializer + ble_chunker；SENDING 入口 caseSummary_build → serialize → chunker → notify + 等 ACK + 對齊 §16.9 失敗/§16.8 中斷重試）
 2. **SUMMARY sub-menu 擴充**（後續 Phase）：補齊 SoT §11.1 完整 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 傳輸資料 → 各自子畫面）。註：完整 6 項 + 統計區一頁裝不下 320×240（vlw 24px bitmap 無法縮小），需分頁或縮統計區設計。`SUMMARY_SUBMENU_*` 視覺常數已 hoist 到 file scope + static_assert 防溢出。
-3. **可測試性重構**（pr-test-analyzer 建議）：抽 `decideSummaryAction(cursor, historyMode, bleConnected) → enum action` 純函式進 lib，讓 dispatch 邏輯可 unit test（目前 handleSummarySubmenuPrimary 跟所有 main.cpp UI logic 一樣綁 static state 無法 isolate）
-4. **GlobalState narrow**（type-design-analyzer 建議）：`g_sync_return_to` 改用 `enum SyncReturnTo { SYNC_RETURN_OHCA, SYNC_RETURN_HISTORY, SYNC_RETURN_MAIN }` + 單一 setter，避免 `GLOBAL_SYNC` 自指等非法值。當前已加 re-entry guard 擋自指，但 narrow type 是更根本的修法
-5. **dispatcher 改 bool accepted**（silent-failure-hunter S2）：`sync_dispatcher_dispatch` 改回 bool / out-param，呼叫端能感知 reject 而不用後驗 state。屬跨檔大改，留獨立 PR
-6. **type-design 三大 refactor**（review-pr type-design-analyzer）：`SyncStamp` struct / `SyncTarget` chokepoint / 移除 `g_current_case_synced_at_ms` mirror — 改善型別表達正交概念
-7. **SoT §16.7 再次同步確認 dialog**（task B6 拆出未做）：已同步案件再按同步 → 「此案件已同步 / 是否再次同步？」確認 dialog → 主鍵=進 SYNC / 返回=取消
-8. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
-9. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
-10. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
+3. **SoT §16.7 確認 dialog TFT 渲染**：`CONFIRM_RESYNC` 決策路徑已實作並測試，需實機實作 TFT dialog 畫面（「此案件已同步 / 是否再次同步？」+ 主鍵確認 / 返回取消）
+4. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
+5. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
+6. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
 
 ## 🎯 Resume 指引（rate-limit 後）
 
