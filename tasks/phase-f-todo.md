@@ -117,13 +117,33 @@ Resume 清單 #3~#7 一次完成（純邏輯重構，不需實機）：
 
 **🎯 下一步需實機**：F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8。
 
-**Resume 時可開工**（下次 session）：
-1. **MVP3** chunked data 真送（移除 SENDING stub，整合 case_sync_serializer + ble_chunker；SENDING 入口 caseSummary_build → serialize → chunker → notify + 等 ACK + 對齊 §16.9 失敗/§16.8 中斷重試）
-2. **SUMMARY sub-menu 擴充**（後續 Phase）：補齊 SoT §11.1 完整 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 傳輸資料 → 各自子畫面）。註：完整 6 項 + 統計區一頁裝不下 320×240（vlw 24px bitmap 無法縮小），需分頁或縮統計區設計。`SUMMARY_SUBMENU_*` 視覺常數已 hoist 到 file scope + static_assert 防溢出。
-3. **SoT §16.7 確認 dialog TFT 渲染**：`CONFIRM_RESYNC` 決策路徑已實作並測試，需實機實作 TFT dialog 畫面（「此案件已同步 / 是否再次同步？」+ 主鍵確認 / 返回取消）
-4. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
-5. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
-6. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
+**Resume 時可開工**（下次 session，二擇一）：
+
+**選項 A：拆分 main.cpp（降低後續所有任務的 token 成本）**
+- 目的：main.cpp ~3000 行，每次任務都要讀全檔吃 ~30k token。拆成 4 個模組後每次只讀 500-800 行，省 60-70%
+- 拆法：純搬移 static function，不改邏輯
+  | 新檔案 | 內容 | 估計行數 |
+  |--------|------|---------|
+  | `ui_render.cpp` | drawOhca / drawSync / drawHistory / drawMainMenu 等渲染函式 | ~800 |
+  | `input_handler.cpp` | onShortPress / onLongPress / handleSummarySubmenuPrimary | ~500 |
+  | `loop_observers.cpp` | BLE 邊緣偵測 / sync dispatcher observer / TICK | ~200 |
+  | `main.cpp`（保留） | setup() / loop() / globals / 狀態機 enum | ~500 |
+- 風險：static 變數可見性需透過參數傳入或 extern 暴露
+- 驗證：`pio test -e native` 全綠（400 tests 在 lib 層不受影響）+ `pio run` 編譯通過 + 實機行為不變
+- 效益：後續 F-3 / F-4 / sub-menu 擴充每次省 ~20k token
+
+**選項 B：F-3 MVP3 chunked data 真送（功能推進）**
+- 移除 SENDING stub，整合 case_sync_serializer + ble_chunker
+- SENDING 入口 caseSummary_build → serialize → chunker → BleNus::send() + 等 ACK
+- 對齊 §16.9 失敗 / §16.8 中斷重試
+- 需實機
+
+**其他待做**：
+1. **SUMMARY sub-menu 擴充**（後續 Phase）：補齊 SoT §11.1 完整 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 傳輸資料 → 各自子畫面）。註：完整 6 項 + 統計區一頁裝不下 320×240（vlw 24px bitmap 無法縮小），需分頁或縮統計區設計。`SUMMARY_SUBMENU_*` 視覺常數已 hoist 到 file scope + static_assert 防溢出。
+2. **SoT §16.7 確認 dialog TFT 渲染**：`CONFIRM_RESYNC` 決策路徑已實作並測試，需實機實作 TFT dialog 畫面（「此案件已同步 / 是否再次同步？」+ 主鍵確認 / 返回取消）
+3. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
+4. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
+5. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
 
 ## 🎯 Resume 指引（rate-limit 後）
 
