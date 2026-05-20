@@ -7,7 +7,7 @@
 
 ---
 
-## 🎯 當前進度快照（2026-05-15 晚間）
+## 🎯 當前進度快照（2026-05-20）
 
 **已完成（網頁端）**：
 - ✅ **F-5** 後端骨架（Cloudflare D1 + Pages Functions + cases GET/POST + cases/:id GET/DELETE + notes GET/PUT）
@@ -115,24 +115,25 @@ Resume 清單 #3~#7 一次完成（純邏輯重構，不需實機）：
 
 驗證：Flash 61.4% / native tests 400/401 PASSED
 
+**已完成（選項 A：main.cpp 拆分，2026-05-20）**：
+
+main.cpp 3496 行拆為 6 個檔案，純搬移不改邏輯：
+- ✅ `app_globals.h`（522 行）— 型別、常數、extern globals、函式宣告、inline helpers
+- ✅ `main.cpp`（661 行）— globals 定義 + on_ble_rx + setup + loop + captureDisplaySnapshot + updateDisplay
+- ✅ `input_handler.cpp`（790 行）— handleButtons / onShortPress / onLongPress / handleSummarySubmenuPrimary
+- ✅ `ui_screens.cpp`（655 行）— drawMainMenu / SyncScreen / HistoryList / Drug / Backfill / Vent / Timeline / QuickMenu / Placeholder
+- ✅ `ui_ohca.cpp`（565 行）— drawOhca* / FlashOverlay / TwoStepArmed / OhcaVentOverlay / SubmenuNavHint
+- ✅ `ohca_logic.cpp`（374 行）— dispatchOhcaEvent / record* / enter* / exit* / beep / flash / vent / triggerFlash
+
+驗證：`pio run` SUCCESS + native tests **400 cases: 399 PASSED**（test_storage_hw baseline ERRORED 不變）
+
+效益：最大單檔從 3496 → 790 行。後續任務只需讀相關模組，token 成本降 60-70%。
+
 **🎯 下一步需實機**：F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8。
 
-**Resume 時可開工**（下次 session，二擇一）：
+**Resume 時可開工**：
 
-**選項 A：拆分 main.cpp（降低後續所有任務的 token 成本）**
-- 目的：main.cpp ~3000 行，每次任務都要讀全檔吃 ~30k token。拆成 4 個模組後每次只讀 500-800 行，省 60-70%
-- 拆法：純搬移 static function，不改邏輯
-  | 新檔案 | 內容 | 估計行數 |
-  |--------|------|---------|
-  | `ui_render.cpp` | drawOhca / drawSync / drawHistory / drawMainMenu 等渲染函式 | ~800 |
-  | `input_handler.cpp` | onShortPress / onLongPress / handleSummarySubmenuPrimary | ~500 |
-  | `loop_observers.cpp` | BLE 邊緣偵測 / sync dispatcher observer / TICK | ~200 |
-  | `main.cpp`（保留） | setup() / loop() / globals / 狀態機 enum | ~500 |
-- 風險：static 變數可見性需透過參數傳入或 extern 暴露
-- 驗證：`pio test -e native` 全綠（400 tests 在 lib 層不受影響）+ `pio run` 編譯通過 + 實機行為不變
-- 效益：後續 F-3 / F-4 / sub-menu 擴充每次省 ~20k token
-
-**選項 B：F-3 MVP3 chunked data 真送（功能推進）**
+**F-3 MVP3 chunked data 真送（功能推進）**
 - 移除 SENDING stub，整合 case_sync_serializer + ble_chunker
 - SENDING 入口 caseSummary_build → serialize → chunker → BleNus::send() + 等 ACK
 - 對齊 §16.9 失敗 / §16.8 中斷重試
