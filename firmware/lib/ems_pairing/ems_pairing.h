@@ -131,4 +131,16 @@ bool pairing_is_locked_out(const PairingCode& code);
  */
 uint32_t pairing_remaining_sec(const PairingCode& code, uint64_t now_ms);
 
+/**
+ * 計算配對碼剩餘可重試次數（pair_status 訊息 remaining_attempts 欄位用）。
+ *
+ * = PAIRING_MAX_FAILURES − failure_count；已達 lockout 門檻（failure_count >=
+ * PAIRING_MAX_FAILURES）回 0。與 pairing_is_locked_out 共用同一門檻常數，避免
+ * 「剩餘次數」與「lockout 觸發點」在兩處各自硬算而 off-by-one 漂移。
+ *
+ * @param code  配對碼狀態
+ * @return      剩餘可重試次數（0 ~ PAIRING_MAX_FAILURES）
+ */
+uint8_t pairing_remaining_attempts(const PairingCode& code);
+
 }  // namespace ems

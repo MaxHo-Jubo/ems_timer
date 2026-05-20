@@ -100,21 +100,24 @@ void drawSyncScreen() {
             break;
         }
         case ems::SyncState::SENDING: {
+            // chunk 進度（sent / total）；captureDisplaySnapshot 以 sent_chunks_count
+            // 覆寫 countdownSec 觸發 dedup miss，故 SENDING 期間此畫面會隨進度重繪。
             display.setTextSize(1.5f, 1.5f);
             drawCenteredText("傳輸中…", 80, COLOR_TEXT_PRIMARY);
-            display.setTextSize(1.0f, 1.0f);
-            drawCenteredText("DEMO 模式", 150, COLOR_TEXT_MUTED);
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%u / %u",
+                     (unsigned)g_sync_ctx.sent_chunks_count,
+                     (unsigned)g_sync_ctx.total_chunks);
+            display.setTextSize(1.2f, 1.2f);
+            drawCenteredText(buf, 150, COLOR_TEXT_MUTED);
             break;
         }
         case ems::SyncState::DONE: {
             // SoT §16.5「同步完成 / 本案件已傳輸」
-            // TODO[phase-f-mvp3-cleanup]: SENDING stub 改真送 chunked data 後移除「（DEMO）」字樣
             display.setTextSize(1.5f, 1.5f);
             drawCenteredText("同步完成", 60, COLOR_ACCENT_OK);
             display.setTextSize(1.2f, 1.2f);
             drawCenteredText("本案件已傳輸", 130, COLOR_TEXT_PRIMARY);
-            display.setTextSize(1.0f, 1.0f);
-            drawCenteredText("（DEMO）", 210, COLOR_TEXT_MUTED);
             break;
         }
         case ems::SyncState::ERROR: {

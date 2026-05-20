@@ -24,6 +24,9 @@ namespace ems {
 // RX buffer 上限（time_sync ~100B + pair_verify ~50B + chunk ACK ~150B，留 3-5x 餘裕）
 static constexpr size_t BLE_NUS_RX_BUF_MAX = 512;
 
+// ATT MTU 規範下界（BLE 4.0 最小值）；MTU 協商完成前的安全預設值
+static constexpr uint16_t BLE_DEFAULT_ATT_MTU = 23;
+
 // BLE 連線間隔偏好（單位 × 1.25 ms）
 static constexpr uint16_t BLE_CONN_INTERVAL_MIN = 0x06;  // 7.5 ms
 static constexpr uint16_t BLE_CONN_INTERVAL_MAX = 0x12;  // 22.5 ms
@@ -67,15 +70,30 @@ public:
     /** 目前是否有 client 連線 */
     bool connected() const { return connected_; }
 
+    /**
+     * 目前協商後的 ATT MTU。
+     *
+     * 連線後 central（瀏覽器 / nRF Connect）會發起 MTU 協商，完成時 onMtuChanged
+     * 更新此值；協商前回傳規範下界 BLE_DEFAULT_ATT_MTU。chunked TX 用此值算
+     * chunk size（MTU − 3 ATT header overhead）。
+     *
+     * @return 目前 ATT MTU（bytes）
+     */
+    uint16_t att_mtu() const { return att_mtu_; }
+
     // GATT callback 存取點（內部用，不公開給使用者）
     void _on_connect();
     void _on_disconnect();
+    void _on_mtu_changed(uint16_t mtu);
     void _on_rx_write(const uint8_t* data, size_t len);
 
 private:
     BLEServer*         server_   = nullptr;
     BLECharacteristic* tx_char_  = nullptr;
     volatile bool      connected_ = false;
+    // 協商後 ATT MTU；onMtuChanged（GATT task）寫、att_mtu() 於 main loop 讀。
+    // uint16_t 為單字對齊存取 → 讀寫原子，故免 portMUX；若日後改大型別需重新評估同步
+    volatile uint16_t  att_mtu_  = BLE_DEFAULT_ATT_MTU;
 
     // RX single-slot buffer + portMUX（GATT task 寫入，main loop 排空）
     uint8_t            rx_buf_[BLE_NUS_RX_BUF_MAX] = {};

@@ -294,6 +294,44 @@ static void test_remaining_sec_zeroed_code_returns_zero() {
 }
 
 // ============================================================
+//  pairing_remaining_attempts — pair_status remaining_attempts 欄位（Phase F MVP3）
+// ============================================================
+
+/** 新產生的碼 failure_count=0 → 剩餘 = PAIRING_MAX_FAILURES */
+static void test_remaining_attempts_fresh_code_returns_max() {
+    PairingCode code = pairing_generate(0);
+    TEST_ASSERT_EQUAL_UINT8(PAIRING_MAX_FAILURES, pairing_remaining_attempts(code));
+}
+
+/** 失敗 1 次 → 剩餘 2（Rejected 路徑實際會出現的值） */
+static void test_remaining_attempts_after_one_failure() {
+    PairingCode code = pairing_generate(0);
+    code.failure_count = 1;
+    TEST_ASSERT_EQUAL_UINT8(2, pairing_remaining_attempts(code));
+}
+
+/** 失敗 2 次 → 剩餘 1（Rejected 路徑最後一次重試前的值） */
+static void test_remaining_attempts_after_two_failures() {
+    PairingCode code = pairing_generate(0);
+    code.failure_count = 2;
+    TEST_ASSERT_EQUAL_UINT8(1, pairing_remaining_attempts(code));
+}
+
+/** 失敗達門檻 → 剩餘 0（lockout 邊界） */
+static void test_remaining_attempts_at_lockout_returns_zero() {
+    PairingCode code = pairing_generate(0);
+    code.failure_count = PAIRING_MAX_FAILURES;
+    TEST_ASSERT_EQUAL_UINT8(0, pairing_remaining_attempts(code));
+}
+
+/** 防禦：failure_count 超過門檻仍回 0，不 underflow */
+static void test_remaining_attempts_beyond_lockout_returns_zero() {
+    PairingCode code = pairing_generate(0);
+    code.failure_count = 99;
+    TEST_ASSERT_EQUAL_UINT8(0, pairing_remaining_attempts(code));
+}
+
+// ============================================================
 //  Test runner
 // ============================================================
 
@@ -325,5 +363,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_remaining_sec_past_expiry_returns_zero);
     RUN_TEST(test_remaining_sec_full_ttl_just_after_generate);
     RUN_TEST(test_remaining_sec_zeroed_code_returns_zero);
+    RUN_TEST(test_remaining_attempts_fresh_code_returns_max);
+    RUN_TEST(test_remaining_attempts_after_one_failure);
+    RUN_TEST(test_remaining_attempts_after_two_failures);
+    RUN_TEST(test_remaining_attempts_at_lockout_returns_zero);
+    RUN_TEST(test_remaining_attempts_beyond_lockout_returns_zero);
     return UNITY_END();
 }

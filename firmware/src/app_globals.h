@@ -178,8 +178,16 @@ const uint16_t LONG_PRESS_MS_PER_BTN[8] = {
 
 // ── BLE 常數 ──
 
-constexpr const char* BLE_DEVICE_NAME = "EMS-DoseSync-Pro";
+// BLE 廣播裝置名；網頁端 Web Bluetooth 以 namePrefix "DSP-" 過濾掃描（F-4b）
+constexpr const char* BLE_DEVICE_NAME = "DSP-0001";
 constexpr size_t BLE_ACK_BUF_MAX = 512;
+
+// case_sync metadata 常數（MVP3 佔位值，量產時由裝置配置流程寫入 NVS）。
+// SYNC_DEVICE_ID 目前與 BLE_DEVICE_NAME 同為 "DSP-0001"，但兩者語意不同（BLE 廣播名
+// vs 案件 metadata 裝置 ID）、量產可各自配置，故刻意不互相別名。
+constexpr const char* SYNC_DEVICE_ID   = "DSP-0001";       // 裝置硬體 ID
+constexpr const char* SYNC_DEVICE_NAME = SYNC_DEVICE_ID;   // 救護車編號（未配置，暫別名裝置 ID）
+constexpr const char* SYNC_FW_VERSION  = "v0.6-phaseF";    // 韌體版本
 
 // ════════════════════════════════════════════════════════════════
 // 全域狀態機 enum
@@ -485,6 +493,10 @@ void triggerFlash(const char* title, const char* subtitle, uint16_t duration_ms,
 
 // ── main.cpp ──
 void updateDisplay();
+
+// ── sync_send.cpp ──
+void syncSendingPrepare();
+void syncSendingPump();
 
 // ── ui_ohca.cpp ──
 void drawOhcaStartFlash();

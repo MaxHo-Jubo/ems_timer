@@ -99,4 +99,12 @@ uint32_t pairing_remaining_sec(const PairingCode& code, uint64_t now_ms) {
     return (uint32_t)((code.expires_at_ms - now_ms) / 1000);
 }
 
+uint8_t pairing_remaining_attempts(const PairingCode& code) {
+    // 已達或超過 lockout 門檻 → 0（夾下界，避免 uint8_t 減法 underflow）
+    if (code.failure_count >= PAIRING_MAX_FAILURES) {
+        return 0;
+    }
+    return (uint8_t)(PAIRING_MAX_FAILURES - code.failure_count);
+}
+
 }  // namespace ems

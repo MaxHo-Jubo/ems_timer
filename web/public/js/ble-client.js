@@ -82,9 +82,10 @@ export class BleClient {
       this._device.removeEventListener("gattserverdisconnected", this._boundDisconnect);
     }
 
-    // STEP 02: 以 NUS service 過濾掃描（nRF Connect mock 與 DSP-* 韌體皆會出現）
+    // STEP 02: 以裝置名前綴 "DSP-" 過濾掃描（韌體廣播名 DSP-0001，對齊 F-4b 接真 ESP32）。
+    // optionalServices 仍須列 NUS：連線後 getPrimaryService 才有權限存取該 service。
     this._device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [NUS_SERVICE] }],
+      filters: [{ namePrefix: "DSP-" }],
       optionalServices: [NUS_SERVICE],
     });
 

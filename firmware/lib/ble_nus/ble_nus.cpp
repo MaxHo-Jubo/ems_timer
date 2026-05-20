@@ -31,6 +31,10 @@ class NusServerCallbacks : public BLEServerCallbacks {
         if (g_instance) { g_instance->_on_disconnect(); }
         BLEDevice::startAdvertising();
     }
+    // central 發起 MTU 協商完成 → 記錄協商值供 chunked TX 算 chunk size
+    void onMtuChanged(BLEServer* /*pServer*/, esp_ble_gatts_cb_param_t* param) override {
+        if (g_instance && param) { g_instance->_on_mtu_changed(param->mtu.mtu); }
+    }
 };
 
 class NusRxCallbacks : public BLECharacteristicCallbacks {
@@ -119,6 +123,10 @@ void BleNus::_on_connect() {
 
 void BleNus::_on_disconnect() {
     connected_ = false;
+}
+
+void BleNus::_on_mtu_changed(uint16_t mtu) {
+    att_mtu_ = mtu;
 }
 
 void BleNus::_on_rx_write(const uint8_t* data, size_t len) {

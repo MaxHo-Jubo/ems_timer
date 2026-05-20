@@ -170,6 +170,54 @@ DisplaySnapshot lastDisplaySnapshot = {};
 // ============================================================
 
 /**
+ * 依配對碼驗證結果回送 pair_status TX 訊息給網頁端（對齊 ble-client.js 切句、
+ * connect.js handlePairStatus 分流）。
+ *
+ * accepted / locked_out 為終局結果；rejected 帶 remaining_attempts 供網頁顯示
+ * 剩餘可重試次數。IgnoredWrongState（非 AWAITING_INPUT 收到輸入）不回訊息 ——
+ * 網頁端此時並未等待此回覆。
+ *
+ * @param r  sync_dispatcher_dispatch_input() 的回傳結果
+ */
+static void send_pair_status(ems::DispatchInputResult r) {
+    // STEP 01: 非預期狀態的輸入不回覆（網頁端未在等待）
+    if (r == ems::DispatchInputResult::IgnoredWrongState) {
+        return;
+    }
+
+    // STEP 02: 依結果組 pair_status JSON（行結尾 '\n' 對齊網頁端切句慣例）。
+    //   schema 固定 ≤3 欄、無使用者輸入字串，直接 snprintf 組字面 JSON 即可，
+    //   毋須比照 case_sync / time_sync_ack 走 ArduinoJson（省 JsonDocument 開銷）。
+    char buf[96];
+    int n = 0;
+    if (r == ems::DispatchInputResult::Accepted) {
+        n = snprintf(buf, sizeof(buf),
+                     "{\"type\":\"pair_status\",\"result\":\"accepted\"}\n");
+    } else if (r == ems::DispatchInputResult::LockedOut) {
+        n = snprintf(buf, sizeof(buf),
+                     "{\"type\":\"pair_status\",\"result\":\"locked_out\"}\n");
+    } else {
+        // STEP 02.01: Rejected — 剩餘重試次數由 ems_pairing 統一計算（與 lockout 門檻同源）
+        const unsigned remaining =
+            ems::pairing_remaining_attempts(g_sync_ctx.pairing_code);
+        n = snprintf(buf, sizeof(buf),
+                     "{\"type\":\"pair_status\",\"result\":\"rejected\","
+                     "\"remaining_attempts\":%u}\n",
+                     remaining);
+    }
+
+    // STEP 03: notify 送出。snprintf 失敗 / 截斷不送（避免送半截 JSON）；送出失敗只
+    //   WARN log —— pair_status 為 best-effort 通知，連線已斷時整個同步流程自會轉 ERROR。
+    if (n <= 0 || (size_t)n >= sizeof(buf)) {
+        Serial.printf("[BLE] WARN pair_status snprintf anomaly n=%d\n", n);
+        return;
+    }
+    if (!g_ble.send(reinterpret_cast<const uint8_t*>(buf), (size_t)n)) {
+        Serial.println("[BLE] WARN pair_status send failed (client 已斷線?)");
+    }
+}
+
+/**
  * BLE RX callback：解析 JSON type 欄位做訊息分流。
  * 由 g_ble.poll() 在 main loop 呼叫（非 GATT task）。
  */
@@ -217,6 +265,8 @@ static void on_ble_rx(const uint8_t* data, size_t len) {
                                                                  "IgnoredWrongState";
         Serial.printf("[BLE] pair_verify %s state=%u\n",
                       result_str, (unsigned)g_sync_ctx.state);
+        // 回送 pair_status TX，網頁端據此決定進主鍵等待 / 重輸 / 鎖定收尾
+        send_pair_status(r);
         return;
     }
 
@@ -336,10 +386,10 @@ void loop() {
     //   time_sync 立即生效，讓接下來 handleButtons 觸發的事件 timestamp 用真實 epoch
     g_ble.poll(on_ble_rx);
 
-    // STEP 02: Phase F MVP2 — sync dispatcher observer（僅在 GLOBAL_SYNC 內活）
+    // STEP 02: Phase F — sync dispatcher observer（僅在 GLOBAL_SYNC 內活）
     //   - BLE 連線邊緣 → dispatch BLE_CONNECTED / BLE_DISCONNECTED
     //   - 每 tick dispatch TICK 給 timeout 判斷
-    //   - SENDING 入口 stub：set_total_chunks(0) + CHUNK_ACKED → 立即 DONE
+    //   - SENDING 入口 syncSendingPrepare()、期間 syncSendingPump() 定速真送 chunked payload
     //   - DONE/ERROR 顯示完自然回 IDLE → 退主選單
     if (globalState == GLOBAL_SYNC) {
         static bool prev_ble_conn = false;
@@ -353,15 +403,24 @@ void loop() {
         ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::TICK, millis());
 
         static ems::SyncState prev_sync_state = ems::SyncState::IDLE;
-        ems::SyncState cur_sync_state = g_sync_ctx.state;
+
+        // STEP 02.01: SENDING 入口（一次性）準備 payload；SENDING 期間每 tick 定速推 chunk。
+        //   syncSendingPrepare 失敗會轉 ERROR、syncSendingPump 送完最後一個 chunk 會轉
+        //   DONE，故入口/期間判斷與下方邊緣偵測一律讀 g_sync_ctx.state 即時值。
+        if (g_sync_ctx.state == ems::SyncState::SENDING
+            && prev_sync_state != ems::SyncState::SENDING) {
+            syncSendingPrepare();
+        }
+        if (g_sync_ctx.state == ems::SyncState::SENDING) {
+            syncSendingPump();
+        }
+
+        // STEP 02.02: 取 prepare/pump 後的即時 state 做邊緣偵測 —— SENDING → DONE 的轉換
+        //   發生在 pump 內（迴圈中段），若沿用迴圈頂端 stale 值會漏掉持久化邊緣。
+        const ems::SyncState cur_sync_state = g_sync_ctx.state;
         if (cur_sync_state != prev_sync_state) {
             Serial.printf("[SYNC] state %u -> %u\n",
                           (unsigned)prev_sync_state, (unsigned)cur_sync_state);
-        }
-        if (cur_sync_state == ems::SyncState::SENDING && prev_sync_state != ems::SyncState::SENDING) {
-            // MVP2 stub：不真送資料，0 chunk + 立即 ACK → DONE
-            ems::sync_dispatcher_set_total_chunks(&g_sync_ctx, 0);
-            ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::CHUNK_ACKED, millis());
         }
         if (cur_sync_state == ems::SyncState::DONE
             && prev_sync_state == ems::SyncState::SENDING) {
@@ -411,7 +470,7 @@ void loop() {
             // ERROR → IDLE 也走此路徑（SoT §16.9 同步失敗亦留在原案件總覽供重試）。
             globalState = sync_return_to_global(g_sync_return_to);
         }
-        prev_sync_state = g_sync_ctx.state;
+        prev_sync_state = cur_sync_state;
     }
 
     handleButtons();
@@ -485,12 +544,18 @@ static DisplaySnapshot captureDisplaySnapshot() {
                         ? (EPI_CYCLE_MS - since) / 1000
                         : (since - EPI_CYCLE_MS) / 1000;
     }
-    // STEP 02.02: GLOBAL_SYNC AWAITING_INPUT 期間覆寫 countdownSec 帶配對碼剩餘秒
-    //   獨立 if 而非 else if：OHCA case 結束後 ohcaLastEpiMs 不會被清零，STEP 02 仍會寫入；
-    //   進 SYNC 後此處用「後寫勝」覆蓋，確保 snapshot dedup 對 SYNC 倒數有反應。
-    //   drawSyncScreen 自行算渲染值（不讀 snapshot.countdownSec），此處純為觸發每秒 dedup miss。
-    if (globalState == GLOBAL_SYNC && g_sync_ctx.state == ems::SyncState::AWAITING_INPUT) {
-        in.countdownSec = ems::pairing_remaining_sec(g_sync_ctx.pairing_code, (uint64_t)millis());
+    // STEP 02.02: GLOBAL_SYNC 期間覆寫 countdownSec 觸發 snapshot dedup miss：
+    //   AWAITING_INPUT 帶配對碼剩餘秒（每秒重繪）、SENDING 帶已送 chunk 數（進度推進重繪）。
+    //   STEP 02 為獨立 if：OHCA case 結束後 ohcaLastEpiMs 不會被清零仍會寫入，進 SYNC
+    //   後此處以「後寫勝」覆蓋。drawSyncScreen 自行算渲染值（不讀 snapshot.countdownSec），
+    //   此處純為觸發 dedup miss。
+    if (globalState == GLOBAL_SYNC) {
+        if (g_sync_ctx.state == ems::SyncState::AWAITING_INPUT) {
+            in.countdownSec = ems::pairing_remaining_sec(
+                g_sync_ctx.pairing_code, (uint64_t)millis());
+        } else if (g_sync_ctx.state == ems::SyncState::SENDING) {
+            in.countdownSec = g_sync_ctx.sent_chunks_count;
+        }
     }
 
     // STEP 03: ventBeat — 6 秒通氣節奏目前秒
