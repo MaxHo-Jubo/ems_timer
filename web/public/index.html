@@ -14,6 +14,10 @@
   </header>
 
   <main class="container">
+    <div id="browserWarning" class="browser-warning" hidden>
+      ⚠️ 此瀏覽器不支援 Web Bluetooth。請改用桌面版 Chrome / Edge / Opera（iOS Safari、Firefox 不支援）。
+    </div>
+
     <button id="connectBtn" class="connect-button" type="button">
       連線並接收資料
     </button>
@@ -29,6 +33,11 @@
       <div class="card__label" style="margin-top: 12px;">
         剩餘 <span id="pairTtl" class="text-amber text-mono">120</span> 秒
       </div>
+      <button id="pairSubmitBtn" class="pair-submit" type="button">送出配對碼</button>
+    </section>
+
+    <section class="card card--main-key" id="mainKeyCard" hidden>
+      <div class="main-key-hint">⏳ 請按裝置主鍵開始同步</div>
     </section>
 
     <section class="card">
@@ -48,7 +57,6 @@
     Phase F Web 驗證 v0.1 ｜ Chromium 系列瀏覽器 ｜ 需 HTTPS / localhost
   </footer>
 
-  <script type="module" src="./js/api-client.js"></script>
   <script type="module" src="./js/connect.js"></script>
 </body>
 </html>

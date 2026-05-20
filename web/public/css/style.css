@@ -599,3 +599,57 @@ body {
 .notes-status--saving { color: var(--accent-amber); }
 .notes-status--saved { color: var(--accent-green); }
 .notes-status--error { color: var(--accent-red); }
+
+/* === F-4a: 瀏覽器不支援警告 === */
+.browser-warning {
+  padding: 12px 14px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid var(--accent-amber);
+  border-radius: 8px;
+  color: var(--accent-amber);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+/* === F-4a: 配對碼送出按鈕 === */
+.pair-submit {
+  width: 100%;
+  margin-top: 16px;
+  padding: 14px;
+  background: var(--accent-blue-bg);
+  color: var(--accent-blue);
+  border: 1px solid var(--accent-blue);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.pair-submit:hover:not(:disabled) {
+  background: #2a4d7a;
+}
+
+.pair-submit:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* === F-4a: 等待裝置主鍵卡片 === */
+.card--main-key {
+  border-color: var(--accent-amber);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+.main-key-hint {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--accent-amber);
+  text-align: center;
+  letter-spacing: 1px;
+  animation: pulse 1.5s infinite;
+}

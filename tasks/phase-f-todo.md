@@ -138,15 +138,36 @@ POST-COMMIT-REVIEW（commit `dd98762`，5 步驟全跑）：
 效益：每個功能模組單檔可獨立閱讀，後續任務只需讀相關模組，token 成本降 60-70%。
 備註：`input_handler.cpp` 821 行（補 JSDoc 後微超 CLAUDE.md 800 行 guideline；超出部分為註解，後續若再長可再拆 submenu handler）。
 
-**🎯 下一步：F-4a 前端 Web Bluetooth scanning（不需實機，下次 resume 從這裡開工）**
+**已完成（Phase F F-4a 前端 Web Bluetooth scanning，2026-05-20）**：
 
-F-4a 是目前唯一「純前端、無實機阻塞、可大段推進」的任務：
-- 用手機 nRF Connect App 假扮 BLE peripheral，**不需 ESP32 在手邊**
-- 前置 F-5（後端）/ F-6（前端骨架）/ F-9（完整 UI）全部已完成
-- 對齊專案「先網頁、後 App」+「選項 A」策略
-- 任務細節見本檔下方「### F-4a 前端：Web Bluetooth scanning」section（9 個子項）
+新建 / 重寫網頁三檔（mock simulateSync → 真 Web Bluetooth）：
+- ✅ `web/public/js/ble-client.js`（新建）— Web Bluetooth NUS 傳輸層：NUS UUID 常數、`BleClient` class（connect / send / disconnect）、TX notify 累積至 `\n` 切句（chunked payload 自然重組）、RX 緩衝溢位防護、`isBleSupported()`
+- ✅ `web/public/js/connect.js`（重寫）— 真同步狀態機：連線 → 送 `time_sync` → 配對碼輸入 → 送 `pair_verify` → 等 `pair_status` → 等主鍵 → 接收 `case_sync` → POST `/api/cases`
+- ✅ `index.html` / `style.css` — 瀏覽器不支援警告、配對碼送出按鈕、等待主鍵卡片
+- ✅ 錯誤處理：連線失敗 / 配對碼錯誤可重試 / lockout / 主鍵等待看門狗 120s / payload 解析失敗 / 緩衝溢位 / BLE 斷線
 
-之後才做需實機的：F-3 src/ 整合層 + MVP3 chunked data 真送 / F-4b 接真韌體 / F-7 端到端測試 / F-8 驗收。
+協定決策（本次定義）：
+- web ↔ 裝置 NUS 訊息一律 `\n` 行分隔（對齊 `ble-time-sync-protocol.md §1` + 韌體 `ble_rx_queue` 慣例）
+- web → 裝置：`time_sync`（連線即送）、`pair_verify`（`{type,input}`，格式已對齊韌體 `on_ble_rx`）
+- 裝置 → web：`time_sync_ack`（已存在）、`pair_status`（**新定義**：`{type,result:accepted|rejected|locked_out,remaining_attempts}`）、`case_sync`（payload）
+- ⚠️ 韌體目前 `on_ble_rx` 收 `pair_verify` 只 `Serial.printf` 不回 `pair_status` —— **F-3 src 整合 / F-4b 時韌體必須補送 `pair_status` TX 訊息**
+
+驗證（web/ 無單元測試框架，沿用 F-5/F-6/F-9 慣例手動驗證）：
+- `ble-client.js` chunked 重組 3 項測試通過（跨 notify 切分 / 單 chunk 多訊息 / UTF-8 多位元組跨界）
+- Playwright 注入 mock GATT 跑完整端到端：連線 → 對時 → 配對 → 等主鍵 → 分 2 chunk 收 `case_sync` → POST 真本機 D1 → 列表/詳細 readback 確認
+- 錯誤路徑：`pair_status` rejected 可重試、locked_out 收尾，皆正常
+- 無 console error
+- 備註：dev server 需 Node.js v22+（系統預設 v20 會被 wrangler 擋，須 `nvm use 22`）
+
+關於 nRF Connect 實機驗證（決策 2026-05-20）：
+- **跳過** nRF Connect mock 驗證 —— 功能鏈路已由 Playwright mock GATT 等效驗證，nRF Connect GATT server 設定繁瑣（iOS 版尤甚），CP 值低
+- 真 BLE 傳輸（MTU 分片 / 真實 notify 時序）驗證**併入 F-4b**，直接對真 ESP32 韌體測，不另花工夫弄假 peripheral
+
+**🎯 下一步：F-3 src/ 整合層 + MVP3 chunked 真送（需實機）**
+
+F-4a 前端程式碼已完成。剩餘為需 ESP32 實機的工作：
+- F-3 src/ 整合層 + MVP3 chunked data 真送（移除 SENDING stub，整合 `case_sync_serializer` + `ble_chunker`；韌體須補送 `pair_status` TX）
+- 之後 F-4b 接真韌體（含 F-4a 真 BLE 傳輸驗證）/ F-7 端到端測試 / F-8 驗收。
 
 **Resume 時可開工**：
 
@@ -253,19 +274,17 @@ curl http://localhost:8788/api/cases
 
 > **依賴**：F-5 + F-6 完成。**不需要韌體**，用手機 nRF Connect App 假扮 BLE peripheral。
 
-- [ ] `web/public/js/ble-client.js` — `navigator.bluetooth.requestDevice()` 連線
-- [ ] NUS UUID 常數（對齊 plan §8.2）
-- [ ] startNotifications + chunked payload 重組
-- [ ] **配對碼輸入後送回裝置** UI 流程：輸完 4 位數 → 透過 NUS RX 寫回
-- [ ] **「等待裝置端確認」狀態** UI（對齊 SoT §16.5：裝置端螢幕跳「按主鍵」時，網頁同步顯示「請按裝置主鍵」）
-- [ ] payload 完整後 POST 到 `/api/cases`
-- [ ] 同步進度 UI 更新（配對碼輸入 / 等主鍵 / 接收中 / 寫雲端中 / 完成）
-- [ ] 錯誤處理：連線斷 / 配對失敗 / 主鍵 timeout / payload 解析失敗
-- [ ] 用 nRF Connect 模擬 NUS server 推假 JSON 驗證鏈路
+- [x] `web/public/js/ble-client.js` — `navigator.bluetooth.requestDevice()` 連線
+- [x] NUS UUID 常數（對齊 plan §8.2）
+- [x] startNotifications + chunked payload 重組（TX notify 累積至 `\n` 重組）
+- [x] **配對碼輸入後送回裝置** UI 流程：輸完 4 位數 → 透過 NUS RX 寫回 `pair_verify`
+- [x] **「等待裝置端確認」狀態** UI（對齊 SoT §16.5：配對成功後顯示「請按裝置主鍵」卡片）
+- [x] payload 完整後 POST 到 `/api/cases`
+- [x] 同步進度 UI 更新（配對碼輸入 / 等主鍵 / 接收中 / 寫雲端中 / 完成）
+- [x] 錯誤處理：連線斷 / 配對失敗 / 主鍵 timeout / payload 解析失敗 / 緩衝溢位
+- [x] ~~用 nRF Connect 模擬 NUS server 推假 JSON 驗證鏈路~~ → **跳過**（改用 Playwright mock GATT 等效驗證功能鏈路；真 BLE 傳輸驗證併入 F-4b）
 
-**驗收**：手機 nRF Connect 假扮 ESP32 → 網頁連到 → 配對碼輸入 → 等主鍵確認（mock 端手動觸發） → 收到 mock case_sync payload → 寫入 D1 → 列表頁可看到。
-
-**Resume 提示**：如果做到一半才發現 nRF Connect 操作太麻煩，可以直接跳 F-2（韌體 hello world NUS），下面有詳細項目。
+**驗收**：~~手機 nRF Connect 假扮 ESP32~~ → Playwright 注入 mock GATT → 網頁連到 → 配對碼輸入 → 等主鍵 → 收到 case_sync payload（分 chunk）→ 寫入 D1 → 列表/詳細頁可看到。**已驗證通過（2026-05-20）**。真 BLE 傳輸（MTU 分片）驗證留待 F-4b 對真 ESP32。
 
 ---
 
@@ -355,7 +374,8 @@ curl http://localhost:8788/api/cases
 > **依賴**：F-3 + F-4a。
 
 - [ ] 把 F-4a 的 mock 換成真連 ESP32
-- [ ] device filter 改 `namePrefix: 'DSP-'`
+- [ ] device filter 改 `namePrefix: 'DSP-'`（F-4a 目前用 NUS service 過濾，相容 nRF Connect mock）
+- [ ] **韌體 `on_ble_rx` 補送 `pair_status` TX 訊息**（目前收 `pair_verify` 只 `Serial.printf`，web 端等不到配對結果）
 - [ ] 配對碼 UI：使用者讀韌體螢幕碼 → 網頁輸入框送 → NUS RX 送回韌體驗證
 - [ ] 驗證失敗 3 次 lockout UI 提示
 

@@ -4,6 +4,7 @@
   "private": true,
   "description": "EMS Timer Phase F web validation: BLE sync + Cloudflare D1",
   "scripts": {
+    "test": "node --test test/",
     "predev": "wrangler d1 migrations apply ems-timer-cases --local",
     "dev": "wrangler pages dev public",
     "deploy": "./deploy.sh",
