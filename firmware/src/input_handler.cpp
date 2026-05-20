@@ -1,6 +1,14 @@
 #include "app_globals.h"
 
 
+/**
+ * 掃描所有實體按鍵並分派短按 / 長按事件。
+ *
+ * 每輪 loop 呼叫一次：逐顆讀取 GPIO 狀態，press 與 release 邊緣共用
+ * 同一 DEBOUNCE_MS 門檻防抖；release 時若按住時間短於 SHORT_PRESS_MAX_MS
+ * 觸發 onShortPress；按住中達到該鍵 LONG_PRESS_MS_PER_BTN 門檻時觸發
+ * 一次 onLongPress。
+ */
 void handleButtons() {
     uint32_t now = millis();
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
@@ -48,6 +56,15 @@ void handleButtons() {
 // 短按 dispatcher
 // ============================================================
 
+/**
+ * 短按事件 dispatcher。
+ *
+ * 依當前 globalState（主功能表 / VENT / 歷史 / 佔位畫面 / SYNC / OHCA）
+ * 與 OHCA sub-state，將按鍵轉成游標移動、選單進出、確認或記錄等行為。
+ *
+ * @param btnIdx 觸發短按的按鍵索引（BTN_PRIMARY / BTN_UP / BTN_DOWN /
+ *               BTN_BACK / BTN_EPI / BTN_SHOCK / BTN_POWER / BTN_RECORD）
+ */
 void onShortPress(uint8_t btnIdx) {
     Serial.printf("[BTN] short %u (state=%u/%u)\n", btnIdx, globalState, ohcaState);
 
@@ -653,6 +670,15 @@ void onShortPress(uint8_t btnIdx) {
 // 長按 3s dispatcher（OHCA OVERTIME 結束前檢查觸發）
 // ============================================================
 
+/**
+ * 長按事件 dispatcher（每次按住達門檻只觸發一次）。
+ *
+ * 主鍵長按：VENT 模式開結束確認對話框、OHCA 進行中進入 END_CHECK；
+ * EPI 鍵長按進入藥物選單；電擊鍵長按進入電擊補登選單。
+ *
+ * @param btnIdx 觸發長按的按鍵索引（BTN_PRIMARY / BTN_EPI / BTN_SHOCK；
+ *               其餘按鍵無對應長按行為）
+ */
 void onLongPress(uint8_t btnIdx) {
     Serial.printf("[BTN] long %u (state=%u/%u/sub=%u)\n",
                   btnIdx, globalState, ohcaState, ohcaSubState);

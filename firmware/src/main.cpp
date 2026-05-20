@@ -228,6 +228,10 @@ static void on_ble_rx(const uint8_t* data, size_t len) {
 // setup() / loop()
 // ============================================================
 
+/**
+ * Arduino 啟動入口：初始化 Serial、周邊（蜂鳴器/按鍵/TFT）、字型、
+ * 兩段確認、LittleFS 持久化、BLE NUS 與 sync dispatcher，最後繪出初始畫面。
+ */
 void setup() {
     Serial.begin(115200);
     // ESP32-S3 USB-CDC 列舉需 1~2 秒，太早 Serial.println 會被吃掉。
@@ -238,11 +242,11 @@ void setup() {
     }
     Serial.println("[BOOT] EMS Timer Phase A");
 
-    // STEP 00: 關掉板上 WS2812（GPIO 48）。boot bootloader 可能 latch 成白色，必須主動 reset。
+    // STEP 01: 關掉板上 WS2812（GPIO 48）。boot bootloader 可能 latch 成白色，必須主動 reset。
     //   neopixelWrite() 由 esp32-hal-rgb-led 提供（ESP32 Arduino core ≥ 2.0.7 內建）。
     neopixelWrite(WS2812_PIN, 0, 0, 0);
 
-    // STEP 01: 蜂鳴器
+    // STEP 02: 蜂鳴器
     pinMode(BUZZER_PIN, OUTPUT);
     digitalWrite(BUZZER_PIN, LOW);
 
@@ -251,13 +255,13 @@ void setup() {
     digitalWrite(VIBRATION_PIN, LOW);
 #endif
 
-    // STEP 02: 8 按鍵 INPUT_PULLUP
+    // STEP 03: 8 按鍵 INPUT_PULLUP
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
         pinMode(BTN_PINS[i], INPUT_PULLUP);
         lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
 
-    // STEP 03: TFT 初始化（LovyanGFX + DMA + sprite buffer）
+    // STEP 04: TFT 初始化（LovyanGFX + DMA + sprite buffer）
     //   - tft.init()：SPI 80MHz @ DMA_CH_AUTO（class LGFX 內 cfg）
     //   - invert: false（蝦皮紅板 polarity，已寫死於 LGFX panel cfg）
     //   - display 為全頁 LGFX_Sprite（320×240 @ 16bpp = 153,600 bytes，
@@ -274,7 +278,7 @@ void setup() {
     }
     display.fillScreen(0x0000);
 
-    // STEP 03.01: vlw 字型載入（Sarasa Mono TC Bold 24px，222 glyphs）
+    // STEP 04.01: vlw 字型載入（Sarasa Mono TC Bold 24px，222 glyphs）
     //   - loadFont 後設 g_vlw_loaded 旗標；中文渲染前呼叫 useZhFont() lazy reload
     //   - LGFX setFont() 切走內建字型會 _runtime_font.reset() 析構 VLWfont，
     //     所以不能緩存 VLWfont*，每次需要 vlw 必須檢查並重 load
@@ -289,11 +293,11 @@ void setup() {
                   g_vlw_loaded ? "loaded" : "FAILED (CJK will fallback to Font0)",
                   (unsigned)ems_zh_24_vlw_len);
 
-    // STEP 04: 兩段確認 init
+    // STEP 05: 兩段確認 init
     twoStepConfirm_init(&epiConfirm,   TWO_STEP_DEFAULT_TIMEOUT_MS);
     twoStepConfirm_init(&shockConfirm, TWO_STEP_DEFAULT_TIMEOUT_MS);
 
-    // STEP 04.5: Phase E 持久化 — mount LittleFS + storage_init
+    // STEP 06: Phase E 持久化 — mount LittleFS + storage_init
     //   失敗只 log warn，不擋 boot；歷史紀錄會走 "無資料" 路徑，OHCA case 跑得起來
     if (emsStorage_fs_mount(&g_storage_be)) {
         if (storage_init(&g_storage_be)) {
@@ -306,7 +310,7 @@ void setup() {
         Serial.println("[STORAGE] WARN LittleFS mount failed");
     }
 
-    // STEP 04.6: Phase F MVP1 — BLE NUS peripheral 初始化
+    // STEP 07: Phase F MVP1 — BLE NUS peripheral 初始化
     //   失敗只 log warn 不擋 boot（對齊 storage_init 容錯模式）。
     //   廣播後待 web 端（docs/ble-tester/）連線送 time_sync 才會有 epoch；
     //   未對時前事件 timestamp_ms = 0（spec §4.1）。
@@ -315,20 +319,24 @@ void setup() {
         Serial.println("[BLE] WARN init failed, time_sync 將不可用");
     }
 
-    // STEP 04.7: Phase F MVP2 — sync dispatcher 初始 IDLE
+    // STEP 08: Phase F MVP2 — sync dispatcher 初始 IDLE
     ems::sync_dispatcher_init(&g_sync_ctx, millis());
 
-    // STEP 05: 初始顯示
+    // STEP 09: 初始顯示
     updateDisplay();
     Serial.println("[READY] MainMenu");
 }
 
+/**
+ * Arduino 主迴圈：每輪排空 BLE RX、推進 sync dispatcher、處理按鍵與
+ * OHCA/通氣/兩段確認等 tick，到期清提示，最後依固定間隔刷新顯示。
+ */
 void loop() {
-    // STEP 00: Phase F MVP1 — 排空 BLE RX queue
+    // STEP 01: Phase F MVP1 — 排空 BLE RX queue
     //   time_sync 立即生效，讓接下來 handleButtons 觸發的事件 timestamp 用真實 epoch
     g_ble.poll(on_ble_rx);
 
-    // STEP 00.5: Phase F MVP2 — sync dispatcher observer（僅在 GLOBAL_SYNC 內活）
+    // STEP 02: Phase F MVP2 — sync dispatcher observer（僅在 GLOBAL_SYNC 內活）
     //   - BLE 連線邊緣 → dispatch BLE_CONNECTED / BLE_DISCONNECTED
     //   - 每 tick dispatch TICK 給 timeout 判斷
     //   - SENDING 入口 stub：set_total_chunks(0) + CHUNK_ACKED → 立即 DONE
@@ -415,7 +423,7 @@ void loop() {
     twoStepConfirm_tick(&shockConfirm, now);
     twoStepConfirm_tick(&amioConfirm,  now);
 
-    // STEP 01: armed 提示 5s 自動消失
+    // STEP 03: armed 提示 5s 自動消失
     if (showEpiArmedPrompt && now - epiArmedPromptStart >= ARMED_PROMPT_MS) {
         showEpiArmedPrompt = false;
     }
@@ -426,7 +434,7 @@ void loop() {
         showAmioArmedPrompt = false;
     }
 
-    // STEP 02: 補登成功提示 2s 後自動回主畫面
+    // STEP 04: 補登成功提示 2s 後自動回主畫面
     if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS &&
         now - backfillSuccessShownMs >= BACKFILL_SUCCESS_MS) {
         resetSubState();
@@ -437,7 +445,7 @@ void loop() {
         flashState.active = false;
     }
 
-    // STEP 03: vent 返回鍵提示 2s 自動消失
+    // STEP 05: vent 返回鍵提示 2s 自動消失
     if (ventBackHintShown && now - ventBackHintStartMs >= VENT_BACK_HINT_MS) {
         ventBackHintShown = false;
     }
@@ -523,13 +531,13 @@ static DisplaySnapshot captureDisplaySnapshot() {
  * （Phase E history UI 漏 historyCursor 導致無重繪那類 bug 必須在 native 階段被擋）。
  */
 void updateDisplay() {
-    // STEP 00: snapshot 去重 — 顯示狀態無變化即跳過，避免無謂的全螢幕重畫造成掃描線閃爍。
+    // STEP 01: snapshot 去重 — 顯示狀態無變化即跳過，避免無謂的全螢幕重畫造成掃描線閃爍。
     DisplaySnapshot now = captureDisplaySnapshot();
     if (memcmp(&now, &lastDisplaySnapshot, sizeof(DisplaySnapshot)) == 0) {
         return;
     }
 
-    // STEP 01: partial update — 倒數每秒只 tick 一格時，整片 fillScreen 會出掃描線閃爍。
+    // STEP 02: partial update — 倒數每秒只 tick 一格時，整片 fillScreen 會出掃描線閃爍。
     // 偵測「在 OHCA 倒數同 state 內，僅 countdownSec 改變」→ 只重繪時間區塊，不動 badge/label/counter。
     // 排除 ALARMING（半週期閃 phase 跟著變，必須走 full path 重畫整片紅 bg）。
     // 排除 modal overlay（confirm dialog/flash）— partial 不會重畫 overlay，會被時間區塊 fillRect 蓋掉
@@ -663,7 +671,7 @@ void updateDisplay() {
         drawFlashOverlay();
     }
 
-    // STEP 99: pushSprite DMA 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
+    // STEP 03: pushSprite DMA 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
     display.pushSprite(0, 0);
 }
 

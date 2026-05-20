@@ -5,6 +5,12 @@
 // OHCA event dispatcher（包裝 nextOhcaState）
 // ============================================================
 
+/**
+ * OHCA 事件分派器：包裝 nextOhcaState，並處理 END_CHECK source 快取、
+ * 跨 session 隔離與 Phase E 進 LOCKED 時的案件持久化（含失敗自動重試）。
+ * @param event     OHCA 事件類型（按鍵長按、計時 tick、確認/取消等）
+ * @param since_ms  事件相對時間（毫秒），交由 nextOhcaState 判斷狀態轉移
+ */
 void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
     // 進 END_CHECK 前的 source state — END_CANCEL 取消時用此還原。
     // SoT V1 §10.1：source 不一定是 OVERTIME；於此處由 prev 自動 cache，caller 無需感知。
@@ -67,6 +73,7 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
 // OHCA tick driver：START_FLASH timeout + COUNTDOWN/.../OVERTIME 推進
 // ============================================================
 
+/** OHCA tick 驅動：處理 START_FLASH 1 秒逾時，並推進 COUNTDOWN/WARNING/ALARMING/OVERTIME 倒數階段與輸出 */
 void updateOhcaTick() {
     if (globalState != GLOBAL_OHCA) return;
     uint32_t now = millis();
@@ -222,10 +229,12 @@ void updateVentTick() {
 // 退出 OHCA case（從 SUMMARY 返回主功能表）
 // ============================================================
 
+/** 切換全域狀態回主功能表（GLOBAL_MAIN_MENU） */
 void enterMainMenu() {
     globalState = GLOBAL_MAIN_MENU;
 }
 
+/** 退出 OHCA case：回主功能表並重置所有 OHCA 執行期狀態（事件、倒數、捲動、通氣 overlay、蜂鳴） */
 void exitOhcaCase() {
     enterMainMenu();
     ohcaState              = OHCA_STATE_MAIN_MENU;
@@ -244,6 +253,12 @@ void exitOhcaCase() {
 // pulses = 255 視為「連續」（直到 stopBeep）
 // ============================================================
 
+/**
+ * 啟動非阻塞蜂鳴狀態機（立即拉高蜂鳴器並排定首次切換）。
+ * @param pulses  鳴叫次數；255 視為連續鳴叫直到 stopBeep
+ * @param onMs    每次鳴叫的持續毫秒數
+ * @param offMs   兩次鳴叫之間的靜音毫秒數
+ */
 void triggerBeep(uint8_t pulses, uint16_t onMs, uint16_t offMs) {
     beepPulsesRemaining = pulses;
     beepOnMs            = onMs;
@@ -253,6 +268,7 @@ void triggerBeep(uint8_t pulses, uint16_t onMs, uint16_t offMs) {
     beepNextToggleMs    = millis() + onMs;
 }
 
+/** 立即停止蜂鳴：清除剩餘鳴叫次數、連續旗標並拉低蜂鳴器 GPIO */
 void stopBeep() {
     beepPulsesRemaining = 0;
     beepActive          = false;
@@ -260,6 +276,7 @@ void stopBeep() {
     digitalWrite(BUZZER_PIN, LOW);
 }
 
+/** 非阻塞蜂鳴狀態機 tick：依排定時間切換 ON/OFF 並遞減剩餘鳴叫次數（255 連續模式不遞減） */
 void updateBeepMachine() {
     if (beepPulsesRemaining == 0 && !beepActive) return;
     uint32_t now = millis();
@@ -286,6 +303,10 @@ void updateBeepMachine() {
 // OLED 反色 SM（震動視覺替代）
 // ============================================================
 
+/**
+ * 觸發螢幕反色閃爍（作為震動的視覺替代）；若已在閃爍中則略過不重複觸發。
+ * @param durationMs  反色持續毫秒數，到時由 updateOledFlashMachine 還原
+ */
 void triggerOledFlash(uint16_t durationMs) {
     if (oledInverted) return;  // 已在閃 — 不重複觸發
     oledInverted          = true;
@@ -294,6 +315,7 @@ void triggerOledFlash(uint16_t durationMs) {
     tft.invertDisplay(true);
 }
 
+/** 螢幕反色閃爍狀態機 tick：反色時間到期後還原顯示為正常色 */
 void updateOledFlashMachine() {
     if (!oledInverted) return;
     if (millis() - oledInvertStartMs >= oledInvertDurationMs) {
@@ -306,6 +328,10 @@ void updateOledFlashMachine() {
 // 套用 ohca_output_t 到實際 GPIO
 // ============================================================
 
+/**
+ * 將 ohca_output_t 決策結果套用到實際硬體輸出（連續/短鳴蜂鳴、螢幕閃紅、震動馬達）。
+ * @param out  OHCA 輸出決策結構，由 decideOhcaOutput 產生
+ */
 void applyOhcaOutput(const ohca_output_t& out) {
     // STEP 01: 連續發報（ALARMING）
     if (out.buzz_alarm_continuous && !alarmMuted) {

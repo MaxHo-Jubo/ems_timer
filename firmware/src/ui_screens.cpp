@@ -1,6 +1,7 @@
 #include "app_globals.h"
 
 
+/** 主功能表畫面：標題列（含 BLE 連線「BT」圖示）+ 分隔線 + 5 項可捲動選單（cursor 列白底黑字反白）。 */
 void drawMainMenu() {
     // 螢幕已由 updateDisplay() 的 clearDisplay() 清為黑底，這裡不重複 fillScreen 避免雙閃。
 
@@ -157,6 +158,7 @@ void drawSyncScreen() {
 }
 
 
+/** OHCA 歷史案件列表：標題附總數，無資料顯示提示，否則列出最多 5 筆（id 後 5 位／EPI／電擊／同步狀態），cursor 列高亮。 */
 void drawHistoryList() {
     useZhFont();
     char buf[64];

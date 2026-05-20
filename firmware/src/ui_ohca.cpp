@@ -1,6 +1,7 @@
 #include "app_globals.h"
 
 
+/** OHCA 案件啟動 1 秒提示畫面：中央綠字「案件開始」+ 下方灰字「OHCA」副標。 */
 void drawOhcaStartFlash() {
     // OHCA 案件啟動 1 秒提示：對齊 demo flash('案件開始', 'OHCA')
     // PM 反饋全部 1.5x：主 size 1.5→2.25（~54px）、副 Font0 size 3 → vlw 1.5（~36px）
@@ -18,6 +19,7 @@ void drawOhcaStartFlash() {
     display.drawString("OHCA", SCREEN_W / 2, SCREEN_H / 2 + 36);
 }
 
+/** OHCA 等待首次本機 EPI 畫面：頂部「OHCA」綠 badge + 中央大字「待本機 EPI」+ 底部 EPI／電擊累計次數。 */
 void drawOhcaWaitFirstEpi() {
     // 對齊 docs/demo/index.html 第二螢幕「待本機 EPI」layout（PM 反饋全部 1.5x）
     // 前置：caller 已 clearDisplay 為黑底
@@ -166,6 +168,7 @@ void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
     display.drawString(label, SCREEN_W / 2, OHCA_LABEL_Y);
 }
 
+/** OHCA 結束前檢查畫面：標題 +「完成並結束案件／前往補登／返回案件」三選項（cursor 列反白）+ 底部操作提示。 */
 void drawOhcaEndCheck() {
     // 標題（efontTW_24 size 1.2 ≈ 29px）
     useZhFont();
@@ -295,6 +298,7 @@ void drawOhcaConfirmDialog(uint8_t evType) {
     drawCenteredText(hint, 196, COLOR_TEXT_DIM);
 }
 
+/** OHCA 案件已鎖定畫面：紅字「已鎖定」標題 + 中央大字「案件結束」+ 事件總數 + 底部「主鍵 總覽」提示。 */
 void drawOhcaLocked() {
     useZhFont();
 
@@ -338,6 +342,11 @@ void drawSubmenuNavHint() {
     display.drawString("返回取消", SCREEN_W - HINT_SIDE_INSET, hintY);
 }
 
+/**
+ * OHCA 案件總覽畫面：以 caseSummary 聚合資料，顯示同步狀態列、EPI／電擊／Amio 兩欄式統計
+ * （含本機／接手前／補登細分與相對時間），底部含「事件時間軸／同步至 App」子選單。
+ * 歷史模式（historySummaryMode）下時間 row 隱藏、Timeline 子項顯示停用色。
+ */
 void drawOhcaSummary() {
     // STEP 01: 用 caseSummary 聚合（V1 §11）
     //   - 現場案件結束流程：caseStartEpochMs 為對時後的案件起點 epoch；未對時則 0
@@ -519,6 +528,11 @@ void drawOhcaSummary() {
 }
 
 
+/**
+ * 兩段確認 armed 狀態的底部反色提示條 overlay（琥珀警示色背景 + 黑字）。
+ *
+ * @param what 提示條顯示的文字（如「再按一次主鍵確認」）。
+ */
 void drawTwoStepArmedOverlay(const char* what) {
     // 底部全寬反色提示條（琥珀警示色，efontTW_24 × 1.2 ≈ 29px 黑字）
     display.fillRect(0, SCREEN_H - DIALOG_BAR_H, SCREEN_W, DIALOG_BAR_H, COLOR_ACCENT_WARN);
