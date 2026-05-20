@@ -115,21 +115,38 @@ Resume 清單 #3~#7 一次完成（純邏輯重構，不需實機）：
 
 驗證：Flash 61.4% / native tests 400/401 PASSED
 
-**已完成（選項 A：main.cpp 拆分，2026-05-20）**：
+**已完成（選項 A：main.cpp 拆分 + 註解技術債清理，2026-05-20，commits `dd98762` + `01ed542`，已 push origin）**：
 
-main.cpp 3496 行拆為 6 個檔案，純搬移不改邏輯：
+main.cpp 3496 行拆為 6 個檔案（純搬移不改邏輯）：
 - ✅ `app_globals.h`（522 行）— 型別、常數、extern globals、函式宣告、inline helpers
-- ✅ `main.cpp`（661 行）— globals 定義 + on_ble_rx + setup + loop + captureDisplaySnapshot + updateDisplay
-- ✅ `input_handler.cpp`（790 行）— handleButtons / onShortPress / onLongPress / handleSummarySubmenuPrimary
-- ✅ `ui_screens.cpp`（655 行）— drawMainMenu / SyncScreen / HistoryList / Drug / Backfill / Vent / Timeline / QuickMenu / Placeholder
-- ✅ `ui_ohca.cpp`（565 行）— drawOhca* / FlashOverlay / TwoStepArmed / OhcaVentOverlay / SubmenuNavHint
-- ✅ `ohca_logic.cpp`（374 行）— dispatchOhcaEvent / record* / enter* / exit* / beep / flash / vent / triggerFlash
+- ✅ `main.cpp`（677 行）— globals 定義 + on_ble_rx + setup + loop + captureDisplaySnapshot + updateDisplay
+- ✅ `input_handler.cpp`（821 行）— handleButtons / onShortPress / onLongPress / handleSummarySubmenuPrimary
+- ✅ `ui_screens.cpp`（638 行）— drawMainMenu / SyncScreen / HistoryList / Drug / Backfill / Vent / Timeline / QuickMenu / Placeholder
+- ✅ `ui_ohca.cpp`（574 行）— drawOhca* / FlashOverlay / TwoStepArmed / OhcaVentOverlay / SubmenuNavHint
+- ✅ `ohca_logic.cpp`（400 行）— dispatchOhcaEvent / record* / enter* / exit* / beep / flash / vent / triggerFlash
 
-驗證：`pio run` SUCCESS + native tests **400 cases: 399 PASSED**（test_storage_hw baseline ERRORED 不變）
+POST-COMMIT-REVIEW（commit `dd98762`，5 步驟全跑）：
+- ✅ simplify（3 agent）+ review-pr（5 agent）兩輪抓出並修正 **14 處 off-by-one 註解錯位**（拆分時函式搬了、JSDoc 沒跟上同一格）
+- ✅ pr-reviewer lite 品質評分 26/30 🟢，CRITICAL 無；code / errors / tests / types 四面向確認純搬移無 bug
 
-效益：最大單檔從 3496 → 790 行。後續任務只需讀相關模組，token 成本降 60-70%。
+註解技術債清理（commit `01ed542`，純註解）：
+- ✅ 補 23 個缺失函式 JSDoc（main 2 / ohca_logic 10 / input_handler 3 / ui_screens 2 / ui_ohca 6）
+- ✅ main.cpp setup/loop/updateDisplay 的 STEP 00 / 00.5 / 99 重排為 STEP 01 起算
 
-**🎯 下一步需實機**：F-3 src/case_sync_dispatcher 包裝 / F-4a / F-4b / F-7 / F-8。
+驗證：`pio run` SUCCESS + native tests **400 cases: 399 PASSED**（test_storage_hw baseline ERRORED 不變）。
+
+效益：每個功能模組單檔可獨立閱讀，後續任務只需讀相關模組，token 成本降 60-70%。
+備註：`input_handler.cpp` 821 行（補 JSDoc 後微超 CLAUDE.md 800 行 guideline；超出部分為註解，後續若再長可再拆 submenu handler）。
+
+**🎯 下一步：F-4a 前端 Web Bluetooth scanning（不需實機，下次 resume 從這裡開工）**
+
+F-4a 是目前唯一「純前端、無實機阻塞、可大段推進」的任務：
+- 用手機 nRF Connect App 假扮 BLE peripheral，**不需 ESP32 在手邊**
+- 前置 F-5（後端）/ F-6（前端骨架）/ F-9（完整 UI）全部已完成
+- 對齊專案「先網頁、後 App」+「選項 A」策略
+- 任務細節見本檔下方「### F-4a 前端：Web Bluetooth scanning」section（9 個子項）
+
+之後才做需實機的：F-3 src/ 整合層 + MVP3 chunked data 真送 / F-4b 接真韌體 / F-7 端到端測試 / F-8 驗收。
 
 **Resume 時可開工**：
 
