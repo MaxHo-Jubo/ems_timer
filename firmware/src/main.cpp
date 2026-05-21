@@ -129,6 +129,7 @@ bool     ohcaVentPaused         = false;
 // END_CHECK / SUMMARY
 EndCheckCursor endCheckCursor = END_CHECK_CURSOR_CANCEL;
 bool endConfirmShown = false;
+bool resyncConfirmShown = false;  // Phase F §16.7：已同步案件再次同步的確認 dialog
 uint16_t summaryScrollOffset = 0;
 
 // Flash overlay
@@ -578,6 +579,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.alarmMuted            = alarmMuted;
     in.ventBackHintShown     = ventBackHintShown;
     in.endConfirmShown       = endConfirmShown;
+    in.resyncConfirmShown    = resyncConfirmShown;  // Phase F §16.7
     in.flashStateActive      = flashState.active;
     in.ventPreShown          = ventPreShown;
     in.historySummaryMode    = historySummaryMode;
@@ -610,7 +612,8 @@ void updateDisplay() {
                                         | 0x02    // showShockArmedPrompt
                                         | 0x04    // showAmioArmedPrompt
                                         | 0x100   // endConfirmShown
-                                        | 0x200;  // flashState.active
+                                        | 0x200   // flashState.active
+                                        | 0x2000; // resyncConfirmShown
     const bool inCountdownGroup = (now.globalState == GLOBAL_OHCA)
                                && (now.ohcaState == OHCA_STATE_COUNTDOWN
                                    || now.ohcaState == OHCA_STATE_WARNING
@@ -643,6 +646,15 @@ void updateDisplay() {
     lastDisplaySnapshot = now;
 
     display.clearDisplay();
+
+    // SoT §16.7：已同步案件再次同步的確認 modal — 全螢幕取代總覽畫面。
+    //   resyncConfirmShown 僅在 SUMMARY 內由 handleSummarySubmenuPrimary 設起，進
+    //   SUMMARY 時亦會重置，故此處早退安全（不會蓋掉非 SUMMARY 畫面）。
+    if (resyncConfirmShown) {
+        drawResyncConfirmDialog();
+        display.pushSprite(0, 0);
+        return;
+    }
 
     if (globalState == GLOBAL_MAIN_MENU) {
         drawMainMenu();

@@ -1,5 +1,8 @@
 #include "app_globals.h"
 
+// 前置宣告：進入 BLE 同步流程（START_SYNC 與 §16.7 resync 確認後共用，定義見下方）
+static void enterSyncFlow();
+
 
 /**
  * 掃描所有實體按鍵並分派短按 / 長按事件。
@@ -67,6 +70,25 @@ void handleButtons() {
  */
 void onShortPress(uint8_t btnIdx) {
     Serial.printf("[BTN] short %u (state=%u/%u)\n", btnIdx, globalState, ohcaState);
+
+    // ===== SoT §16.7：已同步案件再次同步的確認 modal（攔截所有按鍵） =====
+    //   resyncConfirmShown 僅由 handleSummarySubmenuPrimary 在 SUMMARY 內設起，
+    //   故此處全域攔截不會誤食其他畫面的按鍵。主鍵確認 / 返回取消，其餘忽略。
+    if (resyncConfirmShown) {
+        if (btnIdx == BTN_PRIMARY) {
+            resyncConfirmShown = false;
+            Serial.println("[SYNC] resync confirmed");
+            enterSyncFlow();
+        } else if (btnIdx == BTN_BACK) {
+            resyncConfirmShown = false;
+            Serial.println("[SYNC] resync cancelled (BACK)");
+        } else {
+            // 忽略鍵留 trace，避免救護現場「按了沒反應」被誤判為裝置死當
+            // （對齊歷史 SUMMARY default 分支的 [HIST_SUMMARY] ignored 慣例）
+            Serial.printf("[SYNC] resync modal ignored btn=%u\n", btnIdx);
+        }
+        return;
+    }
 
     // ===== 主功能表 =====
     if (globalState == GLOBAL_MAIN_MENU) {
@@ -268,6 +290,7 @@ void onShortPress(uint8_t btnIdx) {
                         eventCount = loaded;
                         historySummaryMode   = true;
                         summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
+                        resyncConfirmShown   = false;  // 進 SUMMARY 初始化：無殘留 §16.7 dialog
                         Serial.printf("[STORAGE] loaded case %s (%u events)\n",
                                       historyCases[historyCursor].id,
                                       loaded);
@@ -550,6 +573,7 @@ void onShortPress(uint8_t btnIdx) {
                 dispatchOhcaEvent(OHCA_EVT_TO_SUMMARY, 0);
                 summaryScrollOffset  = 0;
                 summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
+                resyncConfirmShown   = false;  // 進 SUMMARY 初始化：無殘留 §16.7 dialog
                 return;
             }
             // STEP 04: SUMMARY 主鍵 — 觸發 sub-menu 當前 cursor 對應行為（SoT V1 §11.1）
@@ -587,6 +611,7 @@ void onShortPress(uint8_t btnIdx) {
             }
             // STEP 01: SUMMARY 返回主功能表
             if (ohcaState == OHCA_STATE_SUMMARY) {
+                resyncConfirmShown = false;  // 離開 SUMMARY：清 §16.7 dialog 旗標（lifecycle hygiene）
                 exitOhcaCase();
                 return;
             }
@@ -683,6 +708,13 @@ void onLongPress(uint8_t btnIdx) {
     Serial.printf("[BTN] long %u (state=%u/%u/sub=%u)\n",
                   btnIdx, globalState, ohcaState, ohcaSubState);
 
+    // §16.7 resync 確認 modal 顯示中：長按一律忽略，與 onShortPress 開頭攔截相呼應
+    // （dialog 無長按操作，故長按全忽略），確保「modal 期間攔截所有按鍵」不變式成立
+    if (resyncConfirmShown) {
+        Serial.printf("[SYNC] resync modal ignored long btn=%u\n", btnIdx);
+        return;
+    }
+
     // STEP 01: 主鍵 3s 長按
     if (btnIdx == BTN_PRIMARY) {
         // STEP 01.01: GLOBAL_VENT 獨立模式 → 結束確認對話框（V1 §13.14 結束獨立 6 秒通氣節奏）
@@ -731,6 +763,48 @@ void onLongPress(uint8_t btnIdx) {
 }
 
 /**
+ * 進入 BLE 同步流程：記返回目的地與同步目標、切 GLOBAL_SYNC、dispatch START。
+ *
+ * START_SYNC（未同步案件直接同步）與 §16.7 resync 確認後的路徑共用此函式。
+ * dispatch 被拒則 rollback 回呼叫端 SUMMARY（OHCA 案件總覽或歷史總覽）。
+ */
+static void enterSyncFlow() {
+    // STEP 01: 記下返回目的地（SoT §16.5 同步完成自動回案件總覽）
+    g_sync_return_to = global_to_sync_return(globalState);
+    // STEP 02: 記下同步目標（SoT §16.6 寫回 storage 用）
+    g_sync_target.clear();
+    if (historySummaryMode && historyCursor < historyCount) {
+        strncpy(g_sync_target.id,
+                historyCases[historyCursor].id,
+                sizeof(g_sync_target.id) - 1);
+        g_sync_target.type = historyCases[historyCursor].type;
+    } else if (g_storage_ready) {
+        case_meta_t latest;
+        if (storage_list(&g_storage_be, EMS_CASE_TYPE_OHCA, &latest, 1) > 0) {
+            strncpy(g_sync_target.id, latest.id, sizeof(g_sync_target.id) - 1);
+        } else {
+            Serial.println("[SYNC] WARN no LOCKED OHCA case to tag synced_at");
+        }
+    }
+    // STEP 03: 切 GLOBAL_SYNC 並 dispatch START（已連線則補 dispatch BLE_CONNECTED 推進狀態）
+    globalState = GLOBAL_SYNC;
+    const bool started = ems::sync_dispatcher_dispatch(
+        &g_sync_ctx, ems::SyncEvent::START, millis());
+    if (started && g_ble.connected()) {
+        ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::BLE_CONNECTED, millis());
+    }
+    // STEP 04: dispatch rejected → rollback（bool 介面直接知道是否被接受）
+    if (!started) {
+        Serial.printf("[SYNC] dispatcher rejected START, rollback to %u\n",
+                      (unsigned)g_sync_return_to);
+        globalState = sync_return_to_global(g_sync_return_to);
+        return;
+    }
+    Serial.printf("[SYNC] enter state=%u (return_to=%u)\n",
+                  (unsigned)g_sync_ctx.state, (unsigned)g_sync_return_to);
+}
+
+/**
  * SUMMARY sub-menu 主鍵分派（SoT V1 §11.1）。
  *
  * 共用於 OHCA 結束鎖定後 SUMMARY（globalState=GLOBAL_OHCA）與歷史模式 SUMMARY
@@ -767,47 +841,15 @@ void handleSummarySubmenuPrimary() {
             return;
 
         case ems::SummaryAction::CONFIRM_RESYNC:
-            // SoT §16.7：已同步案件 → TODO[phase-f-mvp3] 顯示確認 dialog
-            // 目前直接 fallthrough 到 START_SYNC（dialog UI 待 TFT 實機實作）
-            Serial.println("[SYNC] already synced, confirm resync (TODO dialog)");
-            [[fallthrough]];
-
-        case ems::SummaryAction::START_SYNC: {
-            // STEP 02.01: 記下返回目的地（SoT §16.5 同步完成自動回案件總覽）
-            g_sync_return_to = global_to_sync_return(globalState);
-            // STEP 02.02: 記下同步目標（SoT §16.6 寫回 storage 用）
-            g_sync_target.clear();
-            if (historySummaryMode && historyCursor < historyCount) {
-                strncpy(g_sync_target.id,
-                        historyCases[historyCursor].id,
-                        sizeof(g_sync_target.id) - 1);
-                g_sync_target.type = historyCases[historyCursor].type;
-            } else if (g_storage_ready) {
-                case_meta_t latest;
-                if (storage_list(&g_storage_be, EMS_CASE_TYPE_OHCA, &latest, 1) > 0) {
-                    strncpy(g_sync_target.id, latest.id, sizeof(g_sync_target.id) - 1);
-                } else {
-                    Serial.println("[SYNC] WARN no LOCKED OHCA case to tag synced_at");
-                }
-            }
-            // STEP 02.03: 進入同步流程
-            globalState = GLOBAL_SYNC;
-            const bool started = ems::sync_dispatcher_dispatch(
-                &g_sync_ctx, ems::SyncEvent::START, millis());
-            if (started && g_ble.connected()) {
-                ems::sync_dispatcher_dispatch(&g_sync_ctx, ems::SyncEvent::BLE_CONNECTED, millis());
-            }
-            // STEP 02.04: dispatch rejected → rollback（bool 介面直接知道是否被接受）
-            if (!started) {
-                Serial.printf("[SYNC] dispatcher rejected START, rollback to %u\n",
-                              (unsigned)g_sync_return_to);
-                globalState = sync_return_to_global(g_sync_return_to);
-                return;
-            }
-            Serial.printf("[SYNC] enter state=%u (return_to=%u)\n",
-                          (unsigned)g_sync_ctx.state, (unsigned)g_sync_return_to);
+            // SoT §16.7：已同步案件再次同步 → 開二次確認 dialog（不直接進同步）。
+            // 主鍵確認 / 返回取消由 onShortPress 開頭的 resync modal 攔截處理。
+            resyncConfirmShown = true;
+            Serial.println("[SYNC] already synced, resync confirm dialog opened");
             return;
-        }
+
+        case ems::SummaryAction::START_SYNC:
+            enterSyncFlow();
+            return;
 
         case ems::SummaryAction::SYNC_BLOCKED_REENTRY:
             Serial.println("[SYNC] re-entry detected, keep g_sync_return_to");

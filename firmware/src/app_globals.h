@@ -384,6 +384,7 @@ extern bool     ohcaVentPaused;
 // END_CHECK / SUMMARY
 extern EndCheckCursor endCheckCursor;
 extern bool endConfirmShown;
+extern bool resyncConfirmShown;   // Phase F §16.7：已同步案件再次同步的確認 dialog 顯示中
 extern uint16_t summaryScrollOffset;
 
 // Flash overlay
@@ -509,6 +510,7 @@ void drawOhcaSummary();
 void drawTwoStepArmedOverlay(const char* what);
 void drawOhcaConfirmDialog(uint8_t evType);
 void drawOhcaEndConfirmDialog();
+void drawResyncConfirmDialog();
 void drawFlashOverlay();
 void drawOhcaVentOverlay(int y_top);
 

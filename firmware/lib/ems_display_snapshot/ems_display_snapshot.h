@@ -65,6 +65,7 @@ enum DisplaySnapshotFlag : uint16_t {
     SNAP_FLAG_VENT_PRE        = 0x0400,
     SNAP_FLAG_HISTORY_SUMMARY = 0x0800,
     SNAP_FLAG_BLE_CONNECTED   = 0x1000,  // Phase F MVP1：BLE client 連線中
+    SNAP_FLAG_RESYNC_CONFIRM  = 0x2000,  // Phase F：已同步案件再次同步的確認 dialog（SoT §16.7）
 };
 
 
@@ -106,6 +107,7 @@ struct DisplaySnapshotInputs {
     bool ventPreShown          = false;
     bool historySummaryMode    = false;
     bool bleConnected          = false;  // Phase F MVP1：g_client_connected 鏡射
+    bool resyncConfirmShown    = false;  // Phase F：§16.7 再次同步確認 dialog 顯示中
 };
 
 
@@ -146,6 +148,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.ventPreShown)           s.flags |= SNAP_FLAG_VENT_PRE;
     if (in.historySummaryMode)     s.flags |= SNAP_FLAG_HISTORY_SUMMARY;
     if (in.bleConnected)           s.flags |= SNAP_FLAG_BLE_CONNECTED;
+    if (in.resyncConfirmShown)     s.flags |= SNAP_FLAG_RESYNC_CONFIRM;
 
     return s;
 }

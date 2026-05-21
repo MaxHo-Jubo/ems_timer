@@ -264,6 +264,31 @@ void drawOhcaEndConfirmDialog() {
 }
 
 /**
+ * SoT §16.7：已同步案件再次選「同步至 App」時的二次確認對話。
+ * 由 updateDisplay 在 resyncConfirmShown 為真時全螢幕取代總覽畫面繪出。
+ * 框色用琥珀（再次同步為非破壞性操作，不用 END_CONFIRM 的警報紅）。
+ */
+void drawResyncConfirmDialog() {
+    drawDialogFrame(COLOR_ACCENT_WARN);
+
+    // 標題（琥珀，efontTW_24 × 1.5 ≈ 36px）
+    useZhFont();
+    display.setTextSize(1.5f, 1.5f);
+    drawCenteredText("此案件已同步", 36, COLOR_ACCENT_WARN);
+
+    // 內文（efontTW_24 × 1.2 ≈ 29px）
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("是否再次同步至 App？", 116, COLOR_TEXT_MUTED);
+
+    // 底部分隔線（在 hint 上方）
+    display.drawLine(20, 184, SCREEN_W - 20, 184, COLOR_TEXT_DIM);
+
+    // hint
+    display.setTextSize(1);
+    drawCenteredText("主鍵確認　返回取消", 196, COLOR_TEXT_DIM);
+}
+
+/**
  * A1：OHCA 兩段確認全螢幕對話（取代 44px bar overlay）
  * 對齊 demo OHCA_CONFIRM render
  *
