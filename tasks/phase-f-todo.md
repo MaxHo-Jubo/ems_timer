@@ -195,7 +195,7 @@ F-3/F-4b 韌體與網頁程式碼已全部完成並 commit。剩餘工作皆需 
 
 **其他待做**：
 1. **SUMMARY sub-menu 擴充**（後續 Phase）：補齊 SoT §11.1 完整 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 傳輸資料 → 各自子畫面）。註：完整 6 項 + 統計區一頁裝不下 320×240（vlw 24px bitmap 無法縮小），需分頁或縮統計區設計。`SUMMARY_SUBMENU_*` 視覺常數已 hoist 到 file scope + static_assert 防溢出。
-2. **SoT §16.7 確認 dialog TFT 渲染**：`CONFIRM_RESYNC` 決策路徑已實作並測試，需實機實作 TFT dialog 畫面（「此案件已同步 / 是否再次同步？」+ 主鍵確認 / 返回取消）
+2. ✅ **SoT §16.7 確認 dialog TFT 渲染**（2026-05-21，commit `5a594db`）：新增 `drawResyncConfirmDialog`（「此案件已同步 / 是否再次同步至 App？」+ 主鍵確認 / 返回取消）、`resyncConfirmShown` modal（onShortPress/onLongPress 開頭攔截）、`enterSyncFlow()` 抽取共用、`SNAP_FLAG_RESYNC_CONFIRM` snapshot flag。pio run SUCCESS、native 406/405。TFT 視覺待實機微調。
 3. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
 4. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
 5. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
