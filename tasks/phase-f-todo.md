@@ -7,7 +7,7 @@
 
 ---
 
-## 🎯 當前進度快照（2026-05-20）
+## 🎯 當前進度快照（2026-05-21）
 
 **已完成（網頁端）**：
 - ✅ **F-5** 後端骨架（Cloudflare D1 + Pages Functions + cases GET/POST + cases/:id GET/DELETE + notes GET/PUT）
@@ -186,21 +186,48 @@ POST-COMMIT-REVIEW 5 步驟（全跑）：
 
 驗證：`pio run` SUCCESS（Flash 67.0% / RAM 32.3%）；native **405 cases 404 PASSED**（+5 `remaining_attempts` 測試；`test_storage_hw` baseline ERROR 不變）。
 
-**🎯 下一步：實機端到端驗證（F-7 / F-8）**
+**已完成（SoT §16.7 已同步案件再次同步確認 dialog，2026-05-21，commit `5a594db`）**：
+- ✅ `drawResyncConfirmDialog`（ui_ohca.cpp）：「此案件已同步 / 是否再次同步至 App？」+ 主鍵確認 / 返回取消（琥珀框）
+- ✅ `resyncConfirmShown` 旗標 + modal 攔截（onShortPress / onLongPress 開頭攔截所有按鍵，忽略鍵留 trace）
+- ✅ `enterSyncFlow()` 抽出 — START_SYNC 與 resync 確認路徑共用，消除原 `[[fallthrough]]` hack
+- ✅ `SNAP_FLAG_RESYNC_CONFIRM` (0x2000) snapshot flag（dialog 開關觸發重繪）+ 進 SUMMARY 時重置旗標
+- POST-COMMIT-REVIEW 5 步驟全跑；review 抓到 simplify 階段引入的死碼（SUMMARY exit-reset 不可達）→ 改為 reset-on-entry
+- 決策路徑 `decide_summary_action → CONFIRM_RESYNC` 為 MVP2-Followup 既有（已測），本次只補 TFT 畫面與按鍵接線
 
-F-3/F-4b 韌體與網頁程式碼已全部完成並 commit。剩餘工作皆需 ESP32 實機：
-- 燒錄韌體 + 真 ESP32 + Chrome 跑完整同步鏈路（連線 → 對時 → 配對 → 主鍵 → chunked case_sync → D1）
-- 重點實測：真 BLE notify 時序 / MTU 分片 / `SYNC_CHUNK_INTERVAL_MS` 20ms 是否足夠
-- F-7 端到端測試 / F-8 驗收
+驗證：`pio run` SUCCESS（Flash 67.0%）；native **406 cases 405 PASSED**（+1 snapshot flag 測試）。TFT 視覺待實機微調。
+
+---
+
+**🎯 下一步：實機端到端驗證（F-7 / F-8）—— 所有不需實機的程式碼已完成**
+
+Phase F 程式碼面（韌體 + 網頁）全部完成並 commit。下次開工 = 拿到 ESP32 後直接進實機測試。
+
+**resume 前置**：
+- 燒錄韌體：`cd firmware && pio run -e esp32-s3-devkitc-1 -t upload`（或用既有 `firmware/firmware-merged.bin`）
+- web：`cd web && nvm use 22 && npm run dev`（Node v22+；雲端則 `npm run deploy`）
+
+**實機測試清單**（完整項目見下方 F-7 / F-8 章節）：
+- F-7 端到端：真 OHCA / Training case → 同步 → D1；同案重傳 `INSERT OR REPLACE` 去重；中斷→重連→整筆重傳；50 events 滿載不丟
+- F-8 驗收：配對碼 4 位+120s TTL / 3 次失敗 lockout / 主鍵確認 / D1 不重複
+- **重點新測項**：
+  · 真 BLE notify 時序 + MTU 分片 + `SYNC_CHUNK_INTERVAL_MS` 20ms 定速是否足夠（見 `firmware/src/sync_send.cpp` 檔頭「已知限制」— notify fire-and-forget 無法偵測丟包，self-ACK 可能誤判 DONE）
+  · §16.7 resync 確認 dialog TFT 視覺微調（內文字寬 / 版面）
+  · 已同步案件再選「同步至 App」→ 確認 dialog 應出現（主鍵確認 / 返回取消）
+  · F-4b 韌體 BLE 廣播名為 `DSP-0001`，web 以 `namePrefix: "DSP-"` 過濾
+- 通過後回填 `docs/progress.md` 階段 1 進度 5
+
+**不需實機但需使用者操作**：F-5 末項 Cloudflare Pages 部署（`wrangler d1 create` 取真 UUID）、F-9.1 curl 驗證 notes GET/PUT、F-9 階段驗收 checklist（瀏覽器點測）
 
 **其他待做**：
 1. **SUMMARY sub-menu 擴充**（後續 Phase）：補齊 SoT §11.1 完整 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 傳輸資料 → 各自子畫面）。註：完整 6 項 + 統計區一頁裝不下 320×240（vlw 24px bitmap 無法縮小），需分頁或縮統計區設計。`SUMMARY_SUBMENU_*` 視覺常數已 hoist 到 file scope + static_assert 防溢出。
-2. ✅ **SoT §16.7 確認 dialog TFT 渲染**（2026-05-21，commit `5a594db`）：新增 `drawResyncConfirmDialog`（「此案件已同步 / 是否再次同步至 App？」+ 主鍵確認 / 返回取消）、`resyncConfirmShown` modal（onShortPress/onLongPress 開頭攔截）、`enterSyncFlow()` 抽取共用、`SNAP_FLAG_RESYNC_CONFIRM` snapshot flag。pio run SUCCESS、native 406/405。TFT 視覺待實機微調。
+2. ✅ **SoT §16.7 確認 dialog TFT 渲染** — 已完成（見上方「已完成（SoT §16.7…）」區塊，commit `5a594db`）。
 3. （optional）LittleFS sessions timestamp sweep（對時後 0-stamp 紀錄補真實 epoch）
 4. （optional）`docs/ble-tester/` 加 pair_verify 與 dump events UI（取代目前 debug textarea）
 5. NimBLE-Arduino 評估（目前主韌體用 ESP32 內建 BLE，flash 60%+；NimBLE 較省可選擇遷移）
 
 ## 🎯 Resume 指引（rate-limit 後）
+
+> 📌 **現況：Phase F 程式碼面全部完成，下次 resume = 實機測試**（詳見上方「🎯 下一步」）。
 
 接續工作流程：
 
