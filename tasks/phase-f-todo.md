@@ -163,19 +163,35 @@ POST-COMMIT-REVIEW（commit `dd98762`，5 步驟全跑）：
 - **跳過** nRF Connect mock 驗證 —— 功能鏈路已由 Playwright mock GATT 等效驗證，nRF Connect GATT server 設定繁瑣（iOS 版尤甚），CP 值低
 - 真 BLE 傳輸（MTU 分片 / 真實 notify 時序）驗證**併入 F-4b**，直接對真 ESP32 韌體測，不另花工夫弄假 peripheral
 
-**🎯 下一步：F-3 src/ 整合層 + MVP3 chunked 真送（需實機）**
+**已完成（Phase F MVP3 chunked 真送 + F-4b 韌體/網頁，2026-05-21，commit `bbdd004`）**：
 
-F-4a 前端程式碼已完成。剩餘為需 ESP32 實機的工作：
-- F-3 src/ 整合層 + MVP3 chunked data 真送（移除 SENDING stub，整合 `case_sync_serializer` + `ble_chunker`；韌體須補送 `pair_status` TX）
-- 之後 F-4b 接真韌體（含 F-4a 真 BLE 傳輸驗證）/ F-7 端到端測試 / F-8 驗收。
+F-3 MVP3 chunked 真送：
+- ✅ `BleNus` 新增 `onMtuChanged` → `att_mtu()`（預設 23）供 `ble_chunker` 算 chunk size
+- ✅ 新增 `firmware/src/sync_send.cpp`：`syncSendingPrepare` 依 `g_sync_target` 從 storage 讀 meta+events → `caseSummary_build` → `case_sync_serialize_to_json` → 切 chunk；`syncSendingPump` 每 20ms 推一段 `g_ble.send()`，成功即 self-ACK
+- ✅ `main.cpp` loop observer 移除 MVP2 SENDING stub，接 prepare/pump
+- ✅ 順帶修正：邊緣偵測改讀 prepare/pump 後即時 state（修正 SENDING→DONE 在迴圈中段完成、stale `cur_sync_state` 導致 §16.6 持久化邊緣永不觸發的潛在 bug）
+- ✅ `ui_screens` SENDING 顯示真實 N/total chunk 進度、移除 DONE「(DEMO)」字樣
 
-**Resume 時可開工**：
+F-4b 接真 ESP32（韌體/網頁程式碼部分）：
+- ✅ `on_ble_rx` 補送 `pair_status` TX（accepted / rejected+remaining_attempts / locked_out）
+- ✅ `BLE_DEVICE_NAME` 改 `DSP-0001`；web `ble-client.js` device filter 改 `namePrefix: 'DSP-'`
 
-**F-3 MVP3 chunked data 真送（功能推進）**
-- 移除 SENDING stub，整合 case_sync_serializer + ble_chunker
-- SENDING 入口 caseSummary_build → serialize → chunker → BleNus::send() + 等 ACK
-- 對齊 §16.9 失敗 / §16.8 中斷重試
-- 需實機
+ACK 模型：網頁端 fire-and-forget 無 per-chunk ACK，韌體 notify 成功後自行 dispatch `CHUNK_ACKED`，不改動已封版的 dispatcher/chunker/serializer/pairing lib。⚠️ 已知限制：`notify()` fire-and-forget 無法偵測丟包，self-ACK 可能誤判 DONE（見 `sync_send.cpp` 檔頭），20ms 定速為保守起點，待 F-4b 實機 throughput 校正。
+
+POST-COMMIT-REVIEW 5 步驟（全跑）：
+- ✅ Step 2 `/simplify`（3 agent）：2 處註解精確化
+- ✅ Step 3 pr-reviewer lite — 品質 25/30 🟡；2 個「缺 STEP 註解」CRITICAL 經查證為誤報（單行函式，與既有 `_on_connect`/`_on_disconnect` 慣例一致）；採納 `static_assert` + `SYNC_DEVICE_NAME` 別名
+- ✅ Step 4 review-pr（5 agent）：silent-failure-hunter「SENDING 永久卡死」CRITICAL 經查證為誤報（誤讀 `BleNus::send()` —— 回 false ⟺ 斷線，下一 loop BLE 邊緣偵測即轉 ERROR）；採納 `pairing_remaining_attempts()` 抽 lib（+5 native tests）、notify 限制文件化、abort 歸零緩衝、失敗 log
+- ✅ Step 5 macOS 通知
+
+驗證：`pio run` SUCCESS（Flash 67.0% / RAM 32.3%）；native **405 cases 404 PASSED**（+5 `remaining_attempts` 測試；`test_storage_hw` baseline ERROR 不變）。
+
+**🎯 下一步：實機端到端驗證（F-7 / F-8）**
+
+F-3/F-4b 韌體與網頁程式碼已全部完成並 commit。剩餘工作皆需 ESP32 實機：
+- 燒錄韌體 + 真 ESP32 + Chrome 跑完整同步鏈路（連線 → 對時 → 配對 → 主鍵 → chunked case_sync → D1）
+- 重點實測：真 BLE notify 時序 / MTU 分片 / `SYNC_CHUNK_INTERVAL_MS` 20ms 是否足夠
+- F-7 端到端測試 / F-8 驗收
 
 **其他待做**：
 1. **SUMMARY sub-menu 擴充**（後續 Phase）：補齊 SoT §11.1 完整 6 項（EPI 詳細 / 電擊詳細 / 藥物紀錄 / 傳輸資料 → 各自子畫面）。註：完整 6 項 + 統計區一頁裝不下 320×240（vlw 24px bitmap 無法縮小），需分頁或縮統計區設計。`SUMMARY_SUBMENU_*` 視覺常數已 hoist 到 file scope + static_assert 防溢出。
@@ -357,11 +373,12 @@ curl http://localhost:8788/api/cases
   - [x] CaseSyncMeta struct + case_sync_serialize_to_json() 純函式
   - [x] 涵蓋：empty case / events array / summary fields / buffer 不足 / nullptr 字串 / training mode
   - [x] ArduinoJson 7 DynamicJsonDocument 動態擴張
-- [ ] **F-3 src/ 整合層（需 ESP32 + 既有 firmware/src/main.cpp + TFT，留待實機 session）**：
-  - [ ] `firmware/src/case_sync_dispatcher.cpp` 包裝 NimBLE service + 接 ems_sync_dispatcher
-  - [ ] 從 `ems_storage` 讀最新 case → 用 case_sync_serializer 產 JSON → 用 ble_chunker 切分 → BleNusService 推送
-  - [ ] UI：案件總覽頁加「同步」入口 + 各 state TFT 畫面
-  - [ ] 中斷重試 = 整筆重傳（plan §11 F-8 驗收要求）
+- [x] **F-3 src/ 整合層（2026-05-21，commit `bbdd004`）**：
+  - [x] `firmware/src/sync_send.cpp` 整合 `ems_sync_dispatcher`（採 ESP32 內建 BLE，非 NimBLE）
+  - [x] 從 `ems_storage` 讀 `g_sync_target` case → `case_sync_serializer` 產 JSON → `ble_chunker` 切分 → `BleNus` 定速推送（self-ACK）
+  - [x] UI：案件總覽頁「同步」入口（MVP2-Followup 已完成）+ SENDING 真實 N/total 進度畫面
+  - [x] 中斷重試 = 整筆重傳（BLE_DISCONNECTED → ERROR → 回案件總覽可重試）
+  - [ ] ⏳ 真 BLE 端到端驗證（需燒錄 + 真 ESP32 + Chrome）
 
 **驗收**：實機按「同步」→ 螢幕顯示配對碼 → nRF Connect 連線 + 輸入正確碼 → **螢幕跳「按主鍵開始同步」→ 按主鍵** → 收到完整 JSON（純邏輯狀態機 20 unit tests ✅ 2026-05-15）。
 
@@ -373,11 +390,11 @@ curl http://localhost:8788/api/cases
 
 > **依賴**：F-3 + F-4a。
 
-- [ ] 把 F-4a 的 mock 換成真連 ESP32
-- [ ] device filter 改 `namePrefix: 'DSP-'`（F-4a 目前用 NUS service 過濾，相容 nRF Connect mock）
-- [ ] **韌體 `on_ble_rx` 補送 `pair_status` TX 訊息**（目前收 `pair_verify` 只 `Serial.printf`，web 端等不到配對結果）
-- [ ] 配對碼 UI：使用者讀韌體螢幕碼 → 網頁輸入框送 → NUS RX 送回韌體驗證
-- [ ] 驗證失敗 3 次 lockout UI 提示
+- [x] device filter 改 `namePrefix: 'DSP-'`（web `ble-client.js`；韌體 `BLE_DEVICE_NAME` 改 `DSP-0001`）
+- [x] **韌體 `on_ble_rx` 補送 `pair_status` TX 訊息**（accepted / rejected+remaining_attempts / locked_out）
+- [x] 配對碼 UI：F-4a 已完成（讀韌體螢幕碼 → 網頁輸入 → NUS RX 送回驗證）
+- [x] 驗證失敗 3 次 lockout UI 提示（`connect.js handlePairStatus` 已處理，`pair_status` TX 補上後即生效）
+- [ ] ⏳ 把 F-4a mock 換成真連 ESP32 跑端到端（需實機）
 
 **驗收**：實機 → 網頁 → D1，一筆 OHCA case 從韌體完整落到 D1，列表頁可看到。
 
