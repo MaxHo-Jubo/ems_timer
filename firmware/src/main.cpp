@@ -248,6 +248,20 @@ static void on_ble_rx(const uint8_t* data, size_t len) {
                                                    "ParseError";
         Serial.printf("[BLE] time_sync %s ack_len=%u\n", result_str, (unsigned)ack_len);
         if (ack_len > 0) {
+            // ems_time_sync serializeJson 不附 '\n'。ble-client 以 '\n' 切句，缺結尾符
+            // 會讓 ack 與後續訊息（如 pair_status）黏在同一行 → JSON.parse 失敗 →
+            // 兩則訊息都丟掉。caller 在 send 前補上分隔符，與 case_sync_serializer
+            // 慣例一致。
+            if (ack_len < sizeof(ack_buf) - 1) {
+                ack_buf[ack_len++] = '\n';
+            } else {
+                // buf 滿到無法塞 '\n'：送出去仍會跟下一則訊息黏行（同類 bug 再演）。
+                // 實務上 BLE_ACK_BUF_MAX = 512 而 ack JSON ~120 bytes，永遠不該命中；
+                // 若觸發代表 ack schema 暴增或 buf 縮小，需立即查 ems_time_sync schema。
+                Serial.printf("[BLE] WARN time_sync_ack 已塞滿 buf(%u) 無法附 '\\n'，"
+                              "送出後 web 端 JSON.parse 會失敗\n",
+                              (unsigned)sizeof(ack_buf));
+            }
             g_ble.send(reinterpret_cast<uint8_t*>(ack_buf), ack_len);
         }
         return;
@@ -257,6 +271,8 @@ static void on_ble_rx(const uint8_t* data, size_t len) {
     if (strcmp(type, "pair_verify") == 0) {
         const char* input = doc["input"].is<const char*>() ? doc["input"].as<const char*>() : "";
         size_t input_len = strlen(input);
+        Serial.printf("[BLE] pair_verify input='%s' len=%u vs code='%s'\n",
+                      input, (unsigned)input_len, g_sync_ctx.pairing_code.digits);
         ems::DispatchInputResult r = ems::sync_dispatcher_dispatch_input(
             &g_sync_ctx, input, input_len, millis());
         const char* result_str =
@@ -422,6 +438,12 @@ void loop() {
         if (cur_sync_state != prev_sync_state) {
             Serial.printf("[SYNC] state %u -> %u\n",
                           (unsigned)prev_sync_state, (unsigned)cur_sync_state);
+            // 進入 AWAITING_INPUT 印出韌體實際 generate 的配對碼，供 BLE/web 端比對 debug
+            if (cur_sync_state == ems::SyncState::AWAITING_INPUT) {
+                Serial.printf("[SYNC] pairing_code='%s' expires_at_ms=%llu\n",
+                              g_sync_ctx.pairing_code.digits,
+                              (unsigned long long)g_sync_ctx.pairing_code.expires_at_ms);
+            }
         }
         if (cur_sync_state == ems::SyncState::DONE
             && prev_sync_state == ems::SyncState::SENDING) {

@@ -37,8 +37,12 @@ from typing import Optional
 import freetype
 
 
-def collect_chars_from_source(src_path: Path):
-    """掃描 main.cpp 字串字面值（剝註解後）抽出非 ASCII 字符。
+def collect_chars_from_source(src_paths):
+    """掃描原始檔字串字面值（剝註解後）抽出非 ASCII 字符。
+
+    參數：
+      src_paths: 單一 Path 或 Path list；list 模式會 union 所有檔案的字集，
+                 並印出每個檔案的字數明細方便 debug。
 
     涵蓋區塊：
       U+00A0–00FF Latin-1 Supplement（× 等符號）
@@ -47,10 +51,12 @@ def collect_chars_from_source(src_path: Path):
       U+4E00–9FFF CJK Unified Ideographs（漢字主集）
       U+FF00–FFEF Halfwidth and Fullwidth Forms（全形括號/問號/斜線/直線）
     """
-    text = src_path.read_text(encoding="utf-8")
-    text = re.sub(r"//.*", "", text)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    chars = set()
+    # STEP 01: 統一參數型別為 list[Path]，保留單檔向後相容呼叫
+    if isinstance(src_paths, (str, Path)):
+        src_paths = [Path(src_paths)]
+    else:
+        src_paths = [Path(p) for p in src_paths]
+
     ranges = [
         (0x00A0, 0x00FF),
         (0x2000, 0x206F),
@@ -58,12 +64,32 @@ def collect_chars_from_source(src_path: Path):
         (0x4E00, 0x9FFF),
         (0xFF00, 0xFFEF),
     ]
-    for s in re.findall(r'"([^"]*)"', text):
-        for c in s:
-            cp = ord(c)
-            if any(lo <= cp <= hi for lo, hi in ranges):
-                chars.add(c)
-    return chars
+
+    # STEP 02: 逐檔抽字並印明細
+    #          缺檔嚴格化：用 raise 取代 warn+continue。原 warn 模式 exit code 仍為 0，
+    #          regen_vlw.sh `set -e` 不會 catch → 字型 build 「成功」但缺字，工程師看到
+    #          [done] 不會察覺問題。改 raise 讓 shell pipeline 立即停止。
+    union_chars = set()
+    for src_path in src_paths:
+        if not src_path.exists():
+            raise FileNotFoundError(
+                f"chars source missing: {src_path}（避免靜默漏字，請更新 regen_vlw.sh "
+                f"的 glob 或刪除已不存在的來源檔）"
+            )
+        text = src_path.read_text(encoding="utf-8")
+        text = re.sub(r"//.*", "", text)
+        text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
+        file_chars = set()
+        for s in re.findall(r'"([^"]*)"', text):
+            for c in s:
+                cp = ord(c)
+                if any(lo <= cp <= hi for lo, hi in ranges):
+                    file_chars.add(c)
+        print(f"[info]   {src_path}: {len(file_chars)} CJK/sym chars")
+        union_chars |= file_chars
+
+    print(f"[info] union charset across {len(src_paths)} file(s): {len(union_chars)} chars")
+    return union_chars
 
 
 def build_charset(chars, include_ascii: bool = True):
@@ -146,13 +172,32 @@ def main():
     ap.add_argument("ttf", type=Path, help="來源 TTF/TTC")
     ap.add_argument("out", type=Path, help="輸出 .vlw")
     ap.add_argument("--size", type=int, default=24, help="字符像素高（預設 24）")
-    ap.add_argument("--chars-from", type=Path, required=True,
-                    help="從此原始檔抽取中文字集（main.cpp）")
+    ap.add_argument("--chars-from", type=Path, nargs='+', required=True,
+                    help="從這些原始檔抽取中文字集（可帶多個檔案，會 union）")
+    ap.add_argument("--chars-from-glob", type=str, default=None,
+                    help="額外用 glob 模式收集原始檔（如 'src/*.cpp'），與 --chars-from union")
     ap.add_argument("--ttc-index", type=int, default=0,
                     help="TTC 多字型索引（預設 0）")
     args = ap.parse_args()
 
-    chars = collect_chars_from_source(args.chars_from)
+    # STEP 01: 整合 --chars-from 與 --chars-from-glob 兩個來源
+    src_files = list(args.chars_from)
+    if args.chars_from_glob:
+        import glob
+        glob_matches = [Path(p) for p in glob.glob(args.chars_from_glob)]
+        print(f"[info] glob '{args.chars_from_glob}' matched {len(glob_matches)} files")
+        src_files.extend(glob_matches)
+
+    # STEP 02: 去重（同檔可能同時在 list 與 glob 結果中）
+    seen = set()
+    uniq_files = []
+    for p in src_files:
+        rp = p.resolve()
+        if rp not in seen:
+            seen.add(rp)
+            uniq_files.append(p)
+
+    chars = collect_chars_from_source(uniq_files)
     cps = build_charset(chars, include_ascii=True)
     print(f"[info] charset: {len(cps)} codepoints (ASCII 95 + CJK {len(chars)})")
 

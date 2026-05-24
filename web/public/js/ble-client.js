@@ -104,6 +104,7 @@ export class BleClient {
     this._decoder = new TextDecoder("utf-8");
     await this._txChar.startNotifications();
     this._txChar.addEventListener("characteristicvaluechanged", this._boundNotify);
+    console.log("[DEBUG] startNotifications done, listener attached on TX", this._txChar.uuid);
 
     return this._device.name || this._device.id;
   }
@@ -169,6 +170,8 @@ export class BleClient {
     // STEP 01: 取出本次 notify 的原始位元組並回拋位元組數
     const view = event.target.value;
     const bytes = new Uint8Array(view.buffer);
+    console.log("[DEBUG] notify", bytes.length, "bytes:",
+                JSON.stringify(new TextDecoder().decode(bytes)));
     this._safeInvoke(this.onChunk, bytes.length);
 
     // STEP 02: 串流解碼後併入重組緩衝

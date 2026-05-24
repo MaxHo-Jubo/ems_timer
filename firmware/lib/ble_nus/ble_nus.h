@@ -61,9 +61,17 @@ public:
 
     /**
      * TX notify 推資料給已連線的 client。
+     *
+     * 若 len > (att_mtu - 3) 會自動依 ble_chunker::chunk_size_from_mtu()
+     * 分段多次 notify（ESP32 BLE stack 對超 MTU 的單次 notify 會靜默截斷）。
+     * 對 central 端透明：ble-client.js 以 '\n' 切句重組訊息邊界，呼叫端
+     * 必須在 payload 結尾自帶 '\n' 分隔符。
+     *
      * @param data  待送 raw bytes
      * @param len   資料長度
-     * @return true 成功送出（client 已連線 + TX char 有效）
+     * @return true 全部 chunk 送出成功；false 表 client 未連線、TX char
+     *              無效、或 chunked 傳送途中 client 中途斷線（剩餘 chunks
+     *              未送出，caller 應自行 retry 或 log）
      */
     bool send(const uint8_t* data, size_t len);
 

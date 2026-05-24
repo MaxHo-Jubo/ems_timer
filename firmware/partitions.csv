@@ -12,9 +12,14 @@
 # 16MB = 0x01000000；offset + size 必須對齊 0x1000
 #
 # Name,    Type, SubType,  Offset,   Size,     Flags
-# 註：SubType 0x82 = ESP-IDF 官方 LittleFS subtype（gen_esp32part.py 不認 "littlefs" 字面值）
+# 命名約定：
+#   - Name "littlefs"：韌體 LittleFS.begin(partitionLabel="littlefs") 依賴此 label
+#     （見 firmware/lib/ems_storage/ems_storage_fs.cpp emsStorage_fs_mount）
+#   - SubType "spiffs"：PIO 內含的 gen_esp32part.py 不認 "littlefs" 字面值，
+#     PIO uploadfs detector 又只認 {spiffs, fat, littlefs}；"spiffs"（numeric 0x82）
+#     兩邊都認。LittleFS 看 partition label name 不看 subtype，仍可正常 mount。
 nvs,       data, nvs,      0x9000,   0x5000,
 otadata,   data, ota,      0xE000,   0x2000,
 app0,      app,  ota_0,    0x10000,  0x1E0000,
 app1,      app,  ota_1,    0x1F0000, 0x1E0000,
-littlefs,  data, 0x82,     0x3D0000, 0xC30000,
+littlefs,  data, spiffs,   0x3D0000, 0xC30000,
