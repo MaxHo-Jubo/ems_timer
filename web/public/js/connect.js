@@ -24,8 +24,10 @@ const PAIR_TTL_SEC = 120;
 // 配對碼倒數每跳一格的間隔（毫秒）
 const PAIR_TTL_TICK_MS = 1000;
 // 配對成功後等待 case_sync 的看門狗逾時（毫秒）。
-// 涵蓋裝置端 30s 主鍵 timeout + nRF Connect mock 由人手動推 JSON 的操作時間。
-const SYNC_WAIT_TIMEOUT_MS = 120_000;
+// 必須 < 韌體 MAIN_KEY_TIMEOUT_MS (30s, 見 firmware/lib/ems_sync_dispatcher)
+// 否則韌體先 timeout → BLE 斷線 → web 走 onDisconnect 而非 watchdog → 永遠
+// 看不到「等待逾時」訊息。25s 在韌體前先觸發，UI 顯示精準錯誤原因。
+const SYNC_WAIT_TIMEOUT_MS = 25_000;
 // time_sync req_id 隨機段範圍（2^16，產生 4 位 16 進位）
 const REQ_ID_HEX_RANGE = 0x10000;
 

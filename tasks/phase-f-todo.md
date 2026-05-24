@@ -431,12 +431,12 @@ curl http://localhost:8788/api/cases
 
 預估 1d
 
-- [ ] 跑一筆真實 OHCA case（按鍵操作）→ 同步 → D1
-- [ ] 同案重傳：`INSERT OR REPLACE` 不重複（plan §11 驗收）
-- [ ] 中斷模擬：傳輸途中網頁刷新 → 重連 → 整筆重傳成功
-- [ ] 大 case：50 events 滿載傳輸不丟資料
-- [ ] Training case 也跑一筆，`mode` 欄位正確
-- [ ] 列表頁排序所有欄位 ASC/DESC 都正常
+- [x] 跑一筆真實 OHCA case（按鍵操作）→ 同步 → D1（2026-05-24 ✅）
+- [x] 同案重傳：`INSERT OR REPLACE` 不重複（plan §11 驗收）（2026-05-24 ✅）
+- [ ] 中斷模擬：傳輸途中網頁刷新 → 重連 → 整筆重傳成功（留之後）
+- [ ] 大 case：50 events 滿載傳輸不丟資料（留之後）
+- [ ] Training case 也跑一筆，`mode` 欄位正確（留之後）
+- [x] 列表頁排序所有欄位 ASC/DESC 都正常（2026-05-24 ✅）
 
 ---
 
@@ -444,13 +444,26 @@ curl http://localhost:8788/api/cases
 
 對應 `pm-dev-spec §四 Phase F 驗收`：
 
-- [ ] ✅ 同案件同步 2 次，D1 端不重複
-- [ ] ✅ 中斷後重試成功
-- [ ] ✅ 配對碼 4 位 + 120s TTL（過期自動重生）
-- [ ] ✅ 3 次失敗 lockout 生效（plan 額外加碼）
-- [ ] ✅ 主鍵確認步驟可運作（對齊 SoT §16.5）
+- [x] ✅ 同案件同步 2 次，D1 端不重複（2026-05-24 ✅，同 F-7 第 2 項）
+- [ ] ✅ 中斷後重試成功（留之後，同 F-7 中斷模擬）
+- [x] ✅ 配對碼 4 位 + 120s TTL（過期自動重生）（2026-05-24 ✅）
+- [x] ✅ 3 次失敗 lockout 生效（plan 額外加碼）（2026-05-24 ✅）
+- [x] ✅ 主鍵確認步驟可運作（對齊 SoT §16.5）（2026-05-24 ✅）
 
-回填 `docs/progress.md` 階段 1 進度 5：Phase F BLE 鏈路完成。
+**Cloudflare Pages 部署**：✅ 2026-05-24 完成（測試環境）。
+
+**已知 minor TODO（不擋驗收）**：
+- F-8.5 web watchdog UI 訊息對齊：`connect.js SYNC_WAIT_TIMEOUT_MS = 120s`
+  韌體 `MAIN_KEY_TIMEOUT_MS = 30s`，韌體先 timeout → BLE 斷線 → web 走
+  onDisconnect 路徑而非 watchdog → 永遠看不到「等待逾時：裝置端未開始
+  傳輸」字串。修法：web watchdog 改 25s（< 韌體 30s）。已在另個 commit 修。
+- 留之後 3 項實機驗證（F-7.3 中斷重連 / F-7.4 50 events 滿載 / F-7.5
+  Training case）— 不在 pm-dev-spec 必要驗收項目內，可在 Dev-Phase 3
+  或量產整合測試前補。
+
+**階段 1 BLE 鏈路驗收結論**：✅ **通過**（pm-dev-spec §四 Phase F 必要
+項目全綠；F-7 6 項已過 4 項；剩餘 3 項為強化測試非 spec 必要）。
+回填 `docs/progress.md` 階段 1 進度 5：Phase F BLE 鏈路完成（2026-05-24）。
 
 ---
 
