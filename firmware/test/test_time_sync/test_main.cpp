@@ -284,6 +284,43 @@ static void test_handle_second_apply_overwrites_offset() {
 }
 
 // ============================================================
+// §9 time_sync_seed_from_rtc — Wave 2（DS3231 boot seed）
+//    對齊 plan：docs/ds3231-integration-plan.md §5.2
+// ============================================================
+
+static void test_seed_from_rtc_sets_synced_and_offset() {
+    // 假設 boot 後 millis()=2000 時從 DS3231 讀到 epoch=1713715200000
+    // → offset 應為 epoch - now_millis = 1713715198000
+    time_sync_seed_from_rtc(&g_state, 1713715200000ULL, 2000);
+
+    TEST_ASSERT_TRUE(g_state.synced);
+    TEST_ASSERT_EQUAL_UINT64(1713715198000ULL, g_state.epoch_ms_offset);
+}
+
+static void test_seed_from_rtc_current_epoch_ms_reflects_seed_plus_delta() {
+    // seed 在 millis=1000，rtc=1713715200000
+    time_sync_seed_from_rtc(&g_state, 1713715200000ULL, 1000);
+
+    // 立即讀（millis=1000）→ 等於 seed
+    TEST_ASSERT_EQUAL_UINT64(1713715200000ULL,
+                             time_sync_current_epoch_ms(&g_state, 1000));
+    // 5 秒後（millis=6000）→ seed + 5000
+    TEST_ASSERT_EQUAL_UINT64(1713715205000ULL,
+                             time_sync_current_epoch_ms(&g_state, 6000));
+}
+
+static void test_seed_from_rtc_preserves_tz_offset_min() {
+    // 先用 BLE 對時設好 tz=480（台北）
+    const char* json = R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
+    call_handle(json, 500);
+    TEST_ASSERT_EQUAL_INT16(480, g_state.tz_offset_min);
+
+    // RTC reseed（DS3231 不存 tz）→ tz 應維持原值
+    time_sync_seed_from_rtc(&g_state, 1713800000000ULL, 1500);
+    TEST_ASSERT_EQUAL_INT16(480, g_state.tz_offset_min);
+}
+
+// ============================================================
 // Runner
 // ============================================================
 
@@ -315,6 +352,10 @@ int main(int, char**) {
     RUN_TEST(test_handle_ack_buffer_too_small_writes_empty_and_zero_len);
 
     RUN_TEST(test_handle_second_apply_overwrites_offset);
+
+    RUN_TEST(test_seed_from_rtc_sets_synced_and_offset);
+    RUN_TEST(test_seed_from_rtc_current_epoch_ms_reflects_seed_plus_delta);
+    RUN_TEST(test_seed_from_rtc_preserves_tz_offset_min);
 
     return UNITY_END();
 }

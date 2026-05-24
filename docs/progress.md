@@ -13,12 +13,79 @@ total_entries: 6
 
 ## 章節導覽
 
+- [進度 7 - 2026-05-24 - DS3231 RTC 整合上機（裝置從此有真實時間戳）](#progress-2026-05-24-2)
 - [進度 6 - 2026-05-24 - Phase F BLE 鏈路打通端到端（韌體 → 藍牙 → 雲端落地）](#progress-2026-05-24)
 - [進度 5 - 2026-05-12 - Phase F 網頁端完整 UI 落地（雲端 + SoT §17 全套）](#progress-2026-05-12-2)
 - [進度 4 - 2026-05-12 - V1 各階段進度盤點＋測試基礎建設到位](#progress-2026-05-12)
 - [進度 3 - 2026-05-11 - 用自動化測試掃出 10 個畫面文字溢出並修正](#progress-2026-05-11)
 - [進度 2 - 2026-05-09 - 補登次數選單列表化＋介面文字溢出修整](#progress-2026-05-09-2)
 - [進度 1 - 2026-05-09 - 螢幕升級到 2.8 吋並修整體美觀](#progress-2026-05-09)
+
+---
+
+## <a id="progress-2026-05-24-2"></a>進度 7 — 2026-05-24 — DS3231 RTC 整合上機（裝置從此有真實時間戳）
+
+### 一句話
+
+**裝置現在有可信時間了**：DS3231 即時時鐘模組接上 I2C bus，boot 時自動偵測 → 把硬體時間餵給軟體時鐘 → OHCA 案件起訖時間從原本的 0 變成真實 epoch；同一份韌體在沒接 DS3231 的板子上仍可運作（自動降級走 BLE 對時），不需重編。**進度 6 末段標註的「同步後案件無真實開始時間」已解決**。
+
+### 驗收結果
+
+| 驗收項目 | 結果 |
+|---------|------|
+| 接 DS3231 boot：偵測到 0x68 + seed 軟體時鐘 | ✅ |
+| 跑一筆 OHCA 案件 → LOCKED → 雲端 `case_start_ms` / `case_end_ms` 是真實 epoch | ✅ |
+| BLE App 對時 → 反向寫回 DS3231（App 為主時鐘源） | ✅ |
+| BLE `time_sync_ack` `source` 欄位 = `"ble+rtc"`（之前是 `"ble"`） | ✅ |
+| 不接 DS3231 在同一份 binary 上 boot：掛 NullRtcBackend 降級走 BLE 對時 | ✅ |
+| 永續性：對時 → 斷電 30 秒 → 重開 → 不需 BLE 就 seed | ⏸ **待測**（CR2032 紐扣電池備援能力未實測）|
+
+### 過程怎麼做的（給 PM 的版本）
+
+採 **runtime 偵測 + 雙模式 backend** 設計（不是 compile-time flag）：
+
+- **同一份韌體**：開機時試問 DS3231 在不在；在就用真實時鐘，不在就降級到原本的「靠 App 連線對時」模式
+- **App 對時 → 寫回 RTC**：救護人員開 App 那一刻就等同對時；DS3231 永遠是最新時間，下次斷電重開不會失憶
+- **不在線也能跑**：沒插 DS3231 的板子直接用，行為跟 Phase F 結案時一樣（事件用相對毫秒，App 端重建時間）
+
+### 設計重點
+
+- **抽象介面** `RtcBackend`：3 個 method（`is_present` / `now_epoch_ms` / `set_epoch_ms`），上層 caller 不分支處理硬體在不在
+- **三種實作**：
+  - `DS3231Backend`：用 Adafruit RTClib 包裝 0x68 I2C 通訊（硬體相依，僅 ARDUINO env 編譯）
+  - `NullRtcBackend`：純降級 stub，所有讀取回 0、寫入 no-op
+  - `MockRtcBackend`：native test 注入用，可控 present 與 advance_ms
+- **`ems_time_sync_seed_from_rtc`** API：把 RTC 讀到的 epoch 灌進既有軟體時鐘 state，下游 `current_epoch_ms()` 自動受益
+- **boot seed 三分支**：DS3231 在線 + 有時間 → seed；DS3231 在線但未設過 → 等 BLE；不在線 → 降級
+- **TDD 6 wave**：抽象介面 → seed API → integration（mock backend）→ DS3231 包裝 → 主程式 wire up → 文件，每 wave RED → GREEN → 防退步全 suite
+
+### 工程數字
+
+- 新 lib：`firmware/lib/ems_rtc/`（4 檔，純邏輯 + 硬體包裝分開）
+- 新 test：`test_rtc` + `test_rtc_integration` 共 10 個 native test cases
+- 既有 `test_time_sync` +3 cases（seed API）
+- 全 suite：**418 / 419 PASSED**（同基準，唯一 ERRORED 為 pre-existing `test_storage_hw` 硬體相依）
+- 主韌體 Flash：67.3% → 67.9%（+12KB RTClib 實際連入）
+
+### 過程中遇到並解決的問題
+
+- ✓ **RTClib 與 LovyanGFX 並存時 PlatformIO 找不到 SPI.h**：Adafruit_BusIO 透過 SPI 抽象 I2C，與 LovyanGFX 並用時 LDF 預設 chain+ 模式不會把 framework 的 SPI/Wire include path 帶進 BusIO 編譯。試過顯式 `lib_deps += SPI/Wire` 無效，改 `lib_ldf_mode = deep+` 解決
+- ✓ **常數重定義**：`I2C_SDA_PIN` / `I2C_SCL_PIN` 已在 `app_globals.h:148-149` 宣告；`SYNCED_AT_EPOCH_FLOOR_MS` 已在 `ems_storage_logic.h:123` 宣告。沿用既有不重複宣告
+- ✓ **time_sync_init 覆蓋 RTC seed**：原 main.cpp setup() STEP 07 才呼叫 `time_sync_init`，若放在 RTC seed 之後會把 seed 結果清空。改為 STEP 06.5 開頭一次 init 完，STEP 07 不再 init
+
+### 已知未測
+
+- ⏳ **永續性（CR2032 備援）**：對時 → 斷電 30 秒 → 重開 → boot log 應顯示 `seeded software clock from RTC: <epoch>` 而非 `等 BLE time_sync`。CR2032 紐扣電池備援能力需實測
+- 🐛 **4 個實機 UI bug 待修**（與 DS3231 整合無關，但同時段發現）：見 `tasks/todo.md` 「2026-05-24 實機 bug 待修」段落
+
+### 後續工作
+
+- ⬜ **永續性實測**（5 分鐘可完成）
+- ⬜ **4 個 UI bug 修正**（缺字 / 疊字 / 游標位移 / 結束前檢查游標）
+- ⬜ **3 項 Phase F 強化測試補完**（中斷重連 / 50 events 滿載 / Training case）— 量產整合測試前補
+- ⬜ **React Native App**（取代純網頁的長期方案，與網頁共存）
+
+> 💬 進度 6（BLE 鏈路）+ 進度 7（DS3231 時鐘）合起來 = Phase F 完整收尾。下一個重點是 4 個 UI bug 修正與量產前的硬體驗證。
 
 ---
 

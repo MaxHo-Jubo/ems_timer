@@ -81,7 +81,7 @@
 - GPIO 1, 2, 3 — ADC1（建議保留給類比輸入，如 CO 感測器 MEMS 型）
 - GPIO 21 — 通用 GPIO（建議保留給震動馬達 PWM）
 - GPIO 35, 36, 37 — 通用 GPIO（**N8 模組可用，N16R8 octal PSRAM 模組被佔**，採購時務必確認模組型號）
-- GPIO 43, 44 — 預設 USB-CDC TX/RX（**僅在 USB-CDC 不啟用時可用**，目前韌體用 USB-CDC 做 Serial Monitor，預設禁用）
+- GPIO 43, 44 — UART0 預設腳位（U0TXD/U0RXD），**目前完全空閒可用**。本韌體 `Serial` 走 USB-CDC（晶片內建 USB，GPIO 19/20，見上方禁用清單），不經過 43/44，USB 除錯與 43/44 互不相關。註：開機瞬間 ROM bootloader 會對 UART0 印 boot log，app 啟動後即釋出，不影響後續挪用
 - GPIO 47, 48 — 通用 GPIO
 
 ### 5.2 TFT SPI bus 腳位（2026-05-08 實機修正：GPIO 35/36/37 不可用）
@@ -92,12 +92,12 @@
 |------|------|------|
 | SPI MOSI | **2** | 原 35 → 改 2（ADC1_CH1，已取消 ADC 候選） |
 | SPI SCK | **3** | 原 36 → 改 3（ADC1_CH2，已取消 ADC 候選） |
-| SPI MISO | **不接**（TFT 純寫入） / 接 MicroSD 時擇腳 | 原 37 → 不可用；MicroSD 加入時用 43/44 |
+| SPI MISO | **不接**（TFT 純寫入） / MicroSD 加入時用 **44** | 原 37 不可用、GPIO 1 已改派 TFT DC；MicroSD MISO=44 與 CS=43 配對，整組佔用 UART0 腳 43/44 |
 | TFT CS | **21** | 獨立，PWM 能力 |
 | TFT DC | **1**（2026-05-08 改） | 原 48 與 GOOUUU 板上 WS2812 RGB LED 衝突 → DC 切換時 LED 會把訊號吃成色彩資料 |
 | TFT RST | **47** | Hardware reset |
 | TFT BL（背光） | **接 3.3V 常亮** | 原計畫 PWM 走 GPIO 1，現 GPIO 1 給 TFT DC，BL PWM 能力放棄 |
-| MicroSD CS | **43**（放棄 USB-CDC）或不接 | 原 §5.2 候選 GPIO 2 已給 SPI MOSI，候選 GPIO 47 與 TFT RST 衝突 |
+| MicroSD CS | **43**（UART0 腳，與 USB-CDC 無關，可直接用）或不接 | 候選 GPIO 2 已給 SPI MOSI、GPIO 47 與 TFT RST 衝突，43 為唯一可用腳；但與 §5.3 CO-UART 候選同腳，兩者擇一 |
 
 > 📌 **2026-05-08 實機驗證通過配置**：
 > - Library：**Adafruit_ST7789 + Adafruit_GFX**（不用 TFT_eSPI 2.5.43，原因見下方註記）
@@ -113,19 +113,21 @@
 | 候選方案 | 介面 | GPIO | 備註 |
 |---------|------|------|------|
 | 電化學型 + I2C | SDA / SCL | **GPIO 42 / 41**（I2C bus，可與 §5.4 DS3231 共用） | I2C 多裝置 bus；DS3231 地址 0x68，CO 感測器選用不同地址即可同 bus 並存 |
-| 電化學型 + UART | TX / RX | **GPIO 43 / 44** | 必須放棄 USB-CDC Serial Monitor |
+| 電化學型 + UART | TX / RX | **GPIO 43 / 44** | 佔用 UART0 預設腳，不影響 USB-CDC Serial Monitor（走內建 USB 19/20）；但與 §5.2 MicroSD 同腳，CO-UART 與 MicroSD 兩者擇一 |
 | MEMS 半導體型 + ADC | 類比輸入 | **❌ 已無 ADC 可用**（GPIO 1/2/3 全部給 TFT） | 2026-05-08 起 N16R8 + TFT 整合後 ADC 全用完；CO 必須走 I2C 或 UART |
 | 加熱半導體型（MQ-7/MQ-9） | — | **🚫 禁用** | 功耗超出 USB-C 供電上限（SoT V1 §20.5） |
 
-### 5.4 RTC 模組擴充（DS3231，Dev-Phase 3 計畫）
+### 5.4 RTC 模組擴充（DS3231，Dev-Phase 3 已上機）
 
-> 📌 **GPIO 41/42 目前為空閒狀態**：2026-05-08 後 OLED 已撤、改 SPI TFT，原 OLED I2C bus 釋出。DS3231 上機後此 bus 為其獨佔（地址 0x68）。後續若再加 I2C 感測器（如 CO 電化學型 §5.3）才會變共用 bus。
+> ✅ **2026-05-24 實機驗證通過**：DS3231 模組接 GPIO 42/41 I2C bus，`main.cpp` setup STEP 06.5 runtime 偵測 0x68 → 掛 `ems::DS3231Backend`；不在線時掛 `ems::NullRtcBackend` 降級。對齊 `docs/ds3231-integration-plan.md §4.1`。後續若再加 I2C 感測器（如 CO 電化學型 §5.3）才會變共用 bus。
+>
+> ⏳ **永續性測試待跑**：對時 → 斷電 30 秒 → 重開 → boot log 應顯示 seeded（不需 BLE）。CR2032 紐扣電池備援能力尚未實測。
 
 | 用途 | GPIO | 備註 |
 |------|------|------|
-| I2C SDA | **GPIO 42** | 原 OLED bus，TFT 升級後釋出；DS3231 地址 0x68 |
+| I2C SDA | **GPIO 42** | 原 OLED bus，TFT 升級後釋出；DS3231 地址 0x68；boot 時 `Wire.begin(42, 41)` |
 | I2C SCL | **GPIO 41** | 原 OLED bus，TFT 升級後釋出 |
-| INT（選用） | **GPIO 43**（若 USB-CDC 停用）或不接 | 用於秒中斷喚醒 |
+| INT（選用） | **GPIO 43** 或不接 | 目前未接；用於秒中斷喚醒；GPIO 43 為 UART0 腳、與 USB-CDC 無關，但與 §5.2 MicroSD CS、§5.3 CO-UART 同腳，多者並用需重新盤點 |
 
 ---
 
@@ -137,7 +139,7 @@
 | **TFT DC（GPIO 48 → 1） vs 板上 WS2812 RGB LED（GPIO 48）** | GOOUUU 板出廠 GPIO 48 接 WS2812，DC 切換頻率高，LED 把訊號吃成資料一直亂亮 | 2026-05-08 改 TFT DC → GPIO 1；GPIO 48 留給 WS2812（未來可當狀態指示燈使用） |
 | TFT SPI MOSI/SCK（GPIO 2/3）vs CO 感測器 ADC | 2026-05-08 起 GPIO 2/3 已給 SPI | ADC 全部用完（1/2/3 全給 TFT）；CO 感測器改走 I2C 或 UART |
 | ~~TFT BL（PWM, GPIO 1） vs CO 感測器 ADC~~ | 已失效：2026-05-08 後 GPIO 1 已給 TFT DC | TFT BL 維持 3.3V 常亮（無 PWM 能力）；CO 感測器走 I2C 或 UART |
-| MicroSD CS vs USB-CDC Serial | GPIO 43/44 衝突 | 量產不需 USB-CDC 時切換 |
+| MicroSD（43/44） vs CO 感測器 UART（43/44） vs DS3231 INT（43） | GPIO 43/44 為三者唯一候選腳，物理腳位重疊 | 三者擇一；需並用須改用其他空閒腳或外接 I2C 擴充。**與 USB-CDC 無關**：USB 除錯走內建 USB（GPIO 19/20），不佔 43/44 |
 | 獨立 I2C vs 按鍵 16/17/18 | 物理腳位衝突 | 按鍵已封版；I2C 改用釋出的 GPIO 41/42 bus（原 OLED 用） |
 | **GPIO 35/36/37 vs N16R8 octal PSRAM** | **2026-05-08 實機踩雷確認**：採購到的就是 N16R8 模組 | TFT SPI 改 GPIO 2/3；採購若能選 N8 可釋放 GPIO 35/36/37 |
 
@@ -155,6 +157,7 @@
 | `docs/gap-analysis.md` 震動馬達列 | ✅ 已同步（2026-05-04） | GPIO 16 → 21 |
 | `docs/tft-migration-plan.md` 第 3.1 節 | ✅ 已同步（2026-05-04） | TFT GPIO 從 9~13 改為 35~37, 21, 47, 48 |
 | `CLAUDE.md` | ✅ 已同步（2026-05-04） | 加入本文件索引 |
+| `firmware/lib/ems_rtc/` + `main.cpp` setup STEP 06.5 | ✅ 已同步（2026-05-24） | DS3231Backend runtime 偵測，`Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN)` 使用 §5.4 的 GPIO 42/41 |
 
 ---
 
@@ -168,3 +171,6 @@
 | 2026-05-04 | Impl-Phase A 韌體對齊 | main.cpp 重寫：`BTN_COUNT=8`、新增 `BTN_BACK/EPI/SHOCK`、震動 GPIO 21；舊 lib `ems_countdown` / `ems_vent` 廢止 |
 | 2026-05-08 | TFT SPI 改 GPIO 2/3、library 改 Adafruit | 實機踩雷：採購到 N16R8 octal PSRAM 模組，GPIO 35/36/37 不可用；TFT_eSPI 2.5.43 暫存器級存取 crash，改 Adafruit_ST7789。詳見 §5.2 與 `tft-migration-plan.md §3.1` |
 | 2026-05-08 | TFT DC 改 GPIO 48 → 1 | 主韌體整合 Step 1 燒錄後實機踩雷：GOOUUU 板上 GPIO 48 接 WS2812 RGB LED，TFT DC 高頻切換時 LED 把訊號吃成色彩資料一直亂亮。GPIO 1 原為 TFT BL PWM 候選，改為 DC，BL 改 3.3V 常亮（無 PWM）；ADC 完全用盡 |
+| 2026-05-21 | 修正 GPIO 43/44 與 USB-CDC 的錯誤關聯（§5.1/§5.2/§5.3/§5.4/§6） | 原文件將 GPIO 43/44 標為「USB-CDC TX/RX」、並要求「放棄 USB-CDC」才能挪用 —— 事實錯誤：43/44 是 UART0（U0TXD/U0RXD），USB-CDC 走晶片內建 USB（GPIO 19/20，§5.1 禁用清單已正確標示）。挪用 43/44 給 MicroSD / CO-UART / RTC INT 不影響 USB 除錯。真實衝突為 43/44 在 MicroSD、CO-UART、DS3231 INT 三方重疊 |
+| 2026-05-21 | 收斂 §5.2 MicroSD MISO 腳位為明確 44 | 原 §5.2 MISO 寫「用 43/44」含糊（兩腳只需一支），且 `tft-migration-plan.md` §3.2 仍寫 MISO=GPIO 1（過時：GPIO 1 已於 2026-05-08 改派 TFT DC）。確定 MicroSD MISO=44、CS=43 配對，並同步修正 `tft-migration-plan.md` |
+| 2026-05-24 | §5.4 DS3231 從「計畫」→「已上機」 | Dev-Phase 3 RTC 整合 6 wave 完成（見 `docs/ds3231-integration-plan.md`），實機 boot log 確認 0x68 偵測 + seed `g_ts_state`；OHCA case 時戳改用真實 epoch；BLE time_sync Applied 反向寫回 DS3231。永續性測試（斷電 30 秒重開）待補 |

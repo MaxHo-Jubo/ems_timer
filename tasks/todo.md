@@ -15,6 +15,109 @@
 
 ---
 
+## 🐛 2026-05-24 實機 bug 待修
+
+> **背景**：DS3231 RTC 整合 6 wave 完成、實機驗收通過（見 `docs/progress.md` 進度 7）。同時段在實機上觀察到以下 4 個 UI / 顯示 bug，與 RTC 整合無關，獨立修。
+
+### B1. 字串缺字「至 本 即將」（同案件再次同步確認 dialog）
+
+- **症狀**：同案件再次同步時跳出的確認 dialog 內出現 3 個缺字「至」「本」「即將」
+- **疑似 root cause**：對齊進度 6 已修過一輪的同類 bug — 字型生成工具只掃 `main.cpp`，UI 字串散落在 `ui_*.cpp` 多檔。Phase F 進度 6 已升級工具接多檔，但本次新增的「同案件再次同步」dialog 字串可能不在掃描範圍
+- **修法**：grep 確認字串檔案位置 → 重生字型補缺字 → 實機驗
+- **檔案候選**：`firmware/src/ui_*.cpp` 內 dialog 字串、`scripts/` 內字型工具掃描配置
+- [ ] 待修
+
+### B2. OHCA 案件總覽畫面排版異常（互相疊字）
+
+- **症狀**：進入「案件總覽」OHCA 畫面後，部分文字互相疊在一起，看不清楚
+- **疑似 root cause**：座標計算 / 行高 / 字型 ascent 換算錯誤；或 LovyanGFX vlw 字型載入後高度未重算
+- **檔案候選**：`firmware/src/ui_history.cpp` 或 `ui_summary.cpp` 案件總覽 / OHCA 細節繪製函式
+- [ ] 待修
+
+### B3. OHCA 案件總覽返主選單後游標位移未對齊文字
+
+- **症狀**：從案件總覽 / OHCA 畫面按返回回到主選單後，游標 highlight 框與選項文字位置沒對齊
+- **疑似 root cause**：游標位置變數（如 `mainMenuCursor` 對應 Y 座標）回主選單前未 reset、或不同畫面用不同字型導致 line height 差異殘留
+- **檔案候選**：`firmware/src/main.cpp` 或 `ui_main_menu.cpp` 主選單繪製
+- [ ] 待修
+
+### B4. 結束前檢查頁面游標上下移動異常
+
+- **症狀**：進「結束前檢查」頁面，預設游標停在「返回案件」項目。第一次按 UP 不會往上移，要按兩次才動；後續游標順序也異常
+- **疑似 root cause**：游標 initial state 與按鍵 handler 邊界判斷不一致（首次 press 被 debounce 吃掉、或 wrap-around 邏輯倒置）
+- **檔案候選**：結束前檢查相關 ui handler（OHCA END_CHECK 狀態相關，可能在 `ui_ohca.cpp` 或 `input_handler.cpp`）
+- [ ] 待修
+
+> 💡 修 bug 前先實機重現確認症狀；建議單 commit 一個 bug，便於 PR review。
+
+---
+
+## 🔬 2026-05-24 DS3231 整合 follow-up refactor（POST-COMMIT-REVIEW 標記）
+
+> **背景**：commit `8948b13` DS3231 整合 + amend 後跑 4 個 review agent（pr-reviewer / silent-failure-hunter / pr-test-analyzer / type-design-analyzer）。Critical/Important 已在 commit 修；以下為 deferred 給後續獨立 commit。
+
+### R1. 抽 boot-seed / write-back helper 進 lib（reuse review #2）
+
+- `main.cpp:412-430` boot seed `if (begin) → seed_if_valid` 邏輯與 `test_rtc_integration` 的 `simulate_boot_detect_and_seed` 是同一個函式換皮
+- `main.cpp:262-272` BLE write-back 同類重複
+- 對齊 `feedback_extract_testable_pure_logic` 規則：抽 `ems::rtc_try_seed(backend, state, now, floor, ceiling)` + `ems::rtc_write_back_if_applied(backend, state, now)` 到新 lib `ems_rtc_glue/`（或 `ems_time_sync` 內），main.cpp 與 test 都呼叫
+- 風險：跨 lib 依賴（ems_rtc + ems_time_sync），`lib_ldf_mode = deep+` 已開應可
+- [ ] 待做
+
+### R2. `RtcReading` struct 取代 sentinel 0（type-design review）
+
+- `now_epoch_ms()` 用 0 同時表示「not present」與「合法 1970-01-01 epoch」conflate state
+- 改成 `struct RtcReading { bool valid; uint64_t epoch_ms; }`，type-level 明確「未對時」概念
+- 影響：RtcBackend 介面 + 3 個 backend 實作 + 6 個 caller 點
+- [ ] 待做
+
+### R3. `SetResult` enum 取代 set_epoch_ms bool（type-design review）
+
+- 現 `bool set_epoch_ms` 無法區分 `NullBackend no-op` vs `DS3231 I2C 寫失敗`
+- 改成 `enum class SetResult { Ok, NotPresent, IoError }`，main.cpp write-back log 才能精準分類
+- 配套：DS3231Backend.cpp 加 read-back verify（每筆 BLE write-back 多一次 I2C 往返；可選）
+- [ ] 待做
+
+### R4. ohca_logic case_start/end_epoch 路徑 native test（pr-test-analyzer #2）
+
+- save 路徑改成 live epoch 後，partial-sync 場景（case 開始時未對時、結束時已對時）無 test
+- 加 `test_ohca_logic` 純測試（或 `test_ohca_state` 內補）覆蓋三種 sync 狀態 × 兩個欄位
+- [ ] 待做
+
+### R5. seed_from_rtc with rtc_epoch < now_millis underflow guard test
+
+- F4 已加 guard，但無對應 native test 鎖死。`test_time_sync` 加 1 case：seed underflow 後 state 仍 unsynced
+- [ ] 待做
+
+### R6. BLE write-back with two distinct now_millis test（pr-test-analyzer #4）
+
+- `simulate_ble_apply_with_write_back` 用單一 now_millis；production `time_sync_handle` 與 `current_epoch_ms` 各讀一次 millis
+- 加 test 鎖死兩讀漂移容忍
+- [ ] 待做
+
+---
+
+## ⏳ 2026-05-24 DS3231 永續性測試待跑
+
+> **背景**：DS3231 整合 Wave 1-6 已完成並實機驗收 boot 偵測 + seed + write-back 路徑。但 **CR2032 紐扣電池備援能力尚未實測**。
+
+### 測試流程
+
+1. 接 DS3231 + 連 App + 完成 BLE time_sync（log 應顯示 `[RTC] write-back from BLE time_sync: <epoch>`）
+2. 拔 USB 電源 → 等 30 秒（裝置完全斷電，但 DS3231 走 CR2032 維持走時）
+3. 重接電源 → 看 boot log
+4. **預期**：`[RTC] DS3231 detected at 0x68` + `[RTC] seeded software clock from RTC: <epoch>`（epoch 比上次對時值大 ~30000）
+5. **若失敗**：log 顯示 `[RTC] DS3231 present but time not set, 等 BLE time_sync` → 表示 CR2032 沒電或座未通
+
+### 驗收標準
+
+- [ ] boot log 顯示 seeded（不需 BLE）
+- [ ] seeded epoch 比上次對時值合理（30 秒誤差 ± 1 秒）
+
+> 💡 失敗時的硬體排查：(1) CR2032 電壓 > 2.7V，(2) 紐扣電池座焊點通，(3) DS3231 VBAT 腳與 CR2032 正極連通
+
+---
+
 ## 🎨 TFT 整合（Phase A → B 過渡）
 
 > **2026-05-08 立案**：Phase A 已完成（OLED 跑通），TFT smoke test 也跑通（commit `f1a5792`）。下一步把 TFT 整進主韌體，UI 對齊 `docs/demo/index.html`（決策見 memory `project_tft_ui_design_target.md`）。

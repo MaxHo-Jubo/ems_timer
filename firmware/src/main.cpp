@@ -48,6 +48,11 @@
 
 #include "app_globals.h"
 
+// Dev-Phase 3 RTC：DS3231 包裝（#ifdef ARDUINO 守護的具體實作）
+#include <Wire.h>
+#include "ds3231_backend.h"
+#include "null_backend.h"
+
 
 // ════════════════════════════════════════════════════════════════
 // 全域變數定義（extern 宣告在 app_globals.h）
@@ -90,6 +95,10 @@ bool g_locked_saved     = false;
 // Phase F MVP1 BLE
 ems::BleNus g_ble;
 ems::TimeSyncState g_ts_state;
+
+// Dev-Phase 3 RTC — setup() 內依 DS3231 偵測結果指向 DS3231Backend 或 NullRtcBackend
+// 永不為 nullptr（setup 後）
+ems::RtcBackend* g_rtc = nullptr;
 
 // Phase F MVP2 同步
 ems::SyncContext   g_sync_ctx;
@@ -236,17 +245,33 @@ static void on_ble_rx(const uint8_t* data, size_t len) {
     if (strcmp(type, "time_sync") == 0) {
         char ack_buf[BLE_ACK_BUF_MAX];
         size_t ack_len = 0;
+        const bool rtc_present = (g_rtc != nullptr) && g_rtc->is_present();
         ems::TimeSyncResult r = ems::time_sync_handle(
             &g_ts_state,
             data, len,
             millis(),
-            /*rtc_present=*/false,
+            rtc_present,
             ack_buf, sizeof(ack_buf), &ack_len);
         const char* result_str =
             (r == ems::TimeSyncResult::Applied)  ? "Applied"  :
             (r == ems::TimeSyncResult::Rejected) ? "Rejected" :
                                                    "ParseError";
         Serial.printf("[BLE] time_sync %s ack_len=%u\n", result_str, (unsigned)ack_len);
+
+        // STEP 02.01: Applied → 反向寫回 DS3231（App 變主時鐘源）
+        //   對齊 docs/ds3231-integration-plan.md §5.1：g_rtc 不在線時 set_epoch_ms
+        //   為 no-op 回 false，無需額外分支判斷
+        if (r == ems::TimeSyncResult::Applied && rtc_present) {
+            const uint64_t app_epoch =
+                ems::time_sync_current_epoch_ms(&g_ts_state, millis());
+            if (g_rtc->set_epoch_ms(app_epoch)) {
+                Serial.printf("[RTC] write-back from BLE time_sync: %llu\n",
+                              (unsigned long long)app_epoch);
+            } else {
+                Serial.println("[RTC] WARN write-back failed");
+            }
+        }
+
         if (ack_len > 0) {
             // ems_time_sync serializeJson 不附 '\n'。ble-client 以 '\n' 切句，缺結尾符
             // 會讓 ack 與後續訊息（如 pair_status）黏在同一行 → JSON.parse 失敗 →
@@ -377,11 +402,39 @@ void setup() {
         Serial.println("[STORAGE] WARN LittleFS mount failed");
     }
 
+    // STEP 06.5: Dev-Phase 3 — RTC 初始化（runtime 偵測 I2C 0x68）
+    //   不變式：time_sync_init 必須先於 RTC seed 呼叫，否則 init 會清空 seed 結果
+    //   對齊 docs/ds3231-integration-plan.md §4.1（三分支：在線+有時間 / 在線+未設 / 不在線）
+    ems::time_sync_init(&g_ts_state);
+    Wire.begin(I2C_SDA_PIN, I2C_SCL_PIN);
+    static ems::DS3231Backend ds3231_be;
+    static ems::NullRtcBackend null_be;
+    if (ds3231_be.begin(Wire)) {
+        g_rtc = &ds3231_be;
+        Serial.println("[RTC] DS3231 detected at 0x68");
+        const uint64_t rtc_epoch = g_rtc->now_epoch_ms();
+        // 對齊 spec §2.3 BLE time_sync 拒絕條件，雙向 floor / ceiling 一致；
+        // 避免 DS3231 寄存器爛資料（如年份溢位回到 2099）漏網
+        if (rtc_epoch >= ems::TIME_SYNC_MIN_EPOCH_MS &&
+            rtc_epoch <= ems::TIME_SYNC_MAX_EPOCH_MS) {
+            ems::time_sync_seed_from_rtc(&g_ts_state, rtc_epoch, millis());
+            Serial.printf("[RTC] seeded software clock from RTC: %llu\n",
+                          (unsigned long long)rtc_epoch);
+        } else if (rtc_epoch == 0) {
+            Serial.println("[RTC] DS3231 present but time not set, 等 BLE time_sync");
+        } else {
+            Serial.printf("[RTC] WARN DS3231 epoch out of range (%llu), 拒絕 seed\n",
+                          (unsigned long long)rtc_epoch);
+        }
+    } else {
+        g_rtc = &null_be;
+        Serial.println("[RTC] not present, fallback to BLE time_sync only");
+    }
+
     // STEP 07: Phase F MVP1 — BLE NUS peripheral 初始化
     //   失敗只 log warn 不擋 boot（對齊 storage_init 容錯模式）。
     //   廣播後待 web 端（docs/ble-tester/）連線送 time_sync 才會有 epoch；
     //   未對時前事件 timestamp_ms = 0（spec §4.1）。
-    ems::time_sync_init(&g_ts_state);
     if (!g_ble.begin(BLE_DEVICE_NAME)) {
         Serial.println("[BLE] WARN init failed, time_sync 將不可用");
     }

@@ -24,6 +24,7 @@
 #include "ems_display_snapshot.h"
 #include "ems_time_sync.h"
 #include "ems_sync_dispatcher.h"
+#include "ems_rtc.h"
 #include "summary_action.h"
 #include <ArduinoJson.h>
 #include "ble_nus.h"
@@ -345,6 +346,13 @@ extern bool g_locked_saved;
 // Phase F BLE
 extern ems::BleNus g_ble;
 extern ems::TimeSyncState g_ts_state;
+
+// Dev-Phase 3 RTC（DS3231 @ I2C 0x68）
+//   - I2C_SDA_PIN / I2C_SCL_PIN：上面 GPIO 區已宣告（42 / 41，TFT 升級後釋出）
+//   - SYNCED_AT_EPOCH_FLOOR_MS：ems_storage_logic.h 已宣告（2020-01-01 floor，UI 同源）
+//   - 對齊 docs/ds3231-integration-plan.md §4.1
+// 永不為 nullptr：setup() 內未抓到 DS3231 也會掛 NullRtcBackend
+extern ems::RtcBackend* g_rtc;
 
 // Phase F 同步
 extern ems::SyncContext   g_sync_ctx;

@@ -105,6 +105,19 @@ uint64_t time_sync_current_epoch_ms(const TimeSyncState* state, uint64_t now_mil
     return state->epoch_ms_offset + now_millis;
 }
 
+void time_sync_seed_from_rtc(TimeSyncState* state,
+                             uint64_t rtc_epoch,
+                             uint64_t now_millis) {
+    // STEP 01: defensive — rtc_epoch < now_millis 會讓 uint64_t 減法 wrap 到巨大值。
+    //          caller 該守 floor 但 API 仍 noop 防呆，避免下游算出 ~2554 年的 epoch
+    if (rtc_epoch < now_millis) {
+        return;
+    }
+    // STEP 02: 與 BLE Apply 共用公式（plan §5.2）；tz_offset_min 不動（DS3231 無此欄位）
+    state->synced = true;
+    state->epoch_ms_offset = rtc_epoch - now_millis;
+}
+
 TimeSyncResult time_sync_handle(
     TimeSyncState* state,
     const uint8_t* input,
@@ -163,9 +176,9 @@ TimeSyncResult time_sync_handle(
     }
 
     // STEP 07: 範圍內 → Applied
-    //          offset = epoch_ms - now_millis；之後 current_epoch_ms 由 offset + now_millis 取
-    state->synced = true;
-    state->epoch_ms_offset = epoch_ms - now_millis;
+    //          synced + offset 由 time_sync_seed_from_rtc 一條公式承擔（單一真相），
+    //          BLE 額外帶 tz_offset_min（RTC 路徑沒有）
+    time_sync_seed_from_rtc(state, epoch_ms, now_millis);
     state->tz_offset_min = tz_offset_min;
 
     // STEP 08: 寫 ACK（spec §2.2 device_now_ms = 寫入時鐘後的當下 epoch）

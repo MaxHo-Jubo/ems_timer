@@ -82,6 +82,23 @@ void time_sync_init(TimeSyncState* state);
 uint64_t time_sync_current_epoch_ms(const TimeSyncState* state, uint64_t now_millis);
 
 /**
+ * 從 RTC 種 seed 軟體對時 state（boot 後若 DS3231 有時間，不必等 BLE 連線）。
+ * 邏輯與 BLE Apply 相同：epoch_ms_offset = rtc_epoch - now_millis，
+ * 後續 current_epoch_ms() 用 millis() + offset 算同等於軟體對時的行為。
+ *
+ * tz_offset_min 保持原值不動（DS3231 不存 tz，由後續 BLE 對時帶入）。
+ *
+ * 對齊 plan：docs/ds3231-integration-plan.md §5.2
+ *
+ * @param state       要 seed 的 TimeSyncState（非 null）
+ * @param rtc_epoch   從 RTC 讀到的 epoch ms（caller 已確認 > TIME_SYNC_MIN_EPOCH_MS）
+ * @param now_millis  當下 millis() 值
+ */
+void time_sync_seed_from_rtc(TimeSyncState* state,
+                             uint64_t rtc_epoch,
+                             uint64_t now_millis);
+
+/**
  * 解析 time_sync JSON 訊息，視結果更新 state 並產生 time_sync_ack JSON。
  *
  * @param state          對時 state 物件，Applied 時會被覆寫（非 null）
