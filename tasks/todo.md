@@ -19,18 +19,24 @@
 
 > **背景**：DS3231 RTC 整合 6 wave 完成、實機驗收通過（見 `docs/progress.md` 進度 7）。同時段在實機上觀察到以下 4 個 UI / 顯示 bug，與 RTC 整合無關，獨立修。
 
-### B1. 字串缺字「至 本 即將」（同案件再次同步確認 dialog）
+### B1. 字串缺字（dialog + 案件總覽 OHCA）
 
-- **症狀**：同案件再次同步時跳出的確認 dialog 內出現缺字（PM 報「至 本 即將」）
-- **2026-05-25 調查結果**：
-  - 三字串確認都在 `regen_vlw.sh` 掃描範圍（`ui_*.cpp`）內，工具範圍 OK
-  - dump VLW glyph table 比對 git 歷史：實際只**「至」U+81F3** 在 commit `e79f4f9`（5/24 21:07）之前缺；「本/即/將」一直都在
-  - `e79f4f9` 已含補字（258 → 271 glyphs）。本次再跑 `regen_vlw.sh` 又補 11 字（出塞拒會法滿絕送附靠，）→ 282 glyphs（防其他畫面缺字）
-  - vlw 結構驗證：codepoint 升序、bitmap offset 無越界、四字 metadata 正常（w/h/dy/dx 與對照組「案件」同等級）
-- **commit**：`firmware/data/fonts/ems_zh_24.vlw` 282 glyphs / 110.2 KB
-- [x] 已修（vlw 已補齊）
-- [ ] **PM 實機驗證待跑**：重燒 `pio run -e esp32-s3-devkitc-1 -t uploadfs` + 韌體後再進「同案件再次同步」dialog
-  - 若仍見「至/本/即將」缺字 → **真因不在字型**（vlw 已含），需開新 bug 追：可能 `useZhFont()` 漏呼叫、`drawCenteredText` 對 fractional `setTextSize` 寬度計算 bug、或 partial bbox 殘留
+- **症狀**：
+  - dialog「是否再次同步**至** App？」缺「至」
+  - 案件總覽「同步**狀態：**App未同步」缺「狀 態 ：」3 字
+  - 案件總覽「同步**至** App」缺「至」
+- **真根因（2026-05-25 第二輪調查）**：
+  - firmware 透過 `display.loadFont(ems_zh_24_vlw)` 載入**嵌在 binary 的 PROGMEM C array**（`firmware/src/ems_zh_24_vlw.h`），**不是 LittleFS 的 .vlw 檔**
+  - 過去 `regen_vlw.sh` **只生 .vlw binary，沒重生 .h header**，導致 build firmware 仍嵌入舊字集（258 glyphs，缺「狀 態 ： 至」）
+  - commit `e79f4f9` (5/24) commit msg 提「字型」但實際只更 `.vlw` 沒更 `.h` → 補字看似完成但實機仍缺
+  - `firmware/src/ems_zh_24_vlw.h` mtime 自 commit `078d3b2` (5/15) 之後**從未更新**
+- **修法**：
+  - 新增 `firmware/tools/vlw2header.py` (.vlw → PROGMEM C array)
+  - `regen_vlw.sh` STEP 09 自動呼叫 vlw2header.py，確保 .h 跟 .vlw 同步
+  - 重生 `firmware/src/ems_zh_24_vlw.h` 為 282 glyphs / 110.2 KB / `ems_zh_24_vlw_len = 112844`
+- **build**：Flash 68.6% / RAM 32.3% SUCCESS
+- [x] 已修（commit 7f81f6b + 本次 commit）
+- [ ] **PM 實機驗證待跑**：`pio run -e esp32-s3-devkitc-1 -t upload`（**只需重燒 firmware，不需 uploadfs**）後預期所有缺字消失
 
 ### B2. OHCA 案件總覽畫面排版異常（互相疊字）
 

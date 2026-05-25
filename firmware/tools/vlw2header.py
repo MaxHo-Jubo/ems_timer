@@ -1,0 +1,53 @@
+#!/usr/bin/env python3
+"""
+.vlw → PROGMEM C header 轉檔工具
+
+實機 firmware 透過 `display.loadFont(ems_zh_24_vlw)` 載入嵌進 binary 的 PROGMEM
+陣列（見 firmware/src/app_globals.h / main.cpp），而不是讀 LittleFS 上的 .vlw 檔。
+因此 vlw 重生後必須同步重生本 header，否則 firmware 仍用舊字集。
+
+用法：
+  python3 vlw2header.py <vlw_path> <header_path> [--var-name ems_zh_24_vlw]
+"""
+from __future__ import annotations
+import argparse
+from pathlib import Path
+
+
+def write_header(vlw_path: Path, header_path: Path, var_name: str) -> int:
+    data = vlw_path.read_bytes()
+    n = len(data)
+
+    lines = [f'const uint8_t {var_name}[] PROGMEM = {{']
+    for i in range(0, n, 12):
+        chunk = data[i:i + 12]
+        parts = ', '.join(f'0x{b:02x}' for b in chunk)
+        suffix = ',' if i + 12 < n else ''
+        lines.append(f'  {parts}{suffix}')
+    lines.append('};')
+    lines.append(f'const uint32_t {var_name}_len = {n};')
+    lines.append('')
+
+    header_path.parent.mkdir(parents=True, exist_ok=True)
+    header_path.write_text('\n'.join(lines), encoding='ascii')
+    return n
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument('vlw', type=Path, help='輸入 .vlw 二進位檔')
+    ap.add_argument('header', type=Path, help='輸出 .h header 路徑')
+    ap.add_argument('--var-name', default='ems_zh_24_vlw',
+                    help='C 變數名稱（預設 ems_zh_24_vlw）')
+    args = ap.parse_args()
+
+    if not args.vlw.exists():
+        raise SystemExit(f'[error] vlw not found: {args.vlw}')
+
+    n = write_header(args.vlw, args.header, args.var_name)
+    kb = n / 1024
+    print(f'[done] wrote {args.header} ({kb:.1f} KB, var={args.var_name}, len={n})')
+
+
+if __name__ == '__main__':
+    main()
