@@ -4,20 +4,20 @@
 
 ---
 
-## 🎯 當前焦點（2026-05-13）
+## 🎯 當前焦點（2026-05-25）
 
-- **網頁端 Phase F**：見 [`tasks/phase-f-todo.md`](phase-f-todo.md)（權威來源，不在此重複）
-  - F-5 / F-6 / F-9 已完成；下一步 F-1 韌體 `ems_pairing` TDD（BLE 鏈路第一棒）
-- **TFT 整合**：Step 2 後續其他畫面 + Step 3 字體放大 + Demo 對齊 batch 1~3 待實機測試（見下）
-- **Phase E review-pr Batch 2**：工程層全部完成（2A/2B/2C 工程 4 commits，2026-05-14）；剩 Group 2C UI 反饋等 PM 對齊失敗哲學 A/B/C（見下方 🔧 章節）
-- **22 commits 待跑 POST-COMMIT-REVIEW**（baseline `3d44950`，rate-limit 恢復後）；本次新增 4 commits（`40bad66`/`97e38fc`/`9426004`/`4b91e3c`）為 review 行動本身，可選擇略過 5 步驟
+- **5/24 實機 UI bug 5 隻全清完**（B1-B5）：見下方「實機 bug 已修」段；全部通過 PM 實機驗證 + POST-COMMIT-REVIEW 5 步驟結案 + 推 origin（commit `bdf6647`）
+- **DS3231 永續性測試待跑**（5 分鐘）：CR2032 紐扣電池備援能力未實測
+- **網頁端 Phase F**：BLE 鏈路 + DS3231 整合 + UI bug 全清，**階段 1 主要里程碑達成**（見 `docs/progress.md` 進度 6 + 7 + 8）
+- **B1-B5 POST-COMMIT-REVIEW follow-up backlog**：drawKVRow helper / magic numbers 衍生 / B3 propagation / B5 dispatchOhcaEvent native test 等（見下方 🔬 段）
+- **Phase E review-pr Batch 2**：工程層全部完成；剩 Group 2C UI 反饋等 PM 對齊失敗哲學 A/B/C
 - **韌體 Phase B~H 規劃**：見 [`docs/pm-dev-spec.md §四`](../docs/pm-dev-spec.md)
 
 ---
 
-## 🐛 2026-05-24 實機 bug 待修
+## ✅ 2026-05-24 實機 bug 已修（B1-B5 全部 PM 實機驗證通過）
 
-> **背景**：DS3231 RTC 整合 6 wave 完成、實機驗收通過（見 `docs/progress.md` 進度 7）。同時段在實機上觀察到以下 4 個 UI / 顯示 bug，與 RTC 整合無關，獨立修。
+> **背景**：DS3231 RTC 整合 6 wave 完成、實機驗收通過（見 `docs/progress.md` 進度 7）。同時段在實機上觀察到以下 4 個 UI / 顯示 bug + 6 秒給氣 LOCKED 殘留（B5），與 RTC 整合無關，獨立修。**5/25 全部修完並通過 PM 實機驗證。詳見 `docs/progress.md` 進度 8**。
 
 ### B1. 字串缺字（dialog + 案件總覽 OHCA）
 
@@ -546,8 +546,9 @@ e02e017  batch3 VENT_PRE 預備畫面 + QuickMenu 案件簡版總覽
 
 ### 待跑
 
-- [ ] 22 commits POST-COMMIT-REVIEW 五步驟（rate-limit 恢復後，baseline `3d44950`）
-- [ ] push origin（GitLab + GitHub backup）
+- [x] **2026-05-25 POST-COMMIT-REVIEW 範圍 `7f81f6b..af5f54a` 五步驟完成**（B1-B5，commit `bdf6647`，評分 28/30）
+- [x] **push origin (GitLab)** — 2026-05-25 推 21 commits（GitHub backup 暫緩，認證未驗證）
+- [ ] 22 commits POST-COMMIT-REVIEW 五步驟（baseline `3d44950`，rate-limit 恢復後，跟 B1-B5 範圍獨立）
 - [ ] 硬體採購清單下單（蝦皮 / 露天）— 等 PM 確認方案
 - [ ] **GitLab Pages 驗證**：自架 GitLab 實例 Pages 功能是否啟用（admin 設定），或改用 GitHub Pages
 

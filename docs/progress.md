@@ -1,18 +1,19 @@
 ---
 title: EMS Timer 進度報告
 audience: PM
-last_updated: 2026-05-24
-total_entries: 6
+last_updated: 2026-05-25
+total_entries: 8
 ---
 
 # EMS Timer 進度報告
 
 > **產品**：EMS DoseSync Pro（救護人員給藥計時器）
-> **最後更新**：2026-05-24
-> **累計進度**：6 筆
+> **最後更新**：2026-05-25
+> **累計進度**：8 筆
 
 ## 章節導覽
 
+- [進度 8 - 2026-05-25 - 實機 UI bug 5 隻一日清完（B1-B5 含 PROGMEM 載入陷阱 + Snapshot 漏欄位第三次踩）](#progress-2026-05-25)
 - [進度 7 - 2026-05-24 - DS3231 RTC 整合上機（裝置從此有真實時間戳）](#progress-2026-05-24-2)
 - [進度 6 - 2026-05-24 - Phase F BLE 鏈路打通端到端（韌體 → 藍牙 → 雲端落地）](#progress-2026-05-24)
 - [進度 5 - 2026-05-12 - Phase F 網頁端完整 UI 落地（雲端 + SoT §17 全套）](#progress-2026-05-12-2)
@@ -20,6 +21,77 @@ total_entries: 6
 - [進度 3 - 2026-05-11 - 用自動化測試掃出 10 個畫面文字溢出並修正](#progress-2026-05-11)
 - [進度 2 - 2026-05-09 - 補登次數選單列表化＋介面文字溢出修整](#progress-2026-05-09-2)
 - [進度 1 - 2026-05-09 - 螢幕升級到 2.8 吋並修整體美觀](#progress-2026-05-09)
+
+---
+
+## <a id="progress-2026-05-25"></a>進度 8 — 2026-05-25 — 實機 UI bug 5 隻一日清完（B1-B5 含 PROGMEM 載入陷阱 + Snapshot 漏欄位第三次踩）
+
+### 一句話
+
+5/24 實機驗收抓出的 **4 個 UI bug**（缺字 / 疊字 / 游標位移 / 結束前檢查游標）+ 同時段發現的 **6 秒給氣 LOCKED 殘留閃爍**（B5）一天內全部修完通過 PM 實機驗證。途中**揭開兩個重要工具鏈陷阱**：字型實機載入走 PROGMEM 不是 LittleFS（過去 10 天踩坑無人察覺）、DisplaySnapshot 漏欄位 bug 第三次重演。修完跑 POST-COMMIT-REVIEW 五步驟結案並推 origin。
+
+### 驗收結果
+
+| Bug | 症狀 | PM 實機驗證 |
+|-----|------|------------|
+| **B1** dialog + 案件總覽缺「狀 態 ： 至」字 | 中文字顯示成 □ tofu 方塊 | ✅ 通過 |
+| **B2** 案件總覽標題 / 同步狀態 / EPI 三行重疊 | 整個畫面擠成一團看不清 | ✅ 第二輪通過 |
+| **B3** 返主選單後游標 highlight 跟文字錯位 | 反白框跟字 Y 軸沒對齊 | ✅ 通過 |
+| **B4** 結束前檢查第一次按 UP 不動要按兩次 | 預設「返回案件」UP 沒反應 | ✅ 通過 |
+| **B5** OHCA 結束進 LOCKED 後畫面反覆閃 | 結束前開過 6 秒給氣留下殘留 | ✅ 通過 |
+
+### 每個 bug 的真根因（給 PM 的版本）
+
+- **B1 — 字型實機載入走 PROGMEM 不是 LittleFS**
+  字型字符明明存在，但燒進去仍缺字。挖了兩輪才發現裝置實際讀取的是嵌進 firmware binary 的 C 陣列（`ems_zh_24_vlw.h`），不是 LittleFS 的 `.vlw` 檔。過去 `regen_vlw.sh` 只生成 `.vlw` 不更新 `.h`，導致 commit `e79f4f9` (5/24) 寫「字型」但實際補的字根本沒進 binary。**自 5/15 commit `078d3b2` 之後 header 整整 10 天沒更新**，連兩次都被誤判修好。修法：新增自動 `.vlw → .h` 轉換工具，整合進 `regen_vlw.sh` 流程，未來不會再漏
+
+- **B2 — 案件總覽 9 行內容塞不下 240px**
+  原始 layout 用 LINE_H=22 + 1.0× 字級，9 行內容（標題、同步狀態、EPI 3 行、電擊 2-3 行、Amio、底部 2 個 sub-menu）總高度超過螢幕高度。同時 `SYNC_STATUS_Y` 只設「標題下方 14px」對 1.2× 大標題（29px 高）不夠避開。第一輪修把同步狀態避開標題 + 字級縮 0.85× + 行高 18 解前段，第二輪發現 Amio 仍撞 sub-menu，再調 sub-menu 起點下移 18px 完成
+
+- **B3 — 主選單與其他畫面用不同文字渲染 API**
+  drawMainMenu 用 `setCursor + print` 走 Print stream 接口，其他畫面用 `drawString + setTextDatum` 走 datum 接口。中文字型下兩者的 (x, y) 含義不同 — Print stream 走 baseline-relative，drawString 走 datum-relative，跟反白框的 raw Y 座標含義不一致 → 文字跟反白框錯開。改用統一 API 解決
+
+- **B4 — DisplaySnapshot 漏欄位 bug 第三次重演**
+  畫面去重機制用 memcmp 比對 snapshot，但 snapshot struct 沒含 `endCheckCursor` → 按 UP 改 cursor 但 snapshot 看不到變化 → 跳過重繪。同樣的坑 Phase E 漏 `historyCursor` / Phase F 漏 `summarySubmenuCursor` 都踩過，這是**第三次**。加進 snapshot 並補 regression test 鎖死；同時存進團隊記憶庫制定「新加 UI state 必跑 5 步驟 checklist」避免第四次
+
+- **B5 — 規格 §14.12「結束後自動停止」韌體只做半套**
+  原本案件結束渲染條件已排除 LOCKED/SUMMARY 不畫給氣 overlay，但內部 timer (`ventStartMs`) 沒清 → 每秒算出新 beat → snapshot 仍每秒變化 → 觸發全螢幕重畫 → 視覺閃爍。**不是 overlay 反覆出現，是底層重繪反覆觸發**。修法：進 LOCKED 時清掉 timer，timer + 渲染條件一致對齊「結束後自動停止」spirit
+
+### 工程數字
+
+- 7 commit 修 5 個 bug + 2 commit 文件 + 1 commit simplify cleanup + 1 commit POST-COMMIT-REVIEW IMPORTANT 修
+- 新工具 `firmware/tools/vlw2header.py`（.vlw → PROGMEM C array）
+- 新測試 `test_end_check_cursor_change_triggers_redraw_b4_regression`（B4 regression）
+- 抽 `resetOhcaVentState()` helper 消除 ohca_logic 兩處重複
+- POST-COMMIT-REVIEW 全 5 步驟跑完（範圍 `7f81f6b..af5f54a`）：simplify cleanup + 5-agent 並行 review，0 CRITICAL / 3 IMPORTANT 修 / 評分 **28/30**
+- native test：419 / 420 PASSED（baseline test_storage_hw ERROR 既有）
+- 主韌體 Flash：68.6%（不變）
+- 全部 21 個 commit 推 origin（GitLab）
+
+### 抓出的工具鏈債（已修 + 入記憶庫）
+
+| 陷阱 | 影響 | 對策 |
+|------|------|------|
+| **`.vlw` 跟 `.h` header 未同步** | 改字型沒生效，連 2 次誤判修好 | `regen_vlw.sh` STEP 09 自動同步；commit 前驗 `_len` 對得上 |
+| **DisplaySnapshot 漏 cursor 欄位**（第三次踩） | 新加 UI state 沒重繪 | 5 步驟 checklist（struct / Inputs / capture / main.cpp input / regression test）入記憶庫 |
+| **drawMainMenu setCursor+print vs drawString datum 不一致** | 主選單對齊問題 | 統一改 drawString + datum；其他 menu (drawBackfill* / drawQuickMenu) 留 PM 實機觀察 |
+
+### 已知未修（留 backlog）
+
+- ⏳ **drawOhcaSummary `drawKVRow` helper** — 6 段重複可抽出減 60 行
+- ⏳ **layout magic numbers 衍生**：`+32 / 78 / 18 / 0.85f` 從字型 size 衍生避免改字級時 drift
+- ⏳ **B3 datum fix 可能未傳播到其他 4 個 menu**（drawBackfillCategory / Type / Count / QuickMenu）— 等 PM 實機確認後再修
+- ⏳ **B5 `dispatchOhcaEvent` 進 LOCKED reset vent state 缺 native test** — 需 stub 10+ globals overhead 大，PM 已實機驗
+- ⏳ **DS3231 永續性測試（CR2032 備援）** — 5 分鐘可完成
+
+### 後續工作
+
+- ⬜ **DS3231 永續性測試**（從進度 7 延續）
+- ⬜ **3 項 Phase F 強化測試補完**（中斷重連 / 50 events 滿載 / Training case mode）
+- ⬜ **React Native App**（取代純網頁的長期方案，與網頁共存）
+- ⬜ **Group 2C UI 反饋 PM 對齊**（失敗哲學 A/B/C 三選一）
+
+> 💬 進度 6（BLE 鏈路）+ 進度 7（DS3231 時鐘）+ 進度 8（UI 收尾）= 階段 1 主要里程碑全部達成。剩餘是量產前的硬體驗證 + Training mode + 系統設定 + 電源管理。
 
 ---
 
