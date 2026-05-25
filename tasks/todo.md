@@ -62,8 +62,8 @@
   - `main.cpp:sameStateAsLast` 比對加 `endCheckCursor`（避免被誤判 partial path）
   - `test_display_snapshot.cpp` 加 `test_end_check_cursor_change_triggers_redraw_b4_regression` 鎖死（仿 Phase E/F 同類 regression test pattern）
 - **build**：native 32/32 PASSED / ESP32 Flash 68.6% SUCCESS
-- [x] 已修
-- [ ] **PM 實機驗證待跑**：燒 firmware 後進「結束前檢查」，預設「返回案件」按 UP 第一次應立即跳「前往補登」（cursor 順序 wrap：完成並結束 0 ↔ 前往補登 1 ↔ 返回案件 2）
+- [x] 已修（commit 8388ce7）
+- [x] **PM 實機驗證通過（2026-05-25）**：cursor 第一次 UP 即動 + 順序 wrap 正確
 
 > 💡 修 bug 前先實機重現確認症狀；建議單 commit 一個 bug，便於 PR review。
 
