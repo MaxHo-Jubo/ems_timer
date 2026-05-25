@@ -608,6 +608,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.mainMenuCursor       = mainMenuCursor;
     in.backfillCursor       = backfillCursor;
     in.summarySubmenuCursor = summarySubmenuCursor;
+    in.endCheckCursor  = (uint8_t)endCheckCursor;  // B4 修：3 項 END_CHECK cursor 必須進 snapshot
     in.ventVolume      = ventVolume;
     in.ventPaused      = ventPaused;
     in.historyCursor       = historyCursor;
@@ -700,6 +701,7 @@ void updateDisplay() {
                               && (now.ohcaSubState    == lastDisplaySnapshot.ohcaSubState)
                               && (now.mainMenuCursor  == lastDisplaySnapshot.mainMenuCursor)
                               && (now.backfillCursor  == lastDisplaySnapshot.backfillCursor)
+                              && (now.endCheckCursor  == lastDisplaySnapshot.endCheckCursor)
                               && (now.ventBeat        == lastDisplaySnapshot.ventBeat)
                               && (now.ventVolume      == lastDisplaySnapshot.ventVolume)
                               && (now.ventPaused      == lastDisplaySnapshot.ventPaused)

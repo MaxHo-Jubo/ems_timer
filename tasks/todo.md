@@ -35,8 +35,8 @@
   - `regen_vlw.sh` STEP 09 自動呼叫 vlw2header.py，確保 .h 跟 .vlw 同步
   - 重生 `firmware/src/ems_zh_24_vlw.h` 為 282 glyphs / 110.2 KB / `ems_zh_24_vlw_len = 112844`
 - **build**：Flash 68.6% / RAM 32.3% SUCCESS
-- [x] 已修（commit 7f81f6b + 本次 commit）
-- [ ] **PM 實機驗證待跑**：`pio run -e esp32-s3-devkitc-1 -t upload`（**只需重燒 firmware，不需 uploadfs**）後預期所有缺字消失
+- [x] 已修（commit 7f81f6b + c80ac31）
+- [x] **PM 實機驗證通過（2026-05-25）**：重燒 firmware 後 dialog + 案件總覽缺字全部消失
 
 ### B2. OHCA 案件總覽畫面排版異常（互相疊字）
 
@@ -55,9 +55,15 @@
 ### B4. 結束前檢查頁面游標上下移動異常
 
 - **症狀**：進「結束前檢查」頁面，預設游標停在「返回案件」項目。第一次按 UP 不會往上移，要按兩次才動；後續游標順序也異常
-- **疑似 root cause**：游標 initial state 與按鍵 handler 邊界判斷不一致（首次 press 被 debounce 吃掉、或 wrap-around 邏輯倒置）
-- **檔案候選**：結束前檢查相關 ui handler（OHCA END_CHECK 狀態相關，可能在 `ui_ohca.cpp` 或 `input_handler.cpp`）
-- [ ] 待修
+- **真根因（2026-05-25）**：`DisplaySnapshot` struct **漏 `endCheckCursor` 欄位**（同 Phase E `historyCursor` / Phase F `summarySubmenuCursor` 漏欄位 bug 的第三次重演）。按 UP/DOWN 改 `endCheckCursor` 但 snapshot memcmp 看不到變化 → `updateDisplay` 早 return 跳過 redraw → 看起來「第一次按沒動」；第二次按碰巧搭上其他 state 變化才觸發重繪 → 看起來「按兩次才動」
+- **修法**：
+  - `ems_display_snapshot.h` `DisplaySnapshot` + `DisplaySnapshotInputs` 加 `endCheckCursor` 欄位 + `captureSnapshot` 映射
+  - `main.cpp:captureDisplaySnapshot` 帶入 `in.endCheckCursor`
+  - `main.cpp:sameStateAsLast` 比對加 `endCheckCursor`（避免被誤判 partial path）
+  - `test_display_snapshot.cpp` 加 `test_end_check_cursor_change_triggers_redraw_b4_regression` 鎖死（仿 Phase E/F 同類 regression test pattern）
+- **build**：native 32/32 PASSED / ESP32 Flash 68.6% SUCCESS
+- [x] 已修
+- [ ] **PM 實機驗證待跑**：燒 firmware 後進「結束前檢查」，預設「返回案件」按 UP 第一次應立即跳「前往補登」（cursor 順序 wrap：完成並結束 0 ↔ 前往補登 1 ↔ 返回案件 2）
 
 > 💡 修 bug 前先實機重現確認症狀；建議單 commit 一個 bug，便於 PR review。
 

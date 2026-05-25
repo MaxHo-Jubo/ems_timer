@@ -108,6 +108,11 @@ static void test_summary_submenu_cursor_change_triggers_redraw_phase_f_regressio
     ASSERT_FIELD_TRIGGERS_CHANGE(summarySubmenuCursor, 1);
 }
 
+// B4 回溯：OHCA_END_CHECK cursor 移動 bug 同類別（漏 endCheckCursor 導致第一次 UP 無重繪）
+static void test_end_check_cursor_change_triggers_redraw_b4_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(endCheckCursor, 1);
+}
+
 // ============================================================
 //  Group 3: 每個 bool flag → 唯一 bit mask 對應
 //  （regression：新增 flag 但忘記分配 bit 或 bit 撞號）
@@ -275,6 +280,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_history_cursor_change_triggers_redraw_phase_e_regression);
     RUN_TEST(test_history_scroll_offset_change_triggers_redraw_phase_e_regression);
     RUN_TEST(test_summary_submenu_cursor_change_triggers_redraw_phase_f_regression);
+    RUN_TEST(test_end_check_cursor_change_triggers_redraw_b4_regression);
 
     // Group 3: bool flag → bit mask
     RUN_TEST(test_flag_epi_armed_sets_bit_0x0001);
