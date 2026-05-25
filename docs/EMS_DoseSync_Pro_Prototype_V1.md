@@ -2996,7 +2996,7 @@ V1 不指定 CO 感測器型號（見 §20.5.2），依未來選型介面類型�
 | 介面類型 | 候選腳位 | 備註 |
 |---------|---------|------|
 | **I2C 共用 OLED bus** | GPIO 42 / 41 | 需確認 CO 模組 I2C 位址不與 OLED（0x3C）衝突；最省 GPIO 方案 |
-| **UART** | GPIO 43 / 44 | ZE07-CO 等電化學型主流介面；GPIO 43/44 為 S3 預設 USB-CDC 替代腳，僅 USB-CDC 不啟用時可用 |
+| **UART** | GPIO 43 / 44 | ZE07-CO 等電化學型主流介面；GPIO 43/44 為 ESP32-S3 UART0 預設腳，與 USB-CDC 無關（USB-CDC 走內建 USB GPIO 19/20），可直接使用 |
 | **類比 ADC** | GPIO 1 / 2 / 3（ADC1） | MEMS 半導體型用；避免 ADC2（與 WiFi 衝突） |
 
 > ⚠️ **獨立 I2C 候選已移除**：原規劃 GPIO 17/18 已封給 EPI 鍵與電擊鍵（見 §4.1 與 §21.3.1）。CO 感測器 I2C 走 OLED 共用 bus 即可。

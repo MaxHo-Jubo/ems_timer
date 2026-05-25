@@ -72,10 +72,10 @@ MicroSD 模組與 TFT 共用 SCK / MOSI，再加 MISO + 獨立 CS：
 |------|------|
 | **3** | SCK（與 TFT 共用，原 36 → 3） |
 | **2** | MOSI（與 TFT 共用，原 35 → 2） |
-| **1** | MISO（原 37 不可用 → 1，犧牲 ADC1_CH0；TFT BL PWM 互斥） |
-| **43** | MicroSD CS（USB-CDC TX，需放棄 USB Serial Monitor） |
+| **44** | MISO（原 37 不可用；GPIO 1 於 2026-05-08 已改派 TFT DC，改用 UART0 腳 44，與 CS=43 配成一對） |
+| **43** | MicroSD CS（UART0 腳，與 USB-CDC 無關，可直接用） |
 
-> ⚠️ **CS 候選惡化**：原 §3.2 候選 GPIO 2 已給 SPI MOSI、GPIO 47 與 TFT RST 衝突。剩 GPIO 43（USB-CDC）或 44。Prod-Phase 量產不需 USB-CDC 時切換。Dev-Phase 期間若需同時保留 USB Serial 與 MicroSD，需重新評估或加 IO expander。
+> ⚠️ **CS 候選惡化**：原 §3.2 候選 GPIO 2 已給 SPI MOSI、GPIO 47 與 TFT RST 衝突，僅剩 GPIO 43 / 44（UART0 預設腳）。GPIO 43/44 與 USB Serial 無關（USB-CDC 走晶片內建 USB GPIO 19/20），可直接挪用；但 43/44 同時是 CO 感測器 UART 的候選腳，MicroSD 與 CO-UART 兩者擇一。詳見 `gpio-allocation.md` §5.2 / §6。
 
 **注意**：TFT 通常只需 MOSI（單向寫入），但若 SD 卡共用 bus，整條 bus 必須加 MISO 線。
 
