@@ -40,10 +40,21 @@
 
 ### B2. OHCA 案件總覽畫面排版異常（互相疊字）
 
-- **症狀**：進入「案件總覽」OHCA 畫面後，部分文字互相疊在一起，看不清楚
-- **疑似 root cause**：座標計算 / 行高 / 字型 ascent 換算錯誤；或 LovyanGFX vlw 字型載入後高度未重算
-- **檔案候選**：`firmware/src/ui_history.cpp` 或 `ui_summary.cpp` 案件總覽 / OHCA 細節繪製函式
-- [ ] 待修
+- **症狀**：進入「案件總覽」OHCA 畫面後，標題 / 同步狀態 / EPI label 三行幾乎完全重疊
+- **真根因（2026-05-25）**：drawOhcaSummary 兩個 bug 疊加：
+  1. `SYNC_STATUS_Y = OHCA_BADGE_Y + 14` 對 1.2× 標題（佔 29px 高，y=14~43）只往下 14 → sync row y=28 **完全在標題內**
+  2. 整個 layout 塞 9 row（標題 + 同步 + EPI 3行 + 電擊 2-3行 + Amio + sub-menu 2行）在 240px 高度內，原 LINE_H=22 + size 1.0× row 無法 fit，會撞 sub-menu Y_BASE=166
+- **修法（PM 對齊「縮字 + 縮 LINE_H 不砍 row」策略）**：
+  - `SYNC_STATUS_Y`: `OHCA_BADGE_Y + 14` → `+32`（避開標題）
+  - EPI 起點 y: 50 → 78（避開 sync row）
+  - body `setTextSize(1)` → `setTextSize(0.85f, 0.85f)`（vlw 24×0.85 ≈ 20px）
+  - LINE_H: 22 → 18
+  - SUMMARY_SUBMENU_ROW_H: 24 → 22
+  - SUMMARY_SUBMENU_BOTTOM_MARGIN: 8 → 4
+  - sub-menu 也 setTextSize(0.85f) 配合 ROW_H 22
+- **build**：native 419/420 PASSED / ESP32 Flash 68.6% SUCCESS
+- [x] 已修
+- [ ] **PM 實機驗證待跑**：燒 firmware 後進案件總覽，9 row（標題/同步狀態/EPI label/EPI 細分/EPI m:ss/電擊 label/電擊 細分/Amio/sub-menu × 2）應全部不重疊
 
 ### B3. OHCA 案件總覽返主選單後游標位移未對齊文字
 
@@ -63,8 +74,9 @@
   - `ohca_logic.cpp:dispatchOhcaEvent` STEP 05 新增「首次進 LOCKED」block reset `ohcaVentOverlayEnabled=false / ohcaVentPaused=false / ventStartMs=0`
   - `exitOhcaCase` 補 `ventStartMs=0`（exit 原漏項，防 timer 殘留下次進 OHCA 沿用舊 beat）
 - **build**：native 419/420 PASSED（1 ERROR 為 baseline test_storage_hw）/ ESP32 Flash 68.6% SUCCESS
-- [x] 已修
-- [ ] **PM 實機驗證待跑**：燒 firmware 後跑流程「開啟 6 秒給氣 → OHCA 案件結束進 LOCKED」→ 預期 LOCKED 畫面不再閃
+- [x] 已修（commit 0b2b595）
+- [x] **PM 實機驗證通過（2026-05-25）**：LOCKED 畫面與案件總覽不再每秒閃爍
+- **後續觀察**：若需「進 LOCKED 前」更早結束 6 秒給氣（例：END_CHECK 顯示時）日後再修
 
 ### B4. 結束前檢查頁面游標上下移動異常
 
