@@ -97,6 +97,19 @@
 
 ---
 
+## 🔬 2026-05-25 B1-B5 POST-COMMIT-REVIEW follow-up backlog
+
+範圍 `7f81f6b..183468b` review agents 找到的 MEDIUM/SUGGESTION 留待後續：
+
+- [ ] **drawOhcaSummary 6 段 setTextDatum + drawString 重複可抽 `drawKVRow` helper**（quality agent）— 減 ~60 行重複 + 消除 datum-toggle 隱式依賴
+- [ ] **drawOhcaSummary magic numbers 衍生**：`+32 / 78 / 18 / 0.85f` 從字型 size 常數衍生，避免 PM 改字級時 layout drift（quality agent）
+- [ ] **B3 datum fix 可能未傳播至 `drawBackfillCategory` / `drawBackfillType` / `drawBackfillCount` / `drawQuickMenu`**（reuse agent）— 仍用 setCursor+print pattern，可能有同類 baseline 偏移問題；等 PM 實機確認後再修
+- [ ] **B5 `dispatchOhcaEvent` 進 LOCKED reset vent state 缺 native test**（pr-test-analyzer rating 7/10）— 需 stub 10+ globals + storage backend；overhead 大留 backlog。建議新建 `test_ohca_dispatch.cpp` 覆蓋 `prev != LOCKED && state == LOCKED → vent state cleared` invariant
+- [ ] **`regen_vlw.sh` STEP 09 失敗訊息可補 `trap ERR`**（silent-failure-hunter）— 避免 .vlw 已更但 .h 未同步時使用者未察覺
+- [ ] **`ventPaused` vs `ohcaVentPaused` 命名/scope 確認**（silent-failure-hunter）— 確認是兩個獨立變數還是該合併
+
+---
+
 ## 🔬 2026-05-24 DS3231 整合 follow-up refactor（POST-COMMIT-REVIEW 標記）
 
 > **背景**：commit `8948b13` DS3231 整合 + amend 後跑 4 個 review agent（pr-reviewer / silent-failure-hunter / pr-test-analyzer / type-design-analyzer）。Critical/Important 已在 commit 修；以下為 deferred 給後續獨立 commit。

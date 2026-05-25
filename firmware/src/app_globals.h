@@ -249,8 +249,10 @@ constexpr int16_t SUMMARY_SUBMENU_LEFT_PAD       = 28;
 constexpr int16_t SUMMARY_SUBMENU_CURSOR_GLYPH_W = 16;
 constexpr int16_t SUMMARY_SUBMENU_BOTTOM_MARGIN  = 4;
 
+// 對齊 ui_ohca.cpp drawOhcaSummary 的 SUBMENU_Y_BASE 算式（SUMMARY 不顯示底部
+// counter row，故 OHCA_COUNTER_BOTTOM 不參與保留空間計算）。
 static_assert(
-    SCREEN_H - OHCA_COUNTER_BOTTOM - SUMMARY_SUBMENU_BOTTOM_MARGIN
+    SCREEN_H - SUMMARY_SUBMENU_BOTTOM_MARGIN
         - SUMMARY_SUBMENU_ROW_H * SUMMARY_SUBMENU_COUNT >= 0,
     "OHCA SUMMARY sub-menu rows overflow screen"
 );
