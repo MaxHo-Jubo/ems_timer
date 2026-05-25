@@ -33,6 +33,10 @@ void drawMainMenu() {
 
     useZhFont();
     display.setTextSize(1.1f, 1.1f);
+    // B3 修：用 drawString + textdatum_t::top_left 統一座標含義（與 drawCenteredText 等其他
+    //   畫面同 path）。原 setCursor + print 走 Print stream 在 vlw 下會用 baseline-relative
+    //   偏移，從案件總覽返回主選單後字位置會跟 fillRect highlight 框錯開。
+    display.setTextDatum(textdatum_t::top_left);
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;
         if (i == mainMenuCursor) {
@@ -42,8 +46,7 @@ void drawMainMenu() {
         } else {
             display.setTextColor(COLOR_TEXT_PRIMARY);
         }
-        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
-        display.print(MAIN_MENU_LABELS[i]);
+        display.drawString(MAIN_MENU_LABELS[i], MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
     }
 }
 

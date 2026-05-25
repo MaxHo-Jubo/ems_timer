@@ -48,9 +48,11 @@
 ### B3. OHCA 案件總覽返主選單後游標位移未對齊文字
 
 - **症狀**：從案件總覽 / OHCA 畫面按返回回到主選單後，游標 highlight 框與選項文字位置沒對齊
-- **疑似 root cause**：游標位置變數（如 `mainMenuCursor` 對應 Y 座標）回主選單前未 reset、或不同畫面用不同字型導致 line height 差異殘留
-- **檔案候選**：`firmware/src/main.cpp` 或 `ui_main_menu.cpp` 主選單繪製
-- [ ] 待修
+- **真根因（2026-05-25）**：`drawMainMenu` 文字渲染用 `setCursor + print`（Print stream 路徑）；其他畫面（drawCenteredText / drawOhcaSummary 等）用 `drawString + setTextDatum`。`print()` 在 vlw 字型下走 baseline-relative 偏移，跟 fillRect highlight 用的 raw Y 座標含義不同 → 文字與 highlight 框 Y 軸錯位
+- **修法**：drawMainMenu 改用 `setTextDatum(textdatum_t::top_left) + drawString(text, x, y)`，與其他畫面 path 一致（top_left datum 明確指定 (x, y) 為文字 top-left 角，跟 fillRect 同座標含義）
+- **build**：native 32/32 PASSED / ESP32 Flash 68.6% SUCCESS
+- [x] 已修
+- [ ] **PM 實機驗證待跑**：燒 firmware 後從案件總覽返回主選單，highlight 框與文字應對齊
 
 ### B4. 結束前檢查頁面游標上下移動異常
 
