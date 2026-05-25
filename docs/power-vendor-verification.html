@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS DoseSync Pro 電源模組廠商諮詢清單驗證報告</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1e293b; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+
+  .header { text-align: center; margin-bottom: 24px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+  .header .version { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+
+  .meta-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 20px; margin-bottom: 16px; box-shadow: var(--shadow);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 20px;
+    font-size: 13px;
+  }
+  .meta-box .meta-label { color: var(--text-secondary); margin-right: 6px; }
+  .meta-box .meta-value { color: var(--text); font-weight: 600; }
+
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .toc-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  .toc-list a { color: var(--blue); text-decoration: none; }
+  .toc-list a:hover { text-decoration: underline; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--blue); display: flex; align-items: center; gap: 8px; scroll-margin-top: 16px; }
+  .section-title .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--blue); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .sub-title { font-size: 15px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num-col { text-align: center; font-weight: 600; color: var(--text-secondary); width: 50px; }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-purple { background: var(--purple-light); color: #6d28d9; }
+
+  .note { margin-top: 12px; padding: 10px 14px; background: var(--amber-light); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; font-size: 12px; color: #92400e; }
+  .note-blue { background: var(--blue-light); border-left-color: var(--blue); color: #1e40af; }
+  .note-red { background: var(--red-light); border-left-color: var(--red); color: #991b1b; }
+  .note-green { background: var(--green-light); border-left-color: var(--green); color: #15803d; }
+  .note-purple { background: var(--purple-light); border-left-color: var(--purple); color: #6d28d9; }
+
+  .vendor-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin: 12px 0; }
+  .vendor-card .vendor-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  .vendor-card .vendor-name { font-size: 15px; font-weight: 700; }
+  .vendor-card .vendor-meta { font-size: 12px; color: var(--text-secondary); }
+  .vendor-card .vendor-body { font-size: 13px; }
+  .vendor-card ul { margin: 6px 0 0 18px; }
+  .vendor-card ul li { margin: 3px 0; }
+
+  .tier-strong { border-left: 4px solid var(--green); }
+  .tier-mid { border-left: 4px solid var(--amber); }
+  .tier-weak { border-left: 4px solid var(--red); }
+  .tier-pending { border-left: 4px solid var(--gray); }
+
+  code {
+    background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px;
+    font-family: "Courier New", monospace; color: #1e40af;
+  }
+
+  .link { color: var(--blue); text-decoration: none; font-weight: 600; }
+  .link:hover { text-decoration: underline; }
+
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 22px; }
+    .meta-box { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔍 EMS DoseSync Pro 電源模組廠商諮詢清單驗證報告</h1>
+  <div class="subtitle">PM 提供 PDF 諮詢整理｜11 家廠商存在性與業務匹配度驗證</div>
+  <div class="version">v1.0 · 2026-05-14 · Max Ho</div>
+</div>
+
+<div class="meta-box">
+  <div><span class="meta-label">驗證日期：</span><span class="meta-value">2026-05-14</span></div>
+  <div><span class="meta-label">驗證來源：</span><span class="meta-value">PM 提供 PDF + 各廠商官網實際抓取</span></div>
+  <div><span class="meta-label">廠商數量：</span><span class="meta-value">11 家（全部真實存在）</span></div>
+  <div><span class="meta-label">驗證方式：</span><span class="meta-value">官網內容擷取 + HTTP 探測</span></div>
+</div>
+
+<div class="note note-blue" style="font-size: 13px; padding: 14px 18px;">
+  📌 <strong>本報告用途</strong>：建立廠商資訊資料庫，作為未來接洽參考。實際接洽時機為「原型機完成 + 電源驗證階段告一段落」後再啟動，這時帶具體數據與需求規格洽談會更有效率，本報告不催促接洽動作。
+</div>
+
+<div class="toc">
+  <div class="toc-title">目錄</div>
+  <div class="toc-list">
+    <a href="#sec-1">1. 驗證方法與評等說明</a>
+    <a href="#sec-2">2. Battery Pack 客製類（3 家）</a>
+    <a href="#sec-3">3. PCB / PCBA 類（6 家）</a>
+    <a href="#sec-4">4. 電源模組 / ODM 類（2 家）</a>
+    <a href="#sec-5">5. 最終排序建議</a>
+    <a href="#sec-6">6. 後續接洽時機建議</a>
+    <a href="#sec-7">7. 版本紀錄</a>
+  </div>
+</div>
+
+<!-- §1 驗證方法 -->
+<div class="section" id="sec-1">
+  <h2 class="section-title"><span class="num">1</span>驗證方法與評等說明</h2>
+  <div class="card">
+
+    <h3 class="sub-title">1.1 驗證方法</h3>
+    <p>本次驗證針對 PM PDF 內 11 家廠商，全部直接抓取官網內容判讀，不依賴搜尋引擎排名。Battery Pack 廠優先看「醫療儀器」「客製化」「彈性訂購數量」「安規認證」業務描述；PCB / PCBA 廠優先看「打樣」「少量多樣」「NPI」「ISO / IATF 認證」「醫療類經驗」。</p>
+
+    <h3 class="sub-title">1.2 評等定義</h3>
+    <table>
+      <thead><tr><th>評等</th><th>定義</th><th>後續行動</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-green">🟢 強相關</span></td><td>官網明列對齊 EMS DoseSync Pro 需求的業務（醫療儀器 / 客製電池 / NPI / 醫療 PCB）</td><td>列入優先接洽</td></tr>
+        <tr><td><span class="badge badge-amber">🟡 中等</span></td><td>業務領域有重疊但非主力（消費級偏向 / 規模偏小 / 應用領域偏離）</td><td>備案，先擱置</td></tr>
+        <tr><td><span class="badge badge-red">🔴 偏離</span></td><td>業務領域跟 EMS DoseSync Pro 拓樸對不上（如 AC-DC 廠對 DC-DC 需求）</td><td>跳過不洽</td></tr>
+        <tr><td><span class="badge badge-purple">⚪ 待人工確認</span></td><td>網站存在但結構古舊（IIS 5.0 等）抓不到業務細節</td><td>使用者親自開官網確認</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">1.3 EMS DoseSync Pro 電源需求要點（給廠商判斷對齊度）</h3>
+    <table>
+      <thead><tr><th>項目</th><th>規格</th></tr></thead>
+      <tbody>
+        <tr><td>電源拓樸</td><td>1S 3.7V LiPo + Type-C 充電 + 5V 升壓（或量產走 3.3V 直驅）</td></tr>
+        <tr><td>負載</td><td>ESP32-S3 + 2.8" TFT + INMP441 + SD 卡 + 蜂鳴器 + 震動，峰值 ~800mA</td></tr>
+        <tr><td>邊充邊用</td><td>必要（救護現場無 brown-out 容忍）</td></tr>
+        <tr><td>電池容量</td><td>1000mAh、523450 form factor（左紅右黑 PH2.0）</td></tr>
+        <tr><td>數量量級</td><td>Prototype 1~5、Pilot 20~50、量產 200~500/年</td></tr>
+        <tr><td>應用場景</td><td>救護人員手持裝置，醫療場景（pilot 階段不主動提）</td></tr>
+      </tbody>
+    </table>
+
+  </div>
+</div>
+
+<!-- §2 Battery Pack -->
+<div class="section" id="sec-2">
+  <h2 class="section-title"><span class="num">2</span>Battery Pack 客製類（3 家）</h2>
+  <div class="card">
+
+    <div class="vendor-card tier-strong">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">漢敦電子 Handpower</div>
+          <div class="vendor-meta"><a href="https://www.handpower.com.tw/" class="link" target="_blank">handpower.com.tw ↗</a></div>
+        </div>
+        <span class="badge badge-green">🟢 強相關</span>
+      </div>
+      <div class="vendor-body">
+        <strong>對齊亮點：</strong>
+        <ul>
+          <li>客製化電池模組、多款電芯選擇、電池模組代工服務</li>
+          <li><strong>彈性化訂購數量</strong> ← pilot 友善</li>
+          <li><strong>協助客戶通過電池模組安規認證</strong></li>
+          <li>RoHS / REACH 環保材料</li>
+          <li>產品線明列：消費性 / 電動工具 / 工業 / <strong>醫療儀器</strong> / 儲能 / 動力 / 行動電源 / 焊腳焊線電池加工 / OEM-ODM</li>
+          <li>外銷經驗豐富</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-strong">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">紘碩科技 AUTOCELL（HUNG SHOUTH TECHNOLOGY）</div>
+          <div class="vendor-meta"><a href="https://www.autocell.com.tw/" class="link" target="_blank">autocell.com.tw ↗</a></div>
+        </div>
+        <span class="badge badge-green">🟢 強相關</span>
+      </div>
+      <div class="vendor-body">
+        <strong>對齊亮點：</strong>
+        <ul>
+          <li>客製化電池組設計與組裝（依電壓、容量、尺寸量身打造）</li>
+          <li>自主研發 BMS（電池管理）+ EMS（能源管理）整合</li>
+          <li>應用領域明列：電動車、電動手工具、<strong>醫療儀器</strong>、物聯網裝置</li>
+          <li>全類型電池：鋰離子、鋰聚合物、鎳氫、一次性圓柱、鈕扣電池</li>
+          <li>台灣本地技術團隊，「從樣品到量產快速到位」</li>
+          <li>自稱 "Customized Power Integration Consultant"</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-mid">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">宏磊科技 Highcell</div>
+          <div class="vendor-meta"><a href="https://www.highcell.com.tw/" class="link" target="_blank">highcell.com.tw ↗</a></div>
+        </div>
+        <span class="badge badge-amber">🟡 中等</span>
+      </div>
+      <div class="vendor-body">
+        <strong>業務範圍：</strong>
+        <ul>
+          <li>主力：<strong>消費級</strong>行動電源 / 手機電池 / Dyson 吸塵器電池 / iPhone / MacBook 電池</li>
+          <li>客製類別：OEM 電池組 / 一站式 total solution</li>
+          <li>產線：台灣 + 大陸雙廠 ISO 認證、外銷 30+ 國</li>
+          <li>儲能 / 動力電池組</li>
+        </ul>
+        <div class="note" style="margin-top: 10px;">
+          ⚠️ 官網無明確列出醫療業務，主力是消費級，量產規模思維可能跟救護裝置 pilot 階段不匹配。
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- §3 PCB / PCBA -->
+<div class="section" id="sec-3">
+  <h2 class="section-title"><span class="num">3</span>PCB / PCBA 類（6 家）</h2>
+  <div class="card">
+
+    <div class="vendor-card tier-strong">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">群瞻科技 Wellgiant <span class="badge badge-purple" style="margin-left: 6px;">本類最強</span></div>
+          <div class="vendor-meta"><a href="https://www.wellgiant.com.tw/" class="link" target="_blank">wellgiant.com.tw ↗</a></div>
+        </div>
+        <span class="badge badge-green">🟢 強相關</span>
+      </div>
+      <div class="vendor-body">
+        <strong>對齊亮點：</strong>
+        <ul>
+          <li><strong>1993 創立、30 年歷史</strong></li>
+          <li>應用領域明列：車載電子、工業電腦、DVR、NAS、Server、POS、<strong>醫療器材設備</strong>、AI、高速繪圖卡</li>
+          <li>服務範圍：PCB Layout + EMI/EMC 檢驗 + SMT + DIP（自有 SMT/DIP 廠）</li>
+          <li>認證：<strong>ISO 9001:2015</strong>（2019 通過）+ <strong>IATF 16949</strong>（2024 通過，汽車業最嚴認證）</li>
+          <li>「大至單片 52L &amp; 上萬 PIN 之專案」技術能量</li>
+          <li>強調 EMI/EMC 一次過關 → 進量產</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-strong">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">強鋒科技 SPTEK（Super Pioneer Technology）</div>
+          <div class="vendor-meta"><a href="https://www.sptek.com.tw/?lang=tw" class="link" target="_blank">sptek.com.tw ↗</a>｜桃園龍潭</div>
+        </div>
+        <span class="badge badge-green">🟢 強相關</span>
+      </div>
+      <div class="vendor-body">
+        <strong>對齊亮點：</strong>
+        <ul>
+          <li>核心服務五項：電路板線路設計 + 打樣 + 大批生產加工 + <strong>韌體開發與程式功能設計</strong> + 專業檢修 + 電子零件備貨</li>
+          <li><strong>「韌體 + PCB」一站式</strong>（業界罕見的整合服務）</li>
+          <li>單面 / 多層板皆做</li>
+          <li>嵌入式系統專案開發經驗</li>
+          <li>認證：<strong>ISO 27001:2022</strong>（資訊安全管理）</li>
+          <li>聯絡：03-4890322、<a href="mailto:sales@sptek.com.tw" class="link">sales@sptek.com.tw</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-strong">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">鉅錸電子 Energi <span class="badge badge-purple" style="margin-left: 6px;">prototype 階段最快</span></div>
+          <div class="vendor-meta"><a href="https://www.energi.com.tw/" class="link" target="_blank">energi.com.tw ↗</a>｜新北中和</div>
+        </div>
+        <span class="badge badge-green">🟢 強相關</span>
+      </div>
+      <div class="vendor-body">
+        <strong>對齊亮點：</strong>
+        <ul>
+          <li>核心定位三大特色：<strong>「快速打樣」「少量多樣」「新產品導入 NPI」</strong></li>
+          <li>業務：PCB 製造（快洗）+ SMT 快速打件 + 電子線材組裝</li>
+          <li>NPI 流程涵蓋：客戶需求、合約洽談、產品工程、可製造性評估、新產品試產</li>
+          <li>產品案例：工業控制板 PCBA、USB Type-C 線、PCBA + Layout service、計數器 PCBA</li>
+          <li>聯絡：02-8228-0095、<a href="mailto:Sales@energi.com.tw" class="link">Sales@energi.com.tw</a></li>
+        </ul>
+        <div class="note note-blue" style="margin-top: 10px;">
+          💡 <strong>對應 EMS DoseSync Pro pilot 階段最完美</strong>：定位語言（快速打樣 + 少量多樣 + NPI）直接對應 prototype → pilot 過渡需求。
+        </div>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-strong">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">信利興業 Shinly</div>
+          <div class="vendor-meta"><a href="https://shinly-int.com.tw/" class="link" target="_blank">shinly-int.com.tw ↗</a>｜新北三重</div>
+        </div>
+        <span class="badge badge-green">🟢 強相關</span>
+      </div>
+      <div class="vendor-body">
+        <strong>對齊亮點：</strong>
+        <ul>
+          <li><strong>台灣 40 年資深 PCB 廠商</strong></li>
+          <li>一站式服務：PCB Layout 設計 + PCB 打樣 + PCB / FPCB 製造 + SMT 代工 + PCBA 電子組裝</li>
+          <li>含 FPCB（軟板）能力</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-mid">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">Great Ideal PCBA（快異點企業有限公司電子事業部）</div>
+          <div class="vendor-meta"><a href="https://www.great-ideal-pcba.com/" class="link" target="_blank">great-ideal-pcba.com ↗</a></div>
+        </div>
+        <span class="badge badge-amber">🟡 中等</span>
+      </div>
+      <div class="vendor-body">
+        <strong>業務範圍：</strong>
+        <ul>
+          <li>PCBA 解決方案</li>
+          <li>應用領域：電子遙控、LED 燈控制（範圍偏小、特定領域）</li>
+          <li>網站用 Wix 建構，規模偏小</li>
+          <li>強調「頂級優秀工程師團隊」「無限創意」</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-pending">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">晶功印刷電路 PCB-SK</div>
+          <div class="vendor-meta"><a href="http://www.pcb-sk.com.tw/" class="link" target="_blank">pcb-sk.com.tw ↗</a></div>
+        </div>
+        <span class="badge badge-purple">⚪ 待人工確認</span>
+      </div>
+      <div class="vendor-body">
+        <strong>驗證狀態：</strong>
+        <ul>
+          <li>HTTP 200 回應正常，網站確實存在</li>
+          <li>服務器：Microsoft-IIS/5.0（1990 年代老 server，符合資深 PCB 廠特徵）</li>
+          <li>首頁僅 677 bytes，HTML 結構過於精簡，自動解析失敗</li>
+          <li>業務細節無法自動抓取</li>
+        </ul>
+        <div class="note" style="margin-top: 10px;">
+          📋 <strong>請親自上官網查看</strong>業務範圍、聯絡資訊、產品案例後再判斷對齊度。
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- §4 電源 ODM -->
+<div class="section" id="sec-4">
+  <h2 class="section-title"><span class="num">4</span>電源模組 / ODM 類（2 家）</h2>
+  <div class="card">
+
+    <div class="note note-red" style="margin-bottom: 16px;">
+      🔴 <strong>本類兩家業務都偏離 EMS DoseSync Pro 需求</strong>：兩家主力都是 AC-DC（110V 市電轉直流）電源模組，而 EMS DoseSync Pro 走的是 DC-DC（電池升壓）拓樸。即使有充電器產品線，整體業務模型也不對口。建議 pilot 階段不洽談。
+    </div>
+
+    <div class="vendor-card tier-weak">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">翊嘉電子 ARCH（ARCH Corp）</div>
+          <div class="vendor-meta"><a href="https://www.archcorp.com.tw/zh-TW/index/index.html" class="link" target="_blank">archcorp.com.tw ↗</a></div>
+        </div>
+        <span class="badge badge-red">🔴 業務偏離</span>
+      </div>
+      <div class="vendor-body">
+        <strong>業務範圍：</strong>
+        <ul>
+          <li>高效能 <strong>AC-DC 電源模組</strong>製造商</li>
+          <li>產品功率範圍 2W 至 1300W</li>
+          <li>ATCW40 系列：業界首款超小型 OVC IV 電源模組</li>
+          <li>全球外銷品牌</li>
+        </ul>
+        <div class="note" style="margin-top: 10px;">
+          ⚠️ ARCH 賣的是「插牆壁接 110V 轉直流」的工業電源，跟 EMS DoseSync Pro「LiPo 電池供電 + 升壓 5V」完全不同產業，現階段對不上。
+        </div>
+      </div>
+    </div>
+
+    <div class="vendor-card tier-mid">
+      <div class="vendor-head">
+        <div>
+          <div class="vendor-name">力英電子 LTE</div>
+          <div class="vendor-meta"><a href="https://www.lte.com.tw/zh-TW/index/index.html" class="link" target="_blank">lte.com.tw ↗</a></div>
+        </div>
+        <span class="badge badge-amber">🟡 偏離</span>
+      </div>
+      <div class="vendor-body">
+        <strong>業務範圍：</strong>
+        <ul>
+          <li>高效能磁性元件 + 交換式電源製造商</li>
+          <li>產品線：高頻變壓器 + 線圈 + <strong>電池充電器</strong> + 電源供應器</li>
+          <li>多年外銷經驗</li>
+        </ul>
+        <div class="note" style="margin-top: 10px;">
+          ⚠️ 有電池充電器產品線可詢，但主力仍是 AC-DC 交換式電源 + 磁性元件。要做 EMS DoseSync Pro 這種小型電池供電裝置，恐怕不是他們慣常承接的案型。
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- §5 最終排序 -->
+<div class="section" id="sec-5">
+  <h2 class="section-title"><span class="num">5</span>最終排序建議</h2>
+  <div class="card">
+
+    <h3 class="sub-title">5.1 Battery Pack 客製類排序</h3>
+    <table>
+      <thead><tr><th>順位</th><th>廠商</th><th>核心優勢</th></tr></thead>
+      <tbody>
+        <tr><td>🥇</td><td><strong>漢敦電子 Handpower</strong></td><td>明列醫療儀器 + 彈性訂購數量 + 安規認證協助</td></tr>
+        <tr><td>🥇</td><td><strong>AUTOCELL 紘碩</strong></td><td>明列醫療儀器 + BMS/EMS 整合能力 + 樣品到量產快速</td></tr>
+        <tr><td>🥉</td><td>Highcell 宏磊</td><td>消費級導向，備案使用</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-green">
+      💡 <strong>漢敦 + AUTOCELL 同列首選</strong>，兩家業務描述都直接對齊 EMS DoseSync Pro 需求，未來接洽時建議同時寄信比價、比技術回應速度。
+    </div>
+
+    <h3 class="sub-title">5.2 PCB / PCBA 類排序</h3>
+    <table>
+      <thead><tr><th>順位</th><th>廠商</th><th>適用階段</th><th>核心優勢</th></tr></thead>
+      <tbody>
+        <tr><td>🥇</td><td><strong>群瞻科技 Wellgiant</strong></td><td>量產 PCB</td><td>30 年 + 醫療器材經驗 + ISO 9001 + IATF 16949（汽車最嚴認證）</td></tr>
+        <tr><td>🥇</td><td><strong>強鋒科技 SPTEK</strong></td><td>Pilot + 量產</td><td>PCB + <strong>韌體</strong>一站式（罕見組合）+ ISO 27001</td></tr>
+        <tr><td>🥈</td><td><strong>鉅錸電子 Energi</strong></td><td>Prototype</td><td>NPI 流程 + 快速打樣 + 少量多樣，最適 prototype</td></tr>
+        <tr><td>🥈</td><td>信利興業 Shinly</td><td>Pilot + 量產</td><td>40 年資深 + 含 FPCB 軟板能力</td></tr>
+        <tr><td>🥉</td><td>Great Ideal PCBA</td><td>備案</td><td>規模偏小、特定應用領域</td></tr>
+        <tr><td>❓</td><td>晶功印刷電路 PCB-SK</td><td>待確認</td><td>網站存在但業務細節需親自查</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">5.3 電源模組 / ODM 類排序</h3>
+    <div class="note note-red">
+      🔴 <strong>本類兩家現階段都不建議接洽</strong>。翊嘉 ARCH 與力英 LTE 都是 AC-DC 領域，跟 EMS DoseSync Pro 走 LiPo + DC-DC 升壓拓樸不對口。Pilot 階段聯騰一體版 + PowerBoost 1000C 已能滿足需求，量產自製 PCB 後也是用 MCP73831 + TPS63802 等 IC 級方案，不需要找電源 ODM 廠。
+    </div>
+
+  </div>
+</div>
+
+<!-- §6 後續接洽時機 -->
+<div class="section" id="sec-6">
+  <h2 class="section-title"><span class="num">6</span>後續接洽時機建議</h2>
+  <div class="card">
+
+    <h3 class="sub-title">6.1 接洽前提條件（建議）</h3>
+    <table>
+      <thead><tr><th>條件</th><th>判準</th></tr></thead>
+      <tbody>
+        <tr><td>聯騰 + PowerBoost pilot 驗證完成</td><td>確認電源切換穩定、續航時數有實測數據</td></tr>
+        <tr><td>原型機外殼空間定型</td><td>電池物理尺寸 / 接頭方向 / 線材走向都有具體規格</td></tr>
+        <tr><td>3.3V 全系統驗證跑完</td><td>確定量產走拓樸 A（5V）還是拓樸 B（3.3V Buck-Boost）</td></tr>
+        <tr><td>MAX17048 燃料計 UX 決策</td><td>PM 確認 UI 上要不要顯示電量百分比 / 剩餘時間</td></tr>
+        <tr><td>數量級預估</td><td>PM 確認 pilot 量 + 量產年度需求</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">6.2 接洽時要帶的資料（pilot 完成後）</h3>
+    <ul style="margin: 8px 0 0 20px;">
+      <li>電源拓樸最終決策（5V 或 3.3V buck-boost）</li>
+      <li>實測耗電曲線（待機 / BLE TX / 倒數提醒峰值）</li>
+      <li>電池尺寸實測（外殼空間扣完後的可用空間）</li>
+      <li>數量分級預估（5 / 20 / 100 / 500 / 1000 台對應單價需求）</li>
+      <li>目標上市時程（廠商評估產能配合度）</li>
+      <li>需要的認證範圍（BSMI / UN38.3 / IEC62133 / CE，依 PM 決策）</li>
+    </ul>
+
+    <h3 class="sub-title">6.3 對外切入語（沿用 PDF §5 策略）</h3>
+    <div class="note note-blue">
+      📌 <strong>不要一開始講「醫療器材」</strong>，以免廠商因法規 / 責任 / 量產門檻而不願承接。建議用詞：「ESP32-S3 可攜式原型裝置」「小型可攜式裝置電源整合」。等廠商有意願接案後再評估是否討論認證需求。
+    </div>
+
+  </div>
+</div>
+
+<!-- §7 版本紀錄 -->
+<div class="section" id="sec-7">
+  <h2 class="section-title"><span class="num">7</span>版本紀錄</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>日期</th><th>版本</th><th>變更</th><th>作者</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>2026-05-14</td>
+          <td><span class="badge badge-green">v1.0</span></td>
+          <td>初版建立：基於 PM 提供 PDF（電源模組代工與客製整合諮詢整理 2026-05-14）內 11 家廠商，逐家抓取官網內容驗證存在性與業務匹配度；分 Battery Pack / PCB-PCBA / 電源 ODM 三類整理對齊度與排序；附後續接洽時機建議</td>
+          <td>Max Ho</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="footer">
+  EMS DoseSync Pro · 電源模組廠商諮詢清單驗證報告 · v1.0 · 2026-05-14<br>
+  本文件對應來源：PM PDF《EMS DoseSync Pro Prototype V1 電源模組代工與客製整合諮詢整理 2026-05-14》
+</div>
+
+</body>
+</html>

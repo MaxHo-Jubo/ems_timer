@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1e3a5f">
+<title>EMS DoseSync Pro — 文件索引</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: linear-gradient(135deg, #1e3a5f 0%, #2563eb 100%);
+    min-height: 100vh;
+    padding: 32px 24px;
+    color: #fff;
+  }
+  .container {
+    max-width: 900px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+  .logo {
+    font-size: 12px;
+    letter-spacing: 8px;
+    opacity: 0.65;
+    margin-bottom: 12px;
+  }
+  h1 {
+    font-size: clamp(24px, 5vw, 32px);
+    font-weight: 900;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+  }
+  .subtitle {
+    font-size: 14px;
+    opacity: 0.85;
+    line-height: 1.5;
+  }
+  .version {
+    font-size: 11px;
+    opacity: 0.5;
+    letter-spacing: 1px;
+    margin-top: 6px;
+  }
+  .cards {
+    display: grid;
+    gap: 14px;
+  }
+  @media (min-width: 720px) {
+    .cards { grid-template-columns: 1fr 1fr; }
+  }
+  .card {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 16px;
+    padding: 20px;
+    text-decoration: none;
+    color: #fff;
+    transition: background 0.2s, transform 0.1s, border-color 0.2s;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .card:hover {
+    background: rgba(255, 255, 255, 0.18);
+    border-color: rgba(255, 255, 255, 0.4);
+    transform: translateY(-2px);
+  }
+  .card:active { transform: translateY(0); }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .card-icon { font-size: 28px; line-height: 1; }
+  .card-title {
+    font-size: 16px;
+    font-weight: 700;
+    flex: 1;
+  }
+  .card-badge {
+    font-size: 10px;
+    background: rgba(255, 255, 255, 0.18);
+    padding: 3px 9px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+  }
+  .card-desc {
+    font-size: 13px;
+    opacity: 0.85;
+    line-height: 1.55;
+  }
+  .card-meta {
+    font-size: 11px;
+    opacity: 0.55;
+    font-family: "Courier New", monospace;
+    margin-top: 4px;
+  }
+  .group-title {
+    font-size: 11px;
+    letter-spacing: 3px;
+    opacity: 0.55;
+    margin: 28px 0 12px 4px;
+    font-weight: 600;
+  }
+  .group-title:first-of-type { margin-top: 0; }
+  .card-updates {
+    font-size: 11px;
+    opacity: 0.7;
+    letter-spacing: 0.5px;
+  }
+  .disclaimer {
+    margin-top: 32px;
+    padding: 14px 18px;
+    background: rgba(251, 191, 36, 0.08);
+    border: 1px solid rgba(251, 191, 36, 0.35);
+    border-radius: 12px;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #fde68a;
+  }
+  .disclaimer-title {
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 1px;
+    color: #fbbf24;
+    margin-bottom: 6px;
+  }
+  .footer {
+    margin-top: 24px;
+    text-align: center;
+    font-size: 11px;
+    opacity: 0.45;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">EMS DOSESYNC</div>
+    <h1>文件索引</h1>
+    <div class="subtitle">工程 / 採購 / 測試 / 進度報告等技術文件</div>
+    <div class="version">索引建立 2026-05-14</div>
+  </div>
+
+  <div class="group-title">採購與電源</div>
+  <div class="cards">
+    <a class="card" href="hardware-procurement-v2.html">
+      <div class="card-head">
+        <div class="card-icon">📦</div>
+        <div class="card-title">硬體採購清單</div>
+        <div class="card-badge">v2.3</div>
+      </div>
+      <div class="card-desc">11 + 2 項元件採購狀態、PM 6 條需求對齊、路徑 A / B 對照、焊接清單、PowerBoost vs 聯騰雙軌策略</div>
+      <div class="card-updates">{{DATES:hardware-procurement-v2.html}}</div>
+      <div class="card-meta">hardware-procurement-v2.html</div>
+    </a>
+
+    <a class="card" href="power-module-purchase.html">
+      <div class="card-head">
+        <div class="card-icon">⚡</div>
+        <div class="card-title">電源模組採購與組裝指南</div>
+        <div class="card-badge">v1.5</div>
+      </div>
+      <div class="card-desc">聯騰一體版焊接 SOP、收貨驗收、Pilot 雙軌策略、量產 PCB 設計（Buck-Boost 3.3V 拓樸 + IC 選型）</div>
+      <div class="card-updates">{{DATES:power-module-purchase.html}}</div>
+      <div class="card-meta">power-module-purchase.html</div>
+    </a>
+
+    <a class="card" href="power-vendor-verification.html">
+      <div class="card-head">
+        <div class="card-icon">🔍</div>
+        <div class="card-title">電源模組廠商諮詢驗證報告</div>
+        <div class="card-badge">v1.0</div>
+      </div>
+      <div class="card-desc">11 家台灣電子廠商存在性 + 業務匹配度驗證；Battery Pack / PCB-PCBA / 電源 ODM 三類排序；接洽時機建議</div>
+      <div class="card-updates">{{DATES:power-vendor-verification.html}}</div>
+      <div class="card-meta">power-vendor-verification.html</div>
+    </a>
+  </div>
+
+  <div class="group-title">測試與進度</div>
+  <div class="cards">
+    <a class="card" href="EMS_DoseSync_Pro_Test_Plan_V1.html">
+      <div class="card-head">
+        <div class="card-icon">🧪</div>
+        <div class="card-title">測試計畫 V1</div>
+        <div class="card-badge">V1</div>
+      </div>
+      <div class="card-desc">硬體 / 韌體 / 系統各層測試案例；正常流程、邊界條件、低電量提示 H 系列場景</div>
+      <div class="card-updates">{{DATES:EMS_DoseSync_Pro_Test_Plan_V1.html}}</div>
+      <div class="card-meta">EMS_DoseSync_Pro_Test_Plan_V1.html</div>
+    </a>
+
+    <a class="card" href="progress.html">
+      <div class="card-head">
+        <div class="card-icon">📈</div>
+        <div class="card-title">進度報告</div>
+        <div class="card-badge">累加</div>
+      </div>
+      <div class="card-desc">累加式週進度報告、各 Phase（A~H）完成度、阻塞項追蹤</div>
+      <div class="card-updates">{{DATES:progress.html}}</div>
+      <div class="card-meta">progress.html</div>
+    </a>
+  </div>
+
+  <div class="group-title">藍牙同步</div>
+  <div class="cards">
+    <a class="card" href="https://ems-dosesync-sync.pages.dev" target="_blank" rel="noopener">
+      <div class="card-head">
+        <div class="card-icon">📱</div>
+        <div class="card-title">藍牙同步網頁</div>
+        <div class="card-badge">外部 ↗</div>
+      </div>
+      <div class="card-desc">Phase F 案件同步前台：BLE NUS + JSON 協議、案件列表、4 頁籤詳細頁（交班摘要 / 完整總覽 / Timeline / 備註）</div>
+      <div class="card-updates">{{DATES:sync-web}}</div>
+      <div class="card-meta">ems-dosesync-sync.pages.dev</div>
+    </a>
+  </div>
+
+  <div class="disclaimer">
+    <div class="disclaimer-title">⚠ 內部技術文件</div>
+    本頁列出之文件為開發階段工程資料，含採購決策、廠商諮詢、技術規格與測試規劃，僅供專案內部成員與受邀協作者參考。請勿截圖公開、轉傳第三方或作非經授權之用途。
+  </div>
+
+  <div class="footer">
+    EMS DoseSync Pro · Prototype V1<br>
+    各文件採直接 URL 訪問，不掛主首頁連結
+  </div>
+</div>
+</body>
+</html>
