@@ -53,8 +53,10 @@
   - SUMMARY_SUBMENU_BOTTOM_MARGIN: 8 → 4
   - sub-menu 也 setTextSize(0.85f) 配合 ROW_H 22
 - **build**：native 419/420 PASSED / ESP32 Flash 68.6% SUCCESS
-- [x] 已修
-- [ ] **PM 實機驗證待跑**：燒 firmware 後進案件總覽，9 row（標題/同步狀態/EPI label/EPI 細分/EPI m:ss/電擊 label/電擊 細分/Amio/sub-menu × 2）應全部不重疊
+- [x] 已修（commit ae953ca + 後續 sub-menu 下移）
+- [x] **PM 第一輪實機驗證（2026-05-25）**：標題/同步/EPI/電擊 不疊 ✓，但 Amio 仍撞 sub-menu「事件時間軸」
+- [x] **B2.2 後續修**：SUMMARY 的 `SUBMENU_Y_BASE` 算式拿掉 `OHCA_COUNTER_BOTTOM`（SUMMARY 不顯示底部 counter，原扣 18px 是浪費）→ sub-menu 從 y=174 下移到 y=192
+- [ ] **PM 第二輪實機驗證待跑**：Amio 跟 sub-menu 不再重疊
 
 ### B3. OHCA 案件總覽返主選單後游標位移未對齊文字
 

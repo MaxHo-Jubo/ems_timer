@@ -525,7 +525,10 @@ void drawOhcaSummary() {
     // STEP 04: sub-menu cursor 列（SoT V1 §11.1，視覺常數見 file scope SUMMARY_SUBMENU_*）
     //   歷史模式（historySummaryMode）下 Timeline 子畫面未實作 → Timeline 項顯示停用色，
     //   按主鍵 noop（handleSummarySubmenuPrimary 直接 return）；同步項仍可用。
-    const int16_t SUBMENU_Y_BASE = SCREEN_H - OHCA_COUNTER_BOTTOM
+    //   B2 修續：SUMMARY 不顯示底部 counter row（那是 OHCA COUNTDOWN 才有），原算式
+    //   減掉 OHCA_COUNTER_BOTTOM=18 是浪費 → sub-menu 起點被推高撞到 Amio（y≈176 vs
+    //   sub-menu Y_BASE=174）。改用 SCREEN_H 直接算，sub-menu 下移到 y=192 騰出空間。
+    const int16_t SUBMENU_Y_BASE = SCREEN_H
                                    - SUMMARY_SUBMENU_BOTTOM_MARGIN
                                    - SUMMARY_SUBMENU_ROW_H * SUMMARY_SUBMENU_COUNT;
     const char* const SUBMENU_LABELS[SUMMARY_SUBMENU_COUNT] = {
