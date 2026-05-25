@@ -51,8 +51,20 @@
 - **真根因（2026-05-25）**：`drawMainMenu` 文字渲染用 `setCursor + print`（Print stream 路徑）；其他畫面（drawCenteredText / drawOhcaSummary 等）用 `drawString + setTextDatum`。`print()` 在 vlw 字型下走 baseline-relative 偏移，跟 fillRect highlight 用的 raw Y 座標含義不同 → 文字與 highlight 框 Y 軸錯位
 - **修法**：drawMainMenu 改用 `setTextDatum(textdatum_t::top_left) + drawString(text, x, y)`，與其他畫面 path 一致（top_left datum 明確指定 (x, y) 為文字 top-left 角，跟 fillRect 同座標含義）
 - **build**：native 32/32 PASSED / ESP32 Flash 68.6% SUCCESS
+- [x] 已修（commit 7a80392）
+- [x] **PM 實機驗證通過（2026-05-25）**：返主選單後 highlight 框與文字對齊
+
+### B5. 6 秒給氣在 OHCA 案件結束後（LOCKED/SUMMARY）反覆顯示
+
+- **症狀**：OHCA 結束前開過 6 秒給氣 overlay，案件結束進 LOCKED / 案件總覽後畫面反覆閃
+- **真根因（2026-05-25）**：main.cpp:794 渲染條件已排除 LOCKED/SUMMARY 不畫 overlay，但 `ventStartMs` 沒清 → `captureDisplaySnapshot` line 639 仍每秒算出新 `ventBeat` → snapshot dedup 每秒 miss → LOCKED/SUMMARY 畫面每秒全螢幕重畫造成視覺閃爍（不是 overlay 反覆出現，是底層 redraw 反覆觸發）
+- **SoT 對齊**：§14.12「OHCA 案件結束後，OHCA 內 6秒通氣提示自動停止」— LOCKED 為案件結束時點，「停止」spirit 涵蓋 timer + render 都停（韌體原本只停 render 沒停 timer，半套）
+- **修法**：
+  - `ohca_logic.cpp:dispatchOhcaEvent` STEP 05 新增「首次進 LOCKED」block reset `ohcaVentOverlayEnabled=false / ohcaVentPaused=false / ventStartMs=0`
+  - `exitOhcaCase` 補 `ventStartMs=0`（exit 原漏項，防 timer 殘留下次進 OHCA 沿用舊 beat）
+- **build**：native 419/420 PASSED（1 ERROR 為 baseline test_storage_hw）/ ESP32 Flash 68.6% SUCCESS
 - [x] 已修
-- [ ] **PM 實機驗證待跑**：燒 firmware 後從案件總覽返回主選單，highlight 框與文字應對齊
+- [ ] **PM 實機驗證待跑**：燒 firmware 後跑流程「開啟 6 秒給氣 → OHCA 案件結束進 LOCKED」→ 預期 LOCKED 畫面不再閃
 
 ### B4. 結束前檢查頁面游標上下移動異常
 

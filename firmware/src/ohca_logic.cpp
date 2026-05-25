@@ -77,6 +77,17 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
         && ohcaState != OHCA_STATE_SUMMARY) {
         g_locked_saved = false;
     }
+
+    // STEP 05: B5 修 — V1 §14.12 首次進 LOCKED 視為案件結束，自動停止 OHCA 內 6 秒通氣。
+    //   main.cpp:794 渲染條件雖已排除 LOCKED/SUMMARY 不畫 overlay，但 ventStartMs 不清
+    //   會讓 captureDisplaySnapshot 每秒算出新 ventBeat → snapshot dedup miss → LOCKED/
+    //   SUMMARY 畫面每秒全螢幕重畫造成「反覆顯示」視覺閃爍。reset 三個 vent state 阻斷
+    //   timer，渲染條件 + state 一致對齊「結束後自動停止」spirit。
+    if (ohcaState == OHCA_STATE_LOCKED && prev != OHCA_STATE_LOCKED) {
+        ohcaVentOverlayEnabled = false;
+        ohcaVentPaused         = false;
+        ventStartMs            = 0;
+    }
 }
 
 // ============================================================
@@ -255,6 +266,7 @@ void exitOhcaCase() {
     alarmMuted             = false;
     ohcaVentOverlayEnabled = false;  // V1 §14.12 案件結束 → 6 秒通氣自動停止
     ohcaVentPaused         = false;
+    ventStartMs            = 0;      // B5 修：補漏；防 timer 殘留下次進 OHCA 沿用舊 beat
     stopBeep();
 }
 
