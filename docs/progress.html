@@ -143,11 +143,186 @@
 <div class="toc">
   <div class="toc-title">章節導覽（點擊跳轉到該次進度）</div>
   <div class="toc-list">
+    <a href="#progress-2026-05-24-2"><span class="toc-date">2026-05-24</span>進度 7 — DS3231 RTC 整合上機（裝置從此有真實時間戳）</a>
+    <a href="#progress-2026-05-24"><span class="toc-date">2026-05-24</span>進度 6 — Phase F BLE 鏈路打通端到端（韌體 → 藍牙 → 雲端落地）</a>
     <a href="#progress-2026-05-12-2"><span class="toc-date">2026-05-12</span>進度 5 — Phase F 網頁端完整 UI 落地（雲端 + SoT §17 全套）</a>
     <a href="#progress-2026-05-12"><span class="toc-date">2026-05-12</span>進度 4 — V1 各階段進度盤點＋測試基礎建設到位</a>
     <a href="#progress-2026-05-11"><span class="toc-date">2026-05-11</span>進度 3 — 用自動化測試掃出 10 個畫面文字溢出並修正</a>
     <a href="#progress-2026-05-09-2"><span class="toc-date">2026-05-09</span>進度 2 — 補登次數選單列表化＋介面文字溢出修整</a>
     <a href="#progress-2026-05-09"><span class="toc-date">2026-05-09</span>進度 1 — 螢幕升級到 2.8 吋並修整體美觀</a>
+  </div>
+</div>
+
+<!-- ========== 進度 7 ========== -->
+<div class="progress-entry" id="progress-2026-05-24-2">
+  <div class="progress-entry-title">
+    <span class="num">進度 7</span>DS3231 RTC 整合上機（裝置從此有真實時間戳）<span class="date">2026-05-24</span>
+  </div>
+
+  <div class="one-liner">
+    <strong>一句話：</strong><strong>裝置現在有可信時間了</strong>：DS3231 即時時鐘模組接上 I2C bus，boot 時自動偵測 → 把硬體時間餵給軟體時鐘 → OHCA 案件起訖時間從原本的 0 變成真實 epoch；同一份韌體在沒接 DS3231 的板子上仍可運作（自動降級走 BLE 對時），不需重編。<strong>進度 6 末段標註的「同步後案件無真實開始時間」已解決</strong>。
+  </div>
+
+  <div class="card">
+    <div class="section-title">驗收結果</div>
+    <table>
+      <thead>
+        <tr><th style="width:78%">驗收項目</th><th>結果</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>接 DS3231 boot：偵測到 0x68 + seed 軟體時鐘</td><td>✅</td></tr>
+        <tr><td>跑一筆 OHCA 案件 → LOCKED → 雲端 <code>case_start_ms</code> / <code>case_end_ms</code> 是真實 epoch</td><td>✅</td></tr>
+        <tr><td>BLE App 對時 → 反向寫回 DS3231（App 為主時鐘源）</td><td>✅</td></tr>
+        <tr><td>BLE <code>time_sync_ack</code> <code>source</code> 欄位 = <code>"ble+rtc"</code>（之前是 <code>"ble"</code>）</td><td>✅</td></tr>
+        <tr><td>不接 DS3231 在同一份 binary 上 boot：掛 NullRtcBackend 降級走 BLE 對時</td><td>✅</td></tr>
+        <tr><td>永續性：對時 → 斷電 30 秒 → 重開 → 不需 BLE 就 seed</td><td>⏸ <strong>待測</strong></td></tr>
+      </tbody>
+    </table>
+    <div class="note-amber" style="margin-top:12px">
+      <strong>⏸ 永續性待測</strong>：CR2032 紐扣電池備援能力尚未實測（拔 USB 30 秒重開驗證 DS3231 是否走時不失憶）
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">過程怎麼做的（給 PM 的版本）</div>
+    <p style="margin-bottom:12px">採 <strong>runtime 偵測 + 雙模式 backend</strong> 設計（不是 compile-time flag）：</p>
+    <ul class="check-list">
+      <li><strong>同一份韌體</strong>：開機時試問 DS3231 在不在；在就用真實時鐘，不在就降級到原本的「靠 App 連線對時」模式</li>
+      <li><strong>App 對時 → 寫回 RTC</strong>：救護人員開 App 那一刻就等同對時；DS3231 永遠是最新時間，下次斷電重開不會失憶</li>
+      <li><strong>不在線也能跑</strong>：沒插 DS3231 的板子直接用，行為跟 Phase F 結案時一樣（事件用相對毫秒，App 端重建時間）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">設計重點（工程）</div>
+    <ul class="check-list">
+      <li><strong>抽象介面 <code>RtcBackend</code></strong>：3 個 method（<code>is_present</code> / <code>now_epoch_ms</code> / <code>set_epoch_ms</code>），上層 caller 不分支處理硬體在不在</li>
+      <li><strong>三種實作</strong>：
+        <ul style="margin-top:6px; margin-left:20px; list-style:disc">
+          <li><code>DS3231Backend</code>：用 Adafruit RTClib 包裝 0x68 I2C 通訊（硬體相依，僅 ARDUINO env 編譯）</li>
+          <li><code>NullRtcBackend</code>：純降級 stub，所有讀取回 0、寫入 no-op</li>
+          <li><code>MockRtcBackend</code>：native test 注入用，可控 present 與 advance_ms</li>
+        </ul>
+      </li>
+      <li><strong><code>ems_time_sync_seed_from_rtc</code> API</strong>：把 RTC 讀到的 epoch 灌進既有軟體時鐘 state，下游 <code>current_epoch_ms()</code> 自動受益</li>
+      <li><strong>boot seed 三分支</strong>：DS3231 在線 + 有時間 → seed；DS3231 在線但未設過 → 等 BLE；不在線 → 降級</li>
+      <li><strong>TDD 6 wave</strong>：抽象介面 → seed API → integration（mock backend）→ DS3231 包裝 → 主程式 wire up → 文件，每 wave RED → GREEN → 防退步全 suite</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">工程數字</div>
+    <ul class="check-list">
+      <li>新 lib：<code>firmware/lib/ems_rtc/</code>（4 檔，純邏輯 + 硬體包裝分開）</li>
+      <li>新 test：<code>test_rtc</code> + <code>test_rtc_integration</code> 共 10 個 native test cases</li>
+      <li>既有 <code>test_time_sync</code> +3 cases（seed API）</li>
+      <li>全 suite：<strong>418 / 419 PASSED</strong>（同基準，唯一 ERRORED 為 pre-existing <code>test_storage_hw</code> 硬體相依）</li>
+      <li>主韌體 Flash：67.3% → 67.9%（+12KB RTClib 實際連入）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">過程中遇到並解決的問題</div>
+    <ul class="check-list">
+      <li>✓ <strong>RTClib 與 LovyanGFX 並存時 PlatformIO 找不到 SPI.h</strong>：Adafruit_BusIO 透過 SPI 抽象 I2C，與 LovyanGFX 並用時 LDF 預設 chain+ 模式不會把 framework 的 SPI/Wire include path 帶進 BusIO 編譯。試過顯式 <code>lib_deps += SPI/Wire</code> 無效，改 <code>lib_ldf_mode = deep+</code> 解決</li>
+      <li>✓ <strong>常數重定義</strong>：<code>I2C_SDA_PIN</code> / <code>I2C_SCL_PIN</code> 已在 <code>app_globals.h:148-149</code> 宣告；<code>SYNCED_AT_EPOCH_FLOOR_MS</code> 已在 <code>ems_storage_logic.h:123</code> 宣告。沿用既有不重複宣告</li>
+      <li>✓ <strong><code>time_sync_init</code> 覆蓋 RTC seed</strong>：原 <code>main.cpp setup() STEP 07</code> 才呼叫 <code>time_sync_init</code>，若放在 RTC seed 之後會把 seed 結果清空。改為 STEP 06.5 開頭一次 init 完，STEP 07 不再 init</li>
+    </ul>
+    <div class="note-blue" style="margin-top:12px">
+      Commit 後跑完整 POST-COMMIT-REVIEW 5 步驟（lint → simplify → pr-reviewer → 4 個 toolkit agent → notify），共 <strong>7 個 Critical/Important 等級發現都修完</strong>（floor 對齊 / upper bound / underflow guard / epoch=0 警告 / Mock 對齊 / 兩個 backend 限制註解），<strong>6 個 type 設計與 helper 抽 lib 改進</strong>留為 follow-up commit。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">已知未測 / 後續工作</div>
+    <ul class="check-list">
+      <li class="todo"><strong>永續性實測</strong>（5 分鐘可完成）：對時 → 拔 USB 30 秒 → 重接 → boot log 應顯示 <code>seeded software clock from RTC</code> 而非 <code>等 BLE time_sync</code></li>
+      <li class="todo"><strong>4 個 UI bug 修正</strong>（同時段發現，與 RTC 整合無關）：缺字 / 案件總覽疊字 / 主選單游標位移 / 結束前檢查游標首次 UP 失效</li>
+      <li class="todo"><strong>3 項 Phase F 強化測試補完</strong>（中斷重連 / 50 events 滿載 / Training case）— 量產整合測試前補</li>
+      <li class="todo"><strong>React Native App</strong>（取代純網頁的長期方案，與網頁共存）</li>
+    </ul>
+    <div class="note-green" style="margin-top:12px">
+      💬 進度 6（BLE 鏈路）+ 進度 7（DS3231 時鐘）合起來 = <strong>Phase F 完整收尾</strong>。下一個重點是 4 個 UI bug 修正與量產前的硬體驗證。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 進度 6 ========== -->
+<div class="progress-entry" id="progress-2026-05-24">
+  <div class="progress-entry-title">
+    <span class="num">進度 6</span>Phase F BLE 鏈路打通端到端（韌體 → 藍牙 → 雲端落地）<span class="date">2026-05-24</span>
+  </div>
+
+  <div class="one-liner">
+    <strong>一句話：</strong><strong>整條同步鏈路打通了</strong>：真實 ESP32 裝置記一筆 OHCA 案件 → 透過藍牙傳到網頁 → 寫進雲端資料庫 → 在網頁可查完整詳細頁。<strong>pm-dev-spec §四 Phase F 必要驗收項目全綠</strong>，階段 1 BLE 鏈路完成。
+  </div>
+
+  <div class="card">
+    <div class="section-title">驗收結果（pm-dev-spec §四 Phase F）</div>
+    <table>
+      <thead>
+        <tr><th style="width:78%">驗收項目</th><th>結果</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>同案件同步 2 次，雲端不重複</td><td>✅</td></tr>
+        <tr><td>配對碼 4 位數 + 120 秒過期自動重生</td><td>✅</td></tr>
+        <tr><td>3 次配對失敗鎖定機制</td><td>✅</td></tr>
+        <tr><td>主鍵確認步驟（裝置端按鍵才開傳，雙保險）</td><td>✅</td></tr>
+        <tr><td>列表頁所有欄位 ASC/DESC 排序</td><td>✅</td></tr>
+        <tr><td>Cloudflare Pages 部署（測試環境）</td><td>✅</td></tr>
+        <tr><td>中斷重連 / 50 events 滿載 / Training case 三項強化測試</td><td>⏸ 留之後（非 spec 必要）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title">過程中遇到並解決的問題</div>
+    <p style="margin-bottom:12px">從第一次燒韌體到端到端通過，連續打通 <strong>6 層 bug</strong>：</p>
+    <ul class="check-list">
+      <li>✓ <strong>裝置中文缺字</strong>：TFT 顯示「同步至 App」「請輸入配對碼」「剩餘 N 秒」等字串缺字。Root cause：字型生成工具只掃 main.cpp，但 UI 字串散落在多個 ui_*.cpp。修法：工具升級接多檔，重生字型補 13 個缺字</li>
+      <li>✓ <strong>macOS Chrome 掃不到裝置</strong>：Chrome 開發者工具看不到 ESP32 廣播。Root cause：藍牙廣播封包中裝置名稱被擠到輔助封包，macOS 略過不解析。修法：顯式安排廣播封包讓裝置名與服務識別碼都進主封包</li>
+      <li>✓ <strong>連線後卡住不動</strong>：點連線後永遠停在「連線中...」。Root cause：Chrome 預設藍牙傳輸大小協商不成功而 hang。修法：韌體主動指定上限值 517 bytes</li>
+      <li>✓ <strong>配對碼通過但網頁沒反應</strong>：裝置螢幕跳「請按主鍵」但網頁 UI 卡在「等待裝置驗證」。Root cause：<strong>對時回應訊息缺結尾換行符</strong>，導致與配對成功訊息黏在同一行被 JSON 解析器拒絕，兩則訊息一起被丟棄。修法：訊息結尾補換行符</li>
+      <li>✓ <strong>長訊息被靜默截斷</strong>：藍牙短訊息超過 20 bytes 會被預設值截斷而韌體不報錯。修法：發送函式內自動依協商值分段</li>
+      <li>✓ <strong>燒檔案系統失敗</strong>：開發工具找不到檔案系統分區。Root cause：分區設定用數字型別，新版工具只認文字型別。修法：分區設定用文字 "spiffs"（雖然實際是 LittleFS）</li>
+    </ul>
+    <div class="note-blue" style="margin-top:12px">
+      每個 bug 修完都通過完整的程式碼審查流程（lint → 簡化 → 兩層 PR review 共 4 個 AI agent 並行檢查），最終 commit 含 <strong>1 個 Critical + 6 個 Important 等級 review 發現都修完</strong>，避免問題遺留。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">🌐 已部署測試環境</div>
+    <div class="note-green" style="font-size:16px; padding:18px 20px">
+      <a class="link" href="https://ems-dosesync-sync.pages.dev" target="_blank" rel="noopener" style="font-weight:700; font-size:18px;">https://ems-dosesync-sync.pages.dev</a>
+    </div>
+    <p style="margin-top:12px">PM 可直接：</p>
+    <ul class="check-list">
+      <li>開首頁 → 「連接裝置」（需要 Chrome / Edge + 真實 ESP32 開機）</li>
+      <li>開列表頁看已同步案件</li>
+      <li>點任一案件看 4 頁籤詳細資料（交班摘要 / 完整總覽 / Timeline / 備註）</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">已知小問題（不擋驗收）</div>
+    <ul class="check-list">
+      <li><strong>同步後案件無真實開始時間</strong>：裝置目前無硬體時鐘（RTC），開機後只有相對毫秒數，案件時間欄位填 0，由 App 端用 elapsed_ms 重建。已硬體採購 DS3231 RTC 模組，Dev-Phase 3 上機後可填真實時間 <span class="note-green" style="padding:2px 8px; font-weight:600">→ 進度 7 已解</span></li>
+      <li><strong>主鍵未按 30 秒超時的網頁訊息不精確</strong>：裝置先超時而非網頁端，網頁顯示「裝置斷線」而非「等待逾時」。修法已在 commit 內，下次測試生效</li>
+      <li><strong>3 項強化測試留之後</strong>：中斷重連 / 50 events 滿載 / Training case mode 欄位 — 不在 pm-dev-spec 必要驗收項目內，不擋 Dev-Phase 2 結案</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">後續工作</div>
+    <ul class="check-list">
+      <li class="todo"><strong>DS3231 RTC 整合</strong>：硬體已就位，整合後案件 / 事件可填真實時間戳（Dev-Phase 3 重點） <span class="note-green" style="padding:2px 8px; font-weight:600">→ 進度 7 已完成</span></li>
+      <li class="todo"><strong>3 項強化測試補完</strong>（中斷重連 / 滿載 / Training）— 量產整合測試前補</li>
+      <li class="todo"><strong>React Native App</strong>（取代純網頁的長期方案，與網頁共存）</li>
+    </ul>
+    <div class="note-green" style="margin-top:12px">
+      💬 階段 1 BLE 鏈路完成 = <strong>Phase F 主要里程碑達成</strong>。下一個重點是 DS3231 RTC 整合補上真實時間，以及量產前的硬體驗證。
+    </div>
   </div>
 </div>
 
