@@ -608,7 +608,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.mainMenuCursor       = mainMenuCursor;
     in.backfillCursor       = backfillCursor;
     in.summarySubmenuCursor = summarySubmenuCursor;
-    in.endCheckCursor  = (uint8_t)endCheckCursor;  // B4 修：3 項 END_CHECK cursor 必須進 snapshot
+    in.endCheckCursor  = (uint8_t)endCheckCursor;
     in.ventVolume      = ventVolume;
     in.ventPaused      = ventPaused;
     in.historyCursor       = historyCursor;

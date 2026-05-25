@@ -33,9 +33,8 @@ void drawMainMenu() {
 
     useZhFont();
     display.setTextSize(1.1f, 1.1f);
-    // B3 修：用 drawString + textdatum_t::top_left 統一座標含義（與 drawCenteredText 等其他
-    //   畫面同 path）。原 setCursor + print 走 Print stream 在 vlw 下會用 baseline-relative
-    //   偏移，從案件總覽返回主選單後字位置會跟 fillRect highlight 框錯開。
+    // top_left datum: (x, y) = 字 top-left 角，與下方 fillRect 的 raw Y 同座標系。
+    //   走 setCursor + print 在 vlw 下會 baseline-relative，與 highlight 框錯開。
     display.setTextDatum(textdatum_t::top_left);
     for (uint8_t i = 0; i < MAIN_MENU_COUNT; i++) {
         const int16_t y = MENU_Y_START + i * MENU_ROW_H;

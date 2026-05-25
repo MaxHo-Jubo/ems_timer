@@ -40,7 +40,7 @@ struct DisplaySnapshot {
     uint8_t  mainMenuCursor;
     uint8_t  backfillCursor;     ///< QuickMenu/Backfill/Drug 共用同一變數
     uint8_t  summarySubmenuCursor;  ///< Phase F MVP2-Followup：OHCA 案件總覽 sub-menu cursor（SoT V1 §11.1）
-    uint8_t  endCheckCursor;     ///< B4 修：OHCA_END_CHECK 3 項 cursor（漏此欄位導致 UP/DOWN 改 cursor 後 memcmp 看不到變化，第一次按沒重繪）
+    uint8_t  endCheckCursor;     ///< OHCA_END_CHECK 3 項 cursor
     uint32_t countdownSec;       ///< OHCA 倒數/超時當前顯示秒數
     uint8_t  ventBeat;           ///< 6sec 通氣節奏目前秒（0-5）
     uint8_t  ventVolume;
@@ -85,7 +85,7 @@ struct DisplaySnapshotInputs {
     uint8_t  mainMenuCursor  = 0;
     uint8_t  backfillCursor  = 0;
     uint8_t  summarySubmenuCursor = 0;  // Phase F MVP2-Followup
-    uint8_t  endCheckCursor  = 0;       // B4 修：OHCA_END_CHECK cursor
+    uint8_t  endCheckCursor  = 0;
     uint8_t  ventVolume      = 0;
     bool     ventPaused      = false;
     uint16_t historyCursor       = 0;

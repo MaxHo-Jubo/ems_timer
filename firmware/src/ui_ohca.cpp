@@ -396,8 +396,7 @@ void drawOhcaSummary() {
     //   時間顯示策略：synced_at_ms 需為真實 epoch（time_sync 對時後）才顯示 HH:MM；
     //   對時前用 millis() uptime 寫入會被當「日時」誤判，故只顯示「App已同步」不帶時間。
     {
-        // B2 修：原 +14 對齊不到 1.2× 標題（29px 高），sync row 會疊進標題裡。
-        //   標題 OHCA_BADGE_Y=14 + 1.2× ≈ 29 → 結束 y≈43，sync 起點需 +32 起跳。
+        // 標題 setTextSize(1.2×) ≈ 29px → +32 留 3px gap 避免 sync row 疊進標題。
         constexpr int16_t SYNC_STATUS_Y         = OHCA_BADGE_Y + 32;  // 標題（1.2×）下方一行
         constexpr int16_t SYNC_STATUS_LINE_H    = 14;                 // vlw 0.85x 行高
         const uint64_t synced_at = historySummaryMode
@@ -425,8 +424,7 @@ void drawOhcaSummary() {
     }
 
     // STEP 03: 兩欄式 key|value layout（對齊 demo dense summary 風格）
-    //   B2 修：body 改 0.85× 縮字 + LINE_H 22→18 + EPI 起點 y 50→78，避免 9 row
-    //   layout 互疊 + 撞 sub-menu Y_BASE。詳算見 tasks/todo.md B2。
+    //   body size 0.85× + LINE_H 18 為 9-row layout 在 240px 高度內 fit 的最緊組合。
     const int16_t COL_KEY_X = 12;             // key 左對齊
     const int16_t COL_VAL_X = SCREEN_W - 12;  // value 右對齊
     int16_t y = 78;
@@ -525,9 +523,8 @@ void drawOhcaSummary() {
     // STEP 04: sub-menu cursor 列（SoT V1 §11.1，視覺常數見 file scope SUMMARY_SUBMENU_*）
     //   歷史模式（historySummaryMode）下 Timeline 子畫面未實作 → Timeline 項顯示停用色，
     //   按主鍵 noop（handleSummarySubmenuPrimary 直接 return）；同步項仍可用。
-    //   B2 修續：SUMMARY 不顯示底部 counter row（那是 OHCA COUNTDOWN 才有），原算式
-    //   減掉 OHCA_COUNTER_BOTTOM=18 是浪費 → sub-menu 起點被推高撞到 Amio（y≈176 vs
-    //   sub-menu Y_BASE=174）。改用 SCREEN_H 直接算，sub-menu 下移到 y=192 騰出空間。
+    //   SUMMARY 不顯示底部 counter row（OHCA COUNTDOWN 才有），不扣 OHCA_COUNTER_BOTTOM
+    //   讓 sub-menu 下移避開 Amio（Amio bottom ≈ 186，sub-menu Y_BASE = 192，6px gap）。
     const int16_t SUBMENU_Y_BASE = SCREEN_H
                                    - SUMMARY_SUBMENU_BOTTOM_MARGIN
                                    - SUMMARY_SUBMENU_ROW_H * SUMMARY_SUBMENU_COUNT;
@@ -536,7 +533,7 @@ void drawOhcaSummary() {
         "同步至 App",  // SUMMARY_SUBMENU_SYNC
     };
 
-    display.setTextSize(0.85f, 0.85f);  // B2 修：sub-menu 也縮 0.85× 配合 ROW_H 22
+    display.setTextSize(0.85f, 0.85f);  // 配合 SUMMARY_SUBMENU_ROW_H=22 的字級
     for (uint8_t i = 0; i < SUMMARY_SUBMENU_COUNT; ++i) {
         const int16_t rowY    = SUBMENU_Y_BASE + i * SUMMARY_SUBMENU_ROW_H;
         const bool    cursor  = (i == summarySubmenuCursor);

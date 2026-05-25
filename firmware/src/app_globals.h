@@ -244,7 +244,6 @@ enum SummarySubmenuItem : uint8_t {
     SUMMARY_SUBMENU_COUNT
 };
 
-// B2 修：ROW_H 24→22 / MARGIN 8→4 給 OHCA SUMMARY 9-row layout 多 6px 緩衝避免撞 Amio
 constexpr int16_t SUMMARY_SUBMENU_ROW_H          = 22;
 constexpr int16_t SUMMARY_SUBMENU_LEFT_PAD       = 28;
 constexpr int16_t SUMMARY_SUBMENU_CURSOR_GLYPH_W = 16;
