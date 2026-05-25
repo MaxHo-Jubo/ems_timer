@@ -21,11 +21,16 @@
 
 ### B1. 字串缺字「至 本 即將」（同案件再次同步確認 dialog）
 
-- **症狀**：同案件再次同步時跳出的確認 dialog 內出現 3 個缺字「至」「本」「即將」
-- **疑似 root cause**：對齊進度 6 已修過一輪的同類 bug — 字型生成工具只掃 `main.cpp`，UI 字串散落在 `ui_*.cpp` 多檔。Phase F 進度 6 已升級工具接多檔，但本次新增的「同案件再次同步」dialog 字串可能不在掃描範圍
-- **修法**：grep 確認字串檔案位置 → 重生字型補缺字 → 實機驗
-- **檔案候選**：`firmware/src/ui_*.cpp` 內 dialog 字串、`scripts/` 內字型工具掃描配置
-- [ ] 待修
+- **症狀**：同案件再次同步時跳出的確認 dialog 內出現缺字（PM 報「至 本 即將」）
+- **2026-05-25 調查結果**：
+  - 三字串確認都在 `regen_vlw.sh` 掃描範圍（`ui_*.cpp`）內，工具範圍 OK
+  - dump VLW glyph table 比對 git 歷史：實際只**「至」U+81F3** 在 commit `e79f4f9`（5/24 21:07）之前缺；「本/即/將」一直都在
+  - `e79f4f9` 已含補字（258 → 271 glyphs）。本次再跑 `regen_vlw.sh` 又補 11 字（出塞拒會法滿絕送附靠，）→ 282 glyphs（防其他畫面缺字）
+  - vlw 結構驗證：codepoint 升序、bitmap offset 無越界、四字 metadata 正常（w/h/dy/dx 與對照組「案件」同等級）
+- **commit**：`firmware/data/fonts/ems_zh_24.vlw` 282 glyphs / 110.2 KB
+- [x] 已修（vlw 已補齊）
+- [ ] **PM 實機驗證待跑**：重燒 `pio run -e esp32-s3-devkitc-1 -t uploadfs` + 韌體後再進「同案件再次同步」dialog
+  - 若仍見「至/本/即將」缺字 → **真因不在字型**（vlw 已含），需開新 bug 追：可能 `useZhFont()` 漏呼叫、`drawCenteredText` 對 fractional `setTextSize` 寬度計算 bug、或 partial bbox 殘留
 
 ### B2. OHCA 案件總覽畫面排版異常（互相疊字）
 
