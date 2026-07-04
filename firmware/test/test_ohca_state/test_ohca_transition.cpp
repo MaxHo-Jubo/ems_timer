@@ -401,6 +401,69 @@ static void test_is_ohca_in_progress_false_set() {
     TEST_ASSERT_FALSE(isOhcaInProgress(OHCA_STATE_SUMMARY));
 }
 
+// ============================================================
+//  ohcaVentAfterTransition — 6 秒給氣 case-end 停止（B5 regression）
+//  V1 §14.12：首次進 LOCKED → vent 全清；其他轉移不動。
+//  傳非零 vent（{true,true,12345}）進去驗「確實清乾淨」而非「本來就 0」。
+// ============================================================
+
+/** 非零的「執行中」vent 狀態，用來驗清值 */
+static OhcaVentState makeRunningVent() {
+    return {/*overlay_enabled=*/true, /*paused=*/true, /*start_ms=*/12345};
+}
+
+static void test_vent_countdown_to_locked_clears_all() {
+    const OhcaVentState r = ohcaVentAfterTransition(
+        OHCA_STATE_COUNTDOWN, OHCA_STATE_LOCKED, makeRunningVent());
+    TEST_ASSERT_FALSE(r.overlay_enabled);
+    TEST_ASSERT_FALSE(r.paused);
+    TEST_ASSERT_EQUAL_UINT32(0, r.start_ms);
+}
+
+static void test_vent_overtime_to_locked_clears_all() {
+    // 任何非 LOCKED 的 prev 進 LOCKED 都算「首次進」→ 清
+    const OhcaVentState r = ohcaVentAfterTransition(
+        OHCA_STATE_OVERTIME, OHCA_STATE_LOCKED, makeRunningVent());
+    TEST_ASSERT_FALSE(r.overlay_enabled);
+    TEST_ASSERT_FALSE(r.paused);
+    TEST_ASSERT_EQUAL_UINT32(0, r.start_ms);
+}
+
+static void test_vent_end_check_to_locked_clears_all() {
+    const OhcaVentState r = ohcaVentAfterTransition(
+        OHCA_STATE_END_CHECK, OHCA_STATE_LOCKED, makeRunningVent());
+    TEST_ASSERT_FALSE(r.overlay_enabled);
+    TEST_ASSERT_FALSE(r.paused);
+    TEST_ASSERT_EQUAL_UINT32(0, r.start_ms);
+}
+
+static void test_vent_locked_to_locked_unchanged() {
+    // 已在 LOCKED（非首次進）→ 不重清，保留現值（避免 LOCKED 內每 tick 重置）
+    const OhcaVentState r = ohcaVentAfterTransition(
+        OHCA_STATE_LOCKED, OHCA_STATE_LOCKED, makeRunningVent());
+    TEST_ASSERT_TRUE(r.overlay_enabled);
+    TEST_ASSERT_TRUE(r.paused);
+    TEST_ASSERT_EQUAL_UINT32(12345, r.start_ms);
+}
+
+static void test_vent_locked_to_summary_unchanged() {
+    // 離開 LOCKED（進 SUMMARY）非「進 LOCKED」→ 不動
+    const OhcaVentState r = ohcaVentAfterTransition(
+        OHCA_STATE_LOCKED, OHCA_STATE_SUMMARY, makeRunningVent());
+    TEST_ASSERT_TRUE(r.overlay_enabled);
+    TEST_ASSERT_TRUE(r.paused);
+    TEST_ASSERT_EQUAL_UINT32(12345, r.start_ms);
+}
+
+static void test_vent_non_locked_transition_unchanged() {
+    // 一般進行中轉移（COUNTDOWN→WARNING）→ vent 持續，不清
+    const OhcaVentState r = ohcaVentAfterTransition(
+        OHCA_STATE_COUNTDOWN, OHCA_STATE_WARNING, makeRunningVent());
+    TEST_ASSERT_TRUE(r.overlay_enabled);
+    TEST_ASSERT_TRUE(r.paused);
+    TEST_ASSERT_EQUAL_UINT32(12345, r.start_ms);
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
 
@@ -478,6 +541,14 @@ int main(int /*argc*/, char ** /*argv*/) {
     // isOhcaInProgress helper
     RUN_TEST(test_is_ohca_in_progress_true_set);
     RUN_TEST(test_is_ohca_in_progress_false_set);
+
+    // B5：6 秒給氣 case-end 停止（ohcaVentAfterTransition）
+    RUN_TEST(test_vent_countdown_to_locked_clears_all);
+    RUN_TEST(test_vent_overtime_to_locked_clears_all);
+    RUN_TEST(test_vent_end_check_to_locked_clears_all);
+    RUN_TEST(test_vent_locked_to_locked_unchanged);
+    RUN_TEST(test_vent_locked_to_summary_unchanged);
+    RUN_TEST(test_vent_non_locked_transition_unchanged);
 
     return UNITY_END();
 }

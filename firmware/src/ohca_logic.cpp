@@ -91,10 +91,14 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
         g_locked_saved = false;
     }
 
-    // STEP 05: V1 §14.12 首次進 LOCKED = 案件結束 → 自動停止 6 秒給氣 timer。
-    if (ohcaState == OHCA_STATE_LOCKED && prev != OHCA_STATE_LOCKED) {
-        resetOhcaVentState();
-    }
+    // STEP 05: V1 §14.12 首次進 LOCKED = 案件結束 → 自動停止 6 秒給氣。
+    //   判定與清值交給純函式 ohcaVentAfterTransition（native test 鎖此不變式）。
+    const ems::OhcaVentState vent = ems::ohcaVentAfterTransition(
+        prev, ohcaState,
+        {ohcaVentOverlayEnabled, ohcaVentPaused, ventStartMs});
+    ohcaVentOverlayEnabled = vent.overlay_enabled;
+    ohcaVentPaused         = vent.paused;
+    ventStartMs            = vent.start_ms;
 }
 
 // ============================================================

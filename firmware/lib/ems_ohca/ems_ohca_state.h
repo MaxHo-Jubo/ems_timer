@@ -101,4 +101,26 @@ ohca_state_t nextOhcaState(ohca_state_t current,
                            uint32_t     since_last_epi_ms,
                            ohca_state_t end_check_source = OHCA_STATE_OVERTIME);
 
+/** OHCA 6 秒給氣 overlay 的執行期狀態（純資料鏡像，供 case-end 停止判定用） */
+struct OhcaVentState {
+    bool     overlay_enabled;  // overlay 是否啟用
+    bool     paused;           // 是否暫停
+    uint32_t start_ms;         // overlay 起始 millis（0 = 未跑）
+};
+
+/**
+ * 依 OHCA state 轉移決定 6 秒給氣 overlay 是否該停（V1 §14.12：首次進 LOCKED =
+ * 案件結束 → 自動停止）。純函式無 side effect；caller 把 3 個 vent global 打包
+ * 傳入、拿回更新後的值寫回。
+ *
+ * @param prev     轉移前 state
+ * @param next     轉移後 state
+ * @param current  目前 vent overlay 執行期狀態
+ * @return 首次進 LOCKED（prev != LOCKED && next == LOCKED）→ 全清 {false,false,0}；
+ *         其他轉移（含 LOCKED→LOCKED / LOCKED→SUMMARY）→ 原值不變
+ */
+OhcaVentState ohcaVentAfterTransition(ohca_state_t prev,
+                                      ohca_state_t next,
+                                      OhcaVentState current);
+
 } // namespace ems

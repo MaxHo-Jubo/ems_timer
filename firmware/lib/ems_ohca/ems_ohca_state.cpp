@@ -125,4 +125,16 @@ ohca_state_t nextOhcaState(ohca_state_t current,
     }
 }
 
+OhcaVentState ohcaVentAfterTransition(ohca_state_t prev,
+                                      ohca_state_t next,
+                                      OhcaVentState current) {
+    // V1 §14.12：首次進 LOCKED（案件結束）→ 停 6 秒給氣：overlay 關、暫停清、timer 歸零。
+    // 只在「首次進」清（prev != LOCKED）；LOCKED→LOCKED / LOCKED→SUMMARY / 其他轉移都不動，
+    // 避免在 LOCKED 內每 tick 重清、或離開 LOCKED 時誤清（B5 2026-05-25 修正的不變式）。
+    if (next == OHCA_STATE_LOCKED && prev != OHCA_STATE_LOCKED) {
+        return {false, false, 0};
+    }
+    return current;
+}
+
 } // namespace ems
