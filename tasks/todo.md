@@ -8,7 +8,7 @@
 
 > **2026-07-04 更新（收尾）**：電源電池 TFT 白屏 blocker 已清（焊接修復實測通過）；**DS3231 R1-R6 + B1-B5 follow-up #4/#5 全結案**；progress 補進度 9 + SoT V1 完成度盤點。
 >
-> **📌 下次開工 = Phase D（訓練模式）+ Phase G（系統設定 / 裝置名稱 / 音量亮度 / Type-C 電腦端工具）** — SoT V1 剩下唯二可**自主推進**的 Phase（純韌體、無硬體/PM 阻塞）。裝置端主功能表 5 項目前「訓練模式 / 系統設定」2 項仍為 placeholder（`input_handler.cpp` GLOBAL_TRAINING_PLACEHOLDER / GLOBAL_SETTINGS_PLACEHOLDER），做完即全可用。Phase H 電源/電池顯示卡硬體（**ADC 腳已用盡**，gpio-allocation §5.1；見 progress 進度 9 盤點）。
+> **📌 下次開工 = Phase D（訓練模式）+ Phase G（系統設定 / 裝置名稱 / 音量亮度 / Type-C 電腦端工具）** — SoT V1 剩下唯二可**自主推進**的 Phase（純韌體、無硬體/PM 阻塞）。裝置端主功能表 5 項目前「訓練模式 / 系統設定」2 項仍為 placeholder（`input_handler.cpp` GLOBAL_TRAINING_PLACEHOLDER / GLOBAL_SETTINGS_PLACEHOLDER），做完即全可用。Phase H 電源/電池顯示卡硬體（**ADC 腳已用盡**，gpio-allocation §5.1；見 progress 進度 9 盤點）。**做 Phase H 電池顯示前必讀 [`docs/power-module-purchase.md §10.6`](../docs/power-module-purchase.md)（電池顯示能力現況 + 三選項 A 數位狀態腳 / B 電壓 ADC / C 燃料計）。**
 
 - **🔥 進入電源模組手工焊接 + 電源管理階段**（採購已到貨）：1000mAh LiPo + TP4056 + JST PH2.0
   - 採購驗收 / 組裝 SOP / 整合測試見下方 §⚡「電源模組採購驗收」段
