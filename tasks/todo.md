@@ -120,44 +120,51 @@
 
 > **背景**：commit `8948b13` DS3231 整合 + amend 後跑 4 個 review agent（pr-reviewer / silent-failure-hunter / pr-test-analyzer / type-design-analyzer）。Critical/Important 已在 commit 修；以下為 deferred 給後續獨立 commit。
 
+> ✅ **R1-R6 全數完成（2026-07-04）**：R5/R6 測試 `d659c1b`、R2+R3 型別安全介面 `6fd4c51`、
+> R1 抽 ems_rtc_glue `b618374`、R4 升級真覆蓋 + 抽 compute_case_epochs `67d3ef7`。
+> 另加 #8 sentinel-contract + #9 seed-floor-contract 前置網（`6fd4c51`）。R4/R6 已從
+> 「測複製品」升級成「測生產碼」。驗證：native 428/429（test_storage_hw baseline ERROR 無關）
+> + esp32-s3 build SUCCESS（Flash 68.6%）。經 code-reviewer 🟢27/30 + pr-test-analyzer 審過。
+> R3 的 DS3231 read-back verify（回 IoError）仍 deferred，adjust() void 測不出 NACK。
+
 ### R1. 抽 boot-seed / write-back helper 進 lib（reuse review #2）
 
 - `main.cpp:412-430` boot seed `if (begin) → seed_if_valid` 邏輯與 `test_rtc_integration` 的 `simulate_boot_detect_and_seed` 是同一個函式換皮
 - `main.cpp:262-272` BLE write-back 同類重複
 - 對齊 `feedback_extract_testable_pure_logic` 規則：抽 `ems::rtc_try_seed(backend, state, now, floor, ceiling)` + `ems::rtc_write_back_if_applied(backend, state, now)` 到新 lib `ems_rtc_glue/`（或 `ems_time_sync` 內），main.cpp 與 test 都呼叫
 - 風險：跨 lib 依賴（ems_rtc + ems_time_sync），`lib_ldf_mode = deep+` 已開應可
-- [ ] 待做
+- [x] 完成（`b618374`）：抽 `ems_rtc_glue`（`rtc_try_seed` + `rtc_write_back`），main.cpp 與 test 共用
 
 ### R2. `RtcReading` struct 取代 sentinel 0（type-design review）
 
 - `now_epoch_ms()` 用 0 同時表示「not present」與「合法 1970-01-01 epoch」conflate state
 - 改成 `struct RtcReading { bool valid; uint64_t epoch_ms; }`，type-level 明確「未對時」概念
 - 影響：RtcBackend 介面 + 3 個 backend 實作 + 6 個 caller 點
-- [ ] 待做
+- [x] 完成（`6fd4c51`）：`now()→RtcReading{valid,epoch_ms}`，boot seed 改先判 `!valid` 再範圍檢查
 
 ### R3. `SetResult` enum 取代 set_epoch_ms bool（type-design review）
 
 - 現 `bool set_epoch_ms` 無法區分 `NullBackend no-op` vs `DS3231 I2C 寫失敗`
 - 改成 `enum class SetResult { Ok, NotPresent, IoError }`，main.cpp write-back log 才能精準分類
 - 配套：DS3231Backend.cpp 加 read-back verify（每筆 BLE write-back 多一次 I2C 往返；可選）
-- [ ] 待做
+- [x] 完成（`6fd4c51`）：`set_epoch_ms()→SetResult{Ok,NotPresent,IoError}`，write-back log 分類；read-back verify（回 IoError）仍 deferred
 
 ### R4. ohca_logic case_start/end_epoch 路徑 native test（pr-test-analyzer #2）
 
 - save 路徑改成 live epoch 後，partial-sync 場景（case 開始時未對時、結束時已對時）無 test
 - 加 `test_ohca_logic` 純測試（或 `test_ohca_state` 內補）覆蓋三種 sync 狀態 × 兩個欄位
-- [ ] 待做
+- [x] 完成（`d659c1b` 三態矩陣 → `67d3ef7` 抽 `compute_case_epochs` 升級成測生產碼）；呼叫端 wiring 仍靠 build+實機驗
 
 ### R5. seed_from_rtc with rtc_epoch < now_millis underflow guard test
 
 - F4 已加 guard，但無對應 native test 鎖死。`test_time_sync` 加 1 case：seed underflow 後 state 仍 unsynced
-- [ ] 待做
+- [x] 完成（`d659c1b`）：3 case（未對時 noop / 保留既有對時 / 嚴格 `<` 邊界）+ #9 seed 不自守 floor contract
 
 ### R6. BLE write-back with two distinct now_millis test（pr-test-analyzer #4）
 
 - `simulate_ble_apply_with_write_back` 用單一 now_millis；production `time_sync_handle` 與 `current_epoch_ms` 各讀一次 millis
 - 加 test 鎖死兩讀漂移容忍
-- [ ] 待做
+- [x] 完成（`d659c1b` 兩讀 test → `b618374` 改測生產 `rtc_write_back`，改單讀會真的紅）
 
 ---
 
