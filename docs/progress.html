@@ -204,8 +204,32 @@
   </div>
 
   <div class="card">
+    <div class="section-title">順帶：SoT V1 功能完成度盤點（更新自進度 4 的 2026-05-12 舊表）</div>
+    <p style="margin:0 0 12px">SoT V1 規格 8 個階段（A~H）截至今天的完成度 —— <strong>臨床核心 5 個 Phase 全綠，剩 3 個輔助 Phase</strong>：</p>
+    <table>
+      <thead>
+        <tr><th style="width:20%">階段</th><th style="width:40%">功能</th><th>狀態</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>A</strong> OHCA 核心</td><td>EPI 4 分循環 / 兩段確認 / 預警警報超時</td><td>✅ 完成</td></tr>
+        <tr><td><strong>B</strong> 補登＋Amio＋總覽</td><td>補登 / 藥物 / 案件總覽 / 事件時間軸</td><td>✅ 完成</td></tr>
+        <tr><td><strong>C</strong> 6 秒通氣</td><td>獨立模式 + OHCA 內快速切入</td><td>✅ 完成</td></tr>
+        <tr><td><strong>E</strong> 持久化＋歷史</td><td>重開機不遺失 + DS3231 真實時間戳</td><td>✅ 完成（DS3231 已補上）</td></tr>
+        <tr><td><strong>F</strong> App 同步</td><td>BLE 配對碼 + 單案同步</td><td>✅ 完成</td></tr>
+        <tr><td><strong>D</strong> 訓練模式</td><td>模擬訓練流程</td><td>⬜ <strong>未開工</strong>（純韌體、下次重點）</td></tr>
+        <tr><td><strong>G</strong> 系統設定＋工具</td><td>設定 / 裝置名稱 / 音量亮度 / Type-C 工具</td><td>⬜ <strong>未開工</strong>（純韌體、下次重點）</td></tr>
+        <tr><td><strong>H</strong> 電源管理</td><td>充放電 / 電池顯示 / 低電量警告</td><td>⏸ <strong>卡硬體</strong>（ADC 腳已用盡）</td></tr>
+      </tbody>
+    </table>
+    <div class="note-blue" style="margin-top:12px">
+      💡 <strong>還差多少</strong>：臨床救護核心 100% 完成。剩 <strong>D + G 純韌體可自主推進</strong>（做完裝置端 5 個主選單全部可用，目前訓練 / 設定 2 項還是佔位畫面）；<strong>H 卡硬體</strong>。粗估裝置端主功能完成度約 70-75%，差的都是輔助功能、非急救核心。
+    </div>
+  </div>
+
+  <div class="card">
     <div class="section-title">後續工作</div>
     <ul class="check-list">
+      <li class="todo"><strong>下次開工：Phase D（訓練模式）+ Phase G（系統設定 / 裝置名稱 / 音量亮度 / Type-C 工具）</strong> — 純韌體、無阻塞</li>
       <li class="todo"><strong>DS3231 永續性測試</strong>（鈕扣電池備援，約 5 分鐘可完成）</li>
       <li class="todo"><strong>剩餘畫面美化債</strong>（3 項，非急，部分等 PM 實機確認）</li>
       <li class="todo"><strong>React Native App</strong>（取代純網頁的長期方案）</li>
