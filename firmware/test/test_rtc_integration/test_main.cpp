@@ -146,6 +146,30 @@ static bool simulate_ble_apply_with_write_back(RtcBackend* backend,
     return backend->set_epoch_ms(app_epoch);
 }
 
+// R6：production main.cpp 的 time_sync_handle 與 write-back 的 current_epoch_ms
+//     各自讀一次 millis()，兩次之間 main loop 已前進數 ms。此 helper 明確分離
+//     apply_millis / writeback_millis，暴露單讀 helper 藏起來的兩讀漂移。
+static bool simulate_ble_apply_with_write_back_two_reads(RtcBackend* backend,
+                                                         TimeSyncState* ts_state,
+                                                         const char* json,
+                                                         uint64_t apply_millis,
+                                                         uint64_t writeback_millis) {
+    const bool rtc_present = backend->is_present();
+    char ack[256];
+    size_t ack_len = 0;
+    TimeSyncResult r = time_sync_handle(
+        ts_state, reinterpret_cast<const uint8_t*>(json), std::strlen(json),
+        apply_millis, rtc_present, ack, sizeof(ack), &ack_len);
+
+    if (r != TimeSyncResult::Applied || !backend->is_present()) {
+        return false;
+    }
+    // write-back 讀「第二次」millis（loop 已前進），非重用 apply 時的值
+    const uint64_t app_epoch =
+        time_sync_current_epoch_ms(ts_state, writeback_millis);
+    return backend->set_epoch_ms(app_epoch);
+}
+
 static void test_ble_apply_writes_back_to_present_rtc() {
     g_mock.set_present(true);
     g_mock.set_epoch_ms(0);  // DS3231 未設過
@@ -177,6 +201,87 @@ static void test_ble_apply_write_back_skipped_when_backend_absent() {
                              time_sync_current_epoch_ms(&g_state, 1000));
 }
 
+static void test_ble_apply_write_back_tolerates_millis_drift_between_two_reads() {
+    g_mock.set_present(true);
+    g_mock.set_epoch_ms(0);  // DS3231 未設過
+
+    const char* json =
+        R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
+
+    // apply 在 millis=1000，write-back read 在 millis=1005（main loop 跑了 5ms）
+    const bool wrote = simulate_ble_apply_with_write_back_two_reads(
+        &g_mock, &g_state, json,
+        /*apply_millis=*/1000, /*writeback_millis=*/1005);
+
+    TEST_ASSERT_TRUE(wrote);
+    TEST_ASSERT_TRUE(g_state.synced);
+    // 寫回值應反映 write-back 當下時刻 = epoch + (1005 - 1000) = 1713715200005
+    // 不可退回 apply-time 的 1713715200000（否則 RTC 會落後真實 loop 時間），
+    // 也不可 wrap/跳動——單調前進 5ms 才對
+    TEST_ASSERT_EQUAL_UINT64(1713715200005ULL, g_mock.now_epoch_ms());
+}
+
+// ============================================================
+// §4 案件起訖 epoch 捕捉矩陣（R4：pr-test-analyzer #2 partial-sync gap）
+//    鏡射 src/ohca_logic.cpp:59-74 存檔路徑：
+//      start = caseStartEpochMs（案件開始時捕捉並存住，後續對時不回填）
+//      end   = time_sync_current_epoch_ms(state, millis())（進 LOCKED live 捕捉）
+//      unsynced_warn = (start==0 || end==0) → 提醒 App 靠 elapsed_ms 重建
+//    R1 抽出 lib helper 後，本段可改為直接呼叫該 helper。
+// ============================================================
+
+struct CaseEpochs {
+    uint64_t start_ms;       // 案件開始捕捉值（已存住，不隨後續對時改變）
+    uint64_t end_ms;         // 進 LOCKED 時 live 捕捉值
+    bool     unsynced_warn;  // 任一為 0 → 未對時警告
+};
+
+// case_start_captured = 案件「開始當下」已捕捉並存住的 epoch（後續對時不回填）
+static CaseEpochs make_case_epochs(uint64_t case_start_captured,
+                                   TimeSyncState* state,
+                                   uint64_t end_millis) {
+    const uint64_t end_ms = time_sync_current_epoch_ms(state, end_millis);
+    return {case_start_captured, end_ms,
+            (case_start_captured == 0 || end_ms == 0)};
+}
+
+static void test_case_epochs_both_unsynced_saves_zero_pair_and_warns() {
+    // 狀態 1/3：全程未對時 → start 捕捉=0、end live=0，warn 觸發
+    const uint64_t start = time_sync_current_epoch_ms(&g_state, /*t_start=*/3000);
+    const CaseEpochs e = make_case_epochs(start, &g_state, /*end=*/20000);
+
+    TEST_ASSERT_EQUAL_UINT64(0, e.start_ms);
+    TEST_ASSERT_EQUAL_UINT64(0, e.end_ms);
+    TEST_ASSERT_TRUE(e.unsynced_warn);
+}
+
+static void test_case_epochs_fully_synced_saves_real_pair_no_warn() {
+    // 狀態 2/3：case 前已對時（seed millis=1000 / epoch=1713715200000）
+    time_sync_seed_from_rtc(&g_state, 1713715200000ULL, 1000);
+    const uint64_t start = time_sync_current_epoch_ms(&g_state, /*t_start=*/3000);
+    const CaseEpochs e = make_case_epochs(start, &g_state, /*end=*/20000);
+
+    TEST_ASSERT_EQUAL_UINT64(1713715202000ULL, e.start_ms);  // offset 1713715199000 + 3000
+    TEST_ASSERT_EQUAL_UINT64(1713715219000ULL, e.end_ms);    // offset 1713715199000 + 20000
+    TEST_ASSERT_FALSE(e.unsynced_warn);
+    TEST_ASSERT_TRUE(e.end_ms > e.start_ms);  // 結束晚於開始（單調）
+}
+
+static void test_case_epochs_partial_sync_start_zero_end_real_warns() {
+    // 狀態 3/3 ⭐gap：case 開始未對時（start=0），進行中 BLE 對時抵達，結束已對時
+    const uint64_t start = time_sync_current_epoch_ms(&g_state, /*t_start=*/3000);
+    TEST_ASSERT_EQUAL_UINT64(0, start);  // 開始當下未對時
+
+    // 案件進行中對時抵達（apply at millis=10000 → offset 1713715190000）
+    time_sync_seed_from_rtc(&g_state, 1713715200000ULL, 10000);
+
+    const CaseEpochs e = make_case_epochs(start, &g_state, /*end=*/20000);
+    TEST_ASSERT_EQUAL_UINT64(0, e.start_ms);               // start 仍是開始捕捉的 0（不回填）
+    TEST_ASSERT_EQUAL_UINT64(1713715210000ULL, e.end_ms);  // offset 1713715190000 + 20000，live 真實 epoch
+    TEST_ASSERT_TRUE(e.unsynced_warn);                     // start==0 → warn
+    // 註：反向（start 已對時、end 未對時）不可達 — 對時一旦成立即單調保持至案件結束
+}
+
 // ============================================================
 // main
 // ============================================================
@@ -192,6 +297,11 @@ int main(int /*argc*/, char** /*argv*/) {
 
     RUN_TEST(test_ble_apply_writes_back_to_present_rtc);
     RUN_TEST(test_ble_apply_write_back_skipped_when_backend_absent);
+    RUN_TEST(test_ble_apply_write_back_tolerates_millis_drift_between_two_reads);
+
+    RUN_TEST(test_case_epochs_both_unsynced_saves_zero_pair_and_warns);
+    RUN_TEST(test_case_epochs_fully_synced_saves_real_pair_no_warn);
+    RUN_TEST(test_case_epochs_partial_sync_start_zero_end_real_warns);
 
     return UNITY_END();
 }

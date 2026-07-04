@@ -321,6 +321,47 @@ static void test_seed_from_rtc_preserves_tz_offset_min() {
 }
 
 // ============================================================
+// §10 time_sync_seed_from_rtc — underflow guard 鎖死（R5 regression）
+//    F4 已加 rtc_epoch < now_millis 防呆（impl STEP 01）；此段鎖死避免
+//    未來有人拿掉 guard，導致 uint64_t 減法 wrap 到 ~2554 年 epoch。
+// ============================================================
+
+static void test_seed_from_rtc_underflow_guard_noop_when_unsynced() {
+    // rtc_epoch < now_millis：boot 早期 millis 已跑但 RTC 讀到異常小值
+    // → guard 應 noop，state 維持未對時（絕不可 wrap 成巨大 offset）
+    time_sync_seed_from_rtc(&g_state, /*rtc_epoch=*/1000, /*now_millis=*/5000);
+
+    TEST_ASSERT_FALSE(g_state.synced);
+    TEST_ASSERT_EQUAL_UINT64(0, g_state.epoch_ms_offset);
+    // 未對時態 current_epoch_ms 仍回 0（若 guard 失效 wrap 會是巨大值）
+    TEST_ASSERT_EQUAL_UINT64(0, time_sync_current_epoch_ms(&g_state, 5000));
+}
+
+static void test_seed_from_rtc_underflow_guard_preserves_prior_sync() {
+    // 已用 BLE 對好時，隨後一次異常 reseed（rtc < now）不可清掉既有 offset
+    const char* json = R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
+    call_handle(json, 1000);
+    TEST_ASSERT_TRUE(g_state.synced);
+    uint64_t good_offset = g_state.epoch_ms_offset;
+
+    time_sync_seed_from_rtc(&g_state, /*rtc_epoch=*/500, /*now_millis=*/2000);
+
+    // guard noop → 既有對時完全保留（synced + offset 不動）
+    TEST_ASSERT_TRUE(g_state.synced);
+    TEST_ASSERT_EQUAL_UINT64(good_offset, g_state.epoch_ms_offset);
+}
+
+static void test_seed_from_rtc_equal_epoch_and_millis_seeds_zero_offset() {
+    // 邊界：rtc_epoch == now_millis → 非 <（guard 不擋）→ 應 seed，offset=0
+    // 驗證 guard 用嚴格 < 而非 <=，等值仍是合法對時
+    time_sync_seed_from_rtc(&g_state, /*rtc_epoch=*/5000, /*now_millis=*/5000);
+
+    TEST_ASSERT_TRUE(g_state.synced);
+    TEST_ASSERT_EQUAL_UINT64(0, g_state.epoch_ms_offset);
+    TEST_ASSERT_EQUAL_UINT64(5000, time_sync_current_epoch_ms(&g_state, 5000));
+}
+
+// ============================================================
 // Runner
 // ============================================================
 
@@ -356,6 +397,10 @@ int main(int, char**) {
     RUN_TEST(test_seed_from_rtc_sets_synced_and_offset);
     RUN_TEST(test_seed_from_rtc_current_epoch_ms_reflects_seed_plus_delta);
     RUN_TEST(test_seed_from_rtc_preserves_tz_offset_min);
+
+    RUN_TEST(test_seed_from_rtc_underflow_guard_noop_when_unsynced);
+    RUN_TEST(test_seed_from_rtc_underflow_guard_preserves_prior_sync);
+    RUN_TEST(test_seed_from_rtc_equal_epoch_and_millis_seeds_zero_offset);
 
     return UNITY_END();
 }
