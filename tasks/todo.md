@@ -110,8 +110,8 @@
 - [ ] **drawOhcaSummary 6 段 setTextDatum + drawString 重複可抽 `drawKVRow` helper**（quality agent）— 減 ~60 行重複 + 消除 datum-toggle 隱式依賴
 - [ ] **drawOhcaSummary magic numbers 衍生**：`+32 / 78 / 18 / 0.85f` 從字型 size 常數衍生，避免 PM 改字級時 layout drift（quality agent）
 - [ ] **B3 datum fix 可能未傳播至 `drawBackfillCategory` / `drawBackfillType` / `drawBackfillCount` / `drawQuickMenu`**（reuse agent）— 仍用 setCursor+print pattern，可能有同類 baseline 偏移問題；等 PM 實機確認後再修
-- [ ] **B5 `dispatchOhcaEvent` 進 LOCKED reset vent state 缺 native test**（pr-test-analyzer rating 7/10）— 需 stub 10+ globals + storage backend；overhead 大留 backlog。建議新建 `test_ohca_dispatch.cpp` 覆蓋 `prev != LOCKED && state == LOCKED → vent state cleared` invariant
-- [ ] **`regen_vlw.sh` STEP 09 失敗訊息可補 `trap ERR`**（silent-failure-hunter）— 避免 .vlw 已更但 .h 未同步時使用者未察覺
+- [x] **B5 `dispatchOhcaEvent` 進 LOCKED reset vent state 缺 native test**（pr-test-analyzer rating 7/10）— 完成（`df5d353`，2026-07-04）。因硬 stub 20+ globals 不切實際，改抽純函式 `ems::ohcaVentAfterTransition(prev,next,ventState)` 進 ems_ohca lib（dispatchOhcaEvent 呼叫），test_ohca_state 加 6 case 鎖「首次進 LOCKED → vent 全清、其他轉移不動」
+- [x] **`regen_vlw.sh` STEP 09 失敗訊息可補 `trap ERR`**（silent-failure-hunter）— 完成（`702f17e`，2026-07-04）。加 `VLW_REGENERATED` 旗標 + `trap ERR`，僅在 .vlw 已重生後失敗才印 `[FATAL]` desync 警告 + 行動指引
 - [x] **`ventPaused` vs `ohcaVentPaused` 命名/scope 確認**（2026-05-25 grep 確認）— 兩個獨立變數共存於不同 cpp（`ventPaused` = GLOBAL_VENT 獨立模式 scope，`ohcaVentPaused` = OHCA overlay scope），命名合理保留
 
 ---
