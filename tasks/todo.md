@@ -8,6 +8,8 @@
 
 > **2026-07-04 更新（收尾）**：電源電池 TFT 白屏 blocker 已清（焊接修復實測通過）；**DS3231 R1-R6 + B1-B5 follow-up #4/#5 全結案**；progress 補進度 9 + SoT V1 完成度盤點。
 >
+> **🚀 Phase D（訓練模式）計畫已定稿（2026-07-04）→ 下次開工直接照做**：完整實作計畫見 **[`docs/phase-d-training-plan.md`](../docs/phase-d-training-plan.md)**（範圍 = SoT §15 全 18 節一次到位；含 4 個架構決策 ADR + W1~W9 TDD Waves + 逐檔改動清單 + 本專案風險清單）。**從 W1（倒數參數化，純 lib、最獨立、可先 native 測綠）起步。** 關鍵發現：Phase E 持久化 + Phase F 同步**早已 mode-aware**（storage/sync 全鏈路支援 `EMS_CASE_TYPE_TRAINING`、cap 20、`/cases/training`、已有 D5/D7/D8 native test），Training 是「複用 OHCA 骨架 + 貼差異」而非從零蓋；唯一要動的既有 lib 是 `ems_ohca_countdown`（倒數參數化）。
+>
 > **📌 下次開工 = Phase D（訓練模式）+ Phase G（系統設定 / 裝置名稱 / 音量亮度 / Type-C 電腦端工具）** — SoT V1 剩下唯二可**自主推進**的 Phase（純韌體、無硬體/PM 阻塞）。裝置端主功能表 5 項目前「訓練模式 / 系統設定」2 項仍為 placeholder（`input_handler.cpp` GLOBAL_TRAINING_PLACEHOLDER / GLOBAL_SETTINGS_PLACEHOLDER），做完即全可用。Phase H 電源/電池顯示卡硬體（**ADC 腳已用盡**，gpio-allocation §5.1；見 progress 進度 9 盤點）。**做 Phase H 電池顯示前必讀 [`docs/power-module-purchase.md §10.6`](../docs/power-module-purchase.md)（電池顯示能力現況 + 三選項 A 數位狀態腳 / B 電壓 ADC / C 燃料計）。**
 
 - **🔥 進入電源模組手工焊接 + 電源管理階段**（採購已到貨）：1000mAh LiPo + TP4056 + JST PH2.0
