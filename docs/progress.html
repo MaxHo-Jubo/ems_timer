@@ -130,19 +130,20 @@
 <div class="header">
   <h1>📋 EMS Timer 進度報告</h1>
   <div class="subtitle">EMS DoseSync Pro — 救護人員給藥計時器</div>
-  <div class="version">PM 版 · 最後更新 2026-05-25</div>
+  <div class="version">PM 版 · 最後更新 2026-07-04</div>
 </div>
 
 <div class="meta-box">
   <div><span class="meta-label">產品：</span><span class="meta-value">EMS DoseSync Pro</span></div>
-  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-25</span></div>
-  <div><span class="meta-label">累計進度：</span><span class="meta-value">8 筆</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-07-04</span></div>
+  <div><span class="meta-label">累計進度：</span><span class="meta-value">9 筆</span></div>
   <div><span class="meta-label">負責：</span><span class="meta-value">Max Ho</span></div>
 </div>
 
 <div class="toc">
   <div class="toc-title">章節導覽（點擊跳轉到該次進度）</div>
   <div class="toc-list">
+    <a href="#progress-2026-07-04"><span class="toc-date">2026-07-04</span>進度 9 — 沒有畫面變化的地基補強：時間戳型別防呆 + 醫療規則測試網 + 字型工具防坑（含電源白屏修復收尾）</a>
     <a href="#progress-2026-05-25"><span class="toc-date">2026-05-25</span>進度 8 — 實機 UI bug 5 隻一日清完（B1-B5 含 PROGMEM 載入陷阱 + Snapshot 漏欄位第三次踩）</a>
     <a href="#progress-2026-05-24-2"><span class="toc-date">2026-05-24</span>進度 7 — DS3231 RTC 整合上機（裝置從此有真實時間戳）</a>
     <a href="#progress-2026-05-24"><span class="toc-date">2026-05-24</span>進度 6 — Phase F BLE 鏈路打通端到端（韌體 → 藍牙 → 雲端落地）</a>
@@ -151,6 +152,68 @@
     <a href="#progress-2026-05-11"><span class="toc-date">2026-05-11</span>進度 3 — 用自動化測試掃出 10 個畫面文字溢出並修正</a>
     <a href="#progress-2026-05-09-2"><span class="toc-date">2026-05-09</span>進度 2 — 補登次數選單列表化＋介面文字溢出修整</a>
     <a href="#progress-2026-05-09"><span class="toc-date">2026-05-09</span>進度 1 — 螢幕升級到 2.8 吋並修整體美觀</a>
+  </div>
+</div>
+
+<!-- ========== 進度 9 ========== -->
+<div class="progress-entry" id="progress-2026-07-04">
+  <div class="progress-entry-title">
+    <span class="num">進度 9</span>沒有畫面變化的地基補強：時間戳型別防呆 + 醫療規則測試網 + 字型工具防坑（含電源白屏修復收尾）<span class="date">2026-07-04</span>
+  </div>
+
+  <div class="one-liner">
+    <strong>一句話：</strong>這次<strong>沒有新功能、也沒有畫面改動</strong>，全是把之前趕功能欠下的技術債還掉：把裝置時間戳的底層資料結構改得更防呆（消滅一個會把「還沒對時」誤當成「1970 年」的陷阱）、替幾個醫療相關關鍵規則補上自動測試防護網、並修好一個字型工具會讓補的字沒真正進裝置的坑。全程 <strong>435 項自動測試全綠</strong>、韌體照常編譯、<strong>行為完全不變</strong>。順帶把從進度 7/8 延續的<strong>電源電池白屏問題修復收尾</strong>。
+  </div>
+
+  <div class="card">
+    <div class="section-title">補了什麼（雖然畫面沒變，但地基更穩）</div>
+    <table>
+      <thead>
+        <tr><th style="width:32%">補強項</th><th>為什麼對產品重要</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>時間戳資料結構防呆</strong></td><td>以前「裝置還沒對時」跟「時間剛好是 1970-01-01」在程式裡長得一模一樣，未來擴充容易誤判。現在型別上分乾淨 → 接手機 App 時不會把「沒對時的紀錄」誤當成有效時間</td></tr>
+        <tr><td><strong>醫療規則測試網（+13 項測試）</strong></td><td>「案件開始沒對時、中途才對到時間」「案件結束要自動停 6 秒通氣提示」這些規則以前沒有自動測試守著，改壞了不會被發現。現在有測試鎖死，未來動到就會被抓</td></tr>
+        <tr><td><strong>字型工具防坑</strong></td><td>進度 8 的 B1 缺字就是「補了字但裝置上還是舊字型」造成的。這次讓工具在出問題時<strong>大聲報警</strong>，不會再默默留下沒同步的舊字型</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title">過程中的做法</div>
+    <ul class="check-list">
+      <li>沿用前面「<strong>把邏輯抽成純函式再測</strong>」的手法：要測的醫療規則本來埋在一個牽連 20 幾個全域變數的大函式裡，硬測不切實際；抽出來變成獨立小函式後就乾淨可測，裝置端照樣呼叫、行為不變</li>
+      <li>兩位獨立的自動審查員（一個看程式風格、一個看測試品質）都審過這批，確認測試<strong>真的能在程式退步時抓到問題</strong>，不是擺好看的</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">工程數字</div>
+    <ul class="check-list">
+      <li>自動測試 429 → <strong>435 項全綠</strong>（唯一 1 個未過是既有的硬體相關測試在電腦上本來就跑不了，與本次無關）</li>
+      <li>韌體編譯正常，容量占用 <strong>68.6%</strong>（不變）</li>
+      <li>共 9 筆改動，多筆是「抽純函式讓它可被測試」的重構</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">電源白屏修復收尾</div>
+    <div class="note-green">
+      ✅ 從進度 7/8 延續的<strong>純電池供電開機白屏/閃爍</strong>問題已修復：先前量測定位到病灶是<strong>負極/地線接觸不良</strong>，帶載時吃掉約 0.5V 電壓，害裝置卡在低電壓保護邊緣（正極與升壓板都正常）。這次把地線接點焊死後<strong>實測通過</strong>，純電池供電可穩定開機。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">後續工作</div>
+    <ul class="check-list">
+      <li class="todo"><strong>DS3231 永續性測試</strong>（鈕扣電池備援，約 5 分鐘可完成）</li>
+      <li class="todo"><strong>剩餘畫面美化債</strong>（3 項，非急，部分等 PM 實機確認）</li>
+      <li class="todo"><strong>React Native App</strong>（取代純網頁的長期方案）</li>
+      <li class="todo"><strong>電源模組整合測試</strong>（滿電拔線連續運作 ≥ 30 分等）</li>
+    </ul>
+    <div class="note-green" style="margin-top:12px">
+      💬 這一筆是「量產前把地基打穩」的一步：功能面已達階段 1 里程碑（進度 6-8），這次專注在讓底層資料結構、醫療關鍵規則、工具鏈更耐操，降低後續接 App 與量產時踩坑的機率。
+    </div>
   </div>
 </div>
 
