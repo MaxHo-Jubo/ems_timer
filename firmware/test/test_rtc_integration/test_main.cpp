@@ -49,11 +49,11 @@ static bool simulate_boot_detect_and_seed(RtcBackend* backend,
     if (!backend->is_present()) {
         return false;
     }
-    const uint64_t rtc_epoch = backend->now_epoch_ms();
-    if (rtc_epoch <= floor_ms) {
+    const RtcReading rtc = backend->now();
+    if (!rtc.valid || rtc.epoch_ms <= floor_ms) {
         return false;
     }
-    time_sync_seed_from_rtc(ts_state, rtc_epoch, now_millis);
+    time_sync_seed_from_rtc(ts_state, rtc.epoch_ms, now_millis);
     return true;
 }
 
@@ -63,18 +63,19 @@ static bool simulate_boot_detect_and_seed(RtcBackend* backend,
 
 static void test_mock_backend_basic_contract() {
     MockRtcBackend mock;
-    TEST_ASSERT_TRUE(mock.is_present());      // 預設在線
-    TEST_ASSERT_EQUAL_UINT64(0, mock.now_epoch_ms());  // 預設未設
+    TEST_ASSERT_TRUE(mock.is_present());       // 預設在線
+    TEST_ASSERT_FALSE(mock.now().valid);       // 預設 present 但未設有效時間
 
-    TEST_ASSERT_TRUE(mock.set_epoch_ms(1713715200000ULL));
-    TEST_ASSERT_EQUAL_UINT64(1713715200000ULL, mock.now_epoch_ms());
+    TEST_ASSERT_EQUAL(SetResult::Ok, mock.set_epoch_ms(1713715200000ULL));
+    TEST_ASSERT_TRUE(mock.now().valid);
+    TEST_ASSERT_EQUAL_UINT64(1713715200000ULL, mock.now().epoch_ms);
 
     mock.advance_ms(5000);
-    TEST_ASSERT_EQUAL_UINT64(1713715205000ULL, mock.now_epoch_ms());
+    TEST_ASSERT_EQUAL_UINT64(1713715205000ULL, mock.now().epoch_ms);
 
     mock.set_present(false);
     TEST_ASSERT_FALSE(mock.is_present());
-    TEST_ASSERT_FALSE(mock.set_epoch_ms(1713720000000ULL));  // absent 回 false
+    TEST_ASSERT_EQUAL(SetResult::NotPresent, mock.set_epoch_ms(1713720000000ULL));  // absent → NotPresent
 }
 
 // ============================================================
@@ -100,7 +101,7 @@ static void test_boot_present_and_set_seeds_software_clock() {
 
 static void test_boot_present_but_unset_does_not_seed() {
     g_mock.set_present(true);
-    // now_epoch_ms 預設 0（模擬 DS3231 在線但未設過時間）
+    // now() 預設 {valid=false,0}（模擬 DS3231 在線但未設過時間）
 
     const bool seeded = simulate_boot_detect_and_seed(
         &g_mock, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS);
@@ -143,7 +144,7 @@ static bool simulate_ble_apply_with_write_back(RtcBackend* backend,
         return false;
     }
     const uint64_t app_epoch = time_sync_current_epoch_ms(ts_state, now_millis);
-    return backend->set_epoch_ms(app_epoch);
+    return backend->set_epoch_ms(app_epoch) == SetResult::Ok;
 }
 
 // R6：production main.cpp 的 time_sync_handle 與 write-back 的 current_epoch_ms
@@ -167,12 +168,12 @@ static bool simulate_ble_apply_with_write_back_two_reads(RtcBackend* backend,
     // write-back 讀「第二次」millis（loop 已前進），非重用 apply 時的值
     const uint64_t app_epoch =
         time_sync_current_epoch_ms(ts_state, writeback_millis);
-    return backend->set_epoch_ms(app_epoch);
+    return backend->set_epoch_ms(app_epoch) == SetResult::Ok;
 }
 
 static void test_ble_apply_writes_back_to_present_rtc() {
     g_mock.set_present(true);
-    g_mock.set_epoch_ms(0);  // DS3231 未設過
+    g_mock.set_reading(false, 0);  // DS3231 present 但未設過
 
     const char* json =
         R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
@@ -182,8 +183,9 @@ static void test_ble_apply_writes_back_to_present_rtc() {
 
     TEST_ASSERT_TRUE(wrote);
     TEST_ASSERT_TRUE(g_state.synced);
-    // 寫回值 = current_epoch_ms at now_millis=1000 = 1713715200000
-    TEST_ASSERT_EQUAL_UINT64(1713715200000ULL, g_mock.now_epoch_ms());
+    // 寫回後 RTC 應 valid，值 = current_epoch_ms at now_millis=1000 = 1713715200000
+    TEST_ASSERT_TRUE(g_mock.now().valid);
+    TEST_ASSERT_EQUAL_UINT64(1713715200000ULL, g_mock.now().epoch_ms);
 }
 
 static void test_ble_apply_write_back_skipped_when_backend_absent() {
@@ -203,7 +205,7 @@ static void test_ble_apply_write_back_skipped_when_backend_absent() {
 
 static void test_ble_apply_write_back_tolerates_millis_drift_between_two_reads() {
     g_mock.set_present(true);
-    g_mock.set_epoch_ms(0);  // DS3231 未設過
+    g_mock.set_reading(false, 0);  // DS3231 present 但未設過
 
     const char* json =
         R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
@@ -218,7 +220,7 @@ static void test_ble_apply_write_back_tolerates_millis_drift_between_two_reads()
     // 寫回值應反映 write-back 當下時刻 = epoch + (1005 - 1000) = 1713715200005
     // 不可退回 apply-time 的 1713715200000（否則 RTC 會落後真實 loop 時間），
     // 也不可 wrap/跳動——單調前進 5ms 才對
-    TEST_ASSERT_EQUAL_UINT64(1713715200005ULL, g_mock.now_epoch_ms());
+    TEST_ASSERT_EQUAL_UINT64(1713715200005ULL, g_mock.now().epoch_ms);
 }
 
 // ============================================================
@@ -283,6 +285,33 @@ static void test_case_epochs_partial_sync_start_zero_end_real_warns() {
 }
 
 // ============================================================
+// §5 RtcReading valid 與 floor/ceiling 正交（#8：R2 sentinel contract 網）
+//    舊 now_epoch_ms()==0 sentinel 把「未設時間」與「合法 epoch」conflate。
+//    RtcReading.valid 專表「有無有效時間」，與範圍檢查是兩件事。此 test 釘死
+//    「!valid ≠ below-floor」，給 R2/未來重構一個必須保住的語意目標。
+// ============================================================
+
+static void test_rtc_reading_invalid_is_distinct_from_below_floor() {
+    // (a) present 但未設 → valid=false → boot 不 seed（走「未設時間」分支）
+    g_mock.set_present(true);
+    g_mock.set_reading(false, 0);
+    TEST_ASSERT_FALSE(g_mock.now().valid);
+    TEST_ASSERT_FALSE(simulate_boot_detect_and_seed(
+        &g_mock, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS));
+    TEST_ASSERT_FALSE(g_state.synced);
+
+    // (b) present 且「有讀到時間」但越界（below floor，1970 epoch=1000）
+    //     → valid=TRUE（關鍵：below-floor 仍算有效讀值，非 sentinel），
+    //       僅被範圍檢查擋下 → 與 (a) 的 !valid 是不同狀態
+    time_sync_init(&g_state);
+    g_mock.set_reading(true, 1000);
+    TEST_ASSERT_TRUE(g_mock.now().valid);
+    TEST_ASSERT_FALSE(simulate_boot_detect_and_seed(
+        &g_mock, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS));
+    TEST_ASSERT_FALSE(g_state.synced);
+}
+
+// ============================================================
 // main
 // ============================================================
 
@@ -302,6 +331,8 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(test_case_epochs_both_unsynced_saves_zero_pair_and_warns);
     RUN_TEST(test_case_epochs_fully_synced_saves_real_pair_no_warn);
     RUN_TEST(test_case_epochs_partial_sync_start_zero_end_real_warns);
+
+    RUN_TEST(test_rtc_reading_invalid_is_distinct_from_below_floor);
 
     return UNITY_END();
 }

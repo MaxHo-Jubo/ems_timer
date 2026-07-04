@@ -8,9 +8,11 @@
 //
 // 契約（對齊 NullRtcBackend）：
 //   - is_present()：回 set_present() 設定值（預設 true）
-//   - now_epoch_ms()：回 set_epoch_ms / advance_ms 累積的值（預設 0）
-//   - set_epoch_ms()：present 時寫入 now_ms_ + 回 true；absent 時 no-op + 回 false（與 Null 一致）
+//   - now()：present 時回 reading_（預設 {valid=false,0}=present 但未設有效時間）；
+//            absent 時回 {false,0}
+//   - set_epoch_ms()：present 時寫入 reading_={true,epoch} + 回 Ok；absent 時 no-op + 回 NotPresent
 //   - advance_ms(d)：模擬 RTC 走時 d 毫秒（test 用，非 RtcBackend 介面）
+//   - set_reading(valid,epoch)：直接注入讀值（模擬 present 但未設 / 已設 / 越界；test 用）
 
 #pragma once
 
@@ -21,23 +23,31 @@ namespace ems {
 class MockRtcBackend : public RtcBackend {
 public:
     bool is_present() const override { return present_; }
-    uint64_t now_epoch_ms() const override { return now_ms_; }
 
-    bool set_epoch_ms(uint64_t epoch) override {
+    RtcReading now() const override {
         if (!present_) {
-            return false;  // 對齊 NullRtcBackend：absent 不寫入
+            return {false, 0};  // 不在線 → 無有效時間
         }
-        now_ms_ = epoch;
-        return true;
+        return reading_;
+    }
+
+    SetResult set_epoch_ms(uint64_t epoch) override {
+        if (!present_) {
+            return SetResult::NotPresent;  // 對齊 NullRtcBackend：absent 不寫入
+        }
+        reading_ = {true, epoch};  // 寫入即成為有效時間
+        return SetResult::Ok;
     }
 
     // Test fixture helpers（非介面）
     void set_present(bool p) { present_ = p; }
-    void advance_ms(uint64_t d) { now_ms_ += d; }
+    void advance_ms(uint64_t d) { reading_.epoch_ms += d; }
+    // 直接注入讀值：模擬 present 但未設（valid=false）/ 已設 / 越界（valid=true 但超範圍）
+    void set_reading(bool valid, uint64_t epoch) { reading_ = {valid, epoch}; }
 
 private:
     bool present_ = true;
-    uint64_t now_ms_ = 0;
+    RtcReading reading_ = {false, 0};  // 預設：present 但未設有效時間
 };
 
 }  // namespace ems

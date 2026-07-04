@@ -361,6 +361,18 @@ static void test_seed_from_rtc_equal_epoch_and_millis_seeds_zero_offset() {
     TEST_ASSERT_EQUAL_UINT64(5000, time_sync_current_epoch_ms(&g_state, 5000));
 }
 
+static void test_seed_from_rtc_does_not_self_apply_min_floor() {
+    // Contract（#9）：seed_from_rtc 只做 underflow guard，NOT MIN floor 檢查。
+    // floor 由 caller 守（見 ems_time_sync.h docstring「caller 已確認 > MIN」）。
+    // rtc_epoch=2000 遠低於 MIN 但 > now_millis=1000 → 仍 seed，證明 seed 信任
+    // caller 守 floor；防未來有人誤以為 seed 會自擋 below-floor 而拿掉 caller 的檢查。
+    time_sync_seed_from_rtc(&g_state, /*rtc_epoch=*/2000, /*now_millis=*/1000);
+
+    TEST_ASSERT_TRUE(g_state.synced);                         // seed 了，沒被 floor 擋
+    TEST_ASSERT_EQUAL_UINT64(1000, g_state.epoch_ms_offset);  // 2000 - 1000
+    TEST_ASSERT_EQUAL_UINT64(2000, time_sync_current_epoch_ms(&g_state, 1000));
+}
+
 // ============================================================
 // Runner
 // ============================================================
@@ -401,6 +413,7 @@ int main(int, char**) {
     RUN_TEST(test_seed_from_rtc_underflow_guard_noop_when_unsynced);
     RUN_TEST(test_seed_from_rtc_underflow_guard_preserves_prior_sync);
     RUN_TEST(test_seed_from_rtc_equal_epoch_and_millis_seeds_zero_offset);
+    RUN_TEST(test_seed_from_rtc_does_not_self_apply_min_floor);
 
     return UNITY_END();
 }

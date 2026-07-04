@@ -29,8 +29,8 @@ public:
     bool begin(TwoWire& wire);
 
     bool is_present() const override { return present_; }
-    uint64_t now_epoch_ms() const override;
-    bool set_epoch_ms(uint64_t epoch) override;
+    RtcReading now() const override;
+    SetResult set_epoch_ms(uint64_t epoch) override;
 
 private:
     // RTClib 的 now() 非 const（內部走 I2C 讀），但本介面語意上是「讀取」。

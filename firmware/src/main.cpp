@@ -264,11 +264,18 @@ static void on_ble_rx(const uint8_t* data, size_t len) {
         if (r == ems::TimeSyncResult::Applied && rtc_present) {
             const uint64_t app_epoch =
                 ems::time_sync_current_epoch_ms(&g_ts_state, millis());
-            if (g_rtc->set_epoch_ms(app_epoch)) {
-                Serial.printf("[RTC] write-back from BLE time_sync: %llu\n",
-                              (unsigned long long)app_epoch);
-            } else {
-                Serial.println("[RTC] WARN write-back failed");
+            switch (g_rtc->set_epoch_ms(app_epoch)) {
+                case ems::SetResult::Ok:
+                    Serial.printf("[RTC] write-back from BLE time_sync: %llu\n",
+                                  (unsigned long long)app_epoch);
+                    break;
+                case ems::SetResult::IoError:
+                    Serial.println("[RTC] WARN write-back I2C failed");
+                    break;
+                case ems::SetResult::NotPresent:
+                    // rtc_present 已 gate 此區塊，理論上不會到；防禦性 log 供 field debug
+                    Serial.println("[RTC] WARN write-back skipped (backend not present)");
+                    break;
             }
         }
 
@@ -412,19 +419,20 @@ void setup() {
     if (ds3231_be.begin(Wire)) {
         g_rtc = &ds3231_be;
         Serial.println("[RTC] DS3231 detected at 0x68");
-        const uint64_t rtc_epoch = g_rtc->now_epoch_ms();
-        // 對齊 spec §2.3 BLE time_sync 拒絕條件，雙向 floor / ceiling 一致；
+        const ems::RtcReading rtc = g_rtc->now();
+        // RtcReading.valid 把「未設時間」與「越界爛資料」分乾淨（不再靠 epoch==0 sentinel）。
+        // 範圍檢查對齊 spec §2.3 BLE time_sync 拒絕條件，雙向 floor / ceiling 一致；
         // 避免 DS3231 寄存器爛資料（如年份溢位回到 2099）漏網
-        if (rtc_epoch >= ems::TIME_SYNC_MIN_EPOCH_MS &&
-            rtc_epoch <= ems::TIME_SYNC_MAX_EPOCH_MS) {
-            ems::time_sync_seed_from_rtc(&g_ts_state, rtc_epoch, millis());
-            Serial.printf("[RTC] seeded software clock from RTC: %llu\n",
-                          (unsigned long long)rtc_epoch);
-        } else if (rtc_epoch == 0) {
+        if (!rtc.valid) {
             Serial.println("[RTC] DS3231 present but time not set, 等 BLE time_sync");
+        } else if (rtc.epoch_ms >= ems::TIME_SYNC_MIN_EPOCH_MS &&
+                   rtc.epoch_ms <= ems::TIME_SYNC_MAX_EPOCH_MS) {
+            ems::time_sync_seed_from_rtc(&g_ts_state, rtc.epoch_ms, millis());
+            Serial.printf("[RTC] seeded software clock from RTC: %llu\n",
+                          (unsigned long long)rtc.epoch_ms);
         } else {
             Serial.printf("[RTC] WARN DS3231 epoch out of range (%llu), 拒絕 seed\n",
-                          (unsigned long long)rtc_epoch);
+                          (unsigned long long)rtc.epoch_ms);
         }
     } else {
         g_rtc = &null_be;
