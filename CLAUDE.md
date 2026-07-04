@@ -1,4 +1,6 @@
-# EMS Timer — 救護計時器
+# EMS DoseSync Pro — 救護計時器（repo 目錄沿用 ems_timer）
+
+> 本檔與實際狀態最後校準：2026-07-03。發現段落與 git/實碼不符時，依 `~/.claude/harness/knowledge-protocol.md` 黃區流程提案修正本檔。
 
 ## 專案概述
 
@@ -56,7 +58,7 @@
 ## 技術棧
 
 - **韌體**: Arduino Framework（ESP32）或 ESP-IDF
-- **App**: 待定（React Native / Flutter / 原生）
+- **App**: 手機 App 待定（React Native / Flutter / 原生）；已有 Web demo（`web/` 原始碼、`dist/` 產物，Cloudflare Pages: ems-dosesync-demo.pages.dev）
 - **通訊協定**: BLE GATT
 
 ## 硬體腳位規劃
@@ -79,7 +81,7 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 ✅ **已對齊**（Impl-Phase A 完成，2026-05-04）：
 - 8 按鍵全部接線：主/上/下/Power/錄音/返回/EPI/電擊
 - 震動馬達 GPIO 21（原 GPIO 16 已封給返回鍵）
-- 舊 lib（`ems_countdown` / `ems_vent`）依 pm-dev-spec §五已廢止
+- 舊 lib：`ems_countdown` 已移除；`ems_vent` 的 source/test 仍在編譯（與 pm-dev-spec §五「已廢止」不一致，待確認去留——2026-07-03 校準）
 - 主功能表 5 項（OHCA case 入口可進，其他顯示「Phase X 待實作」）
 - OHCA 子狀態機 + EPI 倒數 + 兩段確認串接完成
 - 95 unit tests 全綠 + 韌體編譯通過（Flash 8.9% / RAM 6%）
@@ -133,8 +135,10 @@ zip -r ems-timer-firmware-$(date +%Y%m%d).zip release-template/ \
 
 - [x] Dev-Phase 1: 硬體原型 — ESP32-S3 + 8 按鈕 + OLED + 蜂鳴器（2026-04-17 驗收通過）
 - [ ] Dev-Phase 1.5: INMP441 麥克風重試（換新模組後啟用 `ENABLE_MIC_MONITOR`）
-- [ ] Dev-Phase 2: BLE 通訊 — 裝置與手機配對、數據傳輸
+- [x] Dev-Phase 2: BLE 通訊 — 裝置與手機配對、數據傳輸（Impl-Phase F BLE 鏈路完成，2026-05）
 - [ ] Dev-Phase 3: 手機 App — 接收數據、顯示時間軸 + 升級硬體 RTC（DS3231）
+  - [x] DS3231 RTC 已整合上機（commit c83f1c2）
+  - [ ] 手機 App 未開始（現有 Web demo 見「技術棧」）
 - [ ] Dev-Phase 4: 整合測試與優化
 
 ## Dev-Phase 2 設計決策（2026-04-18）
@@ -177,7 +181,8 @@ EmsEvent { event_type: uint8, timestamp: uint64 (epoch ms), elapsed_ms: uint32 }
 | [`docs/power-module-purchase.html`](docs/power-module-purchase.html) | 同上 HTML 版（排版對齊 flow.html，方便瀏覽） |
 
 ### Dev-Phase 2~3 開發階段
-- 採 USB Type-C 直供（最簡單、無電池安全問題）。
+- 原規劃 USB Type-C 直供；**實際已提前進入鋰電池供電驗證**（1000mAh LiPo + TP4056 + 升壓，2026-06 起）。
+- 電池供電 TFT 白屏（2026-06-14 根因定位 → 2026-07-04 修復）：GND 回流接觸壓降 ~0.5V（ground bounce），正極與升壓板輸出正常；已只修地線接點焊死，實測通過。
 
 ### Prod-Phase 量產階段（封版方向）
 - 切換到 3.7V 鋰電池 1000mAh + TP4056 充電 IC + 升壓 IC + 單節保護板。
