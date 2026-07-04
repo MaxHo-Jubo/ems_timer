@@ -33,6 +33,20 @@ FONT_SIZE="${FONT_SIZE:-24}"
 OUT_VLW="${OUT_VLW:-data/fonts/ems_zh_24.vlw}"
 OUT_HEADER="${OUT_HEADER:-src/ems_zh_24_vlw.h}"
 
+# STEP 02.5: 失敗防護 — .vlw 與 .h 必須成對同步。set -e 會在任一步失敗時中止，
+#   但 STEP 07 已寫 .vlw 後若 STEP 09 header 未生，會留下「.vlw 新 / .h 舊」的裂縫
+#   → firmware build 嵌入舊字集（2026-05-25 B1 踩坑）。trap 在中止時響亮示警此狀態。
+VLW_REGENERATED=0
+trap 'rc=$?;
+    echo "[error] regen_vlw.sh 中止（exit $rc）" >&2;
+    if [ "$VLW_REGENERATED" = "1" ]; then
+        echo "[FATAL] .vlw 已重生但 .h header 未同步！" >&2;
+        echo "        已更新: $OUT_VLW" >&2;
+        echo "        未同步: $OUT_HEADER（仍為舊字集）" >&2;
+        echo "        直接 build firmware 會嵌入舊字集（B1 踩坑）。修正問題後務必重跑" >&2;
+        echo "        本腳本，確認 STEP 09 header 重生完成再燒錄。" >&2;
+    fi' ERR
+
 # STEP 03: 蒐集所有可能含 UI 中文字串的檔案
 #         glob 可能無 match，用 nullglob 避免展開成字面值
 shopt -s nullglob
@@ -82,6 +96,9 @@ python3 tools/ttf2vlw.py \
     --size "$FONT_SIZE" \
     --ttc-index "$TTC_INDEX" \
     --chars-from "${SRC_FILES[@]}"
+
+# .vlw 已重生；此後若中止代表 .h 尚未同步 → trap 會示警（見 STEP 02.5）
+VLW_REGENERATED=1
 
 # STEP 08: 列印新 vlw 大小與差異
 NEW_SIZE_BYTES=$(wc -c < "$OUT_VLW" | tr -d ' ')
