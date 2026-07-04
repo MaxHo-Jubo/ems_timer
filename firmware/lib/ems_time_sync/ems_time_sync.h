@@ -99,6 +99,32 @@ void time_sync_seed_from_rtc(TimeSyncState* state,
                              uint64_t now_millis);
 
 /**
+ * 案件存檔的起訖 epoch 對 + 未對時警告旗標。
+ * - start_ms：案件「開始當下」捕捉並存住的 epoch（後續對時不回填，spec §4.1）
+ * - end_ms：進 LOCKED 時由 state live 算的 current epoch
+ * - unsynced_warn：start_ms 或 end_ms 為 0（該端未對時）→ App 需靠 elapsed_ms 重建
+ */
+struct CaseEpochs {
+    uint64_t start_ms;
+    uint64_t end_ms;
+    bool     unsynced_warn;
+};
+
+/**
+ * 計算案件存檔的起訖 epoch 對 + 未對時旗標。封裝原內嵌於 ohca_logic 進 LOCKED
+ * 存檔路徑的捕捉決策，讓 production 與 native test 共用同一段邏輯
+ * （對齊 feedback_extract_testable_pure_logic）。
+ *
+ * @param case_start_captured 案件開始時已捕捉並存住的 start epoch（0 = 開始時未對時）
+ * @param state               目前對時 state（非 null）；end 由此 live 算
+ * @param end_millis          進 LOCKED 時的 millis()
+ * @return CaseEpochs — start_ms / end_ms / unsynced_warn
+ */
+CaseEpochs compute_case_epochs(uint64_t case_start_captured,
+                               const TimeSyncState* state,
+                               uint64_t end_millis);
+
+/**
  * 解析 time_sync JSON 訊息，視結果更新 state 並產生 time_sync_ack JSON。
  *
  * @param state          對時 state 物件，Applied 時會被覆寫（非 null）

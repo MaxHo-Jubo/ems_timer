@@ -118,6 +118,16 @@ void time_sync_seed_from_rtc(TimeSyncState* state,
     state->epoch_ms_offset = rtc_epoch - now_millis;
 }
 
+CaseEpochs compute_case_epochs(uint64_t case_start_captured,
+                               const TimeSyncState* state,
+                               uint64_t end_millis) {
+    // STEP 01: end 由 state live 算；start 為案件開始已捕捉的值（後續對時不回填）
+    const uint64_t end_ms = time_sync_current_epoch_ms(state, end_millis);
+    // STEP 02: 任一端為 0（未對時）→ 警告旗標，App 需靠 elapsed_ms 重建時間
+    return {case_start_captured, end_ms,
+            (case_start_captured == 0 || end_ms == 0)};
+}
+
 TimeSyncResult time_sync_handle(
     TimeSyncState* state,
     const uint8_t* input,

@@ -56,22 +56,23 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
         && prev != OHCA_STATE_LOCKED
         && g_storage_ready
         && !g_locked_saved) {
-        // 起訖時戳：未對時 → 0；RTC seed 或 BLE Apply 後 → 真實 epoch
-        // （見 docs/ds3231-integration-plan.md §6.1 / spec §4.1）
-        const uint64_t case_start_epoch = caseStartEpochMs;  // 取自 input_handler.cpp:110
-        const uint64_t case_end_epoch   =
-            ems::time_sync_current_epoch_ms(&g_ts_state, millis());
+        // 起訖時戳：未對時 → 0；RTC seed 或 BLE Apply 後 → 真實 epoch。
+        // 捕捉決策抽進 ems::compute_case_epochs（與 native test 共用同一函式）：
+        // start 取案件開始捕捉的 caseStartEpochMs（input_handler.cpp:110，不回填）、
+        // end 進 LOCKED 時 live 算（docs/ds3231-integration-plan.md §6.1 / spec §4.1）
+        const ems::CaseEpochs ce =
+            ems::compute_case_epochs(caseStartEpochMs, &g_ts_state, millis());
         // 警告救護員：對時前發生的 case 仍存到雲端但時戳為 0，App 端需用 elapsed_ms 重建
-        if (case_start_epoch == 0 || case_end_epoch == 0) {
+        if (ce.unsynced_warn) {
             Serial.printf("[STORAGE] WARN unsynced case saved with epoch=0 "
                           "(start=%llu end=%llu); App 將靠 elapsed_ms 重建時間\n",
-                          (unsigned long long)case_start_epoch,
-                          (unsigned long long)case_end_epoch);
+                          (unsigned long long)ce.start_ms,
+                          (unsigned long long)ce.end_ms);
         }
         bool ok = storage_save_case(&g_storage_be, EMS_CASE_TYPE_OHCA,
                                     events, eventCount,
-                                    case_start_epoch,
-                                    case_end_epoch);
+                                    ce.start_ms,
+                                    ce.end_ms);
         Serial.printf("[STORAGE] save case (%u events) %s\n",
                       eventCount, ok ? "OK" : "FAILED");
         // C-4 最小修：只有成功才設 true。原本 unconditional = true 導致失敗永不重試 +

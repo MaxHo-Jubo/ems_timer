@@ -163,32 +163,19 @@ static void test_ble_apply_write_back_tolerates_millis_drift_between_two_reads()
 
 // ============================================================
 // §4 案件起訖 epoch 捕捉矩陣（R4：pr-test-analyzer #2 partial-sync gap）
-//    鏡射 src/ohca_logic.cpp:59-74 存檔路徑：
-//      start = caseStartEpochMs（案件開始時捕捉並存住，後續對時不回填）
-//      end   = time_sync_current_epoch_ms(state, millis())（進 LOCKED live 捕捉）
+//    B2 後直接測 production ems::compute_case_epochs（非鏡射複製品）；
+//    src/ohca_logic.cpp 進 LOCKED 存檔亦呼叫同一函式：
+//      start = caseStartEpochMs（案件開始捕捉，不回填）
+//      end   = current_epoch_ms(state, millis())（進 LOCKED live）
 //      unsynced_warn = (start==0 || end==0) → 提醒 App 靠 elapsed_ms 重建
-//    R1 抽出 lib helper 後，本段可改為直接呼叫該 helper。
+//    註：ohca_logic 呼叫端 wiring（arg 順序 / g_locked_saved 守衛）仍靠韌體
+//    build + 實機驗，非此純測涵蓋範圍。
 // ============================================================
-
-struct CaseEpochs {
-    uint64_t start_ms;       // 案件開始捕捉值（已存住，不隨後續對時改變）
-    uint64_t end_ms;         // 進 LOCKED 時 live 捕捉值
-    bool     unsynced_warn;  // 任一為 0 → 未對時警告
-};
-
-// case_start_captured = 案件「開始當下」已捕捉並存住的 epoch（後續對時不回填）
-static CaseEpochs make_case_epochs(uint64_t case_start_captured,
-                                   TimeSyncState* state,
-                                   uint64_t end_millis) {
-    const uint64_t end_ms = time_sync_current_epoch_ms(state, end_millis);
-    return {case_start_captured, end_ms,
-            (case_start_captured == 0 || end_ms == 0)};
-}
 
 static void test_case_epochs_both_unsynced_saves_zero_pair_and_warns() {
     // 狀態 1/3：全程未對時 → start 捕捉=0、end live=0，warn 觸發
     const uint64_t start = time_sync_current_epoch_ms(&g_state, /*t_start=*/3000);
-    const CaseEpochs e = make_case_epochs(start, &g_state, /*end=*/20000);
+    const CaseEpochs e = compute_case_epochs(start, &g_state, /*end=*/20000);
 
     TEST_ASSERT_EQUAL_UINT64(0, e.start_ms);
     TEST_ASSERT_EQUAL_UINT64(0, e.end_ms);
@@ -199,7 +186,7 @@ static void test_case_epochs_fully_synced_saves_real_pair_no_warn() {
     // 狀態 2/3：case 前已對時（seed millis=1000 / epoch=1713715200000）
     time_sync_seed_from_rtc(&g_state, 1713715200000ULL, 1000);
     const uint64_t start = time_sync_current_epoch_ms(&g_state, /*t_start=*/3000);
-    const CaseEpochs e = make_case_epochs(start, &g_state, /*end=*/20000);
+    const CaseEpochs e = compute_case_epochs(start, &g_state, /*end=*/20000);
 
     TEST_ASSERT_EQUAL_UINT64(1713715202000ULL, e.start_ms);  // offset 1713715199000 + 3000
     TEST_ASSERT_EQUAL_UINT64(1713715219000ULL, e.end_ms);    // offset 1713715199000 + 20000
@@ -215,7 +202,7 @@ static void test_case_epochs_partial_sync_start_zero_end_real_warns() {
     // 案件進行中對時抵達（apply at millis=10000 → offset 1713715190000）
     time_sync_seed_from_rtc(&g_state, 1713715200000ULL, 10000);
 
-    const CaseEpochs e = make_case_epochs(start, &g_state, /*end=*/20000);
+    const CaseEpochs e = compute_case_epochs(start, &g_state, /*end=*/20000);
     TEST_ASSERT_EQUAL_UINT64(0, e.start_ms);               // start 仍是開始捕捉的 0（不回填）
     TEST_ASSERT_EQUAL_UINT64(1713715210000ULL, e.end_ms);  // offset 1713715190000 + 20000，live 真實 epoch
     TEST_ASSERT_TRUE(e.unsynced_warn);                     // start==0 → warn
