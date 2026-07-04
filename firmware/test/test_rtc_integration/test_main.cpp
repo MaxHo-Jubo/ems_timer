@@ -5,16 +5,16 @@
 //
 // 涵蓋（以 MockRtcBackend 模擬 DS3231）：
 //   1. MockBackend 基本契約（advance / set_present / set_epoch round-trip）
-//   2. Boot seed 三分支：
-//        (a) backend 在線 + RTC 已有有效時間 → seed g_ts_state → current_epoch_ms 回 RTC 時間
-//        (b) backend 在線 + RTC 未設過（now_epoch_ms=0）→ 不 seed → current_epoch_ms 回 0
-//        (c) backend 不在線（Null）→ 不 seed → current_epoch_ms 回 0
-//   3. BLE write-back：time_sync_handle Applied 後，呼叫 backend->set_epoch_ms 寫回 RTC
+//   2. Boot seed 三分支（ems_rtc_glue::rtc_try_seed）：
+//        (a) backend 在線 + RTC 已有有效時間 → Seeded → current_epoch_ms 回 RTC 時間
+//        (b) backend 在線 + RTC 未設過（now() !valid）→ NotSet → current_epoch_ms 回 0
+//        (c) backend 不在線（Null）→ NotSet → current_epoch_ms 回 0
+//   3. BLE write-back（ems_rtc_glue::rtc_write_back）：Applied 後反向寫回 RTC
 
 #include <unity.h>
-#include <cstring>
 
 #include "ems_rtc.h"
+#include "ems_rtc_glue.h"
 #include "null_backend.h"
 #include "ems_time_sync.h"
 #include "mock_rtc_backend.h"
@@ -24,38 +24,13 @@ using namespace ems;
 // 共用 fixture
 static TimeSyncState g_state;
 static MockRtcBackend g_mock;
-static char g_ack[256];
-static size_t g_ack_len;
 
 void setUp() {
     time_sync_init(&g_state);
-    g_mock = MockRtcBackend{};  // reset to defaults (present=true, now=0)
-    std::memset(g_ack, 0, sizeof(g_ack));
-    g_ack_len = 0;
+    g_mock = MockRtcBackend{};  // reset to defaults（present=true, reading invalid）
 }
 
 void tearDown() {}
-
-// ============================================================
-// 模擬 plan §4.1 main.cpp setup() boot 偵測序：
-//   - backend 在線 + epoch > floor → seed g_ts_state
-//   - 否則不 seed
-// 回傳是否實際 seed（test 斷言用）
-// ============================================================
-static bool simulate_boot_detect_and_seed(RtcBackend* backend,
-                                          TimeSyncState* ts_state,
-                                          uint64_t now_millis,
-                                          uint64_t floor_ms) {
-    if (!backend->is_present()) {
-        return false;
-    }
-    const RtcReading rtc = backend->now();
-    if (!rtc.valid || rtc.epoch_ms <= floor_ms) {
-        return false;
-    }
-    time_sync_seed_from_rtc(ts_state, rtc.epoch_ms, now_millis);
-    return true;
-}
 
 // ============================================================
 // §1 MockBackend 基本契約
@@ -84,12 +59,14 @@ static void test_mock_backend_basic_contract() {
 
 static void test_boot_present_and_set_seeds_software_clock() {
     g_mock.set_present(true);
-    g_mock.set_epoch_ms(1713715200000ULL);  // 2024-04-21 UTC
+    g_mock.set_reading(true, 1713715200000ULL);  // 2024-04-21 UTC，已設有效時間
 
-    const bool seeded = simulate_boot_detect_and_seed(
-        &g_mock, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS);
+    const RtcSeedResult seed = rtc_try_seed(
+        g_mock, &g_state, /*now_millis=*/2000,
+        TIME_SYNC_MIN_EPOCH_MS, TIME_SYNC_MAX_EPOCH_MS);
 
-    TEST_ASSERT_TRUE(seeded);
+    TEST_ASSERT_EQUAL(RtcSeedOutcome::Seeded, seed.outcome);
+    TEST_ASSERT_EQUAL_UINT64(1713715200000ULL, seed.epoch_ms);
     TEST_ASSERT_TRUE(g_state.synced);
     // current_epoch_ms 在同一 millis=2000 應等於 RTC 讀值
     TEST_ASSERT_EQUAL_UINT64(1713715200000ULL,
@@ -103,10 +80,11 @@ static void test_boot_present_but_unset_does_not_seed() {
     g_mock.set_present(true);
     // now() 預設 {valid=false,0}（模擬 DS3231 在線但未設過時間）
 
-    const bool seeded = simulate_boot_detect_and_seed(
-        &g_mock, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS);
+    const RtcSeedResult seed = rtc_try_seed(
+        g_mock, &g_state, /*now_millis=*/2000,
+        TIME_SYNC_MIN_EPOCH_MS, TIME_SYNC_MAX_EPOCH_MS);
 
-    TEST_ASSERT_FALSE(seeded);
+    TEST_ASSERT_EQUAL(RtcSeedOutcome::NotSet, seed.outcome);
     TEST_ASSERT_FALSE(g_state.synced);
     // current_epoch_ms 回 0（spec §4.1 未對時 fallback）
     TEST_ASSERT_EQUAL_UINT64(0, time_sync_current_epoch_ms(&g_state, 12000));
@@ -115,111 +93,71 @@ static void test_boot_present_but_unset_does_not_seed() {
 static void test_boot_not_present_does_not_seed() {
     NullRtcBackend null_backend;
 
-    const bool seeded = simulate_boot_detect_and_seed(
-        &null_backend, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS);
+    const RtcSeedResult seed = rtc_try_seed(
+        null_backend, &g_state, /*now_millis=*/2000,
+        TIME_SYNC_MIN_EPOCH_MS, TIME_SYNC_MAX_EPOCH_MS);
 
-    TEST_ASSERT_FALSE(seeded);
+    // Null.now() → {valid=false} → NotSet（不在線不 seed）
+    TEST_ASSERT_EQUAL(RtcSeedOutcome::NotSet, seed.outcome);
     TEST_ASSERT_FALSE(g_state.synced);
     TEST_ASSERT_EQUAL_UINT64(0, time_sync_current_epoch_ms(&g_state, 12000));
 }
 
 // ============================================================
-// §3 BLE write-back：time_sync_handle Applied → set_epoch_ms
-//    對齊 plan §5.1
+// §3 BLE write-back：Applied 後 rtc_write_back 反向寫回 RTC（對齊 plan §5.1）
+//    R1 後直接測 production helper ems_rtc_glue::rtc_write_back（非測試複製品）。
+//    對時用 time_sync_seed_from_rtc 建立與 BLE Applied 同等的 synced state
+//    （同一條 offset 公式），聚焦驗證 write-back 行為。
 // ============================================================
-
-// 模擬 main.cpp time_sync handler 內 Applied 後寫回 RTC 的邏輯
-static bool simulate_ble_apply_with_write_back(RtcBackend* backend,
-                                               TimeSyncState* ts_state,
-                                               const char* json,
-                                               uint64_t now_millis) {
-    const bool rtc_present = backend->is_present();
-    char ack[256];
-    size_t ack_len = 0;
-    TimeSyncResult r = time_sync_handle(
-        ts_state, reinterpret_cast<const uint8_t*>(json), std::strlen(json),
-        now_millis, rtc_present, ack, sizeof(ack), &ack_len);
-
-    if (r != TimeSyncResult::Applied || !backend->is_present()) {
-        return false;
-    }
-    const uint64_t app_epoch = time_sync_current_epoch_ms(ts_state, now_millis);
-    return backend->set_epoch_ms(app_epoch) == SetResult::Ok;
-}
-
-// R6：production main.cpp 的 time_sync_handle 與 write-back 的 current_epoch_ms
-//     各自讀一次 millis()，兩次之間 main loop 已前進數 ms。此 helper 明確分離
-//     apply_millis / writeback_millis，暴露單讀 helper 藏起來的兩讀漂移。
-static bool simulate_ble_apply_with_write_back_two_reads(RtcBackend* backend,
-                                                         TimeSyncState* ts_state,
-                                                         const char* json,
-                                                         uint64_t apply_millis,
-                                                         uint64_t writeback_millis) {
-    const bool rtc_present = backend->is_present();
-    char ack[256];
-    size_t ack_len = 0;
-    TimeSyncResult r = time_sync_handle(
-        ts_state, reinterpret_cast<const uint8_t*>(json), std::strlen(json),
-        apply_millis, rtc_present, ack, sizeof(ack), &ack_len);
-
-    if (r != TimeSyncResult::Applied || !backend->is_present()) {
-        return false;
-    }
-    // write-back 讀「第二次」millis（loop 已前進），非重用 apply 時的值
-    const uint64_t app_epoch =
-        time_sync_current_epoch_ms(ts_state, writeback_millis);
-    return backend->set_epoch_ms(app_epoch) == SetResult::Ok;
-}
 
 static void test_ble_apply_writes_back_to_present_rtc() {
     g_mock.set_present(true);
     g_mock.set_reading(false, 0);  // DS3231 present 但未設過
 
-    const char* json =
-        R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
+    // 對時（apply at millis=1000）
+    time_sync_seed_from_rtc(&g_state, 1713715200000ULL, /*apply_millis=*/1000);
 
-    const bool wrote = simulate_ble_apply_with_write_back(
-        &g_mock, &g_state, json, /*now_millis=*/1000);
+    // production write-back helper（寫回時刻 millis=1000）
+    const RtcWriteBackResult wb =
+        rtc_write_back(&g_mock, &g_state, /*now_millis=*/1000);
 
-    TEST_ASSERT_TRUE(wrote);
-    TEST_ASSERT_TRUE(g_state.synced);
-    // 寫回後 RTC 應 valid，值 = current_epoch_ms at now_millis=1000 = 1713715200000
+    TEST_ASSERT_EQUAL(SetResult::Ok, wb.result);
+    TEST_ASSERT_EQUAL_UINT64(1713715200000ULL, wb.epoch_ms);
+    // 寫回後 RTC 應 valid 且值 = 對時當下 epoch
     TEST_ASSERT_TRUE(g_mock.now().valid);
     TEST_ASSERT_EQUAL_UINT64(1713715200000ULL, g_mock.now().epoch_ms);
 }
 
 static void test_ble_apply_write_back_skipped_when_backend_absent() {
     NullRtcBackend null_backend;
-    const char* json =
-        R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
+    time_sync_seed_from_rtc(&g_state, 1713715200000ULL, /*apply_millis=*/1000);
 
-    const bool wrote = simulate_ble_apply_with_write_back(
-        &null_backend, &g_state, json, /*now_millis=*/1000);
+    const RtcWriteBackResult wb =
+        rtc_write_back(&null_backend, &g_state, /*now_millis=*/1000);
 
-    TEST_ASSERT_FALSE(wrote);
-    // 但 g_state 仍應 Applied（BLE 對時生效，只是 RTC 寫回 noop）
+    // 對時仍生效（state synced），只是 RTC 寫回 no-op → NotPresent
+    TEST_ASSERT_EQUAL(SetResult::NotPresent, wb.result);
     TEST_ASSERT_TRUE(g_state.synced);
     TEST_ASSERT_EQUAL_UINT64(1713715200000ULL,
                              time_sync_current_epoch_ms(&g_state, 1000));
 }
 
 static void test_ble_apply_write_back_tolerates_millis_drift_between_two_reads() {
+    // R6：production main.cpp 的 time_sync_handle 與 rtc_write_back 各讀一次 millis()，
+    //     兩次之間 main loop 已前進。rtc_write_back 用 caller 傳入的「寫回時刻」millis
+    //     算 current_epoch_ms；若有人改成重用 apply 時的值 → 寫回落後 → 此 test 會紅。
     g_mock.set_present(true);
     g_mock.set_reading(false, 0);  // DS3231 present 但未設過
 
-    const char* json =
-        R"({"type":"time_sync","epoch_ms":1713715200000,"tz_offset_min":480})";
+    // 對時 apply 在 millis=1000
+    time_sync_seed_from_rtc(&g_state, 1713715200000ULL, /*apply_millis=*/1000);
+    // write-back 讀「第二次」millis=1005（loop 已前進 5ms），走 production helper
+    const RtcWriteBackResult wb =
+        rtc_write_back(&g_mock, &g_state, /*writeback_millis=*/1005);
 
-    // apply 在 millis=1000，write-back read 在 millis=1005（main loop 跑了 5ms）
-    const bool wrote = simulate_ble_apply_with_write_back_two_reads(
-        &g_mock, &g_state, json,
-        /*apply_millis=*/1000, /*writeback_millis=*/1005);
-
-    TEST_ASSERT_TRUE(wrote);
-    TEST_ASSERT_TRUE(g_state.synced);
-    // 寫回值應反映 write-back 當下時刻 = epoch + (1005 - 1000) = 1713715200005
-    // 不可退回 apply-time 的 1713715200000（否則 RTC 會落後真實 loop 時間），
-    // 也不可 wrap/跳動——單調前進 5ms 才對
+    TEST_ASSERT_EQUAL(SetResult::Ok, wb.result);
+    // 寫回值反映 write-back 當下 = epoch + (1005 - 1000) = 1713715200005（單調前進 5ms）
+    TEST_ASSERT_EQUAL_UINT64(1713715200005ULL, wb.epoch_ms);
     TEST_ASSERT_EQUAL_UINT64(1713715200005ULL, g_mock.now().epoch_ms);
 }
 
@@ -292,22 +230,26 @@ static void test_case_epochs_partial_sync_start_zero_end_real_warns() {
 // ============================================================
 
 static void test_rtc_reading_invalid_is_distinct_from_below_floor() {
-    // (a) present 但未設 → valid=false → boot 不 seed（走「未設時間」分支）
+    // (a) present 但未設 → !valid → NotSet（走「未設時間」分支）
     g_mock.set_present(true);
     g_mock.set_reading(false, 0);
     TEST_ASSERT_FALSE(g_mock.now().valid);
-    TEST_ASSERT_FALSE(simulate_boot_detect_and_seed(
-        &g_mock, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS));
+    const RtcSeedResult a = rtc_try_seed(
+        g_mock, &g_state, /*now_millis=*/2000,
+        TIME_SYNC_MIN_EPOCH_MS, TIME_SYNC_MAX_EPOCH_MS);
+    TEST_ASSERT_EQUAL(RtcSeedOutcome::NotSet, a.outcome);
     TEST_ASSERT_FALSE(g_state.synced);
 
     // (b) present 且「有讀到時間」但越界（below floor，1970 epoch=1000）
-    //     → valid=TRUE（關鍵：below-floor 仍算有效讀值，非 sentinel），
-    //       僅被範圍檢查擋下 → 與 (a) 的 !valid 是不同狀態
+    //     → valid=TRUE（關鍵：below-floor 仍算有效讀值，非 sentinel），僅被範圍
+    //       檢查擋下 → 得 OutOfRange，與 (a) 的 NotSet 是不同 outcome
     time_sync_init(&g_state);
     g_mock.set_reading(true, 1000);
     TEST_ASSERT_TRUE(g_mock.now().valid);
-    TEST_ASSERT_FALSE(simulate_boot_detect_and_seed(
-        &g_mock, &g_state, /*now_millis=*/2000, TIME_SYNC_MIN_EPOCH_MS));
+    const RtcSeedResult b = rtc_try_seed(
+        g_mock, &g_state, /*now_millis=*/2000,
+        TIME_SYNC_MIN_EPOCH_MS, TIME_SYNC_MAX_EPOCH_MS);
+    TEST_ASSERT_EQUAL(RtcSeedOutcome::OutOfRange, b.outcome);  // ★ valid 但越界，非 NotSet
     TEST_ASSERT_FALSE(g_state.synced);
 }
 
