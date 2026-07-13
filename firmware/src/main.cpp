@@ -62,6 +62,14 @@
 GlobalState globalState = GLOBAL_MAIN_MENU;
 uint8_t mainMenuCursor = 0;
 
+// W2：案件模式（OHCA / Training）
+CaseMode g_case_mode = CASE_MODE_OHCA;
+uint32_t g_training_epi_cycle_ms = 240000;  // 預設 4min（Training 入口設為 30000/60000/240000）
+// W3：Training 倒數選擇游標（0=30s / 1=60s / 2=240s）
+uint8_t trainingSetupCursor = 0;
+// W5：Training 保存選單游標（0=保存 / 1=不保存）
+uint8_t trainingSaveCursor = 0;
+
 // OHCA 子狀態
 ohca_state_t ohcaState         = OHCA_STATE_MAIN_MENU;
 uint32_t     ohcaLastEpiMs     = 0;
@@ -113,6 +121,14 @@ uint16_t historyCount        = 0;
 uint16_t historyCursor       = 0;
 uint16_t historyScrollOffset = 0;
 bool     historySummaryMode  = false;
+// W6：歷史分類層
+uint8_t  historyTypeCursor   = 0;  // 0=OHCA / 1=Training
+storage_case_type_t g_history_type = EMS_CASE_TYPE_OHCA;
+// W7：Training 歷史操作選單
+uint8_t  trainingHistoryOptionsCursor = 0;
+bool     trainingDeleteConfirm        = false;
+// W8：重置訓練確認
+bool     trainingResetConfirm         = false;
 
 // Phase B 子流程
 OhcaSubState ohcaSubState = SUBSTATE_NONE;
@@ -626,13 +642,18 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.ventPaused      = ventPaused;
     in.historyCursor       = historyCursor;
     in.historyScrollOffset = historyScrollOffset;
+    in.trainingSetupCursor = trainingSetupCursor;
+    in.historyTypeCursor   = historyTypeCursor;
+    in.trainingHistoryOptionsCursor = trainingHistoryOptionsCursor;
+    in.trainingSaveCursor  = trainingSaveCursor;
 
     // STEP 02: countdownSec — EPI cycle 倒數/超時秒數
     if (ohcaLastEpiMs != 0) {
         const uint32_t since = millis() - ohcaLastEpiMs;
-        in.countdownSec = (since < EPI_CYCLE_MS)
-                        ? (EPI_CYCLE_MS - since) / 1000
-                        : (since - EPI_CYCLE_MS) / 1000;
+        const uint32_t cycle = activeEpiCycleMs();  // 單一真相：Training 用選定週期
+        in.countdownSec = (since < cycle)
+                        ? (cycle - since) / 1000
+                        : (since - cycle) / 1000;
     }
     // STEP 02.02: GLOBAL_SYNC 期間覆寫 countdownSec 觸發 snapshot dedup miss：
     //   AWAITING_INPUT 帶配對碼剩餘秒（每秒重繪）、SENDING 帶已送 chunk 數（進度推進重繪）。
@@ -669,6 +690,8 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.ventBackHintShown     = ventBackHintShown;
     in.endConfirmShown       = endConfirmShown;
     in.resyncConfirmShown    = resyncConfirmShown;  // Phase F §16.7
+    in.trainingDeleteConfirm = trainingDeleteConfirm;  // W7
+    in.trainingResetConfirm  = trainingResetConfirm;   // W8
     in.flashStateActive      = flashState.active;
     in.ventPreShown          = ventPreShown;
     in.historySummaryMode    = historySummaryMode;
@@ -760,6 +783,10 @@ void updateDisplay() {
         if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); display.pushSprite(0, 0); return; }
         if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); display.pushSprite(0, 0); return; }
         if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_TRAINING_SAVE)     { drawTrainingSave();    display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_TRAINING_HISTORY_OPT) { drawTrainingHistoryOptions(); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_DELETE_CONFIRM)    { drawConfirmDialog("刪除此訓練紀錄？", "刪除後不可復原"); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_RESET_CONFIRM)     { drawConfirmDialog("重置訓練？", "將清除本次訓練的\nEPI 與電擊紀錄並重新計時"); display.pushSprite(0, 0); return; }
 
         switch (ohcaState) {
             case OHCA_STATE_START_FLASH:
@@ -774,8 +801,9 @@ void updateDisplay() {
             case OHCA_STATE_OVERTIME: {
                 const uint32_t nowMs  = millis();
                 const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (nowMs - ohcaLastEpiMs);
-                const uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
-                const uint32_t past   = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+                const uint32_t cycle  = activeEpiCycleMs();  // 單一真相：Training 用選定週期
+                const uint32_t remain = (since < cycle) ? (cycle - since) : 0;
+                const uint32_t past   = (since > cycle) ? (since - cycle) : 0;
                 // ALARMING 閃爍開關直接從 snapshot 讀，避免在 render 內二次取樣 millis()
                 const bool alarmingFlashOn = (lastDisplaySnapshot.flags & SNAP_FLAG_ALARMING_FLASH) != 0;
                 if (ohcaState == OHCA_STATE_COUNTDOWN) {
@@ -816,12 +844,18 @@ void updateDisplay() {
         if (showEpiArmedPrompt)        drawOhcaConfirmDialog(EVT_EPI_LOCAL);
         else if (showShockArmedPrompt) drawOhcaConfirmDialog(EVT_SHOCK_LOCAL);
 
+        // W4：Training 全程浮水印（OHCA 模式不畫）
+        if (g_case_mode == CASE_MODE_TRAINING) {
+            drawTrainingWatermark();
+        }
+
     } else if (globalState == GLOBAL_VENT) {
         if (ventPreShown)            drawVentPre();
         else if (ventEndCheckShown)  drawVentEndCheck();
         else                          drawVentStandalone();
-    } else if (globalState == GLOBAL_TRAINING_PLACEHOLDER) {
-        drawPlaceholder("訓練模式", "D 階段");
+    } else if (globalState == GLOBAL_TRAINING_SETUP) {
+        drawTrainingSetup();
+        drawTrainingWatermark();
     } else if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
         // Phase E：列表 vs SUMMARY 子畫面（從歷史進入時重用既有 drawOhcaSummary）
         if (historySummaryMode) {

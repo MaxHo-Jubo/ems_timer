@@ -191,6 +191,15 @@ constexpr const char* SYNC_DEVICE_NAME = SYNC_DEVICE_ID;   // 救護車編號（
 constexpr const char* SYNC_FW_VERSION  = "v0.6-phaseF";    // 韌體版本
 
 // ════════════════════════════════════════════════════════════════
+// 案件模式（W2：Training = OHCA 訓練版，共用核心狀態機）
+// ════════════════════════════════════════════════════════════════
+
+enum CaseMode : uint8_t {
+    CASE_MODE_OHCA     = 0,
+    CASE_MODE_TRAINING = 1,
+};
+
+// ════════════════════════════════════════════════════════════════
 // 全域狀態機 enum
 // ════════════════════════════════════════════════════════════════
 
@@ -198,7 +207,7 @@ enum GlobalState : uint8_t {
     GLOBAL_MAIN_MENU            = 0,
     GLOBAL_OHCA                 = 1,
     GLOBAL_VENT                 = 2,
-    GLOBAL_TRAINING_PLACEHOLDER = 3,
+    GLOBAL_TRAINING_SETUP       = 3,
     GLOBAL_HISTORY_PLACEHOLDER  = 4,
     GLOBAL_SETTINGS_PLACEHOLDER = 5,
     GLOBAL_SYNC                 = 6,
@@ -229,6 +238,11 @@ enum OhcaSubState : uint8_t {
     SUBSTATE_AMIO_CONFIRM          = 6,
     SUBSTATE_TIMELINE              = 7,
     SUBSTATE_QUICK_MENU            = 8,
+    SUBSTATE_TRAINING_SAVE         = 9,  // W5：Training 保存/不保存選單
+    SUBSTATE_HISTORY_CATEGORY      = 10, // W6：歷史分類層（OHCA / Training）
+    SUBSTATE_TRAINING_HISTORY_OPT  = 11, // W7：Training 歷史操作選單
+    SUBSTATE_DELETE_CONFIRM        = 12, // W7：刪除二次確認
+    SUBSTATE_RESET_CONFIRM         = 13, // W8：重置訓練確認
 };
 
 enum BackfillCategory : uint8_t {
@@ -314,6 +328,27 @@ constexpr uint8_t WS2812_PIN = 48;
 // 狀態機
 extern GlobalState globalState;
 extern uint8_t mainMenuCursor;
+// W2：案件模式（OHCA / Training）
+extern CaseMode g_case_mode;
+// W2：Training 倒數週期（30000 / 60000 / 240000）
+extern uint32_t g_training_epi_cycle_ms;
+
+/**
+ * 取得當前案件的 EPI 倒數週期（單一真相來源）
+ *
+ * 倒數 tick、snapshot、各渲染路徑皆須經此取值，避免散落硬編碼 240000
+ * 導致 Training 選 30s/60s 時「狀態機用實際週期、畫面用預設週期」不一致。
+ *
+ * @return Training 模式回傳使用者選定值；OHCA 模式回傳預設 OHCA_EPI_CYCLE_MS_DEFAULT（240s）
+ */
+inline uint32_t activeEpiCycleMs() {
+    return (g_case_mode == CASE_MODE_TRAINING) ? g_training_epi_cycle_ms
+                                               : OHCA_EPI_CYCLE_MS_DEFAULT;
+}
+// W3：Training 倒數選擇游標（0=30s / 1=60s / 2=240s）
+extern uint8_t trainingSetupCursor;
+// W5：Training 保存選單游標（0=保存 / 1=不保存）
+extern uint8_t trainingSaveCursor;
 
 // OHCA
 extern ohca_state_t ohcaState;
@@ -368,6 +403,14 @@ extern uint16_t historyCount;
 extern uint16_t historyCursor;
 extern uint16_t historyScrollOffset;
 extern bool     historySummaryMode;
+// W6：歷史分類層
+extern uint8_t  historyTypeCursor;   // 0=OHCA / 1=Training
+extern storage_case_type_t g_history_type;  // 當前歷史載入類型
+// W7：Training 歷史操作選單
+extern uint8_t trainingHistoryOptionsCursor;
+extern bool    trainingDeleteConfirm; // W7：刪除二次確認顯示中
+// W8：重置訓練確認
+extern bool    trainingResetConfirm;  // W8：重置訓練二次確認顯示中
 
 // Phase B 子流程
 extern OhcaSubState ohcaSubState;
@@ -523,6 +566,7 @@ void drawOhcaEndConfirmDialog();
 void drawResyncConfirmDialog();
 void drawFlashOverlay();
 void drawOhcaVentOverlay(int y_top);
+void drawTrainingWatermark();
 
 // ── shared helpers ──
 void drawCenteredText(const char* text, int16_t y, uint16_t color);
@@ -533,6 +577,10 @@ void drawMainMenu();
 void drawSyncScreen();
 void drawHistoryList();
 void drawPlaceholder(const char* title, const char* phase);
+void drawTrainingSetup();
+void drawTrainingSave();
+void drawTrainingHistoryOptions();
+void drawConfirmDialog(const char* title, const char* body);
 void drawDrugMenu();
 void drawBackfillType();
 void drawBackfillCount();

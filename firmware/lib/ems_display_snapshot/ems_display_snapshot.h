@@ -9,7 +9,7 @@
  *   - memcmp 比較行為穩定（padding 在 native gcc / xtensa-gcc 一致）
  *
  * 設計原則：捕捉時間相關的衍生值（countdownSec / ventBeat / alarmingFlashOn）
- * 由呼叫端先算好，避免 lib 依賴 millis()/EPI_CYCLE_MS 等 runtime / 巨集常數。
+ * 由呼叫端先算好，避免 lib 依賴 millis()/OHCA_EPI_CYCLE_MS_DEFAULT 等 runtime / 巨集常數。
  *
  * 對齊：
  *   - src/main.cpp 1682-1742（搬過來的本體）
@@ -47,6 +47,10 @@ struct DisplaySnapshot {
     bool     ventPaused;
     uint16_t historyCursor;      ///< Phase E：歷史列表 cursor
     uint16_t historyScrollOffset;///< Phase E：歷史列表分頁起點
+    uint8_t  trainingSetupCursor; ///< W3：Training 倒數選擇游標
+    uint8_t  historyTypeCursor;   ///< W6：歷史分類層游標
+    uint8_t  trainingHistoryOptionsCursor; ///< W7：Training 歷史操作選單游標
+    uint8_t  trainingSaveCursor;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
     uint16_t flags;              ///< bit-packed prompt/overlay 狀態
 };
 
@@ -67,6 +71,8 @@ enum DisplaySnapshotFlag : uint16_t {
     SNAP_FLAG_HISTORY_SUMMARY = 0x0800,
     SNAP_FLAG_BLE_CONNECTED   = 0x1000,  // Phase F MVP1：BLE client 連線中
     SNAP_FLAG_RESYNC_CONFIRM  = 0x2000,  // Phase F：已同步案件再次同步的確認 dialog（SoT §16.7）
+    SNAP_FLAG_DELETE_CONFIRM  = 0x4000,  // W7：刪除二次確認顯示中
+    SNAP_FLAG_RESET_CONFIRM   = 0x8000,  // W8：重置訓練二次確認顯示中
 };
 
 
@@ -90,6 +96,10 @@ struct DisplaySnapshotInputs {
     bool     ventPaused      = false;
     uint16_t historyCursor       = 0;
     uint16_t historyScrollOffset = 0;
+    uint8_t  trainingSetupCursor = 0;  ///< W3：Training 倒數選擇游標（0=30s / 1=60s / 2=240s）
+    uint8_t  historyTypeCursor   = 0;  ///< W6：歷史分類層游標（0=OHCA / 1=Training）
+    uint8_t  trainingHistoryOptionsCursor = 0;  ///< W7：Training 歷史操作選單游標
+    uint8_t  trainingSaveCursor = 0;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
 
     // STEP 02: 衍生值（呼叫端先算）
     uint32_t countdownSec    = 0;
@@ -109,7 +119,9 @@ struct DisplaySnapshotInputs {
     bool ventPreShown          = false;
     bool historySummaryMode    = false;
     bool bleConnected          = false;  // Phase F MVP1：g_client_connected 鏡射
-    bool resyncConfirmShown    = false;  // Phase F：§16.7 再次同步確認 dialog 顯示中
+    bool     resyncConfirmShown    = false;  // Phase F：§16.7 再次同步確認 dialog 顯示中
+    bool     trainingDeleteConfirm = false;  // W7：Training 刪除二次確認顯示中
+    bool     trainingResetConfirm  = false;  // W8：重置訓練二次確認顯示中
 };
 
 
@@ -136,6 +148,10 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     s.ventPaused          = in.ventPaused;
     s.historyCursor       = in.historyCursor;
     s.historyScrollOffset = in.historyScrollOffset;
+    s.trainingSetupCursor = in.trainingSetupCursor;
+    s.historyTypeCursor   = in.historyTypeCursor;
+    s.trainingHistoryOptionsCursor = in.trainingHistoryOptionsCursor;
+    s.trainingSaveCursor  = in.trainingSaveCursor;
 
     // STEP 02: bool → bit-packed flags
     if (in.showEpiArmedPrompt)     s.flags |= SNAP_FLAG_EPI_ARMED;
@@ -152,6 +168,8 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.historySummaryMode)     s.flags |= SNAP_FLAG_HISTORY_SUMMARY;
     if (in.bleConnected)           s.flags |= SNAP_FLAG_BLE_CONNECTED;
     if (in.resyncConfirmShown)     s.flags |= SNAP_FLAG_RESYNC_CONFIRM;
+    if (in.trainingDeleteConfirm)  s.flags |= SNAP_FLAG_DELETE_CONFIRM;
+    if (in.trainingResetConfirm)   s.flags |= SNAP_FLAG_RESET_CONFIRM;
 
     return s;
 }

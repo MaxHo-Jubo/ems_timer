@@ -168,9 +168,38 @@ void drawHistoryList() {
     useZhFont();
     char buf[64];
 
+    // STEP 00: W6 歷史分類層（OHCA / Training 選擇）
+    if (ohcaSubState == SUBSTATE_HISTORY_CATEGORY) {
+        display.setTextSize(1.2f, 1.2f);
+        drawCenteredText("選擇歷史類型", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+        display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
+
+        const char* labels[2] = { "OHCA 案件", "Training 紀錄" };
+        constexpr int16_t MENU_Y_START       = 80;
+        constexpr int16_t MENU_ROW_H         = 40;
+        constexpr int16_t MENU_TEXT_PAD      = 32;
+        constexpr int16_t MENU_TEXT_OFFSET_Y = 8;
+        display.setTextSize(1);
+        for (uint8_t i = 0; i < 2; i++) {
+            const int16_t y = MENU_Y_START + i * MENU_ROW_H;
+            if (i == historyTypeCursor) {
+                display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+                display.setTextColor(COLOR_BG);
+            } else {
+                display.setTextColor(COLOR_TEXT_PRIMARY);
+            }
+            display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
+            display.print(labels[i]);
+        }
+        drawCenteredText("主鍵確認  返回 主功能表",
+                         SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+        return;
+    }
+
     // STEP 01: 標題（對齊 demo V1 §12：總數附在標題後）
     //   vlw 未收錄全形括號（`（）`），用半形避字型缺字風險
-    snprintf(buf, sizeof(buf), "OHCA 案件 (%u)", (unsigned)historyCount);
+    const char* type_label = (g_history_type == EMS_CASE_TYPE_TRAINING) ? "Training" : "OHCA";
+    snprintf(buf, sizeof(buf), "%s 案件 (%u)", type_label, (unsigned)historyCount);
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText(buf, OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
@@ -432,10 +461,15 @@ void drawAmioConfirmPrompt() {
 
 /** Timeline 子畫面（V1 §11.5） */
 void drawTimeline() {
-    // 標題
-    useZhFont();
-    display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("事件時間軸", 20, COLOR_ACCENT_OK);
+    // 標題（OHCA / Training 依 mode 分支）
+    {
+        char title[48];
+        snprintf(title, sizeof(title), "事件時間軸｜%s",
+                 (g_case_mode == CASE_MODE_TRAINING) ? "Training" : "OHCA");
+        useZhFont();
+        display.setTextSize(1.2f, 1.2f);
+        drawCenteredText(title, 20, COLOR_ACCENT_OK);
+    }
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
     if (eventCount == 0) {
@@ -603,8 +637,9 @@ void drawQuickMenu() {
     drawCenteredText("快速功能", 20, COLOR_ACCENT_OK);
     display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
 
-    // V1 §14.9：動態 3 / 4 項（B3：加「案件簡版總覽」對齊 demo）
-    const char* labels[4];
+    // V1 §14.9：動態 3 / 4 項（B3：加「案件簡版總覽」對齊 demo）；W8 Training 末項加「重置訓練」
+    const bool is_training = (g_case_mode == CASE_MODE_TRAINING);
+    const char* labels[5];  // 最多 5：vent 已開(4) + Training 重置(1)
     uint8_t count;
     if (!ohcaVentOverlayEnabled) {
         labels[0] = "開啟 6 秒給氣提示";
@@ -617,6 +652,11 @@ void drawQuickMenu() {
         labels[2] = "案件簡版總覽";
         labels[3] = "返回 OHCA";
         count = 4;
+    }
+    // W8：Training 模式末項加「重置訓練」（對齊 input_handler QUICK_MENU resetIdx = cnt-1）
+    if (is_training) {
+        labels[count] = "重置訓練";
+        count++;
     }
 
     constexpr int16_t MENU_Y_START       = 68;  // 往上 10px 避免 4 列時撞到底部 hint
@@ -638,6 +678,124 @@ void drawQuickMenu() {
 
     // 底部 hint 14 字在 size 1 下 ~336px 超出 320，縮 size 0.85 ≈ 286px 完整顯示
     display.setTextSize(0.85f, 0.85f);
-    drawCenteredText("上下選擇　主鍵確認　返回關閉",
+    drawCenteredText("上下選擇 主鍵確認 返回關閉",
+                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+}
+
+/** W3：Training 倒數選擇畫面（30 秒 / 1 分鐘 / 4 分鐘） */
+void drawTrainingSetup() {
+    // 標題
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("訓練倒數", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
+
+    // 3 選項（30s / 60s / 240s）
+    const char* labels[3] = { "30 秒", "1 分鐘", "4 分鐘" };
+    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    useZhFont();
+    display.setTextSize(1);
+    for (uint8_t i = 0; i < 3; i++) {
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
+        if (i == trainingSetupCursor) {
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
+        } else {
+            display.setTextColor(COLOR_TEXT_PRIMARY);
+        }
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
+        display.print(labels[i]);
+    }
+
+    drawSubmenuNavHint();
+}
+
+/** W5：Training 保存選單（保存 / 不保存） */
+void drawTrainingSave() {
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("保存訓練紀錄？", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
+
+    // 2 選項（保存 / 不保存）
+    const char* labels[2] = { "保存", "不保存" };
+    constexpr int16_t MENU_Y_START       = 80;
+    constexpr int16_t MENU_ROW_H         = 40;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 8;
+    useZhFont();
+    display.setTextSize(1);
+    for (uint8_t i = 0; i < 2; i++) {
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
+        if (i == trainingSaveCursor) {
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
+        } else {
+            display.setTextColor(COLOR_TEXT_PRIMARY);
+        }
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
+        display.print(labels[i]);
+    }
+
+    drawSubmenuNavHint();
+}
+
+/** W7：Training 歷史操作選單（查看總覽 / 同步 / 刪除 / 返回） */
+void drawTrainingHistoryOptions() {
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText("訓練紀錄操作", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
+
+    const char* labels[4] = { "查看總覽", "同步至 App", "刪除此訓練紀錄", "返回" };
+    constexpr int16_t MENU_Y_START       = 78;
+    constexpr int16_t MENU_ROW_H         = 36;
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    display.setTextSize(1);
+    for (uint8_t i = 0; i < 4; i++) {
+        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
+        if (i == trainingHistoryOptionsCursor) {
+            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
+        } else {
+            display.setTextColor(COLOR_TEXT_PRIMARY);
+        }
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
+        display.print(labels[i]);
+    }
+    drawSubmenuNavHint();
+}
+
+/** W7 / W8：二次確認對話框（通用） */
+void drawConfirmDialog(const char* title, const char* body) {
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    display.setTextColor(COLOR_ACCENT_WARN, COLOR_BG);
+    display.fillRect(24, 60, SCREEN_W - 48, 120, COLOR_BG);
+    display.drawRect(24, 60, SCREEN_W - 48, 120, COLOR_ACCENT_WARN);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    drawCenteredText(title, 100, COLOR_ACCENT_WARN);
+    display.setTextSize(1);
+    // body 可能含單一 '\n' 需分兩行置中（drawCenteredText 不處理換行，直印會橫向溢框）
+    const char* nl = strchr(body, '\n');
+    if (nl != nullptr) {
+        constexpr size_t DIALOG_LINE_MAX = 48;  // 對話框單行最大位元組數
+        char line1[DIALOG_LINE_MAX];
+        size_t len1 = (size_t)(nl - body);
+        if (len1 >= sizeof(line1)) {
+            len1 = sizeof(line1) - 1;
+        }
+        memcpy(line1, body, len1);
+        line1[len1] = '\0';
+        drawCenteredText(line1, 122, COLOR_TEXT_MUTED);   // 兩行版上行
+        drawCenteredText(nl + 1, 146, COLOR_TEXT_MUTED);  // 兩行版下行
+    } else {
+        drawCenteredText(body, 130, COLOR_TEXT_MUTED);    // 單行版
+    }
+    drawCenteredText("主鍵確認  返回取消",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }

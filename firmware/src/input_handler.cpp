@@ -104,6 +104,7 @@ void onShortPress(uint8_t btnIdx) {
                 switch (mainMenuCursor) {
                     case 0:  // OHCA Case
                         globalState = GLOBAL_OHCA;
+                        g_case_mode = CASE_MODE_OHCA;  // 還原真實案件模式（訓練後不殘留 TRAINING）
                         dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, 0);
                         startFlashStartMs = millis();
                         caseStartMs       = millis();
@@ -128,21 +129,17 @@ void onShortPress(uint8_t btnIdx) {
                         ventPreShown       = true;          // A8：等使用者按主鍵
                         Serial.println("[VENT] enter PRE (preview)");
                         break;
-                    case 2: globalState = GLOBAL_TRAINING_PLACEHOLDER; break;
-                    case 3:  // 歷史紀錄（Phase E）
-                        // 進入時重抓 list（每次進都最新；最新案件在 index 0）
-                        if (g_storage_ready) {
-                            historyCount = storage_list(&g_storage_be,
-                                                        EMS_CASE_TYPE_OHCA,
-                                                        historyCases,
-                                                        EMS_STORAGE_OHCA_CAP);
-                        } else {
-                            historyCount = 0;
-                        }
+                    case 2: globalState = GLOBAL_TRAINING_SETUP; break;
+                    case 3:  // 歷史紀錄（Phase E + W6 分類）
+                        // W6：進入時先顯示分類層（OHCA / Training）
+                        historyTypeCursor   = 0;
+                        g_history_type      = EMS_CASE_TYPE_OHCA;
+                        historyCount        = 0;
                         historyCursor       = 0;
                         historyScrollOffset = 0;
                         historySummaryMode  = false;
                         globalState         = GLOBAL_HISTORY_PLACEHOLDER;
+                        ohcaSubState        = SUBSTATE_HISTORY_CATEGORY;
                         break;
                     case 4:  // 系統設定（Phase G placeholder）
                         globalState = GLOBAL_SETTINGS_PLACEHOLDER;
@@ -232,6 +229,37 @@ void onShortPress(uint8_t btnIdx) {
 
     // ===== Phase E：歷史紀錄（已實作，覆蓋共用佔位處理） =====
     if (globalState == GLOBAL_HISTORY_PLACEHOLDER) {
+        // STEP 01.5: W6 歷史分類層（OHCA / Training）
+        if (ohcaSubState == SUBSTATE_HISTORY_CATEGORY) {
+            if (btnIdx == BTN_UP || btnIdx == BTN_DOWN) {
+                historyTypeCursor = (historyTypeCursor + 1) % 2;  // 0↔1 循環
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                enterMainMenu();
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                // 依 cursor 載入對應類型
+                g_history_type = (historyTypeCursor == 0) ? EMS_CASE_TYPE_OHCA : EMS_CASE_TYPE_TRAINING;
+                if (g_storage_ready) {
+                    // 傳緩衝區實際容量（historyCases[] = OHCA_CAP=50）；OHCA 歷史勿誤截成 TRAINING_CAP(20)
+                    historyCount = storage_list(&g_storage_be,
+                                                g_history_type,
+                                                historyCases,
+                                                EMS_STORAGE_OHCA_CAP);
+                } else {
+                    historyCount = 0;
+                }
+                historyCursor       = 0;
+                historyScrollOffset = 0;
+                historySummaryMode  = false;
+                ohcaSubState        = SUBSTATE_NONE;
+                Serial.printf("[HIST] type=%u count=%u\n", (unsigned)g_history_type, (unsigned)historyCount);
+            }
+            return;
+        }
+
         // STEP 01: SUMMARY 子畫面 — sub-menu cursor + BACK 回列表（SoT §10.4「可同步至 App」涵蓋歷史）
         if (historySummaryMode) {
             switch (btnIdx) {
@@ -279,24 +307,32 @@ void onShortPress(uint8_t btnIdx) {
                 enterMainMenu();
                 break;
             case BTN_PRIMARY:
-                // STEP 02.01: 選定後載入該案件、跳到 SUMMARY 子畫面
+                // STEP 02.01: 選定後依類型分流：Training → 操作選單；OHCA → 載入 SUMMARY
                 if (historyCount > 0 && g_storage_ready) {
-                    uint16_t loaded = 0;
-                    bool ok = storage_load_events(&g_storage_be,
-                                                  EMS_CASE_TYPE_OHCA,
-                                                  historyCases[historyCursor].id,
-                                                  events, MAX_EVENTS, &loaded);
-                    if (ok) {
-                        eventCount = loaded;
-                        historySummaryMode   = true;
-                        summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
-                        resyncConfirmShown   = false;  // 進 SUMMARY 初始化：無殘留 §16.7 dialog
-                        Serial.printf("[STORAGE] loaded case %s (%u events)\n",
-                                      historyCases[historyCursor].id,
-                                      loaded);
+                    if (g_history_type == EMS_CASE_TYPE_TRAINING) {
+                        // W7：Training 歷史 → 操作選單（不直接載入）
+                        ohcaSubState        = SUBSTATE_TRAINING_HISTORY_OPT;
+                        trainingHistoryOptionsCursor = 0;
+                        Serial.println("[HIST] Training options menu");
                     } else {
-                        Serial.printf("[STORAGE] load failed for %s\n",
-                                      historyCases[historyCursor].id);
+                        // OHCA：載入該案件、跳到 SUMMARY 子畫面
+                        uint16_t loaded = 0;
+                        bool ok = storage_load_events(&g_storage_be,
+                                                       g_history_type,
+                                                       historyCases[historyCursor].id,
+                                                      events, MAX_EVENTS, &loaded);
+                        if (ok) {
+                            eventCount = loaded;
+                            historySummaryMode   = true;
+                            summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
+                            resyncConfirmShown   = false;  // 進 SUMMARY 初始化：無殘留 §16.7 dialog
+                            Serial.printf("[STORAGE] loaded case %s (%u events)\n",
+                                          historyCases[historyCursor].id,
+                                          loaded);
+                        } else {
+                            Serial.printf("[STORAGE] load failed for %s\n",
+                                          historyCases[historyCursor].id);
+                        }
                     }
                 }
                 break;
@@ -306,8 +342,53 @@ void onShortPress(uint8_t btnIdx) {
         return;
     }
 
+    // ===== W3：GLOBAL_TRAINING_SETUP 倒數選擇畫面 =====
+    if (globalState == GLOBAL_TRAINING_SETUP) {
+        switch (btnIdx) {
+            case BTN_UP:
+                trainingSetupCursor = (trainingSetupCursor + 2) % 3;  // 2→0 循環
+                break;
+            case BTN_DOWN:
+                trainingSetupCursor = (trainingSetupCursor + 1) % 3;  // 0→1→2 循環
+                break;
+            case BTN_BACK:
+                enterMainMenu();
+                break;
+            case BTN_PRIMARY: {
+                // STEP 01: 依 cursor 設定倒數週期 + 模式
+                switch (trainingSetupCursor) {
+                    case 0: g_training_epi_cycle_ms = 30000;  break;  // 30 秒
+                    case 1: g_training_epi_cycle_ms = 60000;  break;  // 60 秒
+                    case 2: g_training_epi_cycle_ms = 240000; break;  // 240 秒
+                }
+                g_case_mode = CASE_MODE_TRAINING;
+                Serial.printf("[TRAINING] cycle=%u mode=TRAINING\n", g_training_epi_cycle_ms);
+                // STEP 02: case-start 初始化（複製自 case 0 並額外重置 ohcaState；case 0 變更時需手動同步此處）
+                ohcaState         = OHCA_STATE_MAIN_MENU;
+                ohcaLastEpiMs     = 0;
+                ohcaPrevSinceMs   = 0;
+                alarmMuted        = false;
+                eventCount        = 0;
+                nextEventId       = 1;
+                caseStartMs       = millis();
+                caseStartEpochMs  = ems::time_sync_current_epoch_ms(&g_ts_state, caseStartMs);  // 對時前 = 0；不補會帶入前次案件殘留 epoch
+                g_ohca_live_synced_at_ms = 0;  // SoT §16.6 新 case 起始為「App未同步」
+                // STEP 03: 切到 GLOBAL_OHCA（中段完全複用 OHCA 狀態機）
+                globalState       = GLOBAL_OHCA;
+                dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, 0);
+                startFlashStartMs = millis();
+                resetSubState();  // 清子狀態游標/prompt，避免帶入前次案件殘值
+                Serial.println("[TRAINING] enter GLOBAL_OHCA (START_FLASH)");
+                break;
+            }
+            default:
+                break;
+        }
+        return;
+    }
+
     // ===== Phase X 佔位畫面：返回鍵回主功能表 =====
-    if (globalState >= GLOBAL_TRAINING_PLACEHOLDER && globalState <= GLOBAL_SETTINGS_PLACEHOLDER) {
+    if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
         if (btnIdx == BTN_BACK) {
             enterMainMenu();
         }
@@ -338,10 +419,12 @@ void onShortPress(uint8_t btnIdx) {
 
         // STEP 01.5: QUICK_MENU（Phase C，返回鍵入口；V1 §14.9 動態 3/4 項）
         if (ohcaSubState == SUBSTATE_QUICK_MENU) {
+            // W8：Training 加「重置訓練」選項
+            const bool is_training = (g_case_mode == CASE_MODE_TRAINING);
             // V1 §14.9 選項（B3：加「案件簡版總覽」對齊 demo）：
-            //   未開啟：[0] Enable [1] Summary [2] Back
-            //   已開啟：[0] Pause/Resume [1] Disable [2] Summary [3] Back
-            uint8_t cnt = ohcaVentOverlayEnabled ? 4 : 3;
+            //   未開啟：[0] Enable [1] Summary [2] Back (+ Training)
+            //   已開啟：[0] Pause/Resume [1] Disable [2] Summary [3] Back (+ Training)
+            uint8_t cnt = ohcaVentOverlayEnabled ? (is_training ? 5 : 4) : (is_training ? 4 : 3);
             if (btnIdx == BTN_UP) {
                 backfillCursor = (backfillCursor + cnt - 1) % cnt;
                 return;
@@ -354,6 +437,7 @@ void onShortPress(uint8_t btnIdx) {
             if (btnIdx == BTN_PRIMARY) {
                 const uint8_t summaryIdx = ohcaVentOverlayEnabled ? 2 : 1;
                 const uint8_t backIdx    = ohcaVentOverlayEnabled ? 3 : 2;
+                const uint8_t resetIdx   = cnt - 1;  // Training 重置訓練（最後一項）
                 if (backfillCursor == summaryIdx) {
                     // B3：案件簡版總覽 — demo 略過，flash 提示
                     triggerFlash("簡版總覽", "結束案件後看完整總覽", 2000, COLOR_TEXT_PRIMARY,
@@ -365,6 +449,12 @@ void onShortPress(uint8_t btnIdx) {
                 if (backfillCursor == backIdx) {
                     // 返回 OHCA → resetSubState 即可
                     resetSubState();
+                    return;
+                }
+                // W8：Training 重置訓練確認
+                if (is_training && backfillCursor == resetIdx) {
+                    trainingResetConfirm = true;
+                    ohcaSubState         = SUBSTATE_RESET_CONFIRM;
                     return;
                 }
                 if (!ohcaVentOverlayEnabled) {
@@ -411,6 +501,123 @@ void onShortPress(uint8_t btnIdx) {
             return;
         }
 
+        // STEP 02.5: W7 TRAINING_HISTORY_OPT：Training 歷史操作選單
+        if (ohcaSubState == SUBSTATE_TRAINING_HISTORY_OPT) {
+            if (btnIdx == BTN_UP) {
+                trainingHistoryOptionsCursor = (trainingHistoryOptionsCursor + 3) % 4;
+                return;
+            }
+            if (btnIdx == BTN_DOWN) {
+                trainingHistoryOptionsCursor = (trainingHistoryOptionsCursor + 1) % 4;
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                ohcaSubState = SUBSTATE_NONE;
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                // 0=查看總覽 / 1=同步 / 2=刪除 / 3=返回
+                if (trainingHistoryOptionsCursor == 0) {
+                    // 查看總覽：載入事件 → SUMMARY
+                    uint16_t loaded = 0;
+                    bool ok = storage_load_events(&g_storage_be,
+                                                   g_history_type,
+                                                   historyCases[historyCursor].id,
+                                                  events, MAX_EVENTS, &loaded);
+                    if (ok) {
+                        eventCount = loaded;
+                        historySummaryMode   = true;
+                        summarySubmenuCursor = SUMMARY_SUBMENU_TIMELINE;
+                        resyncConfirmShown   = false;
+                    }
+                    ohcaSubState = SUBSTATE_NONE;
+                } else if (trainingHistoryOptionsCursor == 1) {
+                    // 同步至 App
+                    g_sync_target.clear();
+                    strncpy(g_sync_target.id,
+                            historyCases[historyCursor].id,
+                            sizeof(g_sync_target.id) - 1);
+                    g_sync_target.type = g_history_type;
+                    enterSyncFlow();
+                    ohcaSubState = SUBSTATE_NONE;
+                } else if (trainingHistoryOptionsCursor == 2) {
+                    // 刪除：顯示二次確認
+                    trainingDeleteConfirm = true;
+                    ohcaSubState         = SUBSTATE_DELETE_CONFIRM;
+                } else {
+                    // 返回
+                    ohcaSubState = SUBSTATE_NONE;
+                }
+                return;
+            }
+        }
+
+        // STEP 02.6: W7 DELETE_CONFIRM：刪除二次確認
+        if (ohcaSubState == SUBSTATE_DELETE_CONFIRM) {
+            if (btnIdx == BTN_BACK) {
+                trainingDeleteConfirm = false;
+                ohcaSubState          = SUBSTATE_NONE;
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                // 執行刪除
+                bool ok = storage_delete(&g_storage_be,
+                                         g_history_type,
+                                         historyCases[historyCursor].id);
+                Serial.printf("[STORAGE] delete %s %s %s\n",
+                              g_history_type == EMS_CASE_TYPE_OHCA ? "OHCA" : "TRAINING",
+                              historyCases[historyCursor].id,
+                              ok ? "OK" : "FAILED");
+                trainingDeleteConfirm = false;
+                if (ok) {
+                    // 重新抓 list（傳緩衝區實際容量，OHCA 歷史勿誤截成 20）
+                    if (g_storage_ready) {
+                        historyCount = storage_list(&g_storage_be,
+                                                    g_history_type,
+                                                    historyCases,
+                                                    EMS_STORAGE_OHCA_CAP);
+                    } else {
+                        historyCount = 0;
+                    }
+                    historyCursor       = 0;
+                    historyScrollOffset = 0;
+                }
+                ohcaSubState = SUBSTATE_NONE;
+                return;
+            }
+        }
+
+        // STEP 02.7: W8 RESET_CONFIRM：重置訓練二次確認
+        if (ohcaSubState == SUBSTATE_RESET_CONFIRM) {
+            if (btnIdx == BTN_BACK) {
+                trainingResetConfirm = false;
+                ohcaSubState         = SUBSTATE_NONE;
+                return;
+            }
+            if (btnIdx == BTN_PRIMARY) {
+                // 重置訓練：清空事件並比照案件入口重新起始（狀態機回 START_FLASH → WAIT_FIRST_EPI，真正重新計時）
+                eventCount   = 0;
+                nextEventId  = 1;
+                ohcaLastEpiMs = 0;
+                ohcaPrevSinceMs = 0;
+                alarmMuted    = false;
+                showEpiArmedPrompt = false;
+                showShockArmedPrompt = false;
+                showAmioArmedPrompt = false;
+                caseStartMs   = millis();
+                caseStartEpochMs = ems::time_sync_current_epoch_ms(&g_ts_state, caseStartMs);  // 重新計時：重設案件起始 epoch
+                g_locked_saved = false;  // 重置後的新案件允許再次存檔
+                ohcaState     = OHCA_STATE_MAIN_MENU;
+                dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, 0);  // 推進 START_FLASH → WAIT_FIRST_EPI（避免停在無渲染的 MAIN_MENU 死畫面）
+                startFlashStartMs = millis();
+                triggerFlash("已重置訓練", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
+                trainingResetConfirm = false;
+                ohcaSubState         = SUBSTATE_NONE;
+                Serial.println("[TRAINING] reset confirmed");
+                return;
+            }
+        }
+
         // STEP 03: AMIO_CONFIRM：BTN_PRIMARY 兩段確認；返回鍵取消
         if (ohcaSubState == SUBSTATE_AMIO_CONFIRM) {
             if (btnIdx == BTN_BACK) {
@@ -435,6 +642,38 @@ void onShortPress(uint8_t btnIdx) {
                 }
             }
             return;
+        }
+
+        // STEP 03b: TRAINING_SAVE：上下鍵切換保存/不保存；主鍵確認；返回鍵不保存
+        if (ohcaSubState == SUBSTATE_TRAINING_SAVE) {
+            if (btnIdx == BTN_UP || btnIdx == BTN_DOWN) {
+                trainingSaveCursor ^= 1;  // 0 ↔ 1
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                trainingSaveCursor = 1;  // 返回鍵 = 不保存（下方合併分支處理離開）
+            }
+            if (btnIdx == BTN_PRIMARY || btnIdx == BTN_BACK) {
+                if (trainingSaveCursor == 0) {
+                    // 保存：寫入 storage
+                    if (g_storage_ready && !g_locked_saved) {
+                        const ems::CaseEpochs ce =
+                            ems::compute_case_epochs(caseStartEpochMs, &g_ts_state, millis());
+                        bool ok = storage_save_case(&g_storage_be, EMS_CASE_TYPE_TRAINING,
+                                                    events, eventCount,
+                                                    ce.start_ms,
+                                                    ce.end_ms);
+                        Serial.printf("[STORAGE] save training case (%u events) %s\n",
+                                      eventCount, ok ? "OK" : "FAILED");
+                        g_locked_saved = ok;
+                    }
+                }
+                // 無論保存與否，都進入 SUMMARY 顯示
+                ohcaState = OHCA_STATE_SUMMARY;
+                ohcaSubState = SUBSTATE_NONE;
+                resetSubState();
+                return;
+            }
         }
 
         // STEP 04: DRUG_MENU：上下鍵切換「補登 EPI / Amiodarone」；主鍵確認；返回鍵取消
@@ -602,6 +841,17 @@ void onShortPress(uint8_t btnIdx) {
             break;
 
         case BTN_BACK:
+            // W7 / W8：刪除 / 重置確認對話中 → 返回鍵 = 取消
+            if (trainingDeleteConfirm) {
+                trainingDeleteConfirm = false;
+                ohcaSubState          = SUBSTATE_NONE;
+                return;
+            }
+            if (trainingResetConfirm) {
+                trainingResetConfirm = false;
+                ohcaSubState         = SUBSTATE_NONE;
+                return;
+            }
             // A1：兩段確認對話顯示中 → 返回鍵 = 取消對話（modal 行為）
             if (showEpiArmedPrompt || showShockArmedPrompt) {
                 showEpiArmedPrompt   = false;
@@ -779,11 +1029,13 @@ static void enterSyncFlow() {
                 sizeof(g_sync_target.id) - 1);
         g_sync_target.type = historyCases[historyCursor].type;
     } else if (g_storage_ready) {
+        // W6：fallback 依當前歷史類型載入最新案件
         case_meta_t latest;
-        if (storage_list(&g_storage_be, EMS_CASE_TYPE_OHCA, &latest, 1) > 0) {
+        if (storage_list(&g_storage_be, g_history_type, &latest, 1) > 0) {
             strncpy(g_sync_target.id, latest.id, sizeof(g_sync_target.id) - 1);
         } else {
-            Serial.println("[SYNC] WARN no LOCKED OHCA case to tag synced_at");
+            Serial.printf("[SYNC] WARN no %s case to tag synced_at\n",
+                          g_history_type == EMS_CASE_TYPE_OHCA ? "OHCA" : "TRAINING");
         }
     }
     // STEP 03: 切 GLOBAL_SYNC 並 dispatch START（已連線則補 dispatch BLE_CONNECTED 推進狀態）

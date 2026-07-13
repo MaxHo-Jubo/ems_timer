@@ -113,6 +113,26 @@ static void test_end_check_cursor_change_triggers_redraw_b4_regression() {
     ASSERT_FIELD_TRIGGERS_CHANGE(endCheckCursor, 1);
 }
 
+// W3 回溯：Training Setup cursor 移動 bug 同類別（漏 trainingSetupCursor 導致第一次 UP 無重繪）
+static void test_training_setup_cursor_change_triggers_redraw_w3_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(trainingSetupCursor, 1);
+}
+
+// W6 回溯：歷史分類層 cursor 移動 bug 同類別（漏 historyTypeCursor 導致無重繪）
+static void test_history_type_cursor_change_triggers_redraw_w6_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(historyTypeCursor, 1);
+}
+
+// W7 回溯：Training 歷史操作選單 cursor 移動 bug 同類別
+static void test_training_history_options_cursor_change_triggers_redraw_w7_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(trainingHistoryOptionsCursor, 1);
+}
+
+// W5 回溯：Training 保存/不保存 cursor 移動 bug 同類別（漏 trainingSaveCursor 導致保存畫面高亮凍結）
+static void test_training_save_cursor_change_triggers_redraw_w5_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(trainingSaveCursor, 1);
+}
+
 // ============================================================
 //  Group 3: 每個 bool flag → 唯一 bit mask 對應
 //  （regression：新增 flag 但忘記分配 bit 或 bit 撞號）
@@ -202,8 +222,20 @@ static void test_flag_resync_confirm_sets_bit_0x2000() {
     TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_RESYNC_CONFIRM, captureSnapshot(in).flags);
 }
 
+static void test_flag_delete_confirm_sets_bit_0x4000() {
+    DisplaySnapshotInputs in;
+    in.trainingDeleteConfirm = true;
+    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_DELETE_CONFIRM, captureSnapshot(in).flags);
+}
+
+static void test_flag_reset_confirm_sets_bit_0x8000() {
+    DisplaySnapshotInputs in;
+    in.trainingResetConfirm = true;
+    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_RESET_CONFIRM, captureSnapshot(in).flags);
+}
+
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 14 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 16 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -222,6 +254,8 @@ static void test_all_flags_on_combine_all_bits() {
     in.historySummaryMode    = true;
     in.bleConnected          = true;
     in.resyncConfirmShown    = true;
+    in.trainingDeleteConfirm = true;
+    in.trainingResetConfirm  = true;
 
     const uint16_t expected = SNAP_FLAG_EPI_ARMED
                             | SNAP_FLAG_SHOCK_ARMED
@@ -236,19 +270,22 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_VENT_PRE
                             | SNAP_FLAG_HISTORY_SUMMARY
                             | SNAP_FLAG_BLE_CONNECTED
-                            | SNAP_FLAG_RESYNC_CONFIRM;
+                            | SNAP_FLAG_RESYNC_CONFIRM
+                            | SNAP_FLAG_DELETE_CONFIRM
+                            | SNAP_FLAG_RESET_CONFIRM;
     TEST_ASSERT_EQUAL_UINT16(expected, captureSnapshot(in).flags);
 }
 
 static void test_all_flags_bit_masks_are_unique() {
-    // 確保 14 個 mask 沒有撞號（OR 全部應等於 set bit count = 14）
+    // 確保 16 個 mask 沒有撞號（OR 全部應等於 set bit count = 16；uint16_t 已用滿）
     const uint16_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
                        | SNAP_FLAG_VENT_BACK_HINT | SNAP_FLAG_ALARMING_FLASH
                        | SNAP_FLAG_END_CONFIRM | SNAP_FLAG_FLASH_ACTIVE
                        | SNAP_FLAG_VENT_PRE | SNAP_FLAG_HISTORY_SUMMARY
-                       | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM;
+                       | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM
+                       | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM;
     // popcount
     int bits = 0;
     for (uint16_t m = all; m; m >>= 1) {
@@ -256,7 +293,7 @@ static void test_all_flags_bit_masks_are_unique() {
             bits++;
         }
     }
-    TEST_ASSERT_EQUAL_INT(14, bits);
+    TEST_ASSERT_EQUAL_INT(16, bits);
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -282,6 +319,13 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_summary_submenu_cursor_change_triggers_redraw_phase_f_regression);
     RUN_TEST(test_end_check_cursor_change_triggers_redraw_b4_regression);
 
+    // W3 回溯：Training Setup cursor 移動 bug 同類別
+    RUN_TEST(test_training_setup_cursor_change_triggers_redraw_w3_regression);
+    // W5/W6/W7 回溯：Training 保存/歷史分類/歷史操作 cursor 同類別
+    RUN_TEST(test_history_type_cursor_change_triggers_redraw_w6_regression);
+    RUN_TEST(test_training_history_options_cursor_change_triggers_redraw_w7_regression);
+    RUN_TEST(test_training_save_cursor_change_triggers_redraw_w5_regression);
+
     // Group 3: bool flag → bit mask
     RUN_TEST(test_flag_epi_armed_sets_bit_0x0001);
     RUN_TEST(test_flag_shock_armed_sets_bit_0x0002);
@@ -297,6 +341,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_flag_history_summary_sets_bit_0x0800);
     RUN_TEST(test_flag_ble_connected_sets_bit_0x1000);
     RUN_TEST(test_flag_resync_confirm_sets_bit_0x2000);
+    RUN_TEST(test_flag_delete_confirm_sets_bit_0x4000);
+    RUN_TEST(test_flag_reset_confirm_sets_bit_0x8000);
 
     // Group 4: combine + uniqueness
     RUN_TEST(test_all_flags_on_combine_all_bits);

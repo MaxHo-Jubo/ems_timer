@@ -51,11 +51,13 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
                       end_check_source);
     }
 
-    // STEP 04: Phase E — 首次進 LOCKED 持久化案件，離開 LOCKED 時 reset 防重複旗標
+    // STEP 04: Phase E — 首次進 LOCKED 持久化案件（OHCA 自動存，Training 轉選單）
+    // §15.12：Training 不可在 LOCKED 自動存，等 SUBSTATE_TRAINING_SAVE 選「保存」才寫
     if (ohcaState == OHCA_STATE_LOCKED
         && prev != OHCA_STATE_LOCKED
         && g_storage_ready
         && !g_locked_saved) {
+        if (g_case_mode == CASE_MODE_OHCA) {
         // 起訖時戳：未對時 → 0；RTC seed 或 BLE Apply 後 → 真實 epoch。
         // 捕捉決策抽進 ems::compute_case_epochs（與 native test 共用同一函式）：
         // start 取案件開始捕捉的 caseStartEpochMs（input_handler.cpp:110，不回填）、
@@ -85,10 +87,15 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
             Serial.println("[STORAGE] WARN save failed; will auto-retry next tick "
                            "(C-4 minimal fix; PM-aligned UI feedback TBD)");
         }
+        } else if (g_case_mode == CASE_MODE_TRAINING) {
+        // Training 進 LOCKED 不自動存，轉 SUBSTATE_TRAINING_SAVE 讓救護員選擇
+        ohcaSubState = SUBSTATE_TRAINING_SAVE;
+        }
     }
     if (ohcaState != OHCA_STATE_LOCKED
         && ohcaState != OHCA_STATE_SUMMARY) {
         g_locked_saved = false;
+        ohcaSubState = SUBSTATE_NONE;
     }
 
     // STEP 05: V1 §14.12 首次進 LOCKED = 案件結束 → 自動停止 6 秒給氣。
@@ -126,12 +133,13 @@ void updateOhcaTick() {
 
         uint32_t since = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
 
-        // STEP 02.01: 取出當前 phase，推進 phase
+        // STEP 02.01: 取出當前 phase，推進 phase（週期取自 activeEpiCycleMs 單一真相）
         ohca_phase_t curPhase = mapStateToPhase(ohcaState);
-        ohca_phase_t newPhase = advanceOhcaPhase(curPhase, since);
+        uint32_t cycle = activeEpiCycleMs();
+        ohca_phase_t newPhase = advanceOhcaPhase(curPhase, since, cycle);
 
         // STEP 02.02: 計算輸出（含邊緣偵測）
-        ohca_output_t out = decideOhcaOutput(newPhase, ohcaPrevSinceMs, since);
+        ohca_output_t out = decideOhcaOutput(newPhase, ohcaPrevSinceMs, since, cycle);
         applyOhcaOutput(out);
 
         // STEP 02.03: 同步狀態機
@@ -150,7 +158,7 @@ void updateOhcaTick() {
 }
 
 // ============================================================
-// 紀錄事件（Phase A：in-memory only；Phase E 才 LittleFS 持久化）
+// 紀錄事件（in-memory；案件結束時 storage_save_case 寫 LittleFS）
 // ============================================================
 
 /** 紀錄本機即時事件（EVT_EPI_LOCAL / EVT_SHOCK_LOCAL / EVT_AMIODARONE） */
@@ -266,7 +274,7 @@ void enterMainMenu() {
     globalState = GLOBAL_MAIN_MENU;
 }
 
-/** 退出 OHCA case：回主功能表並重置所有 OHCA 執行期狀態（事件、倒數、捲動、通氣 overlay、蜂鳴） */
+/** 退出 OHCA case：回主功能表並重置所有 OHCA 執行期狀態（事件、倒數、捲動、通氣 overlay、蜂鳴、案件模式） */
 void exitOhcaCase() {
     enterMainMenu();
     ohcaState              = OHCA_STATE_MAIN_MENU;
@@ -275,6 +283,7 @@ void exitOhcaCase() {
     eventCount             = 0;
     summaryScrollOffset    = 0;
     alarmMuted             = false;
+    g_case_mode            = CASE_MODE_OHCA;  // 還原預設模式，訓練不殘留到下個真實案件
     resetOhcaVentState();             // V1 §14.12 案件結束 → 6 秒給氣自動停止
     stopBeep();
 }

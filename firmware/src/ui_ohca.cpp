@@ -125,8 +125,9 @@ void drawOhcaCountdownCommon(uint32_t time_ms, uint16_t timeColor, const char* l
 void drawOhcaCountdownTimeOnly(uint8_t ohcaStateForTime) {
     const uint32_t now    = millis();
     const uint32_t since  = (ohcaLastEpiMs == 0) ? 0 : (now - ohcaLastEpiMs);
-    const uint32_t remain = (since < EPI_CYCLE_MS) ? (EPI_CYCLE_MS - since) : 0;
-    const uint32_t past   = (since > EPI_CYCLE_MS) ? (since - EPI_CYCLE_MS) : 0;
+    const uint32_t cycle  = activeEpiCycleMs();  // 單一真相：Training 用選定週期
+    const uint32_t remain = (since < cycle) ? (cycle - since) : 0;
+    const uint32_t past   = (since > cycle) ? (since - cycle) : 0;
 
     uint32_t time_ms;
     uint16_t timeColor;
@@ -387,9 +388,14 @@ void drawOhcaSummary() {
     char buf[64];
 
     // STEP 02: 標題（對齊 demo V1 §11.1）
-    //   「｜OHCA」全形 vertical bar 已在 EPI/電擊細分字串驗證可顯示
-    display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("案件總覽｜OHCA", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    //   「｜OHCA」/「｜Training」全形 vertical bar 已在 EPI/電擊細分字串驗證可顯示
+    {
+        const char* caseLabel = (g_case_mode == CASE_MODE_TRAINING) ? "Training" : "OHCA";
+        char title[32];
+        snprintf(title, sizeof(title), "案件總覽｜%s", caseLabel);
+        display.setTextSize(1.2f, 1.2f);
+        drawCenteredText(title, OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    }
 
     // STEP 02.01: 同步狀態列（SoT §11.1「同步狀態：App未同步」/§16.6 「同步時間」）
     //   歷史模式從 historyCases mirror 取；現場模式從 g_ohca_live_synced_at_ms 取。
@@ -600,4 +606,16 @@ void drawOhcaVentOverlay(int /*y_top*/) {
     char buf[16];
     snprintf(buf, sizeof(buf), "通氣 %u", num);
     display.drawString(buf, SCREEN_W - 8, OHCA_BADGE_Y + 2);
+}
+
+/** W4：Training 全程浮水印（右上角「訓練模式」，半透明灰字，不擋主資訊） */
+void drawTrainingWatermark() {
+    if (g_case_mode != CASE_MODE_TRAINING) {
+        return;
+    }
+    useZhFont();
+    display.setTextSize(0.85f, 0.85f);
+    display.setTextColor(COLOR_TEXT_DIM);
+    display.setTextDatum(textdatum_t::top_right);
+    display.drawString("訓練模式", SCREEN_W - 8, OHCA_BADGE_Y + 2);
 }

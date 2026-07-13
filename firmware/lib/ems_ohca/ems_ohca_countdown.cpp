@@ -33,29 +33,45 @@ static bool crossedBeepMarker(uint32_t prev_since_ms,
 }
 
 /**
- * 計算顯示倒數剩餘 ms：EPI_CYCLE_MS - since（clamp 到 0）
+ * 計算顯示倒數剩餘 ms：epi_cycle_ms - since（clamp 到 0）
  */
-static uint32_t computeRemainingMs(uint32_t since_last_epi_ms) {
-    if (since_last_epi_ms >= EPI_CYCLE_MS) {
+static uint32_t computeRemainingMs(uint32_t since_last_epi_ms, uint32_t epi_cycle_ms) {
+    if (since_last_epi_ms >= epi_cycle_ms) {
         return 0;
     }
-    return EPI_CYCLE_MS - since_last_epi_ms;
+    return epi_cycle_ms - since_last_epi_ms;
 }
 
 ohca_phase_t advanceOhcaPhase(ohca_phase_t current,
-                              uint32_t since_last_epi_ms) {
+                              uint32_t since_last_epi_ms,
+                              uint32_t epi_cycle_ms) {
     // STEP 01: WAIT_FIRST_EPI 必須由外部 EPI confirm 轉換，計時不影響
     if (current == OHCA_PHASE_WAIT_FIRST_EPI) {
         return OHCA_PHASE_WAIT_FIRST_EPI;
     }
-    // STEP 02: 依測試計劃 §3.1 邊界推導 phase
-    if (since_last_epi_ms <= OHCA_COUNTDOWN_END_MS) {
+    // STEP 02: 依 epi_cycle_ms 推導衍生邊界
+    // §15.7：非標準週期（< TRAINING_WARNING_MIN_CYCLE_MS）跳 WARNING，COUNTDOWN 邊界 = epi_cycle_ms（無 WARNING 區間）
+    // 標準週期（≥240s）：COUNTDOWN_END = epi_cycle_ms - EPI_WARNING_MS
+    uint32_t alarming_end = epi_cycle_ms + EPI_ALARM_INITIAL_MS;  // ALARMING → OVERTIME 邊界
+    // STEP 03: §15.7 非標準週期（< TRAINING_WARNING_MIN_CYCLE_MS，即 Training 30s/60s）跳過 WARNING，直接 COUNTDOWN → ALARMING
+    if (epi_cycle_ms < TRAINING_WARNING_MIN_CYCLE_MS) {
+        if (since_last_epi_ms < epi_cycle_ms) {
+            return OHCA_PHASE_COUNTDOWN;
+        }
+        if (since_last_epi_ms <= alarming_end) {
+            return OHCA_PHASE_ALARMING;
+        }
+        return OHCA_PHASE_OVERTIME;
+    }
+    // STEP 04: 標準週期（≥240s）含 WARNING
+    uint32_t countdown_end = epi_cycle_ms - EPI_WARNING_MS;  // COUNTDOWN → WARNING 邊界
+    if (since_last_epi_ms <= countdown_end) {
         return OHCA_PHASE_COUNTDOWN;
     }
-    if (since_last_epi_ms < EPI_CYCLE_MS) {
+    if (since_last_epi_ms < epi_cycle_ms) {
         return OHCA_PHASE_WARNING;
     }
-    if (since_last_epi_ms <= OHCA_ALARMING_END_MS) {
+    if (since_last_epi_ms <= alarming_end) {
         return OHCA_PHASE_ALARMING;
     }
     return OHCA_PHASE_OVERTIME;
@@ -63,10 +79,16 @@ ohca_phase_t advanceOhcaPhase(ohca_phase_t current,
 
 ohca_output_t decideOhcaOutput(ohca_phase_t phase,
                                uint32_t prev_since_ms,
-                               uint32_t since_last_epi_ms) {
+                               uint32_t since_last_epi_ms,
+                               uint32_t epi_cycle_ms) {
     // STEP 01: 預設輸出全部關閉 / 0 / nullptr
     ohca_output_t out = {};
     out.display_label = nullptr;
+
+    // 依 epi_cycle_ms 推導衍生邊界（取代 header 的 constexpr）
+    // 短週期（< EPI_WARNING_MS）clamp 到 0 防無號下溢；此類週期不會進 WARNING phase，此值不被使用
+    uint32_t countdown_end = (epi_cycle_ms > EPI_WARNING_MS) ? (epi_cycle_ms - EPI_WARNING_MS) : 0;
+    uint32_t alarming_end  = epi_cycle_ms + EPI_ALARM_INITIAL_MS;  // ALARMING → OVERTIME 邊界
 
     switch (phase) {
         // STEP 02.01: WAIT_FIRST_EPI — 待本機 EPI，全部 idle
@@ -76,18 +98,21 @@ ohca_output_t decideOhcaOutput(ohca_phase_t phase,
 
         // STEP 02.02: COUNTDOWN — 倒數中，僅顯示剩餘時間
         case OHCA_PHASE_COUNTDOWN:
-            out.display_remaining_ms = computeRemainingMs(since_last_epi_ms);
+            out.display_remaining_ms = computeRemainingMs(since_last_epi_ms, epi_cycle_ms);
             break;
 
         // STEP 02.03: WARNING — 1 分鐘預警，黃慢閃 + 每 15s 短嗶
         case OHCA_PHASE_WARNING:
-            out.display_label        = "請準備給藥";
             out.led_yellow_slow      = true;
-            out.display_remaining_ms = computeRemainingMs(since_last_epi_ms);
-            // WARNING 首個 marker：since=180001（COUNTDOWN_END+1）
+            out.display_remaining_ms = computeRemainingMs(since_last_epi_ms, epi_cycle_ms);
+            // §15.7：Training 非標準週期（< TRAINING_WARNING_MIN_CYCLE_MS）跳過 WARNING 顯示，僅黃燈
+            if (epi_cycle_ms >= TRAINING_WARNING_MIN_CYCLE_MS) {
+                out.display_label = "請準備給藥";
+            }
+            // WARNING 首個 marker：since=countdown_end+1（依 epi_cycle_ms 推導）
             out.buzz_short = crossedBeepMarker(
                 prev_since_ms, since_last_epi_ms,
-                OHCA_COUNTDOWN_END_MS + 1,
+                countdown_end + 1,
                 EPI_WARN_BEEP_INTERVAL_MS);
             break;
 
@@ -104,12 +129,12 @@ ohca_output_t decideOhcaOutput(ohca_phase_t phase,
         // STEP 02.05: OVERTIME — 累計時間，紅慢閃 + 每 15s 短嗶
         case OHCA_PHASE_OVERTIME:
             out.led_red_slow         = true;
-            out.display_label        = nullptr;            // 畫面顯示累計時間
+            out.display_label        = nullptr;  // 畫面顯示累計時間
             out.display_remaining_ms = since_last_epi_ms;  // 累計值（不是剩餘）
-            // OVERTIME 首個 marker：since=245001（ALARMING_END+1）
+            // OVERTIME 首個 marker：since=alarming_end+1（依 epi_cycle_ms 推導）
             out.buzz_short = crossedBeepMarker(
                 prev_since_ms, since_last_epi_ms,
-                OHCA_ALARMING_END_MS + 1,
+                alarming_end + 1,
                 EPI_ALARM_REMIND_INTERVAL_MS);
             break;
     }

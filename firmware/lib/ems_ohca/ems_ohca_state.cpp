@@ -89,9 +89,11 @@ ohca_state_t nextOhcaState(ohca_state_t current,
                 return OHCA_STATE_COUNTDOWN;
             }
             // STEP 04.04.02: 計時推進 → delegate 至 advanceOhcaPhase
+            //   註：live tick 走 ohca_logic.cpp updateOhcaTick（以 activeEpiCycleMs 為單一真相）；
+            //       此 TIMER_TICK 分支目前僅 unit test 呼叫，故傳預設週期
             if (event == OHCA_EVT_TIMER_TICK) {
                 ohca_phase_t cur_phase  = mapStateToPhase(current);
-                ohca_phase_t next_phase = advanceOhcaPhase(cur_phase, since_last_epi_ms);
+                ohca_phase_t next_phase = advanceOhcaPhase(cur_phase, since_last_epi_ms, OHCA_EPI_CYCLE_MS_DEFAULT);
                 return mapPhaseToState(next_phase);
             }
             // STEP 04.04.03: 主鍵長按 3s → 結束前檢查（SoT V1 §10.1：任意進行中 phase）
