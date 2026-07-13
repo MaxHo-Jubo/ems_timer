@@ -753,6 +753,25 @@ void drawTrainingHistoryOptions() {
                      "上下選擇  主鍵確認  返回");
 }
 
+/** W9：儲存失敗提示（紅字「存檔失敗」+ 重試按鈕，無聲音）
+ *
+ * 呼叫時機：OHCA 案件結束進入 LOCKED 但 storage_save_case 失敗時，
+ *   在 SUMMARY 畫面下方顯示紅字警告，提示救護員按主鍵重試。
+ *   不觸發蜂鳴器（避免救護現場噪音干擾）。
+ *
+ * @param type 案件類型（OHCA / Training），用於 log 輸出
+ */
+void drawStorageFailure(CaseMode type) {
+    // STEP 01: 底部警告列（紅色背景 + 白字）
+    display.fillRect(0, SCREEN_H - 56, SCREEN_W, 56, COLOR_ACCENT_ALERT);
+    display.setTextSize(1.2f, 1.2f);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::middle_center);
+
+    const char* msg = "存檔失敗  按主鍵重試";
+    display.drawString(msg, SCREEN_W / 2, SCREEN_H - 28);
+}
+
 /** W7 / W8：二次確認對話框（通用） */
 void drawConfirmDialog(const char* title, const char* body) {
     useZhFont();

@@ -666,6 +666,8 @@ void onShortPress(uint8_t btnIdx) {
                         Serial.printf("[STORAGE] save training case (%u events) %s\n",
                                       eventCount, ok ? "OK" : "FAILED");
                         g_locked_saved = ok;
+                        // W9：儲存失敗狀態（Training 路徑）
+                        g_storage_failure = ok ? 0 : 2;  // 2 = Training 保存失敗
                     }
                 }
                 // 無論保存與否，都進入 SUMMARY 顯示
@@ -817,6 +819,26 @@ void onShortPress(uint8_t btnIdx) {
             }
             // STEP 04: SUMMARY 主鍵 — 觸發 sub-menu 當前 cursor 對應行為（SoT V1 §11.1）
             if (ohcaState == OHCA_STATE_SUMMARY) {
+                // W9：儲存失敗重試（主鍵在 SUMMARY 且 g_storage_failure != 0 時重試存檔）
+                if (g_storage_failure != 0) {
+                    const ems::CaseEpochs ce =
+                        ems::compute_case_epochs(caseStartEpochMs, &g_ts_state, millis());
+                    bool ok = storage_save_case(&g_storage_be, g_case_mode,
+                                                events, eventCount,
+                                                ce.start_ms,
+                                                ce.end_ms);
+                    Serial.printf("[STORAGE] retry save (%u events) %s\n",
+                                  eventCount, ok ? "OK" : "FAILED");
+                    if (ok) {
+                        g_locked_saved = true;
+                        g_storage_failure = 0;
+                        triggerFlash("已存入歷史", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
+                    } else {
+                        g_storage_failure = (g_case_mode == CASE_MODE_OHCA) ? 1 : 2;
+                        Serial.println("[STORAGE] WARN retry failed; keep warning");
+                    }
+                    return;
+                }
                 handleSummarySubmenuPrimary();
                 return;
             }

@@ -338,6 +338,9 @@ extern CaseMode g_case_mode;
 // W2：Training 倒數週期（TRAINING_CYCLE_30S / TRAINING_CYCLE_60S / TRAINING_CYCLE_240S）
 extern uint32_t g_training_epi_cycle_ms;
 
+/** 儲存失敗狀態（0=無 / 1=OHCA 失敗 / 2=Training 失敗） */
+extern uint8_t g_storage_failure;
+
 /**
  * 取得當前案件的 EPI 倒數週期（單一真相來源）
  *
@@ -581,6 +584,9 @@ void drawSubmenuNavHint();
 void drawVerticalMenu(const char* title, const char* labels[], uint8_t count,
                       uint8_t cursor, uint16_t rowH, int16_t yStart,
                       const char* hint);
+
+/** 儲存失敗提示（紅字「存檔失敗」+ 重試按鈕，無聲音） */
+void drawStorageFailure(CaseMode type);
 
 // ── ui_screens.cpp ──
 void drawMainMenu();

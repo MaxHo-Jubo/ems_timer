@@ -70,6 +70,9 @@ uint8_t trainingSetupCursor = 0;
 // W5：Training 保存選單游標（0=保存 / 1=不保存）
 uint8_t trainingSaveCursor = 0;
 
+// W9：儲存失敗狀態（0=無 / 1=OHCA 失敗 / 2=Training 失敗）
+uint8_t g_storage_failure = 0;
+
 // OHCA 子狀態
 ohca_state_t ohcaState         = OHCA_STATE_MAIN_MENU;
 uint32_t     ohcaLastEpiMs     = 0;
@@ -123,7 +126,7 @@ uint16_t historyScrollOffset = 0;
 bool     historySummaryMode  = false;
 // W6：歷史分類層
 uint8_t  historyTypeCursor   = 0;  // 0=OHCA / 1=Training
-storage_case_type_t g_history_type = EMS_CASE_TYPE_OHCA;
+CaseMode g_history_type = CASE_MODE_OHCA;
 // W7：Training 歷史操作選單
 uint8_t  trainingHistoryOptionsCursor = 0;
 bool     trainingDeleteConfirm        = false;
@@ -692,6 +695,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.resyncConfirmShown    = resyncConfirmShown;  // Phase F §16.7
     in.trainingDeleteConfirm = trainingDeleteConfirm;  // W7
     in.trainingResetConfirm  = trainingResetConfirm;   // W8
+    in.storageFailure        = g_storage_failure;      // W9：儲存失敗狀態
     in.flashStateActive      = flashState.active;
     in.ventPreShown          = ventPreShown;
     in.historySummaryMode    = historySummaryMode;
@@ -865,6 +869,18 @@ void updateDisplay() {
         }
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
         drawPlaceholder("系統設定", "G 階段");
+    }
+
+    // W9：儲存失敗提示（紅字警告 + 重試按鈕，無聲音）
+    //   在 SUMMARY 畫面下方顯示，不擋主資訊；重試由主鍵觸發。
+    if (g_storage_failure != 0) {
+        // 在 SUMMARY 畫面下方顯示警告列
+        display.fillRect(0, SCREEN_H - 56, SCREEN_W, 56, COLOR_ACCENT_ALERT);
+        display.setTextSize(1.2f, 1.2f);
+        display.setTextColor(COLOR_TEXT_PRIMARY);
+        display.setTextDatum(textdatum_t::middle_center);
+        const char* msg = "存檔失敗  按主鍵重試";
+        display.drawString(msg, SCREEN_W / 2, SCREEN_H - 28);
     }
 
     // Flash overlay 最上層覆蓋（demo flash() 對齊 — 蓋掉所有底下畫面）

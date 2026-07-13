@@ -71,7 +71,7 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
                           (unsigned long long)ce.start_ms,
                           (unsigned long long)ce.end_ms);
         }
-        bool ok = storage_save_case(&g_storage_be, EMS_CASE_TYPE_OHCA,
+        bool ok = storage_save_case(&g_storage_be, CASE_MODE_OHCA,
                                     events, eventCount,
                                     ce.start_ms,
                                     ce.end_ms);
@@ -80,12 +80,14 @@ void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms) {
         // C-4 最小修：只有成功才設 true。原本 unconditional = true 導致失敗永不重試 +
         // 救護員以為紀錄齊全（silent data loss）。失敗時 g_locked_saved 留 false，
         // 下個 tick 進來條件仍成立 → 自動 retry。
-        // 完整修法（紅色 UI 警告 + 蜂鳴 + 重試按鈕 + 失敗哲學 A/B/C）需 PM 對齊，
-        // 見 tasks/todo.md §🔧 Group 2C C-4。
-        g_locked_saved = ok;
-        if (!ok) {
+        // W9：儲存失敗 UI 回饋（無聲音，紅字 + 重試按鈕）
+        if (ok) {
+            g_locked_saved = true;
+            g_storage_failure = 0;
+        } else {
+            g_storage_failure = 1;  // 1 = OHCA 保存失敗
             Serial.println("[STORAGE] WARN save failed; will auto-retry next tick "
-                           "(C-4 minimal fix; PM-aligned UI feedback TBD)");
+                           "+ show red warning (W9)");
         }
         } else if (g_case_mode == CASE_MODE_TRAINING) {
         // Training 進 LOCKED 不自動存，轉 SUBSTATE_TRAINING_SAVE 讓救護員選擇
