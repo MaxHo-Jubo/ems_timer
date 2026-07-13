@@ -133,7 +133,7 @@ void onShortPress(uint8_t btnIdx) {
                     case 3:  // 歷史紀錄（Phase E + W6 分類）
                         // W6：進入時先顯示分類層（OHCA / Training）
                         historyTypeCursor   = 0;
-                        g_history_type      = EMS_CASE_TYPE_OHCA;
+                        g_history_type      = CASE_MODE_OHCA;
                         historyCount        = 0;
                         historyCursor       = 0;
                         historyScrollOffset = 0;
@@ -241,7 +241,7 @@ void onShortPress(uint8_t btnIdx) {
             }
             if (btnIdx == BTN_PRIMARY) {
                 // 依 cursor 載入對應類型
-                g_history_type = (historyTypeCursor == 0) ? EMS_CASE_TYPE_OHCA : EMS_CASE_TYPE_TRAINING;
+                g_history_type = (historyTypeCursor == 0) ? CASE_MODE_OHCA : CASE_MODE_TRAINING;
                 if (g_storage_ready) {
                     // 傳緩衝區實際容量（historyCases[] = OHCA_CAP=50）；OHCA 歷史勿誤截成 TRAINING_CAP(20)
                     historyCount = storage_list(&g_storage_be,
@@ -309,7 +309,7 @@ void onShortPress(uint8_t btnIdx) {
             case BTN_PRIMARY:
                 // STEP 02.01: 選定後依類型分流：Training → 操作選單；OHCA → 載入 SUMMARY
                 if (historyCount > 0 && g_storage_ready) {
-                    if (g_history_type == EMS_CASE_TYPE_TRAINING) {
+                    if (g_history_type == CASE_MODE_TRAINING) {
                         // W7：Training 歷史 → 操作選單（不直接載入）
                         ohcaSubState        = SUBSTATE_TRAINING_HISTORY_OPT;
                         trainingHistoryOptionsCursor = 0;
@@ -357,9 +357,9 @@ void onShortPress(uint8_t btnIdx) {
             case BTN_PRIMARY: {
                 // STEP 01: 依 cursor 設定倒數週期 + 模式
                 switch (trainingSetupCursor) {
-                    case 0: g_training_epi_cycle_ms = 30000;  break;  // 30 秒
-                    case 1: g_training_epi_cycle_ms = 60000;  break;  // 60 秒
-                    case 2: g_training_epi_cycle_ms = 240000; break;  // 240 秒
+                    case 0: g_training_epi_cycle_ms = TRAINING_CYCLE_30S;  break;  // 30 秒
+                    case 1: g_training_epi_cycle_ms = TRAINING_CYCLE_60S;  break;  // 60 秒
+                    case 2: g_training_epi_cycle_ms = TRAINING_CYCLE_240S; break;  // 240 秒
                 }
                 g_case_mode = CASE_MODE_TRAINING;
                 Serial.printf("[TRAINING] cycle=%u mode=TRAINING\n", g_training_epi_cycle_ms);
@@ -565,7 +565,7 @@ void onShortPress(uint8_t btnIdx) {
                                          g_history_type,
                                          historyCases[historyCursor].id);
                 Serial.printf("[STORAGE] delete %s %s %s\n",
-                              g_history_type == EMS_CASE_TYPE_OHCA ? "OHCA" : "TRAINING",
+                              g_history_type == CASE_MODE_OHCA ? "OHCA" : "TRAINING",
                               historyCases[historyCursor].id,
                               ok ? "OK" : "FAILED");
                 trainingDeleteConfirm = false;
@@ -659,7 +659,7 @@ void onShortPress(uint8_t btnIdx) {
                     if (g_storage_ready && !g_locked_saved) {
                         const ems::CaseEpochs ce =
                             ems::compute_case_epochs(caseStartEpochMs, &g_ts_state, millis());
-                        bool ok = storage_save_case(&g_storage_be, EMS_CASE_TYPE_TRAINING,
+                        bool ok = storage_save_case(&g_storage_be, CASE_MODE_TRAINING,
                                                     events, eventCount,
                                                     ce.start_ms,
                                                     ce.end_ms);
@@ -1035,7 +1035,7 @@ static void enterSyncFlow() {
             strncpy(g_sync_target.id, latest.id, sizeof(g_sync_target.id) - 1);
         } else {
             Serial.printf("[SYNC] WARN no %s case to tag synced_at\n",
-                          g_history_type == EMS_CASE_TYPE_OHCA ? "OHCA" : "TRAINING");
+                          g_history_type == CASE_MODE_OHCA ? "OHCA" : "TRAINING");
         }
     }
     // STEP 03: 切 GLOBAL_SYNC 並 dispatch START（已連線則補 dispatch BLE_CONNECTED 推進狀態）

@@ -124,7 +124,7 @@ static void test_littlefs_mount_and_ensure_dirs() {
     TEST_ASSERT_NOT_NULL_MESSAGE(g_backend.list_dir,   "backend.list_dir 未綁定");
 
     case_meta_t metas[5];
-    uint16_t count = ems::storage_list(&g_backend, ems::EMS_CASE_TYPE_OHCA, metas, 5);
+    uint16_t count = ems::storage_list(&g_backend, ems::CASE_MODE_OHCA, metas, 5);
     TEST_ASSERT_EQUAL_UINT16_MESSAGE(0u, count, "format 後 OHCA list 應為空");
 }
 
@@ -135,7 +135,7 @@ static void test_littlefs_mount_and_ensure_dirs() {
  */
 static void test_save_event_to_littlefs() {
     bool ok = ems::storage_save_case(&g_backend,
-                                     ems::EMS_CASE_TYPE_OHCA,
+                                     ems::CASE_MODE_OHCA,
                                      &FIXTURE_EVENT,
                                      /*count=*/1,
                                      FIXTURE_CASE_START_MS,
@@ -143,7 +143,7 @@ static void test_save_event_to_littlefs() {
     TEST_ASSERT_TRUE_MESSAGE(ok, "storage_save_case 失敗");
 
     case_meta_t metas[5];
-    uint16_t count = ems::storage_list(&g_backend, ems::EMS_CASE_TYPE_OHCA, metas, 5);
+    uint16_t count = ems::storage_list(&g_backend, ems::CASE_MODE_OHCA, metas, 5);
     TEST_ASSERT_EQUAL_UINT16_MESSAGE(1u, count, "save 後 list 應有 1 筆");
     TEST_ASSERT_EQUAL_UINT64_MESSAGE(FIXTURE_CASE_START_MS, metas[0].start_ms,
                                      "case_meta.start_ms 不符");
@@ -171,7 +171,7 @@ static void test_remount_after_simulated_reboot() {
  */
 static void test_event_persists_across_remount() {
     case_meta_t metas[5];
-    uint16_t count = ems::storage_list(&g_backend, ems::EMS_CASE_TYPE_OHCA, metas, 5);
+    uint16_t count = ems::storage_list(&g_backend, ems::CASE_MODE_OHCA, metas, 5);
     TEST_ASSERT_EQUAL_UINT16_MESSAGE(1u, count, "remount 後 list 應仍為 1 筆");
     TEST_ASSERT_EQUAL_UINT64_MESSAGE(FIXTURE_CASE_START_MS, metas[0].start_ms,
                                      "remount 後 start_ms 不符（index.json 漏寫？）");
@@ -181,7 +181,7 @@ static void test_event_persists_across_remount() {
     ems_event_t loaded[5] = {};
     uint16_t loaded_count = 0;
     bool ok = ems::storage_load_events(&g_backend,
-                                       ems::EMS_CASE_TYPE_OHCA,
+                                       ems::CASE_MODE_OHCA,
                                        metas[0].id,
                                        loaded, 5, &loaded_count);
     TEST_ASSERT_TRUE_MESSAGE(ok, "storage_load_events 失敗（events.bin 讀不到？）");
@@ -205,13 +205,13 @@ static void test_event_persists_across_remount() {
  */
 static void test_delete_after_verify() {
     case_meta_t metas[5];
-    uint16_t count = ems::storage_list(&g_backend, ems::EMS_CASE_TYPE_OHCA, metas, 5);
+    uint16_t count = ems::storage_list(&g_backend, ems::CASE_MODE_OHCA, metas, 5);
     TEST_ASSERT_EQUAL_UINT16(1u, count);
 
-    bool ok = ems::storage_delete(&g_backend, ems::EMS_CASE_TYPE_OHCA, metas[0].id);
+    bool ok = ems::storage_delete(&g_backend, ems::CASE_MODE_OHCA, metas[0].id);
     TEST_ASSERT_TRUE_MESSAGE(ok, "storage_delete 失敗");
 
-    count = ems::storage_list(&g_backend, ems::EMS_CASE_TYPE_OHCA, metas, 5);
+    count = ems::storage_list(&g_backend, ems::CASE_MODE_OHCA, metas, 5);
     TEST_ASSERT_EQUAL_UINT16_MESSAGE(0u, count, "delete 後 list 應為 0");
 }
 

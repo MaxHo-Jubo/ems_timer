@@ -139,7 +139,7 @@ void syncSendingPrepare() {
     // STEP 05: 序列化 case_sync JSON（schema 對齊 pm-dev-spec §14.1），保留 1 byte 給 '\n'
     ems::CaseSyncMeta js_meta;
     js_meta.case_id       = g_sync_target.id;
-    js_meta.mode          = (g_sync_target.type == EMS_CASE_TYPE_OHCA) ? "ohca" : "training";
+    js_meta.mode          = (g_sync_target.type == CASE_MODE_OHCA) ? "ohca" : "training";
     js_meta.device_name   = SYNC_DEVICE_NAME;
     js_meta.device_id     = SYNC_DEVICE_ID;
     js_meta.fw_version    = SYNC_FW_VERSION;

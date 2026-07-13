@@ -56,6 +56,53 @@ void drawCenteredText(const char* text, int16_t y, uint16_t color) {
     display.drawString(text, SCREEN_W / 2, y);
 }
 
+/** 共用垂直選單 widget：標題 + 分隔線 + 選項列 + 底部提示
+ *
+ * 抽取自 drawDrugMenu / drawBackfillType / drawBackfillCount /
+ * drawTrainingSetup / drawTrainingSave / drawTrainingHistoryOptions / drawQuickMenu
+ * 的共同結構，消除 6 處重複的選單渲染邏輯。
+ *
+ * @param title     標題文字
+ * @param labels    選項標籤陣列（呼叫端負責宣告，大小由 count 決定）
+ * @param count     選項數量（≤5）
+ * @param cursor    當前游標位置
+ * @param rowH      單列高度
+ * @param yStart    第一列起始 Y 座標
+ * @param hint      底部提示文字（nullptr 略過）
+ */
+void drawVerticalMenu(const char* title, const char* labels[], uint8_t count,
+                      uint8_t cursor, uint16_t rowH, int16_t yStart,
+                      const char* hint) {
+    // STEP 01: 標題列
+    useZhFont();
+    display.setTextSize(1.2f, 1.2f);
+    drawCenteredText(title, OHCA_BADGE_Y, COLOR_ACCENT_OK);
+    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
+
+    // STEP 02: 選項列
+    constexpr int16_t MENU_TEXT_PAD      = 32;
+    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
+    display.setTextSize(1);
+    for (uint8_t i = 0; i < count; i++) {
+        // STEP 02.01: 游標高亮列
+        const int16_t y = yStart + i * rowH;
+        if (i == cursor) {
+            display.fillRect(0, y, SCREEN_W, rowH, COLOR_TEXT_PRIMARY);
+            display.setTextColor(COLOR_BG);
+        } else {
+            display.setTextColor(COLOR_TEXT_PRIMARY);
+        }
+        // STEP 02.02: 繪製文字
+        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
+        display.print(labels[i]);
+    }
+
+    // STEP 03: 底部提示
+    if (hint != nullptr) {
+        drawCenteredText(hint, SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    }
+}
+
 /**
  * Phase F MVP2：同步資料 6 個 state 畫面渲染。
  *
@@ -198,7 +245,7 @@ void drawHistoryList() {
 
     // STEP 01: 標題（對齊 demo V1 §12：總數附在標題後）
     //   vlw 未收錄全形括號（`（）`），用半形避字型缺字風險
-    const char* type_label = (g_history_type == EMS_CASE_TYPE_TRAINING) ? "Training" : "OHCA";
+    const char* type_label = (g_history_type == CASE_MODE_TRAINING) ? "Training" : "OHCA";
     snprintf(buf, sizeof(buf), "%s 案件 (%u)", type_label, (unsigned)historyCount);
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText(buf, OHCA_BADGE_Y, COLOR_ACCENT_OK);
@@ -684,90 +731,26 @@ void drawQuickMenu() {
 
 /** W3：Training 倒數選擇畫面（30 秒 / 1 分鐘 / 4 分鐘） */
 void drawTrainingSetup() {
-    // 標題
-    useZhFont();
-    display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("訓練倒數", OHCA_BADGE_Y, COLOR_ACCENT_OK);
-    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
-
-    // 3 選項（30s / 60s / 240s）
+    // STEP 01: 共用垂直選單 widget（3 選項，30s / 60s / 240s）
     const char* labels[3] = { "30 秒", "1 分鐘", "4 分鐘" };
-    constexpr int16_t MENU_Y_START       = 78;
-    constexpr int16_t MENU_ROW_H         = 36;
-    constexpr int16_t MENU_TEXT_PAD      = 32;
-    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
-    useZhFont();
-    display.setTextSize(1);
-    for (uint8_t i = 0; i < 3; i++) {
-        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
-        if (i == trainingSetupCursor) {
-            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
-            display.setTextColor(COLOR_BG);
-        } else {
-            display.setTextColor(COLOR_TEXT_PRIMARY);
-        }
-        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
-        display.print(labels[i]);
-    }
-
-    drawSubmenuNavHint();
+    drawVerticalMenu("訓練倒數", labels, 3, trainingSetupCursor, 36, 78,
+                     "上下選擇  主鍵確認  返回 主功能表");
 }
 
 /** W5：Training 保存選單（保存 / 不保存） */
 void drawTrainingSave() {
-    useZhFont();
-    display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("保存訓練紀錄？", OHCA_BADGE_Y, COLOR_ACCENT_OK);
-    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
-
-    // 2 選項（保存 / 不保存）
+    // STEP 01: 共用垂直選單 widget（2 選項）
     const char* labels[2] = { "保存", "不保存" };
-    constexpr int16_t MENU_Y_START       = 80;
-    constexpr int16_t MENU_ROW_H         = 40;
-    constexpr int16_t MENU_TEXT_PAD      = 32;
-    constexpr int16_t MENU_TEXT_OFFSET_Y = 8;
-    useZhFont();
-    display.setTextSize(1);
-    for (uint8_t i = 0; i < 2; i++) {
-        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
-        if (i == trainingSaveCursor) {
-            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
-            display.setTextColor(COLOR_BG);
-        } else {
-            display.setTextColor(COLOR_TEXT_PRIMARY);
-        }
-        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
-        display.print(labels[i]);
-    }
-
-    drawSubmenuNavHint();
+    drawVerticalMenu("保存訓練紀錄？", labels, 2, trainingSaveCursor, 40, 80,
+                     "上下選擇  主鍵確認  返回不保存");
 }
 
 /** W7：Training 歷史操作選單（查看總覽 / 同步 / 刪除 / 返回） */
 void drawTrainingHistoryOptions() {
-    useZhFont();
-    display.setTextSize(1.2f, 1.2f);
-    drawCenteredText("訓練紀錄操作", OHCA_BADGE_Y, COLOR_ACCENT_OK);
-    display.drawLine(16, 56, SCREEN_W - 16, 56, COLOR_TEXT_DIM);
-
+    // STEP 01: 共用垂直選單 widget（4 選項）
     const char* labels[4] = { "查看總覽", "同步至 App", "刪除此訓練紀錄", "返回" };
-    constexpr int16_t MENU_Y_START       = 78;
-    constexpr int16_t MENU_ROW_H         = 36;
-    constexpr int16_t MENU_TEXT_PAD      = 32;
-    constexpr int16_t MENU_TEXT_OFFSET_Y = 6;
-    display.setTextSize(1);
-    for (uint8_t i = 0; i < 4; i++) {
-        const int16_t y = MENU_Y_START + i * MENU_ROW_H;
-        if (i == trainingHistoryOptionsCursor) {
-            display.fillRect(0, y, SCREEN_W, MENU_ROW_H, COLOR_TEXT_PRIMARY);
-            display.setTextColor(COLOR_BG);
-        } else {
-            display.setTextColor(COLOR_TEXT_PRIMARY);
-        }
-        display.setCursor(MENU_TEXT_PAD, y + MENU_TEXT_OFFSET_Y);
-        display.print(labels[i]);
-    }
-    drawSubmenuNavHint();
+    drawVerticalMenu("訓練紀錄操作", labels, 4, trainingHistoryOptionsCursor, 36, 78,
+                     "上下選擇  主鍵確認  返回");
 }
 
 /** W7 / W8：二次確認對話框（通用） */

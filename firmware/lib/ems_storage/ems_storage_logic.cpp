@@ -128,7 +128,7 @@ bool name_is_bin(const char* name, char* out_id, size_t id_max) {
 // Phase 3 DS3231 上機後若改回真 epoch，這個函式仍須保留 0 fallback 給 corrupt 路徑。
 
 bool fill_meta_from_bin(IStorageBackend* be,
-                        storage_case_type_t type,
+                        CaseMode type,
                         const char*  id,
                         case_meta_t* out_meta) {
     // STEP 01: 構造完整路徑
@@ -201,13 +201,13 @@ bool persist_index(IStorageBackend* be) {
 
 // ----- FIFO 容量強制 -----
 
-uint16_t cap_for_type(storage_case_type_t type) {
-    return (type == EMS_CASE_TYPE_OHCA)
+uint16_t cap_for_type(CaseMode type) {
+    return (type == CASE_MODE_OHCA)
          ? EMS_STORAGE_OHCA_CAP
          : EMS_STORAGE_TRAINING_CAP;
 }
 
-void enforce_fifo_cap(IStorageBackend* be, storage_case_type_t type) {
+void enforce_fifo_cap(IStorageBackend* be, CaseMode type) {
     // STEP 01: 計算當前 type 的 case 數
     uint16_t cap = cap_for_type(type);
     uint16_t typed = 0;
@@ -255,7 +255,7 @@ void enforce_fifo_cap(IStorageBackend* be, storage_case_type_t type) {
 
 // ----- 從現有的 case_meta_t 陣列 idx 找指定 id 與 type -----
 
-int32_t find_case_idx(storage_case_type_t type, const char* id) {
+int32_t find_case_idx(CaseMode type, const char* id) {
     if (!id) {
         return -1;
     }
@@ -566,10 +566,10 @@ bool storage_index_parse(const char*  json,
 //  路徑 helpers
 // ============================================================
 
-const char* case_type_to_str(storage_case_type_t type) {
+const char* case_type_to_str(CaseMode type) {
     switch (type) {
-        case EMS_CASE_TYPE_OHCA:     return "ohca";
-        case EMS_CASE_TYPE_TRAINING: return "training";
+        case CASE_MODE_OHCA:     return "ohca";
+        case CASE_MODE_TRAINING: return "training";
     }
     return "ohca";  // unknown enum value fallback（外部寫入錯誤值的最後一道防線）
 }
@@ -578,17 +578,17 @@ const char* case_type_to_str(storage_case_type_t type) {
 // 升版時舊韌體完全讀不進）。代價是把 corrupt 字串當合法 OHCA 列出。
 // 對應 spec 取捨：「能讀到部分資料」優於「整個 index 解析失敗」。
 // 補測：test_main.cpp 應加 case verifying this behavior（B3 follow-up）。
-storage_case_type_t case_type_from_str(const char* s) {
+CaseMode case_type_from_str(const char* s) {
     if (s && strcmp(s, "training") == 0) {
-        return EMS_CASE_TYPE_TRAINING;
+        return CASE_MODE_TRAINING;
     }
-    return EMS_CASE_TYPE_OHCA;
+    return CASE_MODE_OHCA;
 }
 
-const char* storage_dir_path(storage_case_type_t type) {
+const char* storage_dir_path(CaseMode type) {
     switch (type) {
-        case EMS_CASE_TYPE_OHCA:     return "/cases/ohca";
-        case EMS_CASE_TYPE_TRAINING: return "/cases/training";
+        case CASE_MODE_OHCA:     return "/cases/ohca";
+        case CASE_MODE_TRAINING: return "/cases/training";
     }
     return "/cases/ohca";
 }
@@ -602,7 +602,7 @@ void storage_format_id(uint32_t seq, char* out, size_t out_max) {
 
 void storage_build_event_path(char*               out,
                               size_t              out_max,
-                              storage_case_type_t type,
+                              CaseMode type,
                               const char*         id) {
     if (!out || !id || out_max == 0) {
         if (out && out_max > 0) {
@@ -657,11 +657,11 @@ bool storage_init(IStorageBackend* be) {
     //   storage_init 只在 setup 跑一次，BSS 永久佔用 2.24KB 換來 stack peak 安全。
     static char ohca_names[EMS_STORAGE_OHCA_CAP][EMS_STORAGE_NAME_MAX];
     size_t n_ohca = be->list_dir(be->ctx,
-                                 storage_dir_path(EMS_CASE_TYPE_OHCA),
+                                 storage_dir_path(CASE_MODE_OHCA),
                                  ohca_names, EMS_STORAGE_OHCA_CAP);
     static char train_names[EMS_STORAGE_TRAINING_CAP][EMS_STORAGE_NAME_MAX];
     size_t n_train = be->list_dir(be->ctx,
-                                  storage_dir_path(EMS_CASE_TYPE_TRAINING),
+                                  storage_dir_path(CASE_MODE_TRAINING),
                                   train_names, EMS_STORAGE_TRAINING_CAP);
 
     // STEP 05: 依 index_loaded 走 rebuild（無 index）或雙向 sync（有 index）兩條路徑
@@ -675,7 +675,7 @@ bool storage_init(IStorageBackend* be) {
             if (s_state.case_count >= kTotalCapacity) {
                 break;
             }
-            if (fill_meta_from_bin(be, EMS_CASE_TYPE_OHCA, id,
+            if (fill_meta_from_bin(be, CASE_MODE_OHCA, id,
                                    &s_state.cases[s_state.case_count])) {
                 uint32_t seq = (uint32_t)atol(id);
                 if (seq + 1 > s_state.next_seq) {
@@ -696,7 +696,7 @@ bool storage_init(IStorageBackend* be) {
             if (s_state.case_count >= kTotalCapacity) {
                 break;
             }
-            if (fill_meta_from_bin(be, EMS_CASE_TYPE_TRAINING, id,
+            if (fill_meta_from_bin(be, CASE_MODE_TRAINING, id,
                                    &s_state.cases[s_state.case_count])) {
                 uint32_t seq = (uint32_t)atol(id);
                 if (seq + 1 > s_state.next_seq) {
@@ -727,7 +727,7 @@ bool storage_init(IStorageBackend* be) {
         s_state.case_count = write;
 
         // STEP 05.02.02: 把檔案存在但 index 沒記錄的孤兒刪掉
-        auto purge_orphans = [&](storage_case_type_t type,
+        auto purge_orphans = [&](CaseMode type,
                                   char names[][EMS_STORAGE_NAME_MAX],
                                   size_t n) {
             for (size_t i = 0; i < n; ++i) {
@@ -742,8 +742,8 @@ bool storage_init(IStorageBackend* be) {
                 }
             }
         };
-        purge_orphans(EMS_CASE_TYPE_OHCA,     ohca_names,  n_ohca);
-        purge_orphans(EMS_CASE_TYPE_TRAINING, train_names, n_train);
+        purge_orphans(CASE_MODE_OHCA,     ohca_names,  n_ohca);
+        purge_orphans(CASE_MODE_TRAINING, train_names, n_train);
     }
 
     // STEP 06: 持久化 clean state（覆寫任何不一致的 index.json）
@@ -759,7 +759,7 @@ bool storage_init(IStorageBackend* be) {
 }
 
 bool storage_set_case_synced_at(IStorageBackend*    be,
-                                storage_case_type_t type,
+                                CaseMode type,
                                 const char*         id,
                                 uint64_t            synced_at_ms) {
     // STEP 01: 參數檢查
@@ -789,7 +789,7 @@ bool storage_set_case_synced_at(IStorageBackend*    be,
 }
 
 bool storage_save_case(IStorageBackend*    be,
-                       storage_case_type_t type,
+                       CaseMode type,
                        const ems_event_t*  events,
                        uint16_t            count,
                        uint64_t            case_start_ms,
@@ -878,7 +878,7 @@ bool storage_save_case(IStorageBackend*    be,
 // 純讀 in-memory s_state，不觸 backend。保留 be 參數是為 API 對稱性
 // （其他 high-level storage_* 都吃 backend）+ 未來若加 lazy-load 留接口。
 uint16_t storage_list(IStorageBackend*    /*be*/,
-                      storage_case_type_t type,
+                      CaseMode type,
                       case_meta_t*        out,
                       uint16_t            max) {
     if (!out || max == 0) {
@@ -895,7 +895,7 @@ uint16_t storage_list(IStorageBackend*    /*be*/,
 }
 
 bool storage_load_events(IStorageBackend*    be,
-                         storage_case_type_t type,
+                         CaseMode type,
                          const char*         id,
                          ems_event_t*        out_events,
                          uint16_t            out_max,
@@ -927,7 +927,7 @@ bool storage_load_events(IStorageBackend*    be,
 }
 
 bool storage_delete(IStorageBackend*    be,
-                    storage_case_type_t type,
+                    CaseMode type,
                     const char*         id) {
     if (!be || !id) {
         return false;
@@ -976,7 +976,7 @@ bool storage_format(IStorageBackend* be) {
         return false;
     }
     // STEP 01: 刪所有檔案（OHCA + Training 走相同流程，抽 lambda 避免目錄字串散落）
-    auto purge_dir = [&](storage_case_type_t type) {
+    auto purge_dir = [&](CaseMode type) {
         const char* dir = storage_dir_path(type);
         char names[kTotalCapacity][EMS_STORAGE_NAME_MAX];
         size_t n = be->list_dir(be->ctx, dir, names, kTotalCapacity);
@@ -986,8 +986,8 @@ bool storage_format(IStorageBackend* be) {
             be->delete_file(be->ctx, path);
         }
     };
-    purge_dir(EMS_CASE_TYPE_OHCA);
-    purge_dir(EMS_CASE_TYPE_TRAINING);
+    purge_dir(CASE_MODE_OHCA);
+    purge_dir(CASE_MODE_TRAINING);
     be->delete_file(be->ctx, "/cases/index.json");
     be->delete_file(be->ctx, "/cases/index.json.tmp");
 

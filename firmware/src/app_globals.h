@@ -192,12 +192,17 @@ constexpr const char* SYNC_FW_VERSION  = "v0.6-phaseF";    // 韌體版本
 
 // ════════════════════════════════════════════════════════════════
 // 案件模式（W2：Training = OHCA 訓練版，共用核心狀態機）
+// 定義於 ems_storage_logic.h（storage 層共用），此處僅宣告 alias
 // ════════════════════════════════════════════════════════════════
 
-enum CaseMode : uint8_t {
-    CASE_MODE_OHCA     = 0,
-    CASE_MODE_TRAINING = 1,
-};
+// ── Training 倒數週期常數（取代硬編碼 30000/60000/240000） ──
+
+/** Training 30 秒倒數 */
+constexpr uint32_t TRAINING_CYCLE_30S  = 30000;
+/** Training 60 秒倒數 */
+constexpr uint32_t TRAINING_CYCLE_60S  = 60000;
+/** Training 240 秒倒數（與 OHCA 預設相同） */
+constexpr uint32_t TRAINING_CYCLE_240S = 240000;
 
 // ════════════════════════════════════════════════════════════════
 // 全域狀態機 enum
@@ -306,9 +311,9 @@ constexpr float FLASH_SUBTITLE_SIZE_LONG    = 1.2f;
 // ── SyncTarget struct ──
 
 struct SyncTarget {
-    char                 id[EMS_STORAGE_ID_LEN];
-    storage_case_type_t  type;
-    void clear() { memset(id, 0, sizeof(id)); type = EMS_CASE_TYPE_OHCA; }
+    char           id[EMS_STORAGE_ID_LEN];
+    CaseMode       type;
+    void clear() { memset(id, 0, sizeof(id)); type = CASE_MODE_OHCA; }
     bool empty() const { return id[0] == '\0'; }
 };
 
@@ -330,7 +335,7 @@ extern GlobalState globalState;
 extern uint8_t mainMenuCursor;
 // W2：案件模式（OHCA / Training）
 extern CaseMode g_case_mode;
-// W2：Training 倒數週期（30000 / 60000 / 240000）
+// W2：Training 倒數週期（TRAINING_CYCLE_30S / TRAINING_CYCLE_60S / TRAINING_CYCLE_240S）
 extern uint32_t g_training_epi_cycle_ms;
 
 /**
@@ -405,7 +410,7 @@ extern uint16_t historyScrollOffset;
 extern bool     historySummaryMode;
 // W6：歷史分類層
 extern uint8_t  historyTypeCursor;   // 0=OHCA / 1=Training
-extern storage_case_type_t g_history_type;  // 當前歷史載入類型
+extern CaseMode g_history_type;  // 當前歷史載入類型
 // W7：Training 歷史操作選單
 extern uint8_t trainingHistoryOptionsCursor;
 extern bool    trainingDeleteConfirm; // W7：刪除二次確認顯示中
@@ -571,6 +576,11 @@ void drawTrainingWatermark();
 // ── shared helpers ──
 void drawCenteredText(const char* text, int16_t y, uint16_t color);
 void drawSubmenuNavHint();
+
+/** 共用垂直選單 widget：標題 + 分隔線 + 動態選項列 + 底部 hint */
+void drawVerticalMenu(const char* title, const char* labels[], uint8_t count,
+                      uint8_t cursor, uint16_t rowH, int16_t yStart,
+                      const char* hint);
 
 // ── ui_screens.cpp ──
 void drawMainMenu();

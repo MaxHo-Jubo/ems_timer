@@ -82,16 +82,17 @@ namespace ems {
 //  Case type
 // ============================================================
 
-typedef enum {
-    EMS_CASE_TYPE_OHCA     = 0,
-    EMS_CASE_TYPE_TRAINING = 1,
-} storage_case_type_t;
+/** 案件類型（OHCA 真實案件 / Training 訓練模式） */
+typedef enum : uint8_t {
+    CASE_MODE_OHCA     = 0,
+    CASE_MODE_TRAINING = 1,
+} CaseMode;
 
 /** Case type → 字串（index.json 與 log 共用，避免 raw string 散落） */
-const char* case_type_to_str(storage_case_type_t type);
+const char* case_type_to_str(CaseMode type);
 
 /** 字串 → case type（找不到回預設 OHCA，配合 index.json 容錯讀取） */
-storage_case_type_t case_type_from_str(const char* s);
+CaseMode case_type_from_str(const char* s);
 
 // ============================================================
 //  Case metadata（index.json 內每筆 entry）
@@ -99,7 +100,7 @@ storage_case_type_t case_type_from_str(const char* s);
 
 typedef struct {
     char     id[EMS_STORAGE_ID_LEN];        // "0000000003" + NUL（10 位 zero-padded）
-    storage_case_type_t type;
+    CaseMode type;
     uint64_t start_ms;                      // 案件開始 epoch ms
                                             //   0 = 時戳不可用（未對時 / rebuild 路徑無法還原；
                                             //   caller 須當作「歷史進入無 RTC」處理）
@@ -284,7 +285,7 @@ bool storage_init(IStorageBackend* be);
  * @return true 成功
  */
 bool storage_save_case(IStorageBackend*    be,
-                       storage_case_type_t type,
+                       CaseMode type,
                        const ems_event_t*  events,
                        uint16_t            count,
                        uint64_t            case_start_ms,
@@ -296,7 +297,7 @@ bool storage_save_case(IStorageBackend*    be,
  * @return 實際寫入筆數
  */
 uint16_t storage_list(IStorageBackend*    be,
-                      storage_case_type_t type,
+                      CaseMode type,
                       case_meta_t*        out,
                       uint16_t            max);
 
@@ -312,7 +313,7 @@ uint16_t storage_list(IStorageBackend*    be,
  * @return true 成功
  */
 bool storage_load_events(IStorageBackend*    be,
-                         storage_case_type_t type,
+                         CaseMode type,
                          const char*         id,
                          ems_event_t*        out_events,
                          uint16_t            out_max,
@@ -329,13 +330,13 @@ bool storage_load_events(IStorageBackend*    be,
  * @return true 成功；false = id 不存在 / persist 失敗
  */
 bool storage_set_case_synced_at(IStorageBackend*    be,
-                                storage_case_type_t type,
+                                CaseMode type,
                                 const char*         id,
                                 uint64_t            synced_at_ms);
 
 /** 刪除指定 id 的案件（檔案 + index entry） */
 bool storage_delete(IStorageBackend*    be,
-                    storage_case_type_t type,
+                    CaseMode type,
                     const char*         id);
 
 /** 全部清空（測試 / 工廠重設用） */
@@ -348,11 +349,11 @@ bool storage_format(IStorageBackend* be);
 /** 組合 events.bin 完整路徑（"/cases/ohca/0000000003.bin"） */
 void storage_build_event_path(char*               out,
                               size_t              out_max,
-                              storage_case_type_t type,
+                              CaseMode type,
                               const char*         id);
 
 /** 取得指定類型的目錄路徑（"/cases/ohca"） */
-const char* storage_dir_path(storage_case_type_t type);
+const char* storage_dir_path(CaseMode type);
 
 /** 把 sequence number 格式化為 10 位 zero-padded id 字串 */
 void storage_format_id(uint32_t seq, char* out, size_t out_max);
