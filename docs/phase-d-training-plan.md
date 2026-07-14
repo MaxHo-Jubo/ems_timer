@@ -169,41 +169,50 @@ TRAINING_SAVE_PROMPT   ← 新子狀態（OHCA 無此段）        (§15.12)
 
 > 依專案工作流（`feedback_tdd_alignment_gate_workflow`）：Phase 等級功能，RED test → 三 subagent 並行對齊審查 → GREEN impl。native test 用 `pio test -e native`，韌體編譯 `pio run`。
 
-- [ ] **W1 — 倒數參數化（純 lib，先做，最獨立）**
+- [x] **W1 — 倒數參數化（純 lib，先做，最獨立）** ✅ 韌體完成（2026-07-13）
   - RED：`test_ohca_countdown` 加 cycle=30000/60000/240000 的 `advanceOhcaPhase`/`decideOhcaOutput`/`computeRemainingMs` 邊界 + §15.7「≤60s 不進 WARNING」case
   - GREEN：3 函式加 `epi_cycle_ms` 參數；OHCA 呼叫端傳 `OHCA_EPI_CYCLE_MS_DEFAULT`
   - 驗收：native 全綠；OHCA 行為與改前等價（240000 路徑不變）
+  - 實機待測：§9.5 W1 三檔倒數 + WARNING 分支
 
-- [ ] **W2 — CaseMode 骨架 + 存檔 mode 分支**
+- [x] **W2 — CaseMode 骨架 + 存檔 mode 分支** ✅ 韌體完成（2026-07-13）
   - `enum CaseMode` + `g_case_mode` + `g_training_epi_cycle_ms`；`ohca_logic.cpp` STEP 04 依 mode 分支（Training 不自動存）；tick 傳對應 cycle
   - 驗收：OHCA 路徑（mode=OHCA）完全不變、仍自動存；韌體編譯過
+  - 實機待測：§9.5 W2 OHCA 自動存 / Training 不自動存
 
-- [ ] **W3 — Training 入口：倒數選擇畫面 + 初始化**
+- [x] **W3 — Training 入口：倒數選擇畫面 + 初始化** ✅ 韌體完成（2026-07-13）
   - `GLOBAL_TRAINING_PLACEHOLDER` → `GLOBAL_TRAINING_SETUP`；case 2 進 setup；上/下切換 + 主鍵確認 → 設 cycle + mode=TRAINING + 複製 OHCA case-start 初始化 → 切 `GLOBAL_OHCA`；返回回主選單
   - 驗收：實機進訓練模式可選 30/60/240s 進入「待本機 EPI」初始畫面；首筆 EPI 啟動所選倒數
+  - 實機待測：§9.5 W3 入口 + 倒數選擇 + EPI 二段確認
 
-- [ ] **W4 — 浮水印 + 標題傳參**
+- [x] **W4 — 浮水印 + 標題傳參** ✅ 韌體完成（2026-07-13）
   - `drawTrainingWatermark()` 疊在 sprite；`drawOhcaSummary`/`drawTimeline` 標題依 mode 標 Training
   - 驗收：Training 全程有浮水印；OHCA 無浮水印；總覽/Timeline 標題正確
+  - 實機待測：§9.5 W4 浮水印 + 標題
 
-- [ ] **W5 — 結束保存 / 不保存**
+- [x] **W5 — 結束保存 / 不保存** ✅ 韌體完成（2026-07-13）
   - END_CHECK「結束前檢查｜Training」→「確認結束訓練？」→ LOCKED → `TRAINING_SAVE`「保存/不保存」；保存 → `storage_save_case(TRAINING)` +「已保存」1s → 案件總覽｜Training；不保存 →「未保存」1s → 主選單
   - 驗收：保存的 Training 出現在 storage/`/cases/training`；不保存不占筆數
+  - 實機待測：§9.5 W5 END_CHECK + 保存/不保存流程
 
-- [ ] **W6 — 歷史分層 + Training 列表 + 從歷史進總覽 + 同步**
+- [x] **W6 — 歷史分層 + Training 列表 + 從歷史進總覽 + 同步** ✅ 韌體完成（2026-07-13）
   - 歷史主入口加分類層（OHCA 案件 / Training 紀錄）；`drawHistoryList`/載入加 `type`；Training 列表可進總覽；同步設 `g_sync_target.type=TRAINING`
   - 驗收（**pm-dev-spec Phase D 主驗收**）：Training 與 OHCA 列表**完全分離**；Training 同步 App 端標 `mode=training`
+  - 實機待測：§9.5 W6 歷史分類 + Training 列表 + 同步標記
 
-- [ ] **W7 — Training 裝置端刪除**
+- [x] **W7 — Training 裝置端刪除** ✅ 韌體完成（2026-07-13）
   - Training 操作選單「刪除此訓練紀錄」→「刪除此訓練紀錄？」二次確認 → `storage_delete(TRAINING)` →「已刪除」1s → 回列表；OHCA 列表**無**刪除項
   - 驗收：刪除 Training 成功且不影響 OHCA；OHCA 案件無法從裝置端刪除
+  - 實機待測：§9.5 W7 刪除 + OHCA 無刪除項
 
-- [ ] **W8 — 重置訓練**
+- [x] **W8 — 重置訓練** ✅ 韌體完成（2026-07-13）
   - 訓練進行中快速功能選單加「重置訓練」→「重置訓練？」對話框 → 確認清空當前 training 事件回 §15.4 初始狀態（倒數停、EPI/電擊歸零）
   - 驗收：重置後回「待本機 EPI」；OHCA 無此功能
+  - 實機待測：§9.5 W8 重置訓練 + OHCA 無此功能
 
-- [ ] **W9 — 整合煙霧測試 + 實機驗收**
+- [ ] **W9 — 整合煙霧測試 + 實機驗收** ✅ 韌體完成（2026-07-13） — ⚠️ 僅程式碼面，實機待跑
   - 跑 §8 SoT §15 逐項對照 + §9 驗收清單；native 全綠；韌體編譯（記錄 Flash/RAM %）；實機走完整訓練流程
+  - 實機待測：§9.5 W9 完整流程整合測試
 
 ---
 
@@ -232,6 +241,12 @@ TRAINING_SAVE_PROMPT   ← 新子狀態（OHCA 無此段）        (§15.12)
 
 ## 9. 驗收清單（完工 DoD）
 
+> **韌體實作完成日**：2026-07-13（commit `d5f64ab` W2-W8 + `aa39def` W9）
+> **實機測試**：❌ 尚未執行 — 待實機回傳時逐項對照 §9.5 清單
+
+- [x] native test 全綠（456 test cases / 455 passed / 1 expected errored `test_storage_hw`）
+- [x] 韌體編譯過（RAM 32.3% / Flash 68.8%）
+- [x] OHCA 既有行為零回歸（mode=OHCA 路徑不變，`ems_ohca_state.cpp:96` 傳 default）
 - [ ] **pm-dev-spec Phase D 驗收**：Training 與 OHCA 列表**完全分離**（歷史分兩類、存兩區、同步標記不同）
 - [ ] 倒數 30/60/240s 三檔皆正確；4min 剩 1min 才「請準備給藥」，短檔不進 WARNING
 - [ ] 全程「訓練模式」浮水印；OHCA 無浮水印
@@ -239,8 +254,98 @@ TRAINING_SAVE_PROMPT   ← 新子狀態（OHCA 無此段）        (§15.12)
 - [ ] Training 可裝置端刪除（二次確認）；OHCA 不可刪
 - [ ] 重置訓練回初始狀態
 - [ ] Training 同步 App 端標 `mode=training`，不混入 OHCA 列表
-- [ ] native test 全綠（含 W1 新增 cycle 邊界）；韌體編譯過（記 Flash/RAM %）
-- [ ] OHCA 既有行為零回歸（mode=OHCA 路徑不變）
+
+### 9.5 實機測試對照清單（韌體已實作，待實機驗收）
+
+> 以下逐項對應 §7 Wave，實機測試時依序執行，勾選確認。
+> 測試前請確認：裝置已充電、電池供電狀態正常、TFT 顯示正常。
+
+#### W1 — 倒數參數化
+
+- [ ] 30s 倒數：EPI → 二段確認 → COUNTDOWN → 30s 到 → ALARMING「請給藥」
+- [ ] 60s 倒數：EPI → 二段確認 → COUNTDOWN → 60s 到 → ALARMING「請給藥」
+- [ ] 240s 倒數：EPI → 二段確認 → COUNTDOWN → 剩 60s 顯示「請準備給藥」→ 240s 到 → ALARMING
+- [ ] 30s/60s **不進 WARNING**（僅 COUNTDOWN → ALARMING，無「請準備給藥」）
+- [ ] 240s 剩 60s 進入 WARNING 階段（黃燈 + 「請準備給藥」）
+
+#### W2 — CaseMode 骨架 + 存檔 mode 分支
+
+- [ ] OHCA 案件：首進 LOCKED 自動存（不受 Training 改動影響）
+- [ ] Training 案件：首進 LOCKED **不自動存**，轉 `SUBSTATE_TRAINING_SAVE` 讓使用者選擇
+
+#### W3 — Training 入口：倒數選擇畫面 + 初始化
+
+- [ ] 主功能表 → 訓練模式（case 2）→ 進倒數選擇畫面
+- [ ] 上/下鍵切換 30s / 60s / 240s，主鍵確認
+- [ ] 確認後進「待本機 EPI」初始畫面（不啟動倒數）
+- [ ] 首筆 EPI → 二段確認 → 啟動所選倒數
+- [ ] 返回鍵 → 回主選單
+
+#### W4 — 全程「訓練模式」浮水印 + 標題傳參
+
+- [ ] Training 全程畫面右上角顯示「訓練模式」浮水印
+- [ ] OHCA 案件無浮水印
+- [ ] 案件總覽標題：「案件總覽｜Training」
+- [ ] 事件時間軸標題：「事件時間軸｜Training」
+
+#### W5 — 結束後保存 / 不保存
+
+- [ ] 長按主鍵 3s → END_CHECK「結束前檢查｜Training」
+- [ ] 完成並結束 → 「確認結束訓練？」→ 主鍵確認 → LOCKED
+- [ ] LOCKED 後進 `TRAINING_SAVE`「保存/不保存」選單
+- [ ] 選保存 → `storage_save_case(TRAINING)` +「訓練紀錄已保存」1s → 案件總覽｜Training
+- [ ] 選不保存 →「訓練紀錄未保存」1s → 回主選單（不占 Training 筆數）
+
+#### W6 — 歷史分層 + Training 列表 + 同步
+
+- [ ] 歷史主入口加分類層：`> OHCA 案件` / `> Training 紀錄`
+- [ ] 切換到 Training 列表 → 可看到已保存的 Training 案件
+- [ ] 選取 Training 案件 → 進 Training 操作選單
+- [ ] Training 同步 → App 端標 `mode=training`，不混入 OHCA 列表
+- [ ] OHCA 列表與 Training 列表**完全分離**（筆數、存檔區獨立）
+
+#### W7 — Training 裝置端刪除
+
+- [ ] Training 操作選單 →「刪除此訓練紀錄」→「刪除此訓練紀錄？」二次確認
+- [ ] 確認刪除 → `storage_delete(TRAINING)` +「已刪除」1s → 回列表
+- [ ] 刪除後 Training 列表該筆消失
+- [ ] OHCA 列表**無**刪除選項
+- [ ] 刪除 Training 不影響 OHCA 案件
+
+#### W8 — 重置訓練
+
+- [ ] Training 進行中 → 快速功能選單 →「重置訓練」
+- [ ]「重置訓練？」對話框 → 確認
+- [ ] 清空當前 Training 事件 → 回「待本機 EPI」初始狀態
+- [ ] 倒數停止、EPI/電擊歸零
+- [ ] OHCA 案件**無**重置功能
+
+#### W9 — 整合煙霧測試（完整流程）
+
+- [ ] 主選單 → 訓練模式 → 選 240s → 進「待本機 EPI」
+- [ ] EPI → 二段確認 → COUNTDOWN → 等 240s → ALARMING
+- [ ] 電擊 / Amio / 補登：與 OHCA 同（複用，可快速過）
+- [ ] 長按主鍵 3s → END_CHECK「結束前檢查｜Training」
+- [ ] 完成並結束 → 確認 → LOCKED →「保存/不保存」→ 保存
+- [ ] 保存後進案件總覽｜Training → 事件時間軸｜Training
+- [ ] 返回 → 歷史紀錄 → 切換到 Training 紀錄
+- [ ] 選取 → 操作選單 → 刪除 → 二次確認 → 刪除成功
+- [ ] 重新進入訓練模式 → 選 30s → 倒數 → 重置訓練 → 確認 → 回初始
+- [ ] 不保存 → 回主選單 → 確認 Training 列表不佔筆數
+
+#### 測試記錄
+
+| 項目 | 結果 | 備註 |
+|------|------|------|
+| W1 倒數參數化 | ⬜ 待測 | |
+| W2 CaseMode 骨架 | ⬜ 待測 | |
+| W3 Training 入口 | ⬜ 待測 | |
+| W4 浮水印 + 標題 | ⬜ 待測 | |
+| W5 保存/不保存 | ⬜ 待測 | |
+| W6 歷史分層 + 同步 | ⬜ 待測 | |
+| W7 裝置端刪除 | ⬜ 待測 | |
+| W8 重置訓練 | ⬜ 待測 | |
+| W9 整合煙霧測試 | ⬜ 待測 | |
 
 ---
 
@@ -256,8 +361,11 @@ TRAINING_SAVE_PROMPT   ← 新子狀態（OHCA 無此段）        (§15.12)
 
 ---
 
-## 11. 下次開工第一步
+## 11. 實機測試下一步
 
-1. 讀本檔 §7 從 **W1（倒數參數化）** 開始 —— 最獨立、純 lib、可先 native 測綠，不碰 UI。
-2. 開工前快速確認架構決策 AD-1~AD-4 是否仍認可（§15.18 官方已背書 AD-1/AD-2）。
-3. UI 樣式（浮水印位置、對話框 layout）對齊 `docs/demo/index.html` Training 原型 + OHCA 既有美學，第 1 輪 70~80% 後截圖精調。
+> **現況**：2026-07-13 韌體實作全部完成（commit `d5f64ab` W2-W8 + `aa39def` W9），native test 455/456 綠，韌體編譯通過。**唯一未完成：實機測試。**
+
+1. 帶裝置回實機環境，照 §9.5 實機測試對照清單逐項執行。
+2. 每項實機驗收通過後，回到 §9 驗收清單勾選 `[x]`。
+3. 實機測試發現問題 → 記錄備註 + 回程式碼修正 + 重新燒錄驗證。
+4. 全部實機驗收通過 → Phase D 完工。
