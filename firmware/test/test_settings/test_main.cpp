@@ -214,6 +214,7 @@ void run_all_tests() {
 }
 
 int main(int argc, char** argv) {
+    UNITY_BEGIN();
     run_all_tests();
-    return 0;
+    return UNITY_END();
 }
