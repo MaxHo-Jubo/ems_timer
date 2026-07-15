@@ -61,7 +61,7 @@
 |------|------|----------|------|
 | Wave 0: NVS 設定持久化層 | ✅ 完成 | 2026-07-15 | 12 案例全綠；refactor 檢查清單通過（Flash 68.8% / RAM 32.3% 在預估範圍、無 magic number、註解完整） |
 | Wave 1: 系統設定 UI + 恢復預設 | ✅ 完成 | 2026-07-15 | 6 案例＋游標/編輯畫面測試共 477 全綠；接線 1f9805c＋持久化 2ca8039＋畫面反饋 adb8a1d；review 兩缺口皆修（OHCA 回歸檢查通過）。遺留：drawSettingsMenu 預設參數 cursor=3 為相容舊測試的臭味，重構時清；**實機待測：亮度 setBacklight、系統音量 beep、通氣音量 ventVolume 同步、選單/編輯畫面操作流程** |
-| Wave 2: 裝置名稱管理 + BLE 寫入 | ⬜ 未完成 | — | 依賴 Wave 0；已完成至 G2.2（sync_send.cpp 改讀動態名稱 + fallback log；G2.2 payload 欄位驗證列實機待測）；BLE characteristic 已掛載（實機待測：App 端寫入流程） |
+| Wave 2: 裝置名稱管理 + BLE 寫入 | ✅ 完成 | 2026-07-15 | §2.2.1~§2.2.6 範圍驗收通過（G2.1 handler 2206e79、BLE char 掛載 68ee81a、G2.2 sync 動態名稱 af089a7、G2.3 置灰＋顯示 63a3a05）；483 測全綠。**實機待測：App 端 BLE 寫入流程、sync payload 欄位、UTF-8 名稱 31-byte 截斷邊界**。重構債：drawSettingsMenu 預設參數 cursor=3 與 (CaseMode)2 裸 cast（相容舊測試的臭味，清理時一併處理） |
 | Wave 3: Type-C 管理工具（Electron） | ⬜ 未完成 | — | 可與 Wave 0~2 並行 |
 
 ### 二、零、TDD 執行規範（red-green-refactor）
@@ -367,7 +367,7 @@ if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
 // 回調：收到寫入 → settings_set_device_name() → 寫入成功回 ack
 ```
 
-#### 2.2.3 裝置名稱顯示（設定畫面）
+#### 2.2.3 裝置名稱顯示（設定畫面）✅ 完成（G2.3）
 
 - 在設定主選單顯示「裝置名稱：[current_name]」
 - 進入子項目 → 顯示「請連接 App 設定裝置名稱」（裝置端不負責中文輸入）
@@ -383,7 +383,7 @@ if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
 //     js_meta.device_name = name;
 ```
 
-#### 2.2.5 案件進行中不可修改裝置名稱
+#### 2.2.5 案件進行中不可修改裝置名稱 ✅ 完成（G2.3）
 
 - 在 OHCA / Training 執行中，設定選單的「裝置名稱」項目置灰
 - 或彈出提示「案件中不可修改」
