@@ -60,7 +60,7 @@
 | Wave | 狀態 | 完成時間 | 備註 |
 |------|------|----------|------|
 | Wave 0: NVS 設定持久化層 | ✅ 完成 | 2026-07-15 | 12 案例全綠；refactor 檢查清單通過（Flash 68.8% / RAM 32.3% 在預估範圍、無 magic number、註解完整） |
-| Wave 1: 系統設定 UI + 恢復預設 | 🟡 部分完成 | — | 486 案例全綠、接線 commit 1f9805c 已入（OHCA 回歸 review 通過）。**2026-07-15 code review 發現兩缺口**：(1) ✅ 已修——調值加 call settings_write() 寫 NVS、setup() 加 settings_init() 載入、nvs_write/reset_defaults 錯誤不吞；(2) ✅ 已修——drawSettingsMenu 加 cursor 參數、drawSettingEditor 接通 main.cpp 繪製分支、input_handler 狀態 extern 共享。實機待測三項同前 |
+| Wave 1: 系統設定 UI + 恢復預設 | ✅ 完成 | 2026-07-15 | 6 案例＋游標/編輯畫面測試共 477 全綠；接線 1f9805c＋持久化 2ca8039＋畫面反饋 adb8a1d；review 兩缺口皆修（OHCA 回歸檢查通過）。遺留：drawSettingsMenu 預設參數 cursor=3 為相容舊測試的臭味，重構時清；**實機待測：亮度 setBacklight、系統音量 beep、通氣音量 ventVolume 同步、選單/編輯畫面操作流程** |
 | Wave 2: 裝置名稱管理 + BLE 寫入 | ⬜ 未完成 | — | 依賴 Wave 0 |
 | Wave 3: Type-C 管理工具（Electron） | ⬜ 未完成 | — | 可與 Wave 0~2 並行 |
 
