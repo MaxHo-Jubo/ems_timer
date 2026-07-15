@@ -59,8 +59,18 @@
 
 // Wave 1：系統設定 NVS 讀寫（settings_state_t, settings_init）
 #include "ems_settings.h"
-// 注意：g_settings_state 宣告在 input_handler.cpp（static），setup() 透過 extern 取得
+// 注意：g_settings_state 宣告在 main.cpp（extern），input_handler.cpp 透過 extern 取得
 extern settings_state_t g_settings_state;
+
+/**
+ * Display 抽象層文字回調：設定選單專用
+ *
+ * @param str     要繪製的字串
+ * @param x       X 座標
+ * @param y       Y 座標
+ * @param fontsize 字型大小
+ * @param color   顏色（RGB565）
+ */
 static void _settings_text_fn(const char* str, int16_t x, int16_t y, int16_t fontsize, uint32_t color) {
     display.setCursor(x, y);
     display.setTextSize(fontsize);
@@ -68,10 +78,24 @@ static void _settings_text_fn(const char* str, int16_t x, int16_t y, int16_t fon
     display.print(str);
 }
 
+/**
+ * Display 抽象層 fillRect 回調：設定選單專用
+ *
+ * @param x     X 座標
+ * @param y     Y 座標
+ * @param w     寬度
+ * @param h     高度
+ * @param color 顏色（RGB565）
+ */
 static void _settings_fill_rect_fn(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color) {
     display.fillRect(x, y, w, h, color);
 }
 
+/**
+ * 取得設定選單專用的 Display 物件（綁定 _settings_* 回調）
+ *
+ * @return 配置好回調函式的 Display 物件
+ */
 static Display getSettingsDisplay() {
     Display disp;
     disp.text = _settings_text_fn;
@@ -188,6 +212,12 @@ uint16_t summaryScrollOffset = 0;
 
 // Flash overlay
 FlashState flashState = {};
+
+// Dev-Phase G: 設定 UI 狀態（操作於 input_handler.cpp）
+// settingsCursor 初始值 1：跳過裝置名稱（索引 0），因為裝置名稱暫不支援調整
+uint8_t settingsCursor = 1;
+bool    settingsEditorMode = false;
+bool    settingsRestoreConfirm = false;
 
 // 按鈕狀態
 uint8_t  lastBtnState[BTN_COUNT];
@@ -903,7 +933,18 @@ void updateDisplay() {
         }
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
         Display settingsDisp = getSettingsDisplay();
-        drawSettingsMenu(settingsDisp);
+        if (settingsEditorMode) {
+            // 編輯模式：依游標索引繪製對應設定項目的數值調整畫面
+            if (settingsCursor == 1) {
+                drawSettingEditor(settingsDisp, "螢幕亮度", getBrightness(), SETTINGS_BRIGHTNESS_MIN, SETTINGS_BRIGHTNESS_MAX);
+            } else if (settingsCursor == 2) {
+                drawSettingEditor(settingsDisp, "系統音量", getSystemVolume(), SETTINGS_VOLUME_MIN, SETTINGS_VOLUME_MAX);
+            } else if (settingsCursor == 3) {
+                drawSettingEditor(settingsDisp, "通氣音量", getVentVolume(), SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX);
+            }
+        } else {
+            drawSettingsMenu(settingsDisp, settingsCursor);
+        }
     }
 
     // W9：儲存失敗提示（紅字警告 + 重試按鈕，無聲音）

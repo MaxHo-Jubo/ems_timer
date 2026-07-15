@@ -63,26 +63,52 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 //  drawSettingsMenu：設定主選單
 // ============================================================
 
+// 設定選單項目索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+// settingsCursor 初始值為 1（跳過裝置名稱，因為裝置名稱暫不支援調整）
+#define SETTINGS_CURSOR_DEVICE_NAME  0
+#define SETTINGS_CURSOR_BRIGHTNESS   1
+#define SETTINGS_CURSOR_SYSTEM_VOL   2
+#define SETTINGS_CURSOR_VENT_VOL     3
+
 /**
  * 設定主選單畫面
  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量
  *
- * @param disp 顯示抽象層（mock 或真實顯示）
+ * @param disp    顯示抽象層（mock 或真實顯示）
+ * @param cursor  游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量），
+ *                預設 3 向後相容
  */
-void drawSettingsMenu(Display& disp) {
+void drawSettingsMenu(Display& disp, uint8_t cursor) {
     // STEP 01: 設定目前亮度值（從 settings_state 讀取，此處為預設值）
     s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
 
     // STEP 02: 繪製選單標題
     disp.text("系統設定", SETTINGS_MENU_X, SETTINGS_TITLE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-    // STEP 02: 繪製 4 個設定項目（Y: 30, 70, 110, 150）
+    // STEP 03: 繪製 4 個設定項目，依 cursor 高亮對應列
+    const bool highlight0 = (cursor == SETTINGS_CURSOR_DEVICE_NAME);
+    const bool highlight1 = (cursor == SETTINGS_CURSOR_BRIGHTNESS);
+    const bool highlight2 = (cursor == SETTINGS_CURSOR_SYSTEM_VOL);
+    const bool highlight3 = (cursor == SETTINGS_CURSOR_VENT_VOL);
+
+    if (highlight0) {
+        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+    }
     disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+
+    if (highlight1) {
+        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+    }
     disp.text("螢幕亮度", SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+
+    if (highlight2) {
+        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+    }
     disp.text("系統音量", SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-    // STEP 03: 游標高亮 — 最後一項（通氣音量）加背景矩形
-    disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+    if (highlight3) {
+        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+    }
     disp.text("通氣音量", SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
     // STEP 04: 長按確認對話框 — 恢復預設設定提示文字
@@ -112,7 +138,7 @@ void drawSettingEditor(Display& disp, const char* title, uint8_t value, uint8_t 
     disp.text(buf, SETTINGS_MENU_X, SETTINGS_VALUE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
     // STEP 03: 繪製範圍提示
-    char range[SETTINGS_RANGE_BUF_SIZE];
+    static char range[SETTINGS_RANGE_BUF_SIZE];
     snprintf(range, sizeof(range), "%d ~ %d", min, max);
     disp.text(range, SETTINGS_MENU_X, SETTINGS_RANGE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 }

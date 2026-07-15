@@ -451,6 +451,27 @@ extern uint16_t summaryScrollOffset;
 // Flash overlay
 extern FlashState flashState;
 
+// Dev-Phase G: 設定 UI 狀態（定義於 main.cpp，操作於 input_handler.cpp）
+extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
+extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
+
+/**
+ * 取得設定選單游標索引
+ * @return 游標索引（0~3）
+ */
+inline uint8_t getSettingsCursor() {
+    return settingsCursor;
+}
+
+/**
+ * 取得設定編輯器模式狀態
+ * @return true 表示處於編輯模式（可調整數值）
+ */
+inline bool getSettingsEditorMode() {
+    return settingsEditorMode;
+}
+
 // 按鈕狀態
 extern uint8_t  lastBtnState[BTN_COUNT];
 extern uint32_t lastPressMs[BTN_COUNT];

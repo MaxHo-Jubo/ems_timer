@@ -9,14 +9,10 @@
 // Wave 1：系統設定選單狀態（settingsCursor / editor / confirm）
 #define SETTINGS_MENU_COUNT    4   // 裝置名稱 / 亮度 / 系統音量 / 通氣音量
 
-// 設定主選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
-static uint8_t settingsCursor = 1;
-
-// 設定編輯器模式（true = 左右鍵調整數值，false = 游標移動）
-static bool settingsEditorMode = false;
-
-// 恢復預設確認對話框（true = 彈出中）
-static bool settingsRestoreConfirm = false;
+// Dev-Phase G: 設定 UI 狀態（定義於 main.cpp）
+extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
+extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 
 // 系統設定 NVS state（開機由 main.cpp settings_init 載入，調值時 settings_write 寫回）
 settings_state_t g_settings_state;
@@ -1117,7 +1113,7 @@ void onLongPress(uint8_t btnIdx) {
         return;
     }
 
-    // STEP 00.5: 系統設定選單 → 主鍵長按彈出恢復預設確認對話框
+    // STEP 01.5: 系統設定選單 → 主鍵長按彈出恢復預設確認對話框
     if (btnIdx == BTN_PRIMARY && globalState == GLOBAL_SETTINGS_PLACEHOLDER &&
         !settingsEditorMode && !settingsRestoreConfirm) {
         settingsRestoreConfirm = true;

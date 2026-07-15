@@ -60,7 +60,7 @@
 | Wave | 狀態 | 完成時間 | 備註 |
 |------|------|----------|------|
 | Wave 0: NVS 設定持久化層 | ✅ 完成 | 2026-07-15 | 12 案例全綠；refactor 檢查清單通過（Flash 68.8% / RAM 32.3% 在預估範圍、無 magic number、註解完整） |
-| Wave 1: 系統設定 UI + 恢復預設 | 🟡 部分完成 | — | 473 案例全綠、接線 commit 1f9805c 已入（OHCA 回歸 review 通過）。**2026-07-15 code review 發現兩缺口**：(1) ✅ 已修——調值加 call settings_write() 寫 NVS、setup() 加 settings_init() 載入、nvs_write/reset_defaults 錯誤不吞；(2) 畫面無反饋——drawSettingsMenu 無 cursor 參數、drawSettingEditor 為 dead code。根因：ui_settings RAM 狀態與 settings_state_t 兩套真相各接一半（§5.3 警告的雙重維護坑）。實機待測三項同前 |
+| Wave 1: 系統設定 UI + 恢復預設 | 🟡 部分完成 | — | 486 案例全綠、接線 commit 1f9805c 已入（OHCA 回歸 review 通過）。**2026-07-15 code review 發現兩缺口**：(1) ✅ 已修——調值加 call settings_write() 寫 NVS、setup() 加 settings_init() 載入、nvs_write/reset_defaults 錯誤不吞；(2) ✅ 已修——drawSettingsMenu 加 cursor 參數、drawSettingEditor 接通 main.cpp 繪製分支、input_handler 狀態 extern 共享。實機待測三項同前 |
 | Wave 2: 裝置名稱管理 + BLE 寫入 | ⬜ 未完成 | — | 依賴 Wave 0 |
 | Wave 3: Type-C 管理工具（Electron） | ⬜ 未完成 | — | 可與 Wave 0~2 並行 |
 

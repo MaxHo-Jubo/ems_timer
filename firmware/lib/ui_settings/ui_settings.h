@@ -15,9 +15,11 @@
  * 設定主選單畫面
  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量
  *
- * @param disp 顯示抽象層（mock 或真實顯示）
+ * @param disp    顯示抽象層（mock 或真實顯示）
+ * @param cursor  游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量），
+ *                預設 3 向後相容
  */
-void drawSettingsMenu(Display& disp);
+void drawSettingsMenu(Display& disp, uint8_t cursor = 3);
 
 /**
  * 設定子畫面（亮度/音量調整）

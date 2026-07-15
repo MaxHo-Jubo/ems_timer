@@ -51,8 +51,8 @@ static void test_g11_draw_settings_menu_items() {
 
 // ----- G1.2: 游標位置 -----
 
-/** G1.2: 游標高亮 → fillRect 繪製於最後一項（Y=150） */
-static void test_g12_cursor_position() {
+/** G1.2: 游標高亮 → fillRect 繪製於最後一項（Y=150, cursor=3 預設） */
+static void test_g12_cursor_position_default() {
     drawSettingsMenu(g_disp);
 
     // 游標高亮矩形應存在（fillRect 應被呼叫）
@@ -125,17 +125,62 @@ static void test_g16_cancel_preserves_values() {
         "G1.6: 取消後 vent_volume 應保持 0");
 }
 
+// ----- G1.7: 游標高亮依參數變化 -----
+
+/** G1.7: cursor=0 → 高亮裝置名稱（Y=30） */
+static void test_g17_cursor_0_highlights_device_name() {
+    drawSettingsMenu(g_disp, 0);
+
+    // 最後一次 fillRect 應為裝置名稱列（Y=30）
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(30, mock_get_last_fill_y(),
+        "G1.7: cursor=0 時高亮應為裝置名稱 Y=30");
+}
+
+/** G1.7: cursor=1 → 高亮螢幕亮度（Y=70） */
+static void test_g17_cursor_1_highlights_brightness() {
+    drawSettingsMenu(g_disp, 1);
+
+    // 最後一次 fillRect 應為螢幕亮度列（Y=70）
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(70, mock_get_last_fill_y(),
+        "G1.7: cursor=1 時高亮應為螢幕亮度 Y=70");
+}
+
+/** G1.7: cursor=2 → 高亮系統音量（Y=110） */
+static void test_g17_cursor_2_highlights_system_volume() {
+    drawSettingsMenu(g_disp, 2);
+
+    // 最後一次 fillRect 應為系統音量列（Y=110）
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(110, mock_get_last_fill_y(),
+        "G1.7: cursor=2 時高亮應為系統音量 Y=110");
+}
+
+// ----- G1.8: drawSettingEditor 繪製 -----
+
+/** G1.8: drawSettingEditor 繪製標題、數值、範圍 */
+static void test_g18_draw_setting_editor() {
+    drawSettingEditor(g_disp, "螢幕亮度", 3, 1, 5);
+
+    // 驗證有 draw 文字（最後一項：範圍提示）
+    const char* text = mock_get_last_text();
+    TEST_ASSERT_NOT_NULL_MESSAGE(text, "G1.8: drawSettingEditor 應呼叫 drawText 繪製文字");
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("1 ~ 5", text, "G1.8: 最後一項應為範圍提示");
+}
+
 // ============================================================
 //  Main
 // ============================================================
 
 void run_all_tests() {
     RUN_TEST(test_g11_draw_settings_menu_items);
-    RUN_TEST(test_g12_cursor_position);
+    RUN_TEST(test_g12_cursor_position_default);
     RUN_TEST(test_g13_brightness_in_range);
     RUN_TEST(test_g14_long_press_confirm_dialog);
     RUN_TEST(test_g15_confirm_restores_defaults);
     RUN_TEST(test_g16_cancel_preserves_values);
+    RUN_TEST(test_g17_cursor_0_highlights_device_name);
+    RUN_TEST(test_g17_cursor_1_highlights_brightness);
+    RUN_TEST(test_g17_cursor_2_highlights_system_volume);
+    RUN_TEST(test_g18_draw_setting_editor);
 }
 
 int main(int argc, char** argv) {
