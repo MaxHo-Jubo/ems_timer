@@ -10,6 +10,7 @@
 #include <cstring>
 
 #include "ble_chunker.h"  // ATT_HEADER_OVERHEAD 共用常數
+#include "ems_settings.h" // settings_set_device_name (G2.1 裝置名稱寫入)
 
 namespace ems {
 
@@ -17,6 +18,8 @@ namespace ems {
 static constexpr const char* NUS_SERVICE_UUID = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 static constexpr const char* NUS_RX_UUID      = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 static constexpr const char* NUS_TX_UUID      = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
+// 裝置名稱寫入 characteristic（G2.1：App 端透過 BLE write 更新裝置名稱）
+static constexpr const char* NUS_NAME_UUID    = "6E400004-B5A3-F393-E0A9-E50E24DCCA9E";
 
 // singleton 指標供 GATT callback 使用（ESP32 BLE callback 沒帶 user context）
 static BleNus* g_instance = nullptr;
@@ -47,6 +50,34 @@ class NusRxCallbacks : public BLECharacteristicCallbacks {
             g_instance->_on_rx_write(
                 reinterpret_cast<const uint8_t*>(value.data()), value.length());
         }
+    }
+};
+
+// 裝置名稱寫入 callback（G2.1：BLE client 寫入新名稱時持久化到 LittleFS）
+// 空值或超過 DEVICE_NAME_MAX_LEN-1 時拒絕（不寫入）；
+// 超過長度時裁切至 DEVICE_NAME_MAX_LEN-1 再寫入。
+class NusNameWriteCallbacks : public BLECharacteristicCallbacks {
+    void onWrite(BLECharacteristic* pChar) override {
+        std::string value = pChar->getValue();
+        if (value.empty()) {
+            Serial.println("[NUS-NAME] WARN empty write, rejected");
+            return;
+        }
+        // 取得既有常數（ems_settings.h）做裁切判斷
+        constexpr size_t max_len = DEVICE_NAME_MAX_LEN - 1;  // 預留 null terminator
+        if (value.length() > max_len) {
+            Serial.printf("[NUS-NAME] WARN name too long %u > %u, truncating\n",
+                          (unsigned) value.length(), (unsigned) max_len);
+            value = value.substr(0, max_len);
+        }
+        // 轉 null-terminated 字串寫入 LittleFS
+        std::string name_str(value.begin(), value.end());
+        name_str.push_back('\0');
+        if (!settings_set_device_name(name_str.c_str())) {
+            Serial.println("[NUS-NAME] ERROR settings_set_device_name failed");
+            return;
+        }
+        Serial.printf("[NUS-NAME] OK name set to '%s'\n", name_str.c_str());
     }
 };
 
@@ -85,6 +116,12 @@ bool BleNus::begin(const char* device_name) {
         NUS_TX_UUID,
         BLECharacteristic::PROPERTY_NOTIFY);
     tx_char_->addDescriptor(new BLE2902());
+
+    // G2.1：裝置名稱寫入 characteristic（App 端寫入新名稱時持久化）
+    BLECharacteristic* name_char = svc->createCharacteristic(
+        NUS_NAME_UUID,
+        BLECharacteristic::PROPERTY_WRITE | BLECharacteristic::PROPERTY_WRITE_NR);
+    name_char->setCallbacks(new NusNameWriteCallbacks());
 
     svc->start();
 
