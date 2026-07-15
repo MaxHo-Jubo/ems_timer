@@ -60,7 +60,7 @@
 | Wave | 狀態 | 完成時間 | 備註 |
 |------|------|----------|------|
 | Wave 0: NVS 設定持久化層 | ✅ 完成 | 2026-07-15 | 12 案例全綠；refactor 檢查清單通過（Flash 68.8% / RAM 32.3% 在預估範圍、無 magic number、註解完整） |
-| Wave 1: 系統設定 UI + 恢復預設 | ✅ 完成 | 2026-07-15 | 473 案例全綠；§2.1.1/2.1.3/2.1.5 src 接線完成——GLOBAL_SETTINGS_PLACEHOLDER 替換為 drawSettingsMenu、input_handler 接上上下鍵游標/左右鍵數值/主鍵進入/返回鍵回主選單/長按主鍵恢復預設確認；§2.1.5 亮度/系統音量/通氣音量讀值已接入 ui_settings getter/setter 路徑；**實機待測：亮度→display.setBacklight() 硬體控制、系統音量→beep 函式音量計算、通氣音量→ventVolume 全域同步** |
+| Wave 1: 系統設定 UI + 恢復預設 | 🟡 部分完成 | — | 473 案例全綠、接線 commit 1f9805c 已入（OHCA 回歸 review 通過）。**2026-07-15 code review 發現兩缺口**：(1) CRITICAL 持久化斷鏈——調值只進 RAM setter，settings_write() 零呼叫點、setup() 未呼叫 settings_init()，斷電即丟；(2) 畫面無反饋——drawSettingsMenu 無 cursor 參數、drawSettingEditor 為 dead code。根因：ui_settings RAM 狀態與 settings_state_t 兩套真相各接一半（§5.3 警告的雙重維護坑）。實機待測三項同前 |
 | Wave 2: 裝置名稱管理 + BLE 寫入 | ⬜ 未完成 | — | 依賴 Wave 0 |
 | Wave 3: Type-C 管理工具（Electron） | ⬜ 未完成 | — | 可與 Wave 0~2 並行 |
 
