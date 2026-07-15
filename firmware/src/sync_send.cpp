@@ -25,6 +25,7 @@
 
 #include "case_sync_serializer.h"
 #include "ble_chunker.h"
+#include "ems_settings.h"
 
 // ════════════════════════════════════════════════════════════════
 // 模組內常數
@@ -137,10 +138,16 @@ void syncSendingPrepare() {
     caseSummary_build(&summary, s_events, event_count, meta->start_ms, meta->end_ms);
 
     // STEP 05: 序列化 case_sync JSON（schema 對齊 pm-dev-spec §14.1），保留 1 byte 給 '\n'
+    //   device_name 改讀 LittleFS 動態名稱（G2.2）
+    static char s_device_name_buf[DEVICE_NAME_MAX_LEN];
     ems::CaseSyncMeta js_meta;
     js_meta.case_id       = g_sync_target.id;
     js_meta.mode          = (g_sync_target.type == CASE_MODE_OHCA) ? "ohca" : "training";
-    js_meta.device_name   = SYNC_DEVICE_NAME;
+    js_meta.device_name   = settings_get_device_name(s_device_name_buf, sizeof(s_device_name_buf))
+                                ? s_device_name_buf
+                                : (Serial.printf("[SYNC] WARN get_device_name failed, fallback=%s\n",
+                                              SYNC_DEVICE_NAME),
+                                   SYNC_DEVICE_NAME);
     js_meta.device_id     = SYNC_DEVICE_ID;
     js_meta.fw_version    = SYNC_FW_VERSION;
     js_meta.started_at_ms = meta->start_ms;
