@@ -18,6 +18,9 @@ static bool settingsEditorMode = false;
 // 恢復預設確認對話框（true = 彈出中）
 static bool settingsRestoreConfirm = false;
 
+// 系統設定 NVS state（開機由 main.cpp settings_init 載入，調值時 settings_write 寫回）
+settings_state_t g_settings_state;
+
 // 前置宣告：進入 BLE 同步流程（START_SYNC 與 §16.7 resync 確認後共用，定義見下方）
 static void enterSyncFlow();
 
@@ -433,15 +436,27 @@ void onShortPress(uint8_t btnIdx) {
         if (settingsEditorMode) {
             if (btnIdx == BTN_UP) {
                 switch (settingsCursor) {
-                    case 1:
-                        setBrightness(getBrightness() < SETTINGS_BRIGHTNESS_MAX ? getBrightness() + 1 : SETTINGS_BRIGHTNESS_MAX);
+                    case 1: {
+                        uint8_t cur = getBrightness();
+                        uint8_t next = cur < SETTINGS_BRIGHTNESS_MAX ? cur + 1 : SETTINGS_BRIGHTNESS_MAX;
+                        setBrightness(next);
+                        settings_write(&g_settings_state, SETTING_KEY_BRIGHTNESS, next);
                         break;
-                    case 2:
-                        setSystemVolume(getSystemVolume() < SETTINGS_VOLUME_MAX ? getSystemVolume() + 1 : SETTINGS_VOLUME_MAX);
+                    }
+                    case 2: {
+                        uint8_t cur = getSystemVolume();
+                        uint8_t next = cur < SETTINGS_VOLUME_MAX ? cur + 1 : SETTINGS_VOLUME_MAX;
+                        setSystemVolume(next);
+                        settings_write(&g_settings_state, SETTING_KEY_SYSTEM_VOL, next);
                         break;
-                    case 3:
-                        setVentVolume(getVentVolume() < SETTINGS_VENT_VOLUME_MAX ? getVentVolume() + 1 : SETTINGS_VENT_VOLUME_MAX);
+                    }
+                    case 3: {
+                        uint8_t cur = getVentVolume();
+                        uint8_t next = cur < SETTINGS_VENT_VOLUME_MAX ? cur + 1 : SETTINGS_VENT_VOLUME_MAX;
+                        setVentVolume(next);
+                        settings_write(&g_settings_state, SETTING_KEY_VENT_VOL, next);
                         break;
+                    }
                     default:
                         break;
                 }
@@ -449,15 +464,27 @@ void onShortPress(uint8_t btnIdx) {
             }
             if (btnIdx == BTN_DOWN) {
                 switch (settingsCursor) {
-                    case 1:
-                        setBrightness(getBrightness() > SETTINGS_BRIGHTNESS_MIN ? getBrightness() - 1 : SETTINGS_BRIGHTNESS_MIN);
+                    case 1: {
+                        uint8_t cur = getBrightness();
+                        uint8_t next = cur > SETTINGS_BRIGHTNESS_MIN ? cur - 1 : SETTINGS_BRIGHTNESS_MIN;
+                        setBrightness(next);
+                        settings_write(&g_settings_state, SETTING_KEY_BRIGHTNESS, next);
                         break;
-                    case 2:
-                        setSystemVolume(getSystemVolume() > SETTINGS_VOLUME_MIN ? getSystemVolume() - 1 : SETTINGS_VOLUME_MIN);
+                    }
+                    case 2: {
+                        uint8_t cur = getSystemVolume();
+                        uint8_t next = cur > SETTINGS_VOLUME_MIN ? cur - 1 : SETTINGS_VOLUME_MIN;
+                        setSystemVolume(next);
+                        settings_write(&g_settings_state, SETTING_KEY_SYSTEM_VOL, next);
                         break;
-                    case 3:
-                        setVentVolume(getVentVolume() > SETTINGS_VENT_VOLUME_MIN ? getVentVolume() - 1 : SETTINGS_VENT_VOLUME_MIN);
+                    }
+                    case 3: {
+                        uint8_t cur = getVentVolume();
+                        uint8_t next = cur > SETTINGS_VENT_VOLUME_MIN ? cur - 1 : SETTINGS_VENT_VOLUME_MIN;
+                        setVentVolume(next);
+                        settings_write(&g_settings_state, SETTING_KEY_VENT_VOL, next);
                         break;
+                    }
                     default:
                         break;
                 }

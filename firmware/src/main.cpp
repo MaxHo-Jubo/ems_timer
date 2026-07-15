@@ -56,6 +56,11 @@
 
 // Wave 1：系統設定 UI（display_abstraction 包裝，供 drawSettingsMenu 使用）
 #include "ui_settings.h"
+
+// Wave 1：系統設定 NVS 讀寫（settings_state_t, settings_init）
+#include "ems_settings.h"
+// 注意：g_settings_state 宣告在 input_handler.cpp（static），setup() 透過 extern 取得
+extern settings_state_t g_settings_state;
 static void _settings_text_fn(const char* str, int16_t x, int16_t y, int16_t fontsize, uint32_t color) {
     display.setCursor(x, y);
     display.setTextSize(fontsize);
@@ -400,6 +405,15 @@ void setup() {
         pinMode(BTN_PINS[i], INPUT_PULLUP);
         lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
+
+    // STEP 03.5: Dev-Phase G — 系統設定 NVS 載入（亮度/音量 → RAM）
+    //   必須早於 TFT init（亮度影響顯示），晚於 GPIO init（按鍵已可操作）
+    settings_init(&g_settings_state);
+    setBrightness(g_settings_state.brightness);
+    setSystemVolume(g_settings_state.system_volume);
+    setVentVolume(g_settings_state.vent_volume);
+    Serial.printf("[SETTINGS] NVS loaded: brt=%u vol=%u vvol=%u\n",
+                  g_settings_state.brightness, g_settings_state.system_volume, g_settings_state.vent_volume);
 
     // STEP 04: TFT 初始化（LovyanGFX + DMA + sprite buffer）
     //   - tft.init()：SPI 80MHz @ DMA_CH_AUTO（class LGFX 內 cfg）

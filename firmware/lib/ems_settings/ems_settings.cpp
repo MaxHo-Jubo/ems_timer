@@ -10,6 +10,7 @@
 
 #ifdef ARDUINO
 #include <NVS.h>
+#include <Arduino.h>
 #endif
 
 #include <map>
@@ -235,12 +236,25 @@ static uint8_t nvs_read_uint8(const char* key, uint8_t default_val) {
 static bool nvs_write_uint8(const char* key, uint8_t val) {
     nvs_handle_t handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK) return false;
+    if (err != ESP_OK) {
+        Serial.printf("[SETTINGS] ERROR nvs_open \"%s\": %d\n", key, err);
+        return false;
+    }
 
-    nvs_set_u8(handle, key, val);
+    err = nvs_set_u8(handle, key, val);
+    if (err != ESP_OK) {
+        Serial.printf("[SETTINGS] ERROR nvs_set_u8 \"%s\": %d\n", key, err);
+        nvs_close(handle);
+        return false;
+    }
+
     err = nvs_commit(handle);
     nvs_close(handle);
-    return err == ESP_OK;
+    if (err != ESP_OK) {
+        Serial.printf("[SETTINGS] ERROR nvs_commit \"%s\": %d\n", key, err);
+        return false;
+    }
+    return true;
 }
 
 bool settings_init(settings_state_t* state) {
@@ -290,9 +304,13 @@ bool settings_reset_defaults(settings_state_t* state) {
     state->brightness = SETTINGS_BRIGHTNESS_DEFAULT;
     state->system_volume = SETTINGS_VOLUME_DEFAULT;
     state->vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
-    nvs_write_uint8(NVS_BRIGHTNESS_KEY, SETTINGS_BRIGHTNESS_DEFAULT);
-    nvs_write_uint8(NVS_VOLUME_KEY, SETTINGS_VOLUME_DEFAULT);
-    nvs_write_uint8(NVS_VENT_VOL_KEY, SETTINGS_VENT_VOLUME_DEFAULT);
+    bool ok1 = nvs_write_uint8(NVS_BRIGHTNESS_KEY, SETTINGS_BRIGHTNESS_DEFAULT);
+    bool ok2 = nvs_write_uint8(NVS_VOLUME_KEY, SETTINGS_VOLUME_DEFAULT);
+    bool ok3 = nvs_write_uint8(NVS_VENT_VOL_KEY, SETTINGS_VENT_VOLUME_DEFAULT);
+    if (!ok1 || !ok2 || !ok3) {
+        Serial.println("[SETTINGS] ERROR reset_defaults NVS write failed");
+        return false;
+    }
     return true;
 }
 
