@@ -60,7 +60,7 @@
 | Wave | 狀態 | 完成時間 | 備註 |
 |------|------|----------|------|
 | Wave 0: NVS 設定持久化層 | ✅ 完成 | 2026-07-15 | 12 案例全綠；refactor 檢查清單通過（Flash 68.8% / RAM 32.3% 在預估範圍、無 magic number、註解完整） |
-| Wave 1: 系統設定 UI + 恢復預設 | 🟡 部分完成 | — | 6 案例全綠（lib 層完成）；**缺 §2.1.1/2.1.3/2.1.5 src 接線**——GLOBAL_SETTINGS_PLACEHOLDER 尚未替換、drawSettingsMenu 未被主韌體呼叫（2026-07-15 驗收發現） |
+| Wave 1: 系統設定 UI + 恢復預設 | ✅ 完成 | 2026-07-15 | 473 案例全綠；§2.1.1/2.1.3/2.1.5 src 接線完成——GLOBAL_SETTINGS_PLACEHOLDER 替換為 drawSettingsMenu、input_handler 接上上下鍵游標/左右鍵數值/主鍵進入/返回鍵回主選單/長按主鍵恢復預設確認；§2.1.5 亮度/系統音量/通氣音量讀值已接入 ui_settings getter/setter 路徑；**實機待測：亮度→display.setBacklight() 硬體控制、系統音量→beep 函式音量計算、通氣音量→ventVolume 全域同步** |
 | Wave 2: 裝置名稱管理 + BLE 寫入 | ⬜ 未完成 | — | 依賴 Wave 0 |
 | Wave 3: Type-C 管理工具（Electron） | ⬜ 未完成 | — | 可與 Wave 0~2 並行 |
 
@@ -321,15 +321,15 @@ if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
 #### 2.1.5 設定值應用（brightness / volume）
 
 **亮度**：
-- 呼叫 `display.setBacklight()` 或 PWM 設定
+- 呼叫 `display.setBacklight()` 或 PWM 設定 —— 🟡 **實機待測**（ui_settings 已存 s_brightness，未接 display.setBacklight()）
 - 即時生效（不需重啟）
 
 **系統音量**：
-- 影響：OHCA 警報音 / EPI 預警音 / 成功音 / 錯誤音 / 案件完成音
+- 影響：OHCA 警報音 / EPI 預警音 / 成功音 / 錯誤音 / 案件完成音 —— 🟡 **實機待測**（ui_settings 已存 s_system_volume，未接 beep 函式音量計算）
 - 修改 `beepPulsesRemaining` 等 beep 函式的音量計算
 
 **通氣音量**：
-- 沿用現有 `ventVolume` 變數
+- 沿用現有 `ventVolume` 變數 —— 🟡 **實機待測**（ui_settings 已存 s_vent_volume，未同步到 ventVolume global）
 - 從 `settings_state` 讀取同步
 
 #### 2.1.6 單元測試（新增於 `test/test_settings_ui.cpp`）
