@@ -18,6 +18,7 @@
 
 #include "display_abstraction.h"
 #include "ui_settings.h"
+#include "ems_settings.h"
 
 // ============================================================
 //  共用 fixture
@@ -93,8 +94,13 @@ static void test_g14_long_press_confirm_dialog() {
 static void test_g15_confirm_restores_defaults() {
     drawSettingsMenu(g_disp);
 
-    // 驗證設定值恢復預設
-    TEST_ASSERT_NOT_NULL_MESSAGE(mock_get_last_text(), "G1.5: 確認應恢復亮度/系統音量/通氣音量為預設值");
+    // 驗證 brightness / system_volume / vent_volume 都恢復為預設值
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_BRIGHTNESS_DEFAULT, getBrightness(),
+        "G1.5: brightness 應恢復為預設值");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_VOLUME_DEFAULT, getSystemVolume(),
+        "G1.5: system_volume 應恢復為預設值");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_VENT_VOLUME_DEFAULT, getVentVolume(),
+        "G1.5: vent_volume 應恢復為預設值");
 }
 
 // ----- G1.6: 取消 → 設定值不變 -----

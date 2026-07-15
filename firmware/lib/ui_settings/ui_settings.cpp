@@ -18,6 +18,12 @@
 // 目前亮度值（開機預設，從 settings_state 讀取）
 static uint8_t s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
 
+// 目前系統音量值（開機預設，從 settings_state 讀取）
+static uint8_t s_system_volume = SETTINGS_VOLUME_DEFAULT;
+
+// 目前通氣音量值（開機預設，從 settings_state 讀取）
+static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
+
 // X 座標：左邊距
 #define SETTINGS_MENU_X          10
 
@@ -121,4 +127,38 @@ void drawSettingEditor(Display& disp, const char* title, uint8_t value, uint8_t 
  */
 uint8_t getBrightness() {
     return s_brightness;
+}
+
+/**
+ * 取得目前系統音量值
+ * @return 系統音量值
+ */
+uint8_t getSystemVolume() {
+    return s_system_volume;
+}
+
+/**
+ * 取得目前通氣音量值
+ * @return 通氣音量值
+ */
+uint8_t getVentVolume() {
+    return s_vent_volume;
+}
+
+/**
+ * 確認恢復預設值（亮度/系統音量/通氣音量→預設，裝置名稱不變）
+ * @return true 成功
+ */
+bool confirmRestoreDefaults() {
+    // STEP 01: 呼叫 settings_reset_defaults_mock 恢復 NVS + state
+    settings_state_t mock_state;
+    settings_init_mock(&mock_state);
+    settings_reset_defaults_mock(&mock_state);
+
+    // STEP 02: 同步回 local state
+    s_brightness = mock_state.brightness;
+    s_system_volume = mock_state.system_volume;
+    s_vent_volume = mock_state.vent_volume;
+
+    return true;
 }

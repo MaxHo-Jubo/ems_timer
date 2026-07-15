@@ -35,3 +35,21 @@ void drawSettingEditor(Display& disp, const char* title, uint8_t value, uint8_t 
  * @return 亮度值
  */
 uint8_t getBrightness();
+
+/**
+ * 取得目前系統音量值（測試用）
+ * @return 系統音量值
+ */
+uint8_t getSystemVolume();
+
+/**
+ * 取得目前通氣音量值（測試用）
+ * @return 通氣音量值
+ */
+uint8_t getVentVolume();
+
+/**
+ * 確認恢復預設值（亮度/系統音量/通氣音量→預設，裝置名稱不變）
+ * @return true 成功
+ */
+bool confirmRestoreDefaults();
