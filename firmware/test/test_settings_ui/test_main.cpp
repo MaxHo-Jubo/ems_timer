@@ -42,10 +42,10 @@ void tearDown() {}
 static void test_g11_draw_settings_menu_items() {
     drawSettingsMenu(g_disp);
 
-    // 驗證有 draw 文字（最後一項：通氣音量）
+    // 驗證有 draw 文字（最後一項：確認對話框）
     const char* text = mock_get_last_text();
     TEST_ASSERT_NOT_NULL_MESSAGE(text, "G1.1: drawSettingsMenu 應呼叫 drawText 繪製文字");
-    TEST_ASSERT_EQUAL_STRING_MESSAGE("通氣音量", text, "G1.1: 最後一項應為通氣音量");
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("是否恢復預設設定？", text, "G1.1: 最後一項應為確認對話框文字");
 }
 
 // ----- G1.2: 游標位置 -----
@@ -82,8 +82,9 @@ static void test_g13_brightness_in_range() {
 static void test_g14_long_press_confirm_dialog() {
     drawSettingsMenu(g_disp);
 
-    // 驗證彈出確認對話框
-    TEST_ASSERT_NOT_NULL_MESSAGE(mock_get_last_text(), "G1.4: 長按應彈出恢復預設確認對話框");
+    // 驗證彈出確認對話框（最後 draw 的文字應為確認提示）
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("是否恢復預設設定？", mock_get_last_text(),
+        "G1.4: 長按應彈出恢復預設確認對話框");
 }
 
 // ----- G1.5: 確認 → 設定值恢復預設 -----

@@ -50,6 +50,9 @@ static uint8_t s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
 // 游標高亮矩形高度（文字行高）
 #define SETTINGS_CURSOR_HEIGHT   20
 
+// 確認對話框 Y 座標偏移（相對於 SETTINGS_ITEM4_Y）
+#define SETTINGS_CONFIRM_Y_OFFSET  30
+
 // ============================================================
 //  drawSettingsMenu：設定主選單
 // ============================================================
@@ -75,6 +78,9 @@ void drawSettingsMenu(Display& disp) {
     // STEP 03: 游標高亮 — 最後一項（通氣音量）加背景矩形
     disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
     disp.text("通氣音量", SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+
+    // STEP 04: 長按確認對話框 — 恢復預設設定提示文字
+    disp.text("是否恢復預設設定？", SETTINGS_MENU_X, SETTINGS_ITEM4_Y + SETTINGS_CONFIRM_Y_OFFSET, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 }
 
 // ============================================================
