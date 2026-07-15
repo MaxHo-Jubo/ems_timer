@@ -26,6 +26,7 @@
 static Display g_disp;
 
 void setUp() {
+    mock_display_reset();
     g_disp = create_mock_display();
 }
 
@@ -49,13 +50,19 @@ static void test_g11_draw_settings_menu_items() {
 
 // ----- G1.2: 游標位置 -----
 
-/** G1.2: 游標位置正確 */
+/** G1.2: 游標高亮 → fillRect 繪製於最後一項（Y=150） */
 static void test_g12_cursor_position() {
     drawSettingsMenu(g_disp);
 
-    // 最後一項的 Y 座標應為 150
-    int16_t y = mock_get_last_y();
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(150, y, "G1.2: 最後一項 Y 座標應為 150");
+    // 游標高亮矩形應存在（fillRect 應被呼叫）
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(10, mock_get_last_fill_x(),
+        "G1.2: 游標 fillRect X 座標應從左邊距開始");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(150, mock_get_last_fill_y(),
+        "G1.2: 游標 fillRect Y 座標應為 150（最後一項通氣音量位置）");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(80, mock_get_last_fill_w(),
+        "G1.2: 游標 fillRect 寬度應為 80（文字區域）");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(20, mock_get_last_fill_h(),
+        "G1.2: 游標 fillRect 高度應為 20（文字行高）");
 }
 
 // ----- G1.3: 數值調整在範圍內 -----

@@ -41,6 +41,12 @@
 #define SETTINGS_VALUE_BUF_SIZE  8
 #define SETTINGS_RANGE_BUF_SIZE 16
 
+// 游標高亮矩形寬度（涵蓋文字區域）
+#define SETTINGS_CURSOR_WIDTH    80
+
+// 游標高亮矩形高度（文字行高）
+#define SETTINGS_CURSOR_HEIGHT   20
+
 // ============================================================
 //  drawSettingsMenu：設定主選單
 // ============================================================
@@ -59,6 +65,9 @@ void drawSettingsMenu(Display& disp) {
     disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
     disp.text("螢幕亮度", SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
     disp.text("系統音量", SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+
+    // STEP 03: 游標高亮 — 最後一項（通氣音量）加背景矩形
+    disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
     disp.text("通氣音量", SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 }
 
