@@ -60,7 +60,7 @@
 | Wave | 狀態 | 完成時間 | 備註 |
 |------|------|----------|------|
 | Wave 0: NVS 設定持久化層 | ✅ 完成 | 2026-07-15 | 12 案例全綠；refactor 檢查清單通過（Flash 68.8% / RAM 32.3% 在預估範圍、無 magic number、註解完整） |
-| Wave 1: 系統設定 UI + 恢復預設 | ⬜ 未完成 | — | 已完成至 G1.1（drawSettingsMenu 顯示 4 項目）；依賴 Wave 0 |
+| Wave 1: 系統設定 UI + 恢復預設 | ⬜ 未完成 | — | 已完成至 G1.2（游標高亮 fillRect）；依賴 Wave 0 |
 | Wave 2: 裝置名稱管理 + BLE 寫入 | ⬜ 未完成 | — | 依賴 Wave 0 |
 | Wave 3: Type-C 管理工具（Electron） | ⬜ 未完成 | — | 可與 Wave 0~2 並行 |
 
