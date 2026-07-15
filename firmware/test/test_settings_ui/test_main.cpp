@@ -1,7 +1,7 @@
-// EMS DoseSync Pro — Wave 1 Unit Test: 系統設定 UI
+// EMS DoseSync Pro — Wave 1 + Wave 2 Unit Test: 系統設定 UI
 //
-// 對應規格：docs/phase-g-system-settings-plan.md §2.1.6
-// 涵蓋：G1.1 ~ G1.6
+// 對應規格：docs/phase-g-system-settings-plan.md §2.1.6 / §2.2.3 / §2.2.5
+// 涵蓋：G1.1 ~ G1.8 / G2.3
 //
 // 測試 framework：Unity（與 test_time / test_settings 相同模式）
 //   - test 函式：static void test_*()
@@ -19,6 +19,7 @@
 #include "display_abstraction.h"
 #include "ui_settings.h"
 #include "ems_settings.h"
+#include "ems_storage_logic.h"
 
 // ============================================================
 //  共用 fixture
@@ -166,6 +167,28 @@ static void test_g18_draw_setting_editor() {
     TEST_ASSERT_EQUAL_STRING_MESSAGE("1 ~ 5", text, "G1.8: 最後一項應為範圍提示");
 }
 
+// ----- G2.3: 案件中裝置名稱置灰 + 名稱顯示 -----
+
+/** G2.3: is_device_name_locked(OHCA) → true */
+static void test_g23_locked_ohca() {
+    bool locked = is_device_name_locked(ems::CASE_MODE_OHCA);
+    TEST_ASSERT_TRUE_MESSAGE(locked, "G2.3: OHCA 案件進行中 → 裝置名稱應置灰");
+}
+
+/** G2.3: is_device_name_locked(Training) → true */
+static void test_g23_locked_training() {
+    bool locked = is_device_name_locked(ems::CASE_MODE_TRAINING);
+    TEST_ASSERT_TRUE_MESSAGE(locked, "G2.3: Training 案件進行中 → 裝置名稱應置灰");
+}
+
+/** G2.3: is_device_name_locked 案件進行中 → true（OHCA + Training 都 lock） */
+static void test_g23_locked_in_case() {
+    TEST_ASSERT_TRUE_MESSAGE(is_device_name_locked(ems::CASE_MODE_OHCA),
+        "G2.3: OHCA 案件進行中 → 裝置名稱應置灰");
+    TEST_ASSERT_TRUE_MESSAGE(is_device_name_locked(ems::CASE_MODE_TRAINING),
+        "G2.3: Training 案件進行中 → 裝置名稱應置灰");
+}
+
 // ============================================================
 //  Main
 // ============================================================
@@ -181,6 +204,10 @@ void run_all_tests() {
     RUN_TEST(test_g17_cursor_1_highlights_brightness);
     RUN_TEST(test_g17_cursor_2_highlights_system_volume);
     RUN_TEST(test_g18_draw_setting_editor);
+    // G2.3: 案件中裝置名稱置灰 + 名稱顯示
+    RUN_TEST(test_g23_locked_ohca);
+    RUN_TEST(test_g23_locked_training);
+    RUN_TEST(test_g23_locked_in_case);
 }
 
 int main(int argc, char** argv) {

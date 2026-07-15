@@ -943,7 +943,7 @@ void updateDisplay() {
                 drawSettingEditor(settingsDisp, "通氣音量", getVentVolume(), SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX);
             }
         } else {
-            drawSettingsMenu(settingsDisp, settingsCursor);
+            drawSettingsMenu(settingsDisp, settingsCursor, g_case_mode);
         }
     }
 

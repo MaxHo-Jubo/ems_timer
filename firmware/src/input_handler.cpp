@@ -6,6 +6,9 @@
 // Wave 1：系統設定 NVS 讀寫（settings_state_t, settings_init, settings_reset_defaults）
 #include "ems_settings.h"
 
+// Wave 2：案件模式（CaseMode）
+#include "ems_storage_logic.h"
+
 // Wave 1：系統設定選單狀態（settingsCursor / editor / confirm）
 #define SETTINGS_MENU_COUNT    4   // 裝置名稱 / 亮度 / 系統音量 / 通氣音量
 
@@ -506,7 +509,12 @@ void onShortPress(uint8_t btnIdx) {
                 break;
             case BTN_PRIMARY:
                 if (settingsCursor == 0) {
-                    Serial.println("[SETTINGS] device name — Phase H");
+                    // §2.2.5：案件進行中 → 裝置名稱置灰且主鍵不可進入
+                    if (is_device_name_locked(g_case_mode)) {
+                        Serial.println("[SETTINGS] device name locked (case in progress)");
+                    } else {
+                        Serial.println("[SETTINGS] device name — show sub");
+                    }
                 } else if (settingsCursor == 1) {
                     settingsEditorMode = true;
                 } else if (settingsCursor == 2) {

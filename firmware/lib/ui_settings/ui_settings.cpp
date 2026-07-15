@@ -11,6 +11,12 @@
 #include "ems_settings.h"
 #include <stdio.h>
 
+// 裝置名稱緩衝區（從 LittleFS / NVS 讀取，由 App 寫入）
+static char s_device_name[DEVICE_NAME_MAX_LEN];
+
+// 置灰顏色（RGB565 暗灰，用於案件中置灰顯示）
+#define SETTINGS_COLOR_DIM  0x6B4D
+
 // ============================================================
 //  顯示常數（座標 + 字型 + 顏色）
 // ============================================================
@@ -71,47 +77,68 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 #define SETTINGS_CURSOR_VENT_VOL     3
 
 /**
- * 設定主選單畫面
- * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量
- *
- * @param disp    顯示抽象層（mock 或真實顯示）
- * @param cursor  游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量），
- *                預設 3 向後相容
- */
-void drawSettingsMenu(Display& disp, uint8_t cursor) {
-    // STEP 01: 設定目前亮度值（從 settings_state 讀取，此處為預設值）
-    s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
+  * 設定主選單畫面
+  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量
+  *
+  * @param disp       顯示抽象層（mock 或真實顯示）
+  * @param cursor     游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量），
+  *                   預設 3 向後相容
+  * @param case_mode  當前案件模式（用於判斷裝置名稱是否置灰）
+  */
+ void drawSettingsMenu(Display& disp, uint8_t cursor, ems::CaseMode case_mode) {
+     // STEP 01: 設定目前亮度值（從 settings_state 讀取，此處為預設值）
+     s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
 
-    // STEP 02: 繪製選單標題
-    disp.text("系統設定", SETTINGS_MENU_X, SETTINGS_TITLE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+     // STEP 02: 讀取裝置名稱（ESP32: LittleFS / native: mock FS）
+#ifdef ARDUINO
+     settings_get_device_name(s_device_name, sizeof(s_device_name));
+#else
+     {
+         size_t len = 0;
+         mock_fs_read(DEVICE_NAME_FILE, s_device_name, sizeof(s_device_name), &len);
+     }
+#endif
 
-    // STEP 03: 繪製 4 個設定項目，依 cursor 高亮對應列
-    const bool highlight0 = (cursor == SETTINGS_CURSOR_DEVICE_NAME);
-    const bool highlight1 = (cursor == SETTINGS_CURSOR_BRIGHTNESS);
-    const bool highlight2 = (cursor == SETTINGS_CURSOR_SYSTEM_VOL);
-    const bool highlight3 = (cursor == SETTINGS_CURSOR_VENT_VOL);
+     // STEP 03: 繪製選單標題
+     disp.text("系統設定", SETTINGS_MENU_X, SETTINGS_TITLE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-    if (highlight0) {
-        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
-    }
-    disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+     // STEP 04: 繪製 4 個設定項目，依 cursor 高亮對應列
+     const bool highlight0 = (cursor == SETTINGS_CURSOR_DEVICE_NAME);
+     const bool highlight1 = (cursor == SETTINGS_CURSOR_BRIGHTNESS);
+     const bool highlight2 = (cursor == SETTINGS_CURSOR_SYSTEM_VOL);
+     const bool highlight3 = (cursor == SETTINGS_CURSOR_VENT_VOL);
 
-    if (highlight1) {
-        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
-    }
-    disp.text("螢幕亮度", SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+     // STEP 05: 裝置名稱項目 — 顯示當前名稱 + 案件中置灰
+     if (highlight0) {
+         disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+     }
+     // 判斷案件進行中（純函式，不讀全域）
+     const bool locked = is_device_name_locked(case_mode);
+     if (locked) {
+          // 案件中：置灰（使用暗灰顏色）
+          disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_DIM);
+     } else {
+         // 非案件：正常顯示 + 當前名稱
+         disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+         disp.text(s_device_name, SETTINGS_MENU_X + 70, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+     }
 
-    if (highlight2) {
-        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
-    }
-    disp.text("系統音量", SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+     if (highlight1) {
+         disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+     }
+     disp.text("螢幕亮度", SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-    if (highlight3) {
-        disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
-    }
-    disp.text("通氣音量", SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+     if (highlight2) {
+         disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+     }
+     disp.text("系統音量", SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-    // STEP 04: 長按確認對話框 — 恢復預設設定提示文字
+     if (highlight3) {
+         disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+     }
+     disp.text("通氣音量", SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+
+    // STEP 06: 長按確認對話框 — 恢復預設設定提示文字
     disp.text("是否恢復預設設定？", SETTINGS_MENU_X, SETTINGS_ITEM4_Y + SETTINGS_CONFIRM_Y_OFFSET, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 }
 
@@ -214,10 +241,50 @@ bool confirmRestoreDefaults() {
 }
 
 /**
- * 取消恢復預設（亮度/系統音量/通氣音量→不變更）
- * @return true 成功
- */
-bool cancelRestore() {
-    // STEP 01: 不執行任何設定值的變更，直接回傳
-    return true;
-}
+  * 取消恢復預設（亮度/系統音量/通氣音量→不變更）
+  * @return true 成功
+  */
+ bool cancelRestore() {
+     // STEP 01: 不執行任何設定值的變更，直接回傳
+     return true;
+ }
+
+// ============================================================
+//  is_device_name_locked：案件進行中判斷（純函式，可 native 測）
+// ============================================================
+
+/**
+  * 判斷案件進行中：OHCA / Training 案件執行中 → true（裝置名稱應置灰）
+  *
+  * 純函式：只讀 case_mode 參數，不讀任何全域狀態。
+  * 讓 native test 可直傳 CaseMode 參數驗證，不用碰 lib 內部全域。
+  *
+  * @param case_mode 當前案件模式（CASE_MODE_OHCA / CASE_MODE_TRAINING / 其他）
+  * @return true 案件進行中，裝置名稱項目應置灰且主鍵不可進入
+  */
+  bool is_device_name_locked(ems::CaseMode case_mode) {
+     // STEP 01: OHCA 或 Training 案件進行中 → 置灰
+     if (case_mode == ems::CASE_MODE_OHCA || case_mode == ems::CASE_MODE_TRAINING) {
+         return true;
+     }
+     // STEP 02: 非案件模式 → 不置灰
+     return false;
+ }
+
+// ============================================================
+//  show_device_name_sub：裝置名稱子畫面
+// ============================================================
+
+/**
+  * 裝置名稱子畫面：顯示「請連接 App 設定裝置名稱」
+  *
+  * 裝置端不做中文輸入，僅提示使用者透過 App 設定。
+  *
+  * @param disp    顯示抽象層
+  */
+ void show_device_name_sub(Display& disp) {
+     // STEP 01: 繪製標題
+     disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_TITLE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+     // STEP 02: 繪製提示文字（裝置端不支援輸入，僅提示連接 App）
+     disp.text("請連接 App 設定裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+ }
