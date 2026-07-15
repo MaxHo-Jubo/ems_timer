@@ -202,6 +202,19 @@ bool mock_fs_read(const char* path, char* buf, size_t buf_size, size_t* out_len)
     return true;
 }
 
+/**
+ * 同步裝置名稱到 state（BLE callback 收到寫入後呼叫）
+ * 邏輯：安全複製（截斷至 DEVICE_NAME_MAX_LEN-1），更新 state.device_name
+ * @param state  記憶體緩衝
+ * @param name   新名稱（由 BLE / App 寫入）
+ * @return true 成功同步
+ */
+bool settings_sync_device_name(settings_state_t* state, const char* name) {
+    strncpy(state->device_name, name, DEVICE_NAME_MAX_LEN - 1);
+    state->device_name[DEVICE_NAME_MAX_LEN - 1] = '\0';
+    return true;
+}
+
 // ============================================================
 //  ESP32 端實作：NVS 讀寫（#ifdef ARDUINO）
 // ============================================================

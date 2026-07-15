@@ -173,3 +173,11 @@ uint8_t settings_read_mock(const settings_state_t* state, uint8_t key);
 void mock_fs_clear(void);
 bool mock_fs_write(const char* path, const char* content, size_t len);
 bool mock_fs_read(const char* path, char* buf, size_t buf_size, size_t* out_len);
+
+/**
+ * 同步裝置名稱到 state（測試用，BLE callback 收到寫入後呼叫）
+ * @param state  記憶體緩衝
+ * @param name   新名稱
+ * @return true 成功同步
+ */
+bool settings_sync_device_name(settings_state_t* state, const char* name);
