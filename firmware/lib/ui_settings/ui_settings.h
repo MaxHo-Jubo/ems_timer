@@ -29,3 +29,9 @@ void drawSettingsMenu(Display& disp);
  * @param max     最大值
  */
 void drawSettingEditor(Display& disp, const char* title, uint8_t value, uint8_t min, uint8_t max);
+
+/**
+ * 取得目前亮度值（測試用）
+ * @return 亮度值
+ */
+uint8_t getBrightness();

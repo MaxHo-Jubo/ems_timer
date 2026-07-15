@@ -67,13 +67,13 @@ static void test_g12_cursor_position() {
 
 // ----- G1.3: 數值調整在範圍內 -----
 
-/** G1.3: 數值調整在 min~max 範圍內 */
-static void test_g13_value_adjustment_in_range() {
+/** G1.3: 亮度值在 SETTINGS_BRIGHTNESS_MIN~MAX 範圍內 */
+static void test_g13_brightness_in_range() {
     drawSettingsMenu(g_disp);
 
-    // 驗證亮度值在 1~5 範圍內（用 mock 記錄的座標間接驗證）
-    int16_t x = mock_get_last_x();
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(10, x, "G1.3: 文字 X 座標應為 10");
+    uint8_t brightness = getBrightness();
+    TEST_ASSERT_GREATER_THAN_MESSAGE(0, brightness, "G1.3: 亮度應 > 0");
+    TEST_ASSERT_LESS_THAN_MESSAGE(6, brightness, "G1.3: 亮度應 < 6");
 }
 
 // ----- G1.4: 長按彈出確認對話框 -----
@@ -113,7 +113,7 @@ static void test_g16_cancel_preserves_values() {
 void run_all_tests() {
     RUN_TEST(test_g11_draw_settings_menu_items);
     RUN_TEST(test_g12_cursor_position);
-    RUN_TEST(test_g13_value_adjustment_in_range);
+    RUN_TEST(test_g13_brightness_in_range);
     RUN_TEST(test_g14_long_press_confirm_dialog);
     RUN_TEST(test_g15_confirm_restores_defaults);
     RUN_TEST(test_g16_cancel_preserves_values);

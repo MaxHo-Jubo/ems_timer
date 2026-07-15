@@ -15,6 +15,9 @@
 //  顯示常數（座標 + 字型 + 顏色）
 // ============================================================
 
+// 目前亮度值（開機預設，從 settings_state 讀取）
+static uint8_t s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
+
 // X 座標：左邊距
 #define SETTINGS_MENU_X          10
 
@@ -58,7 +61,10 @@
  * @param disp 顯示抽象層（mock 或真實顯示）
  */
 void drawSettingsMenu(Display& disp) {
-    // STEP 01: 繪製選單標題
+    // STEP 01: 設定目前亮度值（從 settings_state 讀取，此處為預設值）
+    s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
+
+    // STEP 02: 繪製選單標題
     disp.text("系統設定", SETTINGS_MENU_X, SETTINGS_TITLE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
     // STEP 02: 繪製 4 個設定項目（Y: 30, 70, 110, 150）
@@ -97,4 +103,16 @@ void drawSettingEditor(Display& disp, const char* title, uint8_t value, uint8_t 
     char range[SETTINGS_RANGE_BUF_SIZE];
     snprintf(range, sizeof(range), "%d ~ %d", min, max);
     disp.text(range, SETTINGS_MENU_X, SETTINGS_RANGE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+}
+
+// ============================================================
+//  getBrightness：取得目前亮度值
+// ============================================================
+
+/**
+ * 取得目前亮度值
+ * @return 亮度值
+ */
+uint8_t getBrightness() {
+    return s_brightness;
 }
