@@ -49,7 +49,25 @@ uint8_t getSystemVolume();
 uint8_t getVentVolume();
 
 /**
- * 確認恢復預設值（亮度/系統音量/通氣音量→預設，裝置名稱不變）
+ * 設定亮度值（測試用）
+ * @param value 亮度值
+ */
+void setBrightness(uint8_t value);
+
+/**
+ * 設定系統音量值（測試用）
+ * @param value 系統音量值
+ */
+void setSystemVolume(uint8_t value);
+
+/**
+ * 設定通氣音量值（測試用）
+ * @param value 通氣音量值
+ */
+void setVentVolume(uint8_t value);
+
+/**
+ * 取消恢復預設（亮度/系統音量/通氣音量→不變更）
  * @return true 成功
  */
-bool confirmRestoreDefaults();
+bool cancelRestore();

@@ -146,6 +146,30 @@ uint8_t getVentVolume() {
 }
 
 /**
+ * 設定亮度值
+ * @param value 亮度值
+ */
+void setBrightness(uint8_t value) {
+    s_brightness = value;
+}
+
+/**
+ * 設定系統音量值
+ * @param value 系統音量值
+ */
+void setSystemVolume(uint8_t value) {
+    s_system_volume = value;
+}
+
+/**
+ * 設定通氣音量值
+ * @param value 通氣音量值
+ */
+void setVentVolume(uint8_t value) {
+    s_vent_volume = value;
+}
+
+/**
  * 確認恢復預設值（亮度/系統音量/通氣音量→預設，裝置名稱不變）
  * @return true 成功
  */
@@ -160,5 +184,14 @@ bool confirmRestoreDefaults() {
     s_system_volume = mock_state.system_volume;
     s_vent_volume = mock_state.vent_volume;
 
+    return true;
+}
+
+/**
+ * 取消恢復預設（亮度/系統音量/通氣音量→不變更）
+ * @return true 成功
+ */
+bool cancelRestore() {
+    // STEP 01: 不執行任何設定值的變更，直接回傳
     return true;
 }

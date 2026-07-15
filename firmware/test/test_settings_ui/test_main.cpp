@@ -109,8 +109,20 @@ static void test_g15_confirm_restores_defaults() {
 static void test_g16_cancel_preserves_values() {
     drawSettingsMenu(g_disp);
 
-    // 驗證設定值不變
-    TEST_ASSERT_NOT_NULL_MESSAGE(mock_get_last_text(), "G1.6: 取消應保持原有設定值不變");
+    // 先設為非預設值，再取消 → 應恢復非預設值
+    setBrightness(5);
+    setSystemVolume(1);
+    setVentVolume(0);
+
+    cancelRestore();
+
+    // 驗證設定值不變（保持設定的非預設值）
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(5, getBrightness(),
+        "G1.6: 取消後 brightness 應保持 5");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(1, getSystemVolume(),
+        "G1.6: 取消後 system_volume 應保持 1");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, getVentVolume(),
+        "G1.6: 取消後 vent_volume 應保持 0");
 }
 
 // ============================================================
