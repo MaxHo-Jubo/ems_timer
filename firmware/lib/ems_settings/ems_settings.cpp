@@ -7,6 +7,11 @@
 //   - native 端：mock NVS（std::map）+ mock FS（header-only in .h）
 
 #include "ems_settings.h"
+
+#ifdef ARDUINO
+#include <NVS.h>
+#endif
+
 #include <map>
 #include <string>
 #include <cstring>
@@ -195,3 +200,112 @@ bool mock_fs_read(const char* path, char* buf, size_t buf_size, size_t* out_len)
     }
     return true;
 }
+
+// ============================================================
+//  ESP32 端實作：NVS 讀寫（#ifdef ARDUINO）
+// ============================================================
+
+#ifdef ARDUINO
+
+/**
+ * 從 NVS 讀取設定值
+ * @param key NVS key 名稱
+ * @param default_val 無資料時的預設值
+ * @return 讀取值
+ */
+static uint8_t nvs_read_uint8(const char* key, uint8_t default_val) {
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return default_val;
+
+    uint8_t val = default_val;
+    if (nvs_get_u8(handle, key, &val) != ESP_OK) {
+        val = default_val;
+    }
+    nvs_close(handle);
+    return val;
+}
+
+/**
+ * 寫入設定值到 NVS
+ * @param key NVS key 名稱
+ * @param val 新值
+ * @return true 成功
+ */
+static bool nvs_write_uint8(const char* key, uint8_t val) {
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) return false;
+
+    nvs_set_u8(handle, key, val);
+    err = nvs_commit(handle);
+    nvs_close(handle);
+    return err == ESP_OK;
+}
+
+bool settings_init(settings_state_t* state) {
+    state->brightness = nvs_read_uint8(NVS_BRIGHTNESS_KEY, SETTINGS_BRIGHTNESS_DEFAULT);
+    state->system_volume = nvs_read_uint8(NVS_VOLUME_KEY, SETTINGS_VOLUME_DEFAULT);
+    state->vent_volume = nvs_read_uint8(NVS_VENT_VOL_KEY, SETTINGS_VENT_VOLUME_DEFAULT);
+    // 裝置名稱暫由 LittleFS 管理（Phase 2）
+    strncpy(state->device_name, DEVICE_NAME_DEFAULT, DEVICE_NAME_MAX_LEN - 1);
+    state->device_name[DEVICE_NAME_MAX_LEN - 1] = '\0';
+    return true;
+}
+
+bool settings_write(settings_state_t* state, uint8_t key, uint8_t value) {
+    switch (key) {
+        case SETTING_KEY_BRIGHTNESS:
+            if (value < SETTINGS_BRIGHTNESS_MIN || value > SETTINGS_BRIGHTNESS_MAX) return false;
+            state->brightness = value;
+            break;
+        case SETTING_KEY_SYSTEM_VOL:
+            if (value < SETTINGS_VOLUME_MIN || value > SETTINGS_VOLUME_MAX) return false;
+            state->system_volume = value;
+            break;
+        case SETTING_KEY_VENT_VOL:
+            if (value < SETTINGS_VENT_VOLUME_MIN || value > SETTINGS_VENT_VOLUME_MAX) return false;
+            state->vent_volume = value;
+            break;
+        default:
+            return false;
+    }
+    return true;
+}
+
+uint8_t settings_read(const settings_state_t* state, uint8_t key) {
+    switch (key) {
+        case SETTING_KEY_BRIGHTNESS:
+            return state->brightness;
+        case SETTING_KEY_SYSTEM_VOL:
+            return state->system_volume;
+        case SETTING_KEY_VENT_VOL:
+            return state->vent_volume;
+        default:
+            return 0;
+    }
+}
+
+bool settings_reset_defaults(settings_state_t* state) {
+    state->brightness = SETTINGS_BRIGHTNESS_DEFAULT;
+    state->system_volume = SETTINGS_VOLUME_DEFAULT;
+    state->vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
+    nvs_write_uint8(NVS_BRIGHTNESS_KEY, SETTINGS_BRIGHTNESS_DEFAULT);
+    nvs_write_uint8(NVS_VOLUME_KEY, SETTINGS_VOLUME_DEFAULT);
+    nvs_write_uint8(NVS_VENT_VOL_KEY, SETTINGS_VENT_VOLUME_DEFAULT);
+    return true;
+}
+
+bool settings_set_device_name(const char* name) {
+    // Phase 2: LittleFS /config/device_name.txt
+    return false;
+}
+
+bool settings_get_device_name(char* buf, size_t buf_size) {
+    // Phase 2: LittleFS /config/device_name.txt
+    strncpy(buf, DEVICE_NAME_DEFAULT, buf_size - 1);
+    buf[buf_size - 1] = '\0';
+    return false;
+}
+
+#endif  // ARDUINO

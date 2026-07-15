@@ -54,6 +54,26 @@
 #include "null_backend.h"
 #include "ems_rtc_glue.h"
 
+// Wave 1：系統設定 UI（display_abstraction 包裝，供 drawSettingsMenu 使用）
+#include "ui_settings.h"
+static void _settings_text_fn(const char* str, int16_t x, int16_t y, int16_t fontsize, uint32_t color) {
+    display.setCursor(x, y);
+    display.setTextSize(fontsize);
+    display.setTextColor(color);
+    display.print(str);
+}
+
+static void _settings_fill_rect_fn(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color) {
+    display.fillRect(x, y, w, h, color);
+}
+
+static Display getSettingsDisplay() {
+    Display disp;
+    disp.text = _settings_text_fn;
+    disp.fill_rect = _settings_fill_rect_fn;
+    return disp;
+}
+
 
 // ════════════════════════════════════════════════════════════════
 // 全域變數定義（extern 宣告在 app_globals.h）
@@ -868,7 +888,8 @@ void updateDisplay() {
             drawHistoryList();
         }
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
-        drawPlaceholder("系統設定", "G 階段");
+        Display settingsDisp = getSettingsDisplay();
+        drawSettingsMenu(settingsDisp);
     }
 
     // W9：儲存失敗提示（紅字警告 + 重試按鈕，無聲音）

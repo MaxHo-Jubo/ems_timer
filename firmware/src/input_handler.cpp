@@ -1,5 +1,23 @@
 #include "app_globals.h"
 
+// Wave 1：系統設定 UI（brightness/volume getter/setter）
+#include "ui_settings.h"
+
+// Wave 1：系統設定 NVS 讀寫（settings_state_t, settings_init, settings_reset_defaults）
+#include "ems_settings.h"
+
+// Wave 1：系統設定選單狀態（settingsCursor / editor / confirm）
+#define SETTINGS_MENU_COUNT    4   // 裝置名稱 / 亮度 / 系統音量 / 通氣音量
+
+// 設定主選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+static uint8_t settingsCursor = 1;
+
+// 設定編輯器模式（true = 左右鍵調整數值，false = 游標移動）
+static bool settingsEditorMode = false;
+
+// 恢復預設確認對話框（true = 彈出中）
+static bool settingsRestoreConfirm = false;
+
 // 前置宣告：進入 BLE 同步流程（START_SYNC 與 §16.7 resync 確認後共用，定義見下方）
 static void enterSyncFlow();
 
@@ -387,10 +405,95 @@ void onShortPress(uint8_t btnIdx) {
         return;
     }
 
-    // ===== Phase X 佔位畫面：返回鍵回主功能表 =====
+    // ===== 系統設定選單 =====
     if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
-        if (btnIdx == BTN_BACK) {
-            enterMainMenu();
+        // STEP 01: 恢復預設確認對話框中
+        if (settingsRestoreConfirm) {
+            if (btnIdx == BTN_PRIMARY) {
+                settings_state_t gstate;
+                settings_init(&gstate);
+                settings_reset_defaults(&gstate);
+                setBrightness(gstate.brightness);
+                setSystemVolume(gstate.system_volume);
+                setVentVolume(gstate.vent_volume);
+                settingsRestoreConfirm = false;
+                Serial.println("[SETTINGS] defaults restored");
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                cancelRestore();
+                settingsRestoreConfirm = false;
+                Serial.println("[SETTINGS] restore cancelled");
+                return;
+            }
+            return;
+        }
+
+        // STEP 02: 編輯器模式（數值調整 — 硬體無左右鍵，用 UP/DOWN）
+        if (settingsEditorMode) {
+            if (btnIdx == BTN_UP) {
+                switch (settingsCursor) {
+                    case 1:
+                        setBrightness(getBrightness() < SETTINGS_BRIGHTNESS_MAX ? getBrightness() + 1 : SETTINGS_BRIGHTNESS_MAX);
+                        break;
+                    case 2:
+                        setSystemVolume(getSystemVolume() < SETTINGS_VOLUME_MAX ? getSystemVolume() + 1 : SETTINGS_VOLUME_MAX);
+                        break;
+                    case 3:
+                        setVentVolume(getVentVolume() < SETTINGS_VENT_VOLUME_MAX ? getVentVolume() + 1 : SETTINGS_VENT_VOLUME_MAX);
+                        break;
+                    default:
+                        break;
+                }
+                return;
+            }
+            if (btnIdx == BTN_DOWN) {
+                switch (settingsCursor) {
+                    case 1:
+                        setBrightness(getBrightness() > SETTINGS_BRIGHTNESS_MIN ? getBrightness() - 1 : SETTINGS_BRIGHTNESS_MIN);
+                        break;
+                    case 2:
+                        setSystemVolume(getSystemVolume() > SETTINGS_VOLUME_MIN ? getSystemVolume() - 1 : SETTINGS_VOLUME_MIN);
+                        break;
+                    case 3:
+                        setVentVolume(getVentVolume() > SETTINGS_VENT_VOLUME_MIN ? getVentVolume() - 1 : SETTINGS_VENT_VOLUME_MIN);
+                        break;
+                    default:
+                        break;
+                }
+                return;
+            }
+            if (btnIdx == BTN_BACK) {
+                settingsEditorMode = false;
+                return;
+            }
+            return;
+        }
+
+        // STEP 03: 主選單模式
+        switch (btnIdx) {
+            case BTN_UP:
+                settingsCursor = (settingsCursor + SETTINGS_MENU_COUNT - 1) % SETTINGS_MENU_COUNT;
+                break;
+            case BTN_DOWN:
+                settingsCursor = (settingsCursor + 1) % SETTINGS_MENU_COUNT;
+                break;
+            case BTN_BACK:
+                enterMainMenu();
+                break;
+            case BTN_PRIMARY:
+                if (settingsCursor == 0) {
+                    Serial.println("[SETTINGS] device name — Phase H");
+                } else if (settingsCursor == 1) {
+                    settingsEditorMode = true;
+                } else if (settingsCursor == 2) {
+                    settingsEditorMode = true;
+                } else if (settingsCursor == 3) {
+                    settingsEditorMode = true;
+                }
+                break;
+            default:
+                break;
         }
         return;
     }
@@ -984,6 +1087,14 @@ void onLongPress(uint8_t btnIdx) {
     // （dialog 無長按操作，故長按全忽略），確保「modal 期間攔截所有按鍵」不變式成立
     if (resyncConfirmShown) {
         Serial.printf("[SYNC] resync modal ignored long btn=%u\n", btnIdx);
+        return;
+    }
+
+    // STEP 00.5: 系統設定選單 → 主鍵長按彈出恢復預設確認對話框
+    if (btnIdx == BTN_PRIMARY && globalState == GLOBAL_SETTINGS_PLACEHOLDER &&
+        !settingsEditorMode && !settingsRestoreConfirm) {
+        settingsRestoreConfirm = true;
+        Serial.println("[SETTINGS] restore confirm dialog");
         return;
     }
 
