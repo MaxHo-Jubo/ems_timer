@@ -14,8 +14,8 @@
 // 裝置名稱緩衝區（從 LittleFS / NVS 讀取，由 App 寫入）
 static char s_device_name[DEVICE_NAME_MAX_LEN];
 
-// 置灰顏色（RGB565 暗灰，用於案件中置灰顯示）
-#define SETTINGS_COLOR_DIM  0x6B4D
+// 註：SETTINGS_COLOR_DIM / SETTINGS_COLOR_WHITE 已移至 ui_settings.h，
+//     供 native test 驗證「置灰 vs 正常」的實際繪製顏色。
 
 // ============================================================
 //  顯示常數（座標 + 字型 + 顏色）
@@ -49,9 +49,6 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 // 字型大小（pt）
 #define SETTINGS_FONT_SIZE       2
 
-// 顏色：白色（RGB565）
-#define SETTINGS_COLOR_WHITE     0xFFFF
-
 // 緩衝區大小
 #define SETTINGS_VALUE_BUF_SIZE  8
 #define SETTINGS_RANGE_BUF_SIZE 16
@@ -65,31 +62,50 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 // 確認對話框 Y 座標偏移（相對於 SETTINGS_ITEM4_Y）
 #define SETTINGS_CONFIRM_Y_OFFSET  30
 
+// 項目值（如裝置名稱）相對於標籤起點的 X 偏移，讓「標籤　值」對齊成兩欄
+#define SETTINGS_VALUE_X_OFFSET  70
+
 // ============================================================
 //  drawSettingsMenu：設定主選單
 // ============================================================
 
-// 設定選單項目索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
-// settingsCursor 初始值為 1（跳過裝置名稱，因為裝置名稱暫不支援調整）
-#define SETTINGS_CURSOR_DEVICE_NAME  0
-#define SETTINGS_CURSOR_BRIGHTNESS   1
-#define SETTINGS_CURSOR_SYSTEM_VOL   2
-#define SETTINGS_CURSOR_VENT_VOL     3
+/** 一個可調設定項目的版面資料（游標索引 / Y 座標 / 顯示標籤） */
+typedef struct {
+    uint8_t     cursor;
+    int16_t     y;
+    const char* label;
+} settings_menu_item_t;
+
+/**
+ * 3 個可調項目的版面表。
+ *
+ * 裝置名稱（cursor 0）不在此表：它有置灰與顯示當前值的特殊行為，單獨繪製。
+ * 其餘三項版面與行為完全一致，查表繪製即可，新增設定只需加一列。
+ */
+static const settings_menu_item_t kSettingsAdjustableItems[] = {
+    { SETTINGS_CURSOR_BRIGHTNESS, SETTINGS_ITEM2_Y, "螢幕亮度" },
+    { SETTINGS_CURSOR_SYSTEM_VOL, SETTINGS_ITEM3_Y, "系統音量" },
+    { SETTINGS_CURSOR_VENT_VOL,   SETTINGS_ITEM4_Y, "通氣音量" },
+};
+
+#define SETTINGS_ADJUSTABLE_ITEM_COUNT \
+    (sizeof(kSettingsAdjustableItems) / sizeof(kSettingsAdjustableItems[0]))
 
 /**
   * 設定主選單畫面
   * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量
   *
-  * @param disp       顯示抽象層（mock 或真實顯示）
-  * @param cursor     游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量），
-  *                   預設 3 向後相容
-  * @param case_mode  當前案件模式（用於判斷裝置名稱是否置灰）
+  * 預設參數宣告於 ui_settings.h，此處不重複。
+  *
+  * @param disp                顯示抽象層（mock 或真實顯示）
+  * @param cursor              游標索引（SETTINGS_CURSOR_*）
+  * @param device_name_locked  裝置名稱是否鎖定（由呼叫端算好）
+  * @param restore_confirm     恢復預設確認對話框是否顯示中
   */
- void drawSettingsMenu(Display& disp, uint8_t cursor, ems::CaseMode case_mode) {
-     // STEP 01: 設定目前亮度值（從 settings_state 讀取，此處為預設值）
-     s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
-
-     // STEP 02: 讀取裝置名稱（ESP32: LittleFS / native: mock FS）
+ void drawSettingsMenu(Display& disp, uint8_t cursor, bool device_name_locked, bool restore_confirm) {
+     // STEP 01: 讀取裝置名稱（ESP32: LittleFS / native: mock FS）
+     //   注意：此處不得重設 s_brightness——開機時 main.cpp setup() 已用 NVS 值灌入，
+     //   在每次重繪時覆寫回預設值會靜默丟掉使用者剛調好的亮度。
 #ifdef ARDUINO
      settings_get_device_name(s_device_name, sizeof(s_device_name));
 #else
@@ -99,47 +115,36 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
      }
 #endif
 
-     // STEP 03: 繪製選單標題
+     // STEP 02: 繪製選單標題
      disp.text("系統設定", SETTINGS_MENU_X, SETTINGS_TITLE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-     // STEP 04: 繪製 4 個設定項目，依 cursor 高亮對應列
-     const bool highlight0 = (cursor == SETTINGS_CURSOR_DEVICE_NAME);
-     const bool highlight1 = (cursor == SETTINGS_CURSOR_BRIGHTNESS);
-     const bool highlight2 = (cursor == SETTINGS_CURSOR_SYSTEM_VOL);
-     const bool highlight3 = (cursor == SETTINGS_CURSOR_VENT_VOL);
-
-     // STEP 05: 裝置名稱項目 — 顯示當前名稱 + 案件中置灰
-     if (highlight0) {
+     // STEP 03: 裝置名稱項目 — 游標高亮 + 鎖定時置灰且不顯示名稱
+     if (cursor == SETTINGS_CURSOR_DEVICE_NAME) {
          disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
      }
-     // 判斷案件進行中（純函式，不讀全域）
-     const bool locked = is_device_name_locked(case_mode);
-     if (locked) {
-          // 案件中：置灰（使用暗灰顏色）
-          disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_DIM);
+     if (device_name_locked) {
+         // STEP 03.01: 有未同步案件 → 置灰且隱藏名稱，避免使用者誤以為可改
+         disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_DIM);
      } else {
-         // 非案件：正常顯示 + 當前名稱
+         // STEP 03.02: 未鎖定 → 正常顯示 + 當前名稱
          disp.text("裝置名稱", SETTINGS_MENU_X, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
-         disp.text(s_device_name, SETTINGS_MENU_X + 70, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+         disp.text(s_device_name, SETTINGS_MENU_X + SETTINGS_VALUE_X_OFFSET, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
      }
 
-     if (highlight1) {
-         disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+     // STEP 04: 其餘 3 個可調項目 — 版面與行為一致，查表繪製
+     for (size_t i = 0; i < SETTINGS_ADJUSTABLE_ITEM_COUNT; i++) {
+         const settings_menu_item_t& item = kSettingsAdjustableItems[i];
+         if (cursor == item.cursor) {
+             disp.fill_rect(SETTINGS_MENU_X, item.y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
+         }
+         disp.text(item.label, SETTINGS_MENU_X, item.y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
      }
-     disp.text("螢幕亮度", SETTINGS_MENU_X, SETTINGS_ITEM2_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-     if (highlight2) {
-         disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
-     }
-     disp.text("系統音量", SETTINGS_MENU_X, SETTINGS_ITEM3_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
-
-     if (highlight3) {
-         disp.fill_rect(SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
-     }
-     disp.text("通氣音量", SETTINGS_MENU_X, SETTINGS_ITEM4_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
-
-    // STEP 06: 長按確認對話框 — 恢復預設設定提示文字
-    disp.text("是否恢復預設設定？", SETTINGS_MENU_X, SETTINGS_ITEM4_Y + SETTINGS_CONFIRM_Y_OFFSET, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+    // STEP 05: 恢復預設確認對話框 — 僅在長按觸發後顯示
+    //   （原實作無條件畫出，使得 settingsRestoreConfirm 在畫面上毫無差異）
+    if (restore_confirm) {
+        disp.text("是否恢復預設設定？", SETTINGS_MENU_X, SETTINGS_ITEM4_Y + SETTINGS_CONFIRM_Y_OFFSET, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+    }
 }
 
 // ============================================================
@@ -222,23 +227,10 @@ void setVentVolume(uint8_t value) {
     s_vent_volume = value;
 }
 
-/**
- * 確認恢復預設值（亮度/系統音量/通氣音量→預設，裝置名稱不變）
- * @return true 成功
- */
-bool confirmRestoreDefaults() {
-    // STEP 01: 呼叫 settings_reset_defaults_mock 恢復 NVS + state
-    settings_state_t mock_state;
-    settings_init_mock(&mock_state);
-    settings_reset_defaults_mock(&mock_state);
-
-    // STEP 02: 同步回 local state
-    s_brightness = mock_state.brightness;
-    s_system_volume = mock_state.system_volume;
-    s_vent_volume = mock_state.vent_volume;
-
-    return true;
-}
+// 註：原 confirmRestoreDefaults() 已移除——它未在 header 宣告、全 repo 無呼叫點，
+//   且內部呼叫的是 settings_*_mock 系列，本就不該存在於 production 路徑。
+//   正式恢復預設流程走 input_handler.cpp 的 settings_init + settings_reset_defaults。
+//   原 test_g15 宣稱測它，實際只是讀到 static 變數初值，刪掉該函式測試照樣會過。
 
 /**
   * 取消恢復預設（亮度/系統音量/通氣音量→不變更）
@@ -249,27 +241,12 @@ bool confirmRestoreDefaults() {
      return true;
  }
 
-// ============================================================
-//  is_device_name_locked：案件進行中判斷（純函式，可 native 測）
-// ============================================================
-
-/**
-  * 判斷案件進行中：OHCA / Training 案件執行中 → true（裝置名稱應置灰）
-  *
-  * 純函式：只讀 case_mode 參數，不讀任何全域狀態。
-  * 讓 native test 可直傳 CaseMode 參數驗證，不用碰 lib 內部全域。
-  *
-  * @param case_mode 當前案件模式（CASE_MODE_OHCA / CASE_MODE_TRAINING / 其他）
-  * @return true 案件進行中，裝置名稱項目應置灰且主鍵不可進入
-  */
-  bool is_device_name_locked(ems::CaseMode case_mode) {
-     // STEP 01: OHCA 或 Training 案件進行中 → 置灰
-     if (case_mode == ems::CASE_MODE_OHCA || case_mode == ems::CASE_MODE_TRAINING) {
-         return true;
-     }
-     // STEP 02: 非案件模式 → 不置灰
-     return false;
- }
+// 註：原 is_device_name_locked(CaseMode) 已移除。
+//   g_case_mode 的值域只有 OHCA(0)/TRAINING(1)，永遠不等於當初當 sentinel 用的
+//   (CaseMode)2，導致該函式在正式路徑上恆回 true（裝置名稱永遠置灰）。且「案件
+//   進行中」情境本身不可達——進設定選單必經 exitOhcaCase()，案件已重置。
+//   判準改為 storage_has_unsynced_case()，由呼叫端算好傳入 drawSettingsMenu。
+//   詳見 docs/phase-g-system-settings-plan.md §2.2.5 與 §二、零、一 #6。
 
 // ============================================================
 //  show_device_name_sub：裝置名稱子畫面

@@ -8,8 +8,8 @@
 //   - 註冊：RUN_TEST(test_name) in main()
 //   - 不使用 TEST_CASE() / TEST() 等其他 framework 風格 macro
 //
-// ⚠️ RED phase：本檔對應實作為 stub，預期跑出來全部失敗。
-// ⚠️ Step 3 GREEN 階段禁止修改本檔。
+// 狀態：GREEN 完成（Wave 1）。TDD 的「禁止修改」凍結期已結束，
+// 後續異動走一般 code review 流程即可。
 
 #include <unity.h>
 #include <string.h>
@@ -40,14 +40,20 @@ void tearDown() {}
 
 // ----- G1.1: drawSettingsMenu 顯示 4 項目 -----
 
-/** G1.1: drawSettingsMenu 存在 → 4 項目文字正確 */
+/**
+ * G1.1: drawSettingsMenu → 標題與 4 個項目標籤都被繪製。
+ *
+ * 原斷言為「最後一項應為確認對話框文字」——那是因為確認對話框被無條件畫出，
+ * 與本測試宣稱的「顯示 4 項目」無關。改為逐項查表斷言。
+ */
 static void test_g11_draw_settings_menu_items() {
     drawSettingsMenu(g_disp);
 
-    // 驗證有 draw 文字（最後一項：確認對話框）
-    const char* text = mock_get_last_text();
-    TEST_ASSERT_NOT_NULL_MESSAGE(text, "G1.1: drawSettingsMenu 應呼叫 drawText 繪製文字");
-    TEST_ASSERT_EQUAL_STRING_MESSAGE("是否恢復預設設定？", text, "G1.1: 最後一項應為確認對話框文字");
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("系統設定"), "G1.1: 應繪製選單標題");
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("裝置名稱"), "G1.1: 應繪製項目「裝置名稱」");
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("螢幕亮度"), "G1.1: 應繪製項目「螢幕亮度」");
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("系統音量"), "G1.1: 應繪製項目「系統音量」");
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("通氣音量"), "G1.1: 應繪製項目「通氣音量」");
 }
 
 // ----- G1.2: 游標位置 -----
@@ -80,28 +86,46 @@ static void test_g13_brightness_in_range() {
 
 // ----- G1.4: 長按彈出確認對話框 -----
 
-/** G1.4: 長按確認 → 彈出確認對話框 */
-static void test_g14_long_press_confirm_dialog() {
-    drawSettingsMenu(g_disp);
+/** G1.4: restore_confirm = true → 畫出確認對話框文字 */
+static void test_g14_confirm_dialog_shown_when_flag_set() {
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* device_name_locked= */ false,
+                     /* restore_confirm= */ true);
 
-    // 驗證彈出確認對話框（最後 draw 的文字應為確認提示）
-    TEST_ASSERT_EQUAL_STRING_MESSAGE("是否恢復預設設定？", mock_get_last_text(),
-        "G1.4: 長按應彈出恢復預設確認對話框");
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("是否恢復預設設定？"),
+        "G1.4: restore_confirm=true 時應畫出恢復預設確認對話框");
 }
 
-// ----- G1.5: 確認 → 設定值恢復預設 -----
+/** G1.4b: restore_confirm = false → 不得畫出確認對話框（原實作無條件畫出，此為 regression） */
+static void test_g14_confirm_dialog_hidden_when_flag_clear() {
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* device_name_locked= */ false,
+                     /* restore_confirm= */ false);
 
-/** G1.5: 確認 → 亮度/系統音量/通氣音量→預設 */
-static void test_g15_confirm_restores_defaults() {
+    TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("是否恢復預設設定？"),
+        "G1.4b: restore_confirm=false 時不應出現確認對話框，否則該旗標在畫面上毫無意義");
+}
+
+// ----- G1.5: 重繪不得覆寫使用者已調整的設定值 -----
+
+/**
+ * G1.5: drawSettingsMenu 重繪不得把設定值清回預設。
+ *
+ * regression：原實作在函式開頭無條件 `s_brightness = SETTINGS_BRIGHTNESS_DEFAULT`，
+ * 使用者調完亮度回到選單、畫面一重繪就被靜默清掉（且只對亮度做，音量沒有）。
+ */
+static void test_g15_redraw_preserves_adjusted_values() {
+    const uint8_t adjusted_brightness = SETTINGS_BRIGHTNESS_MAX;
+    setBrightness(adjusted_brightness);
+    setSystemVolume(SETTINGS_VOLUME_MAX);
+    setVentVolume(SETTINGS_VENT_VOLUME_MIN);
+
     drawSettingsMenu(g_disp);
 
-    // 驗證 brightness / system_volume / vent_volume 都恢復為預設值
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_BRIGHTNESS_DEFAULT, getBrightness(),
-        "G1.5: brightness 應恢復為預設值");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_VOLUME_DEFAULT, getSystemVolume(),
-        "G1.5: system_volume 應恢復為預設值");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_VENT_VOLUME_DEFAULT, getVentVolume(),
-        "G1.5: vent_volume 應恢復為預設值");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(adjusted_brightness, getBrightness(),
+        "G1.5: 重繪不得把亮度清回預設值");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_VOLUME_MAX, getSystemVolume(),
+        "G1.5: 重繪不得更動系統音量");
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_VENT_VOLUME_MIN, getVentVolume(),
+        "G1.5: 重繪不得更動通氣音量");
 }
 
 // ----- G1.6: 取消 → 設定值不變 -----
@@ -169,24 +193,42 @@ static void test_g18_draw_setting_editor() {
 
 // ----- G2.3: 案件中裝置名稱置灰 + 名稱顯示 -----
 
-/** G2.3: is_device_name_locked(OHCA) → true */
-static void test_g23_locked_ohca() {
-    bool locked = is_device_name_locked(ems::CASE_MODE_OHCA);
-    TEST_ASSERT_TRUE_MESSAGE(locked, "G2.3: OHCA 案件進行中 → 裝置名稱應置灰");
+/**
+ * G2.3: device_name_locked = true → 裝置名稱以 DIM 色繪製，且不顯示當前名稱。
+ *
+ * 判準本身（有無未同步案件）由 storage_has_unsynced_case() 負責，
+ * 其邏輯測試在 test_ems_storage_logic Group I；此處只驗 UI 對該旗標的反應。
+ */
+static void test_g23_locked_renders_dim_and_hides_name() {
+    mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
+
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* device_name_locked= */ true);
+
+    const MockTextCall* label = mock_text_log_find("裝置名稱");
+    TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3: 裝置名稱標籤應被繪製");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SETTINGS_COLOR_DIM, label->color,
+        "G2.3: 鎖定時裝置名稱應以 DIM 色置灰");
+    TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("測試站"),
+        "G2.3: 鎖定時不應顯示當前裝置名稱");
 }
 
-/** G2.3: is_device_name_locked(Training) → true */
-static void test_g23_locked_training() {
-    bool locked = is_device_name_locked(ems::CASE_MODE_TRAINING);
-    TEST_ASSERT_TRUE_MESSAGE(locked, "G2.3: Training 案件進行中 → 裝置名稱應置灰");
-}
+/**
+ * G2.3b: device_name_locked = false → 正常白色 + 顯示當前名稱。
+ *
+ * 這個方向原本完全沒測，導致 is_device_name_locked 恆回 true（永遠置灰）
+ * 的 bug 在 483 個綠燈下存活。
+ */
+static void test_g23_unlocked_renders_white_and_shows_name() {
+    mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
 
-/** G2.3: is_device_name_locked 案件進行中 → true（OHCA + Training 都 lock） */
-static void test_g23_locked_in_case() {
-    TEST_ASSERT_TRUE_MESSAGE(is_device_name_locked(ems::CASE_MODE_OHCA),
-        "G2.3: OHCA 案件進行中 → 裝置名稱應置灰");
-    TEST_ASSERT_TRUE_MESSAGE(is_device_name_locked(ems::CASE_MODE_TRAINING),
-        "G2.3: Training 案件進行中 → 裝置名稱應置灰");
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* device_name_locked= */ false);
+
+    const MockTextCall* label = mock_text_log_find("裝置名稱");
+    TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3b: 裝置名稱標籤應被繪製");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SETTINGS_COLOR_WHITE, label->color,
+        "G2.3b: 未鎖定時裝置名稱應為正常白色");
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("測試站"),
+        "G2.3b: 未鎖定時應顯示當前裝置名稱");
 }
 
 // ============================================================
@@ -197,17 +239,17 @@ void run_all_tests() {
     RUN_TEST(test_g11_draw_settings_menu_items);
     RUN_TEST(test_g12_cursor_position_default);
     RUN_TEST(test_g13_brightness_in_range);
-    RUN_TEST(test_g14_long_press_confirm_dialog);
-    RUN_TEST(test_g15_confirm_restores_defaults);
+    RUN_TEST(test_g14_confirm_dialog_shown_when_flag_set);
+    RUN_TEST(test_g14_confirm_dialog_hidden_when_flag_clear);
+    RUN_TEST(test_g15_redraw_preserves_adjusted_values);
     RUN_TEST(test_g16_cancel_preserves_values);
     RUN_TEST(test_g17_cursor_0_highlights_device_name);
     RUN_TEST(test_g17_cursor_1_highlights_brightness);
     RUN_TEST(test_g17_cursor_2_highlights_system_volume);
     RUN_TEST(test_g18_draw_setting_editor);
     // G2.3: 案件中裝置名稱置灰 + 名稱顯示
-    RUN_TEST(test_g23_locked_ohca);
-    RUN_TEST(test_g23_locked_training);
-    RUN_TEST(test_g23_locked_in_case);
+    RUN_TEST(test_g23_locked_renders_dim_and_hides_name);
+    RUN_TEST(test_g23_unlocked_renders_white_and_shows_name);
 }
 
 int main(int argc, char** argv) {

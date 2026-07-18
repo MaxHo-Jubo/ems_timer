@@ -20,3 +20,6 @@ int16_t mock_last_x = 0;
 int16_t mock_last_y = 0;
 int16_t mock_last_fontsize = 0;
 uint32_t mock_last_color = 0;
+
+MockTextCall mock_text_log[MOCK_TEXT_LOG_MAX] = {};
+int mock_text_log_count = 0;

@@ -23,6 +23,34 @@ settings_state_t g_settings_state;
 // 前置宣告：進入 BLE 同步流程（START_SYNC 與 §16.7 resync 確認後共用，定義見下方）
 static void enterSyncFlow();
 
+/**
+ * 掃描 storage，更新裝置名稱鎖定狀態（g_device_name_locked）。
+ *
+ * 只在進入設定選單時呼叫一次——lock 狀態僅由「儲存新案件」或「同步完成」改變，
+ * 兩者都不可能在設定選單內發生，因此不需每次重繪都掃 storage。
+ *
+ * 判準：任一 mode 存在未同步案件即鎖定。理由見 §2.2.5（改名會讓未同步的舊案件
+ * 帶著新名字送出，與錄製當下的裝置不符）。
+ */
+static void refreshDeviceNameLock() {
+    // STEP 01: 借用 static 掃描緩衝，避免在 stack 上放 EMS_STORAGE_OHCA_CAP 筆 meta
+    static case_meta_t s_lock_scan[EMS_STORAGE_OHCA_CAP];
+
+    // STEP 02: OHCA 與 Training 兩種案件都要檢查，任一有未同步即鎖定
+    const CaseMode modes[] = { CASE_MODE_OHCA, CASE_MODE_TRAINING };
+    for (size_t i = 0; i < sizeof(modes) / sizeof(modes[0]); i++) {
+        const uint16_t n = storage_list(&g_storage_be, modes[i], s_lock_scan, EMS_STORAGE_OHCA_CAP);
+        if (storage_has_unsynced_case(s_lock_scan, n)) {
+            g_device_name_locked = true;
+            Serial.printf("[SETTINGS] device name locked — mode %d 有未同步案件\n", (int)modes[i]);
+            return;
+        }
+    }
+
+    // STEP 03: 全部已同步 → 解鎖
+    g_device_name_locked = false;
+}
+
 
 /**
  * 掃描所有實體按鍵並分派短按 / 長按事件。
@@ -161,7 +189,8 @@ void onShortPress(uint8_t btnIdx) {
                         globalState         = GLOBAL_HISTORY_PLACEHOLDER;
                         ohcaSubState        = SUBSTATE_HISTORY_CATEGORY;
                         break;
-                    case 4:  // 系統設定（Phase G placeholder）
+                    case 4:  // 系統設定（Phase G）
+                        refreshDeviceNameLock();  // 進選單前掃一次未同步案件，決定裝置名稱可否修改
                         globalState = GLOBAL_SETTINGS_PLACEHOLDER;
                         break;
                 }
@@ -508,18 +537,16 @@ void onShortPress(uint8_t btnIdx) {
                 enterMainMenu();
                 break;
             case BTN_PRIMARY:
-                if (settingsCursor == 0) {
-                    // §2.2.5：案件進行中 → 裝置名稱置灰且主鍵不可進入
-                    if (is_device_name_locked(g_case_mode)) {
-                        Serial.println("[SETTINGS] device name locked (case in progress)");
+                if (settingsCursor == SETTINGS_CURSOR_DEVICE_NAME) {
+                    // §2.2.5：有未同步案件 → 裝置名稱鎖定，主鍵不可進入
+                    if (g_device_name_locked) {
+                        Serial.println("[SETTINGS] device name locked — 有未同步案件");
                     } else {
-                        Serial.println("[SETTINGS] device name — show sub");
+                        Serial.println("[SETTINGS] device name — show sub（子畫面尚未接線，見 §2.2.3）");
                     }
-                } else if (settingsCursor == 1) {
-                    settingsEditorMode = true;
-                } else if (settingsCursor == 2) {
-                    settingsEditorMode = true;
-                } else if (settingsCursor == 3) {
+                } else if (settingsCursor >= SETTINGS_CURSOR_BRIGHTNESS &&
+                           settingsCursor <= SETTINGS_CURSOR_VENT_VOL) {
+                    // 三個可調項目行為一致：進入編輯模式
                     settingsEditorMode = true;
                 }
                 break;

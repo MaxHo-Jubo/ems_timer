@@ -456,21 +456,13 @@ extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 
-/**
- * 取得設定選單游標索引
- * @return 游標索引（0~3）
- */
-inline uint8_t getSettingsCursor() {
-    return settingsCursor;
-}
+// true = 裝置名稱不可修改（storage 內有未同步案件）。
+// 進入設定選單時掃描一次即可：lock 狀態只由「儲存新案件」或「同步完成」改變，
+// 兩者都不可能在設定選單內發生。判準理由見 §2.2.5。
+extern bool    g_device_name_locked;
 
-/**
- * 取得設定編輯器模式狀態
- * @return true 表示處於編輯模式（可調整數值）
- */
-inline bool getSettingsEditorMode() {
-    return settingsEditorMode;
-}
+// 註：原 getSettingsCursor() / getSettingsEditorMode() 已移除——全 repo 無呼叫點，
+//     所有存取都直接用上方 extern 變數，兩個 inline getter 是沒人用的中介層。
 
 // 按鈕狀態
 extern uint8_t  lastBtnState[BTN_COUNT];

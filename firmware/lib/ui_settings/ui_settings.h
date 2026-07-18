@@ -12,16 +12,35 @@
 #include "display_abstraction.h"
 #include "ems_storage_logic.h"
 
+// 設定選單項目索引。定義於此（而非 .cpp）供 input_handler / main.cpp 共用，
+// 避免游標語意退化成散落各處的裸數字 0/1/2/3。
+#define SETTINGS_CURSOR_DEVICE_NAME  0
+#define SETTINGS_CURSOR_BRIGHTNESS   1
+#define SETTINGS_CURSOR_SYSTEM_VOL   2
+#define SETTINGS_CURSOR_VENT_VOL     3
+
+// 文字顏色（RGB565）。定義於此供 native test 驗證「置灰 vs 正常」的實際繪製顏色，
+// 否則測試只能斷言「有畫出文字」，無法分辨置灰與否。
+#define SETTINGS_COLOR_WHITE  0xFFFF
+#define SETTINGS_COLOR_DIM    0x6B4D  // 暗灰：項目不可操作時的置灰色
+
 /**
   * 設定主選單畫面
   * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量
   *
-  * @param disp       顯示抽象層（mock 或真實顯示）
-  * @param cursor     游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量），
-  *                   預設 3 向後相容
-  * @param case_mode  當前案件模式（用於判斷裝置名稱是否置灰），預設非案件（2 = 無案件）
+  * @param disp   顯示抽象層（mock 或真實顯示）
+  * @param cursor 游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量），
+  *               預設 3 向後相容
+  * @param device_name_locked 裝置名稱是否鎖定（true = 置灰且不顯示當前名稱）。
+  *               由呼叫端以 storage_has_unsynced_case() 算好再傳入，對齊
+  *               DisplaySnapshot「衍生值呼叫端先算，lib 不依賴 runtime 狀態」的原則。
+  *               判準與理由見 docs/phase-g-system-settings-plan.md §2.2.5。
+  * @param restore_confirm 恢復預設確認對話框是否顯示中（true 才畫出提示文字）
   */
- void drawSettingsMenu(Display& disp, uint8_t cursor = 3, ems::CaseMode case_mode = (ems::CaseMode)2);
+ void drawSettingsMenu(Display& disp,
+                       uint8_t cursor = SETTINGS_CURSOR_VENT_VOL,
+                       bool device_name_locked = false,
+                       bool restore_confirm = false);
 
 /**
  * 設定子畫面（亮度/音量調整）
@@ -75,17 +94,6 @@ void setVentVolume(uint8_t value);
   * @return true 成功
   */
  bool cancelRestore();
-
-/**
-  * 判斷案件進行中：OHCA / Training 案件執行中 → true（裝置名稱應置灰）
-  *
-  * 純函式：只讀 case_mode 參數，不讀任何全域狀態。
-  * 讓 native test 可直傳 CaseMode 參數驗證，不用碰 lib 內部全域。
-  *
-  * @param case_mode 當前案件模式（CASE_MODE_OHCA / CASE_MODE_TRAINING / 其他）
-  * @return true 案件進行中，裝置名稱項目應置灰且主鍵不可進入
-  */
- bool is_device_name_locked(ems::CaseMode case_mode);
 
 /**
   * 裝置名稱子畫面：顯示「請連接 App 設定裝置名稱」

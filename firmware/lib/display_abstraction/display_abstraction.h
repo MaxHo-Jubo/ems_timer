@@ -87,6 +87,27 @@ extern int16_t mock_last_y;
 extern int16_t mock_last_fontsize;
 extern uint32_t mock_last_color;
 
+/// text call log 容量（一個畫面的文字列數上限，超過即停止記錄）
+#define MOCK_TEXT_LOG_MAX 16
+
+/**
+ * 單次 drawText 呼叫的完整參數。
+ *
+ * 為什麼需要：mock_last_* 只留最後一次呼叫，無法驗證「畫面中某一列用什麼顏色畫」——
+ * 一個畫面有多列文字時，斷言只能碰到最後一列，容易寫出「怎樣都會過」的假測試
+ * （Phase G review 的 test_g15 即為此類）。改記完整 log 後，測試可指名查詢。
+ */
+struct MockTextCall {
+    const char* str;
+    int16_t     x;
+    int16_t     y;
+    int16_t     fontsize;
+    uint32_t    color;
+};
+
+extern MockTextCall mock_text_log[MOCK_TEXT_LOG_MAX];
+extern int mock_text_log_count;
+
 /**
  * Mock drawText 實作
  */
@@ -96,6 +117,29 @@ static void mock_drawText(const char* str, int16_t x, int16_t y, int16_t fontsiz
     mock_last_y = y;
     mock_last_fontsize = fontsize;
     mock_last_color = color;
+
+    // 超過容量即停止記錄，不覆寫先前內容（避免測試看到被輪替掉的假象）
+    if (mock_text_log_count < MOCK_TEXT_LOG_MAX) {
+        mock_text_log[mock_text_log_count++] = { str, x, y, fontsize, color };
+    }
+}
+
+/**
+ * 在 text log 中尋找指定字串的呼叫。
+ *
+ * @param str 要找的字串（以內容比對，非指標比對）
+ * @return 對應的 MockTextCall 指標；找不到回 nullptr
+ */
+static const MockTextCall* mock_text_log_find(const char* str) {
+    if (str == nullptr) {
+        return nullptr;
+    }
+    for (int i = 0; i < mock_text_log_count; i++) {
+        if (mock_text_log[i].str != nullptr && strcmp(mock_text_log[i].str, str) == 0) {
+            return &mock_text_log[i];
+        }
+    }
+    return nullptr;
 }
 
 /**
@@ -122,6 +166,7 @@ static void mock_display_reset() {
     mock_last_fill_w = 0;
     mock_last_fill_h = 0;
     mock_last_fill_color = 0;
+    mock_text_log_count = 0;
 }
 
 /**

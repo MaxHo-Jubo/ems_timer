@@ -131,6 +131,34 @@ inline bool case_meta_is_synced(const case_meta_t& m) {
     return m.synced_at_ms >= SYNCED_AT_EPOCH_FLOOR_MS;
 }
 
+/**
+ * 清單內是否存在尚未同步的案件。
+ *
+ * 用途：Phase G §2.2.5 裝置名稱鎖定判準。sync_send 是在**同步當下**才讀
+ * device_name 寫進 payload，若此時已改名，先前錄製的未同步案件會帶著新名字
+ * 送出，與錄製當下的裝置不符，造成紀錄歸屬錯亂。
+ *
+ * 純函式：不碰 backend / 全域狀態，native 可直接餵陣列驗證。
+ *
+ * @param cases 案件 meta 陣列（允許 nullptr）
+ * @param count 陣列長度
+ * @return true 至少一筆未同步；cases 為 nullptr 或 count 為 0 時回 false
+ */
+inline bool storage_has_unsynced_case(const case_meta_t* cases, uint16_t count) {
+    // STEP 01: 空清單或空指標 → 無未同步案件（不解參考）
+    if (cases == nullptr || count == 0) {
+        return false;
+    }
+
+    // STEP 02: 任一筆未達有效同步時戳即回 true，不需掃完全部
+    for (uint16_t i = 0; i < count; i++) {
+        if (!case_meta_is_synced(cases[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /** EPI 總數聚合（對齊 ohca_case_summary_t::epi_total 定義：local + pre_handover + pure_supp） */
 inline uint16_t case_meta_epi_total(const case_meta_t& m) {
     return (uint16_t)(m.epi_local + m.epi_pre_handover + m.epi_pure_supp);

@@ -218,6 +218,7 @@ FlashState flashState = {};
 uint8_t settingsCursor = 1;
 bool    settingsEditorMode = false;
 bool    settingsRestoreConfirm = false;
+bool    g_device_name_locked = false;  // 進入設定選單時由 refreshDeviceNameLock() 更新
 
 // 按鈕狀態
 uint8_t  lastBtnState[BTN_COUNT];
@@ -935,15 +936,15 @@ void updateDisplay() {
         Display settingsDisp = getSettingsDisplay();
         if (settingsEditorMode) {
             // 編輯模式：依游標索引繪製對應設定項目的數值調整畫面
-            if (settingsCursor == 1) {
+            if (settingsCursor == SETTINGS_CURSOR_BRIGHTNESS) {
                 drawSettingEditor(settingsDisp, "螢幕亮度", getBrightness(), SETTINGS_BRIGHTNESS_MIN, SETTINGS_BRIGHTNESS_MAX);
-            } else if (settingsCursor == 2) {
+            } else if (settingsCursor == SETTINGS_CURSOR_SYSTEM_VOL) {
                 drawSettingEditor(settingsDisp, "系統音量", getSystemVolume(), SETTINGS_VOLUME_MIN, SETTINGS_VOLUME_MAX);
-            } else if (settingsCursor == 3) {
+            } else if (settingsCursor == SETTINGS_CURSOR_VENT_VOL) {
                 drawSettingEditor(settingsDisp, "通氣音量", getVentVolume(), SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX);
             }
         } else {
-            drawSettingsMenu(settingsDisp, settingsCursor, g_case_mode);
+            drawSettingsMenu(settingsDisp, settingsCursor, g_device_name_locked, settingsRestoreConfirm);
         }
     }
 

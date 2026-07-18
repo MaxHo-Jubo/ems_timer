@@ -1214,6 +1214,48 @@ static void H3_index_v1_missing_synced_field_defaults_zero() {
 }
 
 // ============================================================
+//  Group I — 裝置名稱鎖定判準（Phase G §2.2.5 重做）
+//
+//  原判準「案件進行中」在當前架構下不可達（進設定選單必經 exitOhcaCase，
+//  案件已重置）。改用可達判準：存在未同步案件時鎖定改名，因為 sync_send
+//  是在同步當下才讀 device_name，改名會讓舊案件帶著新名字送出。
+// ============================================================
+
+/** I1: 空清單 → 無未同步案件 → 不鎖 */
+static void I1_has_unsynced_empty_list_returns_false() {
+    TEST_ASSERT_FALSE(storage_has_unsynced_case(nullptr, 0));
+}
+
+/** I2: 全部已同步 → 不鎖 */
+static void I2_has_unsynced_all_synced_returns_false() {
+    case_meta_t cases[2] = {};
+    cases[0].synced_at_ms = SYNCED_AT_EPOCH_FLOOR_MS;
+    cases[1].synced_at_ms = SYNCED_AT_EPOCH_FLOOR_MS + 1000;
+    TEST_ASSERT_FALSE(storage_has_unsynced_case(cases, 2));
+}
+
+/** I3: 任一筆未同步（synced_at_ms = 0）→ 鎖 */
+static void I3_has_unsynced_one_pending_returns_true() {
+    case_meta_t cases[3] = {};
+    cases[0].synced_at_ms = SYNCED_AT_EPOCH_FLOOR_MS;
+    cases[1].synced_at_ms = 0;  // 未同步
+    cases[2].synced_at_ms = SYNCED_AT_EPOCH_FLOOR_MS;
+    TEST_ASSERT_TRUE(storage_has_unsynced_case(cases, 3));
+}
+
+/** I4: 非零但低於 epoch floor 的時戳不算有效同步 → 鎖（對齊 case_meta_is_synced 語意） */
+static void I4_has_unsynced_below_epoch_floor_returns_true() {
+    case_meta_t cases[1] = {};
+    cases[0].synced_at_ms = SYNCED_AT_EPOCH_FLOOR_MS - 1;
+    TEST_ASSERT_TRUE(storage_has_unsynced_case(cases, 1));
+}
+
+/** I5: nullptr 但 count 非零 → 防禦性回 false，不可解參考 */
+static void I5_has_unsynced_null_pointer_returns_false() {
+    TEST_ASSERT_FALSE(storage_has_unsynced_case(nullptr, 5));
+}
+
+// ============================================================
 //  main
 // ============================================================
 
@@ -1280,6 +1322,13 @@ int main(int /*argc*/, char** /*argv*/) {
     RUN_TEST(H1_set_synced_at_round_trip);
     RUN_TEST(H2_set_synced_at_unknown_id);
     RUN_TEST(H3_index_v1_missing_synced_field_defaults_zero);
+
+    // Group I — 裝置名稱鎖定判準（Phase G §2.2.5）
+    RUN_TEST(I1_has_unsynced_empty_list_returns_false);
+    RUN_TEST(I2_has_unsynced_all_synced_returns_false);
+    RUN_TEST(I3_has_unsynced_one_pending_returns_true);
+    RUN_TEST(I4_has_unsynced_below_epoch_floor_returns_true);
+    RUN_TEST(I5_has_unsynced_null_pointer_returns_false);
 
     return UNITY_END();
 }
