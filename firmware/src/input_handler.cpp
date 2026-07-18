@@ -24,6 +24,65 @@ settings_state_t g_settings_state;
 static void enterSyncFlow();
 
 /**
+ * 一個可調設定的完整描述：游標索引、NVS 鍵、值域、存取函式。
+ *
+ * 把「亮度/系統音量/通氣音量」這組對應關係集中在一張表，取代原本散在
+ * BTN_UP / BTN_DOWN 兩個 switch 共 6 段幾乎逐字相同的程式碼。
+ * 新增可調設定只需在表中加一列。
+ */
+typedef struct {
+    uint8_t  cursor;   ///< SETTINGS_CURSOR_*
+    uint8_t  key;      ///< SETTING_KEY_*（NVS 欄位）
+    uint8_t  min;
+    uint8_t  max;
+    uint8_t  (*get)();
+    void     (*set)(uint8_t);
+} settings_slot_t;
+
+static const settings_slot_t kSettingsSlots[] = {
+    { SETTINGS_CURSOR_BRIGHTNESS, SETTING_KEY_BRIGHTNESS,
+      SETTINGS_BRIGHTNESS_MIN, SETTINGS_BRIGHTNESS_MAX, getBrightness, setBrightness },
+    { SETTINGS_CURSOR_SYSTEM_VOL, SETTING_KEY_SYSTEM_VOL,
+      SETTINGS_VOLUME_MIN, SETTINGS_VOLUME_MAX, getSystemVolume, setSystemVolume },
+    { SETTINGS_CURSOR_VENT_VOL, SETTING_KEY_VENT_VOL,
+      SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX, getVentVolume, setVentVolume },
+};
+
+/**
+ * 依游標調整當前設定值，clamp 在值域內並寫回 NVS。
+ *
+ * @param delta 增減量（+1 = UP / -1 = DOWN）
+ */
+static void adjustCurrentSetting(int8_t delta) {
+    // STEP 01: 查表找出當前游標對應的設定；游標停在裝置名稱等不可調項目時直接略過
+    const settings_slot_t* slot = nullptr;
+    for (size_t i = 0; i < sizeof(kSettingsSlots) / sizeof(kSettingsSlots[0]); i++) {
+        if (kSettingsSlots[i].cursor == settingsCursor) {
+            slot = &kSettingsSlots[i];
+            break;
+        }
+    }
+    if (slot == nullptr) {
+        return;
+    }
+
+    // STEP 02: 以 int16_t 計算避免 uint8_t 在 min=0 時 -1 下溢成 255
+    int16_t next = (int16_t)slot->get() + delta;
+    if (next < (int16_t)slot->min) {
+        next = slot->min;
+    }
+    if (next > (int16_t)slot->max) {
+        next = slot->max;
+    }
+
+    // STEP 03: 更新 UI 值並持久化，寫入失敗必須留痕（原本回傳值被直接丟棄）
+    slot->set((uint8_t)next);
+    if (!settings_write(&g_settings_state, slot->key, (uint8_t)next)) {
+        Serial.printf("[SETTINGS] ERROR 寫入失敗 key=0x%02X value=%d\n", slot->key, (int)next);
+    }
+}
+
+/**
  * 掃描 storage，更新裝置名稱鎖定狀態（g_device_name_locked）。
  *
  * 只在進入設定選單時呼叫一次——lock 狀態僅由「儲存新案件」或「同步完成」改變，
@@ -463,59 +522,11 @@ void onShortPress(uint8_t btnIdx) {
         // STEP 02: 編輯器模式（數值調整 — 硬體無左右鍵，用 UP/DOWN）
         if (settingsEditorMode) {
             if (btnIdx == BTN_UP) {
-                switch (settingsCursor) {
-                    case 1: {
-                        uint8_t cur = getBrightness();
-                        uint8_t next = cur < SETTINGS_BRIGHTNESS_MAX ? cur + 1 : SETTINGS_BRIGHTNESS_MAX;
-                        setBrightness(next);
-                        settings_write(&g_settings_state, SETTING_KEY_BRIGHTNESS, next);
-                        break;
-                    }
-                    case 2: {
-                        uint8_t cur = getSystemVolume();
-                        uint8_t next = cur < SETTINGS_VOLUME_MAX ? cur + 1 : SETTINGS_VOLUME_MAX;
-                        setSystemVolume(next);
-                        settings_write(&g_settings_state, SETTING_KEY_SYSTEM_VOL, next);
-                        break;
-                    }
-                    case 3: {
-                        uint8_t cur = getVentVolume();
-                        uint8_t next = cur < SETTINGS_VENT_VOLUME_MAX ? cur + 1 : SETTINGS_VENT_VOLUME_MAX;
-                        setVentVolume(next);
-                        settings_write(&g_settings_state, SETTING_KEY_VENT_VOL, next);
-                        break;
-                    }
-                    default:
-                        break;
-                }
+                adjustCurrentSetting(+1);
                 return;
             }
             if (btnIdx == BTN_DOWN) {
-                switch (settingsCursor) {
-                    case 1: {
-                        uint8_t cur = getBrightness();
-                        uint8_t next = cur > SETTINGS_BRIGHTNESS_MIN ? cur - 1 : SETTINGS_BRIGHTNESS_MIN;
-                        setBrightness(next);
-                        settings_write(&g_settings_state, SETTING_KEY_BRIGHTNESS, next);
-                        break;
-                    }
-                    case 2: {
-                        uint8_t cur = getSystemVolume();
-                        uint8_t next = cur > SETTINGS_VOLUME_MIN ? cur - 1 : SETTINGS_VOLUME_MIN;
-                        setSystemVolume(next);
-                        settings_write(&g_settings_state, SETTING_KEY_SYSTEM_VOL, next);
-                        break;
-                    }
-                    case 3: {
-                        uint8_t cur = getVentVolume();
-                        uint8_t next = cur > SETTINGS_VENT_VOLUME_MIN ? cur - 1 : SETTINGS_VENT_VOLUME_MIN;
-                        setVentVolume(next);
-                        settings_write(&g_settings_state, SETTING_KEY_VENT_VOL, next);
-                        break;
-                    }
-                    default:
-                        break;
-                }
+                adjustCurrentSetting(-1);
                 return;
             }
             if (btnIdx == BTN_BACK) {

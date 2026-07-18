@@ -228,14 +228,27 @@ bool settings_sync_device_name(settings_state_t* state, const char* name) {
  * @return 讀取值
  */
 static uint8_t nvs_read_uint8(const char* key, uint8_t default_val) {
+    // STEP 01: 開 NVS namespace——失敗屬異常（非首次開機情境），必須留痕
     nvs_handle_t handle;
     esp_err_t err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
-    if (err != ESP_OK) return default_val;
+    if (err != ESP_OK) {
+        Serial.printf("[SETTINGS] ERROR nvs_open on read \"%s\": %d\n", key, err);
+        return default_val;
+    }
 
+    // STEP 02: 讀值。ESP_ERR_NVS_NOT_FOUND = 首次開機尚未寫過，屬預期行為不報 ERROR；
+    //          其餘 error code（partition 損毀、handle 失效等）必須印出來，
+    //          否則「設定每次開機都跑掉」的 field report 將無從判斷是韌體 bug 還是硬體故障。
     uint8_t val = default_val;
-    if (nvs_get_u8(handle, key, &val) != ESP_OK) {
+    esp_err_t get_err = nvs_get_u8(handle, key, &val);
+    if (get_err == ESP_ERR_NVS_NOT_FOUND) {
+        val = default_val;
+    } else if (get_err != ESP_OK) {
+        Serial.printf("[SETTINGS] ERROR nvs_get_u8 \"%s\": %d (fallback=%u)\n",
+                      key, get_err, default_val);
         val = default_val;
     }
+
     nvs_close(handle);
     return val;
 }
@@ -281,23 +294,40 @@ bool settings_init(settings_state_t* state) {
 }
 
 bool settings_write(settings_state_t* state, uint8_t key, uint8_t value) {
+    // STEP 01: 依 key 決定值域與對應的 NVS 欄位鍵名
+    const char* nvs_key = nullptr;
+
     switch (key) {
         case SETTING_KEY_BRIGHTNESS:
-            if (value < SETTINGS_BRIGHTNESS_MIN || value > SETTINGS_BRIGHTNESS_MAX) return false;
+            // STEP 01.01: 亮度超出 1~5 → 拒絕，不動 state 也不寫 NVS
+            if (value < SETTINGS_BRIGHTNESS_MIN || value > SETTINGS_BRIGHTNESS_MAX) {
+                return false;
+            }
             state->brightness = value;
+            nvs_key = NVS_BRIGHTNESS_KEY;
             break;
         case SETTING_KEY_SYSTEM_VOL:
-            if (value < SETTINGS_VOLUME_MIN || value > SETTINGS_VOLUME_MAX) return false;
+            // STEP 01.02: 系統音量不可靜音（min=1，V1 §19.4）
+            if (value < SETTINGS_VOLUME_MIN || value > SETTINGS_VOLUME_MAX) {
+                return false;
+            }
             state->system_volume = value;
+            nvs_key = NVS_VOLUME_KEY;
             break;
         case SETTING_KEY_VENT_VOL:
-            if (value < SETTINGS_VENT_VOLUME_MIN || value > SETTINGS_VENT_VOLUME_MAX) return false;
+            // STEP 01.03: 通氣音量可靜音（min=0，V1 §19.5）
+            if (value < SETTINGS_VENT_VOLUME_MIN || value > SETTINGS_VENT_VOLUME_MAX) {
+                return false;
+            }
             state->vent_volume = value;
+            nvs_key = NVS_VENT_VOL_KEY;
             break;
         default:
             return false;
     }
-    return true;
+
+    // STEP 02: 寫回 NVS 持久化——少了這步，設定只存在 RAM，重開機即丟失
+    return nvs_write_uint8(nvs_key, value);
 }
 
 uint8_t settings_read(const settings_state_t* state, uint8_t key) {
