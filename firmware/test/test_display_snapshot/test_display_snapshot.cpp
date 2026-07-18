@@ -34,7 +34,7 @@ static void test_baseline_identical_inputs_produce_equal_snapshots() {
 static void test_default_snapshot_flags_are_zero() {
     DisplaySnapshotInputs in;
     DisplaySnapshot s = captureSnapshot(in);
-    TEST_ASSERT_EQUAL_UINT16(0, s.flags);
+    TEST_ASSERT_EQUAL_UINT32(0, s.flags);
 }
 
 // ============================================================
@@ -128,6 +128,12 @@ static void test_training_history_options_cursor_change_triggers_redraw_w7_regre
     ASSERT_FIELD_TRIGGERS_CHANGE(trainingHistoryOptionsCursor, 1);
 }
 
+// Phase G 回溯：系統設定選單 cursor 移動無重繪（本類別第 4 次重演，見
+// docs/phase-g-system-settings-plan.md §二、零、一 #3）
+static void test_settings_cursor_change_triggers_redraw_phase_g_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(settingsCursor, 2);
+}
+
 // W5 回溯：Training 保存/不保存 cursor 移動 bug 同類別（漏 trainingSaveCursor 導致保存畫面高亮凍結）
 static void test_training_save_cursor_change_triggers_redraw_w5_regression() {
     ASSERT_FIELD_TRIGGERS_CHANGE(trainingSaveCursor, 1);
@@ -141,97 +147,110 @@ static void test_training_save_cursor_change_triggers_redraw_w5_regression() {
 static void test_flag_epi_armed_sets_bit_0x0001() {
     DisplaySnapshotInputs in;
     in.showEpiArmedPrompt = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_EPI_ARMED, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_EPI_ARMED, captureSnapshot(in).flags);
 }
 
 static void test_flag_shock_armed_sets_bit_0x0002() {
     DisplaySnapshotInputs in;
     in.showShockArmedPrompt = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_SHOCK_ARMED, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_SHOCK_ARMED, captureSnapshot(in).flags);
 }
 
 static void test_flag_amio_armed_sets_bit_0x0004() {
     DisplaySnapshotInputs in;
     in.showAmioArmedPrompt = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_AMIO_ARMED, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_AMIO_ARMED, captureSnapshot(in).flags);
 }
 
 static void test_flag_ohca_vent_sets_bit_0x0008() {
     DisplaySnapshotInputs in;
     in.ohcaVentOverlayEnabled = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_OHCA_VENT, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_OHCA_VENT, captureSnapshot(in).flags);
 }
 
 static void test_flag_vent_end_check_sets_bit_0x0010() {
     DisplaySnapshotInputs in;
     in.ventEndCheckShown = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_VENT_END_CHECK, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_VENT_END_CHECK, captureSnapshot(in).flags);
 }
 
 static void test_flag_alarm_muted_sets_bit_0x0020() {
     DisplaySnapshotInputs in;
     in.alarmMuted = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_ALARM_MUTED, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_ALARM_MUTED, captureSnapshot(in).flags);
 }
 
 static void test_flag_vent_back_hint_sets_bit_0x0040() {
     DisplaySnapshotInputs in;
     in.ventBackHintShown = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_VENT_BACK_HINT, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_VENT_BACK_HINT, captureSnapshot(in).flags);
 }
 
 static void test_flag_alarming_flash_sets_bit_0x0080() {
     DisplaySnapshotInputs in;
     in.alarmingFlashOn = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_ALARMING_FLASH, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_ALARMING_FLASH, captureSnapshot(in).flags);
 }
 
 static void test_flag_end_confirm_sets_bit_0x0100() {
     DisplaySnapshotInputs in;
     in.endConfirmShown = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_END_CONFIRM, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_END_CONFIRM, captureSnapshot(in).flags);
 }
 
 static void test_flag_flash_active_sets_bit_0x0200() {
     DisplaySnapshotInputs in;
     in.flashStateActive = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_FLASH_ACTIVE, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_FLASH_ACTIVE, captureSnapshot(in).flags);
 }
 
 static void test_flag_vent_pre_sets_bit_0x0400() {
     DisplaySnapshotInputs in;
     in.ventPreShown = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_VENT_PRE, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_VENT_PRE, captureSnapshot(in).flags);
 }
 
 static void test_flag_history_summary_sets_bit_0x0800() {
     DisplaySnapshotInputs in;
     in.historySummaryMode = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_HISTORY_SUMMARY, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_HISTORY_SUMMARY, captureSnapshot(in).flags);
 }
 
 static void test_flag_ble_connected_sets_bit_0x1000() {
     DisplaySnapshotInputs in;
     in.bleConnected = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_BLE_CONNECTED, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_BLE_CONNECTED, captureSnapshot(in).flags);
 }
 
 static void test_flag_resync_confirm_sets_bit_0x2000() {
     DisplaySnapshotInputs in;
     in.resyncConfirmShown = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_RESYNC_CONFIRM, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_RESYNC_CONFIRM, captureSnapshot(in).flags);
 }
 
 static void test_flag_delete_confirm_sets_bit_0x4000() {
     DisplaySnapshotInputs in;
     in.trainingDeleteConfirm = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_DELETE_CONFIRM, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_DELETE_CONFIRM, captureSnapshot(in).flags);
 }
 
 static void test_flag_reset_confirm_sets_bit_0x8000() {
     DisplaySnapshotInputs in;
     in.trainingResetConfirm = true;
-    TEST_ASSERT_EQUAL_UINT16(SNAP_FLAG_RESET_CONFIRM, captureSnapshot(in).flags);
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_RESET_CONFIRM, captureSnapshot(in).flags);
+}
+
+// Phase G：uint16_t 的 16 個 bit 於 W8 用罄，flags 擴為 uint32_t 後的前兩個新 bit
+static void test_flag_settings_editor_sets_bit_0x10000() {
+    DisplaySnapshotInputs in;
+    in.settingsEditorMode = true;
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_SETTINGS_EDITOR, captureSnapshot(in).flags);
+}
+
+static void test_flag_settings_restore_confirm_sets_bit_0x20000() {
+    DisplaySnapshotInputs in;
+    in.settingsRestoreConfirm = true;
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_SETTINGS_RESTORE_CONFIRM, captureSnapshot(in).flags);
 }
 
 // ============================================================
@@ -256,8 +275,10 @@ static void test_all_flags_on_combine_all_bits() {
     in.resyncConfirmShown    = true;
     in.trainingDeleteConfirm = true;
     in.trainingResetConfirm  = true;
+    in.settingsEditorMode     = true;
+    in.settingsRestoreConfirm = true;
 
-    const uint16_t expected = SNAP_FLAG_EPI_ARMED
+    const uint32_t expected = SNAP_FLAG_EPI_ARMED
                             | SNAP_FLAG_SHOCK_ARMED
                             | SNAP_FLAG_AMIO_ARMED
                             | SNAP_FLAG_OHCA_VENT
@@ -272,28 +293,32 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_BLE_CONNECTED
                             | SNAP_FLAG_RESYNC_CONFIRM
                             | SNAP_FLAG_DELETE_CONFIRM
-                            | SNAP_FLAG_RESET_CONFIRM;
-    TEST_ASSERT_EQUAL_UINT16(expected, captureSnapshot(in).flags);
+                            | SNAP_FLAG_RESET_CONFIRM
+                            | SNAP_FLAG_SETTINGS_EDITOR
+                            | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
+    TEST_ASSERT_EQUAL_UINT32(expected, captureSnapshot(in).flags);
 }
 
 static void test_all_flags_bit_masks_are_unique() {
-    // 確保 16 個 mask 沒有撞號（OR 全部應等於 set bit count = 16；uint16_t 已用滿）
-    const uint16_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
+    // 確保 18 個 mask 沒有撞號（OR 全部應等於 set bit count = 18）
+    // Phase G：原 uint16_t 的 16 bit 於 W8 用罄，flags 擴為 uint32_t 容納設定 UI 兩個新 flag
+    const uint32_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
                        | SNAP_FLAG_VENT_BACK_HINT | SNAP_FLAG_ALARMING_FLASH
                        | SNAP_FLAG_END_CONFIRM | SNAP_FLAG_FLASH_ACTIVE
                        | SNAP_FLAG_VENT_PRE | SNAP_FLAG_HISTORY_SUMMARY
                        | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM
-                       | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM;
+                       | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM
+                       | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
     // popcount
     int bits = 0;
-    for (uint16_t m = all; m; m >>= 1) {
+    for (uint32_t m = all; m; m >>= 1) {
         if (m & 1) {
             bits++;
         }
     }
-    TEST_ASSERT_EQUAL_INT(16, bits);
+    TEST_ASSERT_EQUAL_INT(18, bits);
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -325,6 +350,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_history_type_cursor_change_triggers_redraw_w6_regression);
     RUN_TEST(test_training_history_options_cursor_change_triggers_redraw_w7_regression);
     RUN_TEST(test_training_save_cursor_change_triggers_redraw_w5_regression);
+    // Phase G 回溯：系統設定選單 cursor 同類別（本類別第 4 次重演）
+    RUN_TEST(test_settings_cursor_change_triggers_redraw_phase_g_regression);
 
     // Group 3: bool flag → bit mask
     RUN_TEST(test_flag_epi_armed_sets_bit_0x0001);
@@ -343,6 +370,9 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_flag_resync_confirm_sets_bit_0x2000);
     RUN_TEST(test_flag_delete_confirm_sets_bit_0x4000);
     RUN_TEST(test_flag_reset_confirm_sets_bit_0x8000);
+    // Phase G：flags 擴為 uint32_t 後的新 bit
+    RUN_TEST(test_flag_settings_editor_sets_bit_0x10000);
+    RUN_TEST(test_flag_settings_restore_confirm_sets_bit_0x20000);
 
     // Group 4: combine + uniqueness
     RUN_TEST(test_all_flags_on_combine_all_bits);

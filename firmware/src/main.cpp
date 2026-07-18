@@ -766,6 +766,9 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.historySummaryMode    = historySummaryMode;
     in.bleConnected          = g_ble.connected();  // Phase F MVP1
     in.syncState             = (uint8_t)g_sync_ctx.state;  // Phase F MVP2
+    in.settingsCursor         = settingsCursor;         // Phase G：漏此三項會使設定選單完全不重繪
+    in.settingsEditorMode     = settingsEditorMode;     // Phase G
+    in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
 
     return captureSnapshot(in);
 }

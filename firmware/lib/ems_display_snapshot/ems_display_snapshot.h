@@ -52,12 +52,13 @@ struct DisplaySnapshot {
     uint8_t  trainingHistoryOptionsCursor; ///< W7：Training 歷史操作選單游標
     uint8_t  trainingSaveCursor;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
     uint8_t  storageFailure;    ///< W9：儲存失敗（0=無 / 1=OHCA 失敗 / 2=Training 失敗）
-    uint16_t flags;              ///< bit-packed prompt/overlay 狀態
+    uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+    uint32_t flags;              ///< bit-packed prompt/overlay 狀態（W8 用滿 16 bit → Phase G 擴為 32）
 };
 
 
 /// Snapshot flag bits（每個 bit 對應一個 prompt/overlay 狀態）
-enum DisplaySnapshotFlag : uint16_t {
+enum DisplaySnapshotFlag : uint32_t {
     SNAP_FLAG_EPI_ARMED       = 0x0001,
     SNAP_FLAG_SHOCK_ARMED     = 0x0002,
     SNAP_FLAG_AMIO_ARMED      = 0x0004,
@@ -74,6 +75,9 @@ enum DisplaySnapshotFlag : uint16_t {
     SNAP_FLAG_RESYNC_CONFIRM  = 0x2000,  // Phase F：已同步案件再次同步的確認 dialog（SoT §16.7）
     SNAP_FLAG_DELETE_CONFIRM  = 0x4000,  // W7：刪除二次確認顯示中
     SNAP_FLAG_RESET_CONFIRM   = 0x8000,  // W8：重置訓練二次確認顯示中
+    // ↑ uint16_t 的 16 個 bit 至此用罄，以下為 Phase G 擴充至 uint32_t 後的新 bit
+    SNAP_FLAG_SETTINGS_EDITOR = 0x00010000,  // Phase G：設定值編輯畫面顯示中
+    SNAP_FLAG_SETTINGS_RESTORE_CONFIRM = 0x00020000,  // Phase G：恢復預設確認對話框顯示中
 };
 
 
@@ -102,6 +106,7 @@ struct DisplaySnapshotInputs {
     uint8_t  trainingHistoryOptionsCursor = 0;  ///< W7：Training 歷史操作選單游標
     uint8_t  trainingSaveCursor = 0;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
     uint8_t  storageFailure     = 0;  ///< W9：儲存失敗狀態（0=無 / 1=OHCA / 2=Training）
+    uint8_t  settingsCursor     = 0;  ///< Phase G：系統設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
 
     // STEP 02: 衍生值（呼叫端先算）
     uint32_t countdownSec    = 0;
@@ -124,6 +129,8 @@ struct DisplaySnapshotInputs {
     bool     resyncConfirmShown    = false;  // Phase F：§16.7 再次同步確認 dialog 顯示中
     bool     trainingDeleteConfirm = false;  // W7：Training 刪除二次確認顯示中
     bool     trainingResetConfirm  = false;  // W8：重置訓練二次確認顯示中
+    bool     settingsEditorMode     = false;  // Phase G：設定值編輯畫面顯示中
+    bool     settingsRestoreConfirm = false;  // Phase G：恢復預設確認對話框顯示中
 };
 
 
@@ -155,6 +162,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     s.trainingHistoryOptionsCursor = in.trainingHistoryOptionsCursor;
     s.trainingSaveCursor  = in.trainingSaveCursor;
     s.storageFailure      = in.storageFailure;  // W9：儲存失敗狀態
+    s.settingsCursor      = in.settingsCursor;  // Phase G：系統設定選單游標
 
     // STEP 02: bool → bit-packed flags
     if (in.showEpiArmedPrompt)     s.flags |= SNAP_FLAG_EPI_ARMED;
@@ -173,6 +181,8 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.resyncConfirmShown)     s.flags |= SNAP_FLAG_RESYNC_CONFIRM;
     if (in.trainingDeleteConfirm)  s.flags |= SNAP_FLAG_DELETE_CONFIRM;
     if (in.trainingResetConfirm)   s.flags |= SNAP_FLAG_RESET_CONFIRM;
+    if (in.settingsEditorMode)     s.flags |= SNAP_FLAG_SETTINGS_EDITOR;
+    if (in.settingsRestoreConfirm) s.flags |= SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
 
     return s;
 }
