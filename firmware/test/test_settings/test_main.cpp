@@ -8,8 +8,8 @@
 //   - 註冊：RUN_TEST(test_name) in main()
 //   - 不使用 TEST_CASE() / TEST() 等其他 framework 風格 macro
 //
-// ⚠️ RED phase：本檔對應實作為 stub，預期跑出來全部失敗。
-// ⚠️ Step 3 GREEN 階段禁止修改本檔。
+// 狀態：GREEN 完成（Wave 0）。TDD 的「禁止修改」凍結期已結束，
+// 後續異動走一般 code review 流程即可。
 
 #include <unity.h>
 #include <string.h>
@@ -169,8 +169,14 @@ static void test_g07_set_device_name() {
 
 /** G0.8: LittleFS 讀取成功（含 UTF-8 多字節） */
 static void test_g08_get_device_name_utf8() {
-    // 寫入 UTF-8 中文（"安康91" = 4 bytes in UTF-8）
-    const char* utf8_name = "\xe5畤\xaa\xe5\x91\x89\x39\x31";
+    // 「安康91」= 安(3) + 康(3) + 9(1) + 1(1) = 8 bytes
+    //   原字面值為編輯器貼壞的位元組序列（混入「畤」字，非合法 UTF-8），
+    //   且註解誤植為 4 bytes；因 mock_fs 只做 raw byte round-trip，
+    //   任何位元組序列都會通過，故此測試原本並未驗證到任何 UTF-8 行為。
+    const char* utf8_name = "安康91";
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(8, (uint32_t)strlen(utf8_name),
+        "G0.8: 前提檢查——字面值必須是合法的 8-byte UTF-8");
+
     mock_fs_write(DEVICE_NAME_FILE, utf8_name, strlen(utf8_name));
 
     char buf[DEVICE_NAME_MAX_LEN];
@@ -178,6 +184,7 @@ static void test_g08_get_device_name_utf8() {
     bool ok = mock_fs_read(DEVICE_NAME_FILE, buf, sizeof(buf), &len);
 
     TEST_ASSERT_TRUE_MESSAGE(ok, "G0.8: 讀取 device_name 應成功");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(8, (uint32_t)len, "G0.8: 讀回長度應為 8 bytes");
     TEST_ASSERT_EQUAL_STRING(utf8_name, buf);
 }
 

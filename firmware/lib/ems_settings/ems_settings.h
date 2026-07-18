@@ -37,6 +37,7 @@
 // ===== 裝置名稱 =====
 #define DEVICE_NAME_MAX_LEN   32
 #define DEVICE_NAME_DEFAULT   "未命名"
+#define DEVICE_NAME_DIR       "/config"
 #define DEVICE_NAME_FILE      "/config/device_name.txt"
 
 // ===== 設定鍵值 =====
@@ -53,6 +54,30 @@ typedef struct {
     uint8_t vent_volume;      // 通氣音量 0~5
     char device_name[DEVICE_NAME_MAX_LEN];  // 裝置名稱
 } settings_state_t;
+
+// ============================================================
+//  裝置名稱淨化（純邏輯，ARDUINO 與 native 共用）
+// ============================================================
+
+/**
+ * 淨化外部傳入的裝置名稱（BLE payload → 可安全存放的 C 字串）。
+ *
+ * 處理三件事：
+ *   1. 拒絕空輸入（空 payload 不應把裝置名稱清掉）
+ *   2. 在第一個內嵌 NUL 處截止（BLE 送來的是 raw bytes，可能含 NUL）
+ *   3. 超長時**切在 UTF-8 字元邊界**——預設名稱本身就是中文「未命名」，
+ *      純 byte 截斷會產生半個字，顯示端出現亂碼
+ *
+ * 刻意收 (ptr, len) 而非只收 const char*：BLE payload 不保證 NUL 結尾，
+ * 用 strlen 推斷長度會讀出界（對齊專案規則：byte buffer API 必須帶明確 length）。
+ *
+ * @param raw       原始位元組（允許不以 NUL 結尾；nullptr 時回 false）
+ * @param raw_len   原始位元組長度
+ * @param out       輸出緩衝（成功時必為 NUL 結尾）
+ * @param out_size  輸出緩衝大小（為 0 時回 false，避免 out_size-1 下溢）
+ * @return true 產生了長度 ≥ 1 的有效名稱
+ */
+bool device_name_sanitize(const char* raw, size_t raw_len, char* out, size_t out_size);
 
 // ============================================================
 //  ESP32 端實作（ARDUINO 環境）

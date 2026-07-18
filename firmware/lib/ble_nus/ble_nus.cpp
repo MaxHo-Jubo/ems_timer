@@ -53,33 +53,61 @@ class NusRxCallbacks : public BLECharacteristicCallbacks {
     }
 };
 
-// 裝置名稱寫入 callback（G2.1：BLE client 寫入新名稱時持久化到 LittleFS）
-// 空值或超過 DEVICE_NAME_MAX_LEN-1 時拒絕（不寫入）；
-// 超過長度時裁切至 DEVICE_NAME_MAX_LEN-1 再寫入。
+// ============================================================
+//  裝置名稱寫入 callback（G2.1）
+//
+//  這個 callback 跑在 GATT task 上，**不得阻塞**——LittleFS 寫入在觸發
+//  wear-leveling / GC 時可達數十 ms，直接寫會導致 BLE 斷線
+//  （見 memory: feedback_ble_callback_non_blocking）。
+//  因此 callback 只做純記憶體運算（sanitize + 暫存），實際的檔案寫入
+//  由 main loop 呼叫 bleNus_takePendingDeviceName() 取走後執行。
+// ============================================================
+
+/// 待寫入的裝置名稱（已淨化）。由 GATT task 寫、main loop 讀，
+/// 以 portMUX 保護跨核存取（與 rx_buf_ 相同模式）。
+static char          s_pending_device_name[DEVICE_NAME_MAX_LEN] = {};
+static volatile bool s_pending_device_name_valid = false;
+static portMUX_TYPE  s_pending_name_mux = portMUX_INITIALIZER_UNLOCKED;
+
 class NusNameWriteCallbacks : public BLECharacteristicCallbacks {
     void onWrite(BLECharacteristic* pChar) override {
+        // STEP 01: 取 raw bytes。BLE payload 不保證 NUL 結尾，必須帶長度處理
         std::string value = pChar->getValue();
-        if (value.empty()) {
-            Serial.println("[NUS-NAME] WARN empty write, rejected");
+
+        // STEP 02: 淨化（拒空 / 內嵌 NUL 截止 / UTF-8 邊界安全截斷）——純運算，不碰 flash
+        char sanitized[DEVICE_NAME_MAX_LEN];
+        if (!device_name_sanitize(value.data(), value.length(), sanitized, sizeof(sanitized))) {
+            Serial.printf("[NUS-NAME] WARN 無效的裝置名稱寫入（len=%u），已拒絕\n",
+                          (unsigned)value.length());
             return;
         }
-        // 取得既有常數（ems_settings.h）做裁切判斷
-        constexpr size_t max_len = DEVICE_NAME_MAX_LEN - 1;  // 預留 null terminator
-        if (value.length() > max_len) {
-            Serial.printf("[NUS-NAME] WARN name too long %u > %u, truncating\n",
-                          (unsigned) value.length(), (unsigned) max_len);
-            value = value.substr(0, max_len);
-        }
-        // 轉 null-terminated 字串寫入 LittleFS
-        std::string name_str(value.begin(), value.end());
-        name_str.push_back('\0');
-        if (!settings_set_device_name(name_str.c_str())) {
-            Serial.println("[NUS-NAME] ERROR settings_set_device_name failed");
-            return;
-        }
-        Serial.printf("[NUS-NAME] OK name set to '%s'\n", name_str.c_str());
+
+        // STEP 03: 暫存交給 main loop 落盤，callback 立即返回
+        portENTER_CRITICAL(&s_pending_name_mux);
+        memcpy(s_pending_device_name, sanitized, sizeof(s_pending_device_name));
+        s_pending_device_name_valid = true;
+        portEXIT_CRITICAL(&s_pending_name_mux);
+
+        Serial.printf("[NUS-NAME] 已接收 '%s'，待 main loop 寫入\n", sanitized);
     }
 };
+
+bool bleNus_takePendingDeviceName(char* out, size_t out_size) {
+    // STEP 01: 無待處理名稱時直接返回——這是 main loop 每輪都會走的路徑，
+    //          先做無鎖檢查避免每輪都進 critical section
+    if (!s_pending_device_name_valid || out == nullptr || out_size == 0) {
+        return false;
+    }
+
+    // STEP 02: 在 critical section 內複製並清旗標，避免與 GATT task 的寫入交錯
+    portENTER_CRITICAL(&s_pending_name_mux);
+    strncpy(out, s_pending_device_name, out_size - 1);
+    s_pending_device_name_valid = false;
+    portEXIT_CRITICAL(&s_pending_name_mux);
+
+    out[out_size - 1] = '\0';
+    return true;
+}
 
 // ============================================================
 //  BleNus 公開 API

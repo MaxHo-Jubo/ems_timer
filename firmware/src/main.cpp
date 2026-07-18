@@ -553,6 +553,19 @@ void loop() {
     //   time_sync 立即生效，讓接下來 handleButtons 觸發的事件 timestamp 用真實 epoch
     g_ble.poll(on_ble_rx);
 
+    // STEP 01.5: Phase G — 落盤 BLE 寫入的裝置名稱
+    //   GATT callback 只做淨化與暫存（不可阻塞），實際 LittleFS 寫入在此執行
+    {
+        char pending_name[DEVICE_NAME_MAX_LEN];
+        if (ems::bleNus_takePendingDeviceName(pending_name, sizeof(pending_name))) {
+            if (settings_set_device_name(pending_name)) {
+                settings_sync_device_name(&g_settings_state, pending_name);
+            } else {
+                Serial.printf("[SETTINGS] ERROR 裝置名稱落盤失敗 '%s'\n", pending_name);
+            }
+        }
+    }
+
     // STEP 02: Phase F — sync dispatcher observer（僅在 GLOBAL_SYNC 內活）
     //   - BLE 連線邊緣 → dispatch BLE_CONNECTED / BLE_DISCONNECTED
     //   - 每 tick dispatch TICK 給 timeout 判斷

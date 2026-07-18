@@ -11,11 +11,61 @@
 #ifdef ARDUINO
 #include <NVS.h>
 #include <Arduino.h>
+#include <LittleFS.h>  // 裝置名稱持久化（/config/device_name.txt）
 #endif
 
 #include <map>
 #include <string>
 #include <cstring>
+
+// ============================================================
+//  裝置名稱淨化（純邏輯，ARDUINO 與 native 共用）
+// ============================================================
+
+/// UTF-8 continuation byte 判定：高 2 bit 為 10（0b10xxxxxx）
+#define UTF8_IS_CONTINUATION(b)  (((b) & 0xC0) == 0x80)
+
+bool device_name_sanitize(const char* raw, size_t raw_len, char* out, size_t out_size) {
+    // STEP 01: 參數防護。out_size 為 0 時後續的 out_size-1 會下溢成 SIZE_MAX
+    if (raw == nullptr || out == nullptr || out_size == 0 || raw_len == 0) {
+        return false;
+    }
+
+    // STEP 02: 在第一個內嵌 NUL 處截止——BLE 送來的是 raw bytes，NUL 之後的內容
+    //          不屬於這個名稱，直接採用會把垃圾位元組帶進顯示層
+    size_t effective_len = raw_len;
+    for (size_t i = 0; i < raw_len; i++) {
+        if (raw[i] == '\0') {
+            effective_len = i;
+            break;
+        }
+    }
+    if (effective_len == 0) {
+        return false;
+    }
+
+    // STEP 03: 限制在輸出緩衝可容納的長度內（保留 1 byte 給 NUL）
+    size_t copy_len = effective_len;
+    if (copy_len > out_size - 1) {
+        copy_len = out_size - 1;
+
+        // STEP 03.01: 若切點落在 UTF-8 字元中間，往回退到字元起始邊界。
+        //   raw[copy_len] 是第一個被丟棄的 byte；它若是 continuation byte，
+        //   代表前一個字元被切成兩半，必須整個字元一起丟掉。
+        while (copy_len > 0 && UTF8_IS_CONTINUATION((unsigned char)raw[copy_len])) {
+            copy_len--;
+        }
+        if (copy_len == 0) {
+            // 單一字元就超過整個緩衝（緩衝過小），無法產生任何完整字元
+            return false;
+        }
+    }
+
+    // STEP 04: 複製並補 NUL
+    memcpy(out, raw, copy_len);
+    out[copy_len] = '\0';
+    return true;
+}
 
 // ============================================================
 //  Native test 支援：mock NVS 實作（無需 ESP32）
@@ -358,15 +408,63 @@ bool settings_reset_defaults(settings_state_t* state) {
 }
 
 bool settings_set_device_name(const char* name) {
-    // Phase 2: LittleFS /config/device_name.txt
-    return false;
+    // STEP 01: 參數防護。空名稱不得覆寫既有設定
+    if (name == nullptr || name[0] == '\0') {
+        Serial.println("[SETTINGS] ERROR set_device_name 收到空名稱");
+        return false;
+    }
+
+    // STEP 02: 確保父目錄存在——LittleFS 開啟含路徑的新檔時不會自動建目錄
+    if (!LittleFS.exists(DEVICE_NAME_DIR)) {
+        LittleFS.mkdir(DEVICE_NAME_DIR);
+    }
+
+    // STEP 03: 覆寫模式開檔
+    File f = LittleFS.open(DEVICE_NAME_FILE, "w");
+    if (!f) {
+        Serial.printf("[SETTINGS] ERROR 無法開啟 %s 寫入\n", DEVICE_NAME_FILE);
+        return false;
+    }
+
+    // STEP 04: 寫入並確認完整落盤（部分寫入視為失敗，避免留下半截名稱）
+    const size_t len     = strlen(name);
+    const size_t written = f.write(reinterpret_cast<const uint8_t*>(name), len);
+    f.close();
+
+    if (written != len) {
+        Serial.printf("[SETTINGS] ERROR 裝置名稱寫入不完整 %u/%u bytes\n",
+                      (unsigned)written, (unsigned)len);
+        return false;
+    }
+
+    Serial.printf("[SETTINGS] OK 裝置名稱已寫入 '%s'\n", name);
+    return true;
 }
 
 bool settings_get_device_name(char* buf, size_t buf_size) {
-    // Phase 2: LittleFS /config/device_name.txt
-    strncpy(buf, DEVICE_NAME_DEFAULT, buf_size - 1);
-    buf[buf_size - 1] = '\0';
-    return false;
+    // STEP 01: 參數防護。buf_size 為 0 時 buf_size-1 會下溢成 SIZE_MAX
+    if (buf == nullptr || buf_size == 0) {
+        return false;
+    }
+
+    // STEP 02: 檔案不存在 = 尚未設定過，屬正常狀態（非錯誤）→ 回預設名稱
+    File f = LittleFS.open(DEVICE_NAME_FILE, "r");
+    if (!f) {
+        strncpy(buf, DEVICE_NAME_DEFAULT, buf_size - 1);
+        buf[buf_size - 1] = '\0';
+        return true;
+    }
+
+    // STEP 03: 讀取內容。檔案為空同樣視為未設定，回預設值
+    const size_t n = f.readBytes(buf, buf_size - 1);
+    f.close();
+    buf[n] = '\0';
+
+    if (n == 0) {
+        strncpy(buf, DEVICE_NAME_DEFAULT, buf_size - 1);
+        buf[buf_size - 1] = '\0';
+    }
+    return true;
 }
 
 #endif  // ARDUINO

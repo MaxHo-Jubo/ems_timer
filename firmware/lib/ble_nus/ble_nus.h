@@ -110,4 +110,16 @@ private:
     portMUX_TYPE       rx_mux_   = portMUX_INITIALIZER_UNLOCKED;
 };
 
+/**
+ * 取走 BLE 寫入的待處理裝置名稱（若有）。
+ *
+ * GATT callback 不可阻塞，因此它只把淨化後的名稱暫存起來；實際的 LittleFS
+ * 寫入由 main loop 呼叫本函式取走後執行。每輪 loop 呼叫一次即可。
+ *
+ * @param out      輸出緩衝（建議 DEVICE_NAME_MAX_LEN）
+ * @param out_size 緩衝大小
+ * @return true 取到一筆待處理名稱（並已清除待處理狀態）；false 表示沒有
+ */
+bool bleNus_takePendingDeviceName(char* out, size_t out_size);
+
 }  // namespace ems
