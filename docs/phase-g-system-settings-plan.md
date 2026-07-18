@@ -60,9 +60,31 @@
 | Wave | 狀態 | 完成時間 | 備註 |
 |------|------|----------|------|
 | Wave 0: NVS 設定持久化層 | ✅ 完成 | 2026-07-15 | 12 案例全綠；refactor 檢查清單通過（Flash 68.8% / RAM 32.3% 在預估範圍、無 magic number、註解完整） |
-| Wave 1: 系統設定 UI + 恢復預設 | ✅ 完成 | 2026-07-15 | 6 案例＋游標/編輯畫面測試共 477 全綠；接線 1f9805c＋持久化 2ca8039＋畫面反饋 adb8a1d；review 兩缺口皆修（OHCA 回歸檢查通過）。遺留：drawSettingsMenu 預設參數 cursor=3 為相容舊測試的臭味，重構時清；**實機待測：亮度 setBacklight、系統音量 beep、通氣音量 ventVolume 同步、選單/編輯畫面操作流程** |
-| Wave 2: 裝置名稱管理 + BLE 寫入 | ✅ 完成 | 2026-07-15 | §2.2.1~§2.2.6 範圍驗收通過（G2.1 handler 2206e79、BLE char 掛載 68ee81a、G2.2 sync 動態名稱 af089a7、G2.3 置灰＋顯示 63a3a05）；483 測全綠。**實機待測：App 端 BLE 寫入流程、sync payload 欄位、UTF-8 名稱 31-byte 截斷邊界**。重構債：drawSettingsMenu 預設參數 cursor=3 與 (CaseMode)2 裸 cast（相容舊測試的臭味，清理時一併處理） |
+| Wave 1: 系統設定 UI + 恢復預設 | ✅ 程式完成 | 2026-07-18 | review 三缺口皆修：① `settings_write()` 補上 `nvs_write_uint8()` 持久化；② `settingsCursor`/`settingsEditorMode`/`settingsRestoreConfirm` 已進 DisplaySnapshot（flags 擴為 uint32_t）＋ native regression test；③ 死碼 `confirmRestoreDefaults()` 移除，`test_g15` 改為「重繪不得覆寫已調整值」的真 regression。另修：`drawSettingsMenu` 不再每次重繪清掉 `s_brightness`；恢復預設對話框改為依 `restore_confirm` 顯示（原為無條件畫出）。**實機待測：亮度 setBacklight、系統音量 beep、通氣音量同步、NVS 重開機保值** |
+| Wave 2: 裝置名稱管理 + BLE 寫入 | ✅ 程式完成 | 2026-07-18 | stub 已實作：`settings_set/get_device_name()` 走真實 LittleFS（`/config/device_name.txt`，含 mkdir 與部分寫入偵測）。BLE callback 改為只做淨化＋暫存，LittleFS 寫入搬到 main loop（避免阻塞 GATT task）。截斷邏輯抽成純函式 `device_name_sanitize()`（拒空／內嵌 NUL 截止／**UTF-8 邊界安全截斷**），`test_ble_nus` 重寫為測產品碼而非自建替身。**實機待測：App 端 BLE 寫入流程、LittleFS 讀寫、sync payload 欄位** |
 | Wave 3: Type-C 管理工具（Electron） | ⬜ 未完成 | — | 可與 Wave 0~2 並行 |
+
+### 二、零、一、POST-COMMIT-REVIEW 發現（2026-07-18，範圍 `70b11fb..5e0920b`）
+
+> Tier 3 分級審查（5 agent 平行 + 主線逐項驗證）。以下 6 項均經 grep/讀碼證實，非推測。
+> **共同根因：測試大量打在 mock 與測試檔自建替身上，與會編譯進硬體的路徑脫節** —— 483 個測試真的有跑、真的全綠，但綠燈不代表真機可用。
+
+| # | 問題 | 位置 | 受影響的宣稱 | 修復 |
+|---|------|------|-------------|------|
+| 1 | `settings_write()` 不寫 NVS，只改 RAM，卻回傳 `true` | `ems_settings.cpp:283` | 2ca8039 接通持久化 | ✅ 補 `nvs_write_uint8()` |
+| 2 | `settings_set/get_device_name()` 為 stub 恆回 `false` | `ems_settings.cpp:330,335` | 68ee81a / af089a7（G2.1/G2.2） | ✅ 實作 LittleFS |
+| 3 | 設定 UI 三個 state 未進 DisplaySnapshot → 畫面不重繪 | `ems_display_snapshot.h` / `main.cpp` captureDisplaySnapshot | adb8a1d 畫面反饋 | ✅ 補欄位＋regression test |
+| 4 | `test_ble_nus` 未 include `ble_nus.h`，測的是自建替身 | `test/test_ble_nus/test_main.cpp` | 483 綠 | ✅ 重寫為測 `device_name_sanitize()` |
+| 5 | `test_g15` 測到死碼，`confirmRestoreDefaults()` 刪掉照樣綠 | `ui_settings.cpp:229` | a30c5ee（G1.5） | ✅ 死碼移除＋改真 regression |
+| 6 | 裝置名稱**永遠**置灰：`g_case_mode` 值域只有 0/1，`is_device_name_locked()` 對兩者皆回 `true` | `ui_settings.cpp:265` | 63a3a05（G2.3） | ✅ 判準改為 `storage_has_unsynced_case()` |
+
+**連帶修復的 Important 項**：`nvs_read_uint8()` 失敗零 log（現區分 `ESP_ERR_NVS_NOT_FOUND` 與真異常）、`settings_write` 回傳值被 7 處呼叫端忽略（現統一經 `adjustCurrentSetting()` 並記錄失敗）、亮度/音量的 (cursor,key,min,max,getter,setter) 散在 5 處重複（現收斂為 `kSettingsSlots` 一張表）、`SETTINGS_CURSOR_*` 未 export 導致 13 處裸數字、`sync_send.cpp` ternary 內用 comma operator 藏 side effect、UTF-8 名稱純 byte 截斷、BLE callback 未來接 LittleFS 會阻塞 GATT task、`app_globals.h` 兩個無呼叫點的 getter。
+
+**驗證狀態**：native 501 個測試 500 綠（`test_storage_hw` 為 on-target 測試，native 環境本就 ERRORED）；ESP32-S3 韌體編譯通過（Flash 69.1% / RAM 33.4%）。**實機未測**。
+
+**#6 的延伸發現（架構層）**：§2.2.5 原本描述的「案件進行中」情境在當前架構下**不可達**——進入設定選單的唯一路徑是主選單（`input_handler.cpp:165`），而回到主選單的唯一路徑 `enterMainMenu()` 只被 `exitOhcaCase()` 呼叫，後者會同時重置 `eventCount`/`ohcaState`/`g_case_mode`。能走到設定選單，就代表案件已結束並清空。§2.2.5 已依此改寫為可達判準（見下方）。
+
+**教訓對照**：#3 是 `feedback_display_snapshot_field_sync` 記錄的同類 bug 第 4 次重演（前三次：historyCursor / summarySubmenuCursor / endCheckCursor），而 `ems_display_snapshot.h:26-33` 檔頭就寫著新增 state 的 4 步驟 checklist，本次未照做。
 
 ### 二、零、TDD 執行規範（red-green-refactor）
 
@@ -367,7 +389,7 @@ if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
 // 回調：收到寫入 → settings_set_device_name() → 寫入成功回 ack
 ```
 
-#### 2.2.3 裝置名稱顯示（設定畫面）✅ 完成（G2.3）
+#### 2.2.3 裝置名稱顯示（設定畫面）🟡 UI 已接線，顯示內容待 §2.2.1 落地
 
 - 在設定主選單顯示「裝置名稱：[current_name]」
 - 進入子項目 → 顯示「請連接 App 設定裝置名稱」（裝置端不負責中文輸入）
@@ -383,10 +405,27 @@ if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
 //     js_meta.device_name = name;
 ```
 
-#### 2.2.5 案件進行中不可修改裝置名稱 ✅ 完成（G2.3）
+#### 2.2.5 有未同步案件時不可修改裝置名稱 ✅ 完成（2026-07-18）
 
-- 在 OHCA / Training 執行中，設定選單的「裝置名稱」項目置灰
-- 或彈出提示「案件中不可修改」
+> **2026-07-18 改寫**：原文為「案件進行中不可修改」，但該情境在當前架構下不可達
+> （進設定選單必經 `exitOhcaCase()`，案件已重置——詳見 §二、零、一 #6）。
+> 依「加防禦碼前先驗證情境可達」原則，改用下列**可達且有真實理由**的判準。
+
+**判準**：storage 內存在任一 `!case_meta_is_synced(m)` 的案件 → 設定選單「裝置名稱」項目置灰。
+
+**理由**：`sync_send.cpp` 是在**同步當下**才讀 `device_name` 寫進 payload。若此時已改名，
+先前錄製的未同步案件會帶著新名字送出，與錄製當下的裝置不符，造成紀錄歸屬錯亂。
+
+**實作**（已完成）：
+- 純函式 `storage_has_unsynced_case(const case_meta_t*, uint16_t)` 置於 `ems_storage_logic.h`，
+  複用既有的 `case_meta_is_synced()` 語意；native 測試見 test_ems_storage_logic Group I（5 案例）
+- `drawSettingsMenu()` 改收 `bool device_name_locked`（呼叫端算好再傳），
+  對齊 DisplaySnapshot「衍生值由呼叫端先算，lib 不依賴 runtime 狀態」的既有原則
+- `(ems::CaseMode)2` 裸 cast 與 `case_mode` 參數已移除
+- `refreshDeviceNameLock()`（input_handler.cpp）在**進入設定選單時**掃描一次即可——
+  lock 狀態只由「儲存新案件」或「同步完成」改變，兩者都不可能在設定選單內發生
+- 測試同時覆蓋 lock=true 與 lock=false 兩個方向（原測試只驗 true，故 #6 未被抓到），
+  並實際斷言繪製顏色（DIM vs WHITE）而非只斷言「有畫東西」
 
 #### 2.2.6 單元測試
 
