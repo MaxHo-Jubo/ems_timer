@@ -1266,6 +1266,14 @@ Expected: 開機看到 `[FUEL] MAX17043 detected at 0x36`，之後每 10 秒一�
 | 百分比合理 | `%` 落在 0~100 且與電壓大致對得上 | 同上 |
 | **持續有效** | 連續數筆都有數值，**沒有變成不在線** | ⚠️ 見下方「參數順序寫反的症狀」 |
 | 趨勢欄位 | 開機前 30 秒為 `Unknown`（窗未滿），之後才轉 Idle/Charging | 趨勢窗邏輯或取樣間隔有問題 |
+| **失敗不清警示** | 電量低於 20% 時拔掉燃料計 SDA → 低電量閃爍**必須繼續** | 失敗分支清掉了鎖存 |
+| **失敗不造警示** | 電量正常時拔掉 SDA → **不可**出現低電量警示 | 失敗分支把 `reading.percent`（無效時為 0）餵進了 latch |
+
+> 🔍 **上面兩條是一組，方向相反，缺一不可。** 純邏輯層已由
+> `test_apply_fuel_reading_failure_preserves_low_battery` 與
+> `test_apply_fuel_reading_failure_does_not_fabricate_low_battery` 鎖住，但那是 native 層；
+> 這兩條上機驗證是確認整合層真的走了同一條路。拔 SDA 是最容易製造「暫時性讀取失敗」的手法，
+> 拔完插回去應看到讀數恢復。
 
 > 🔍 **參數順序寫反會長什麼樣**：若 `read()` 誤寫成 `make_reading(raw_soc, raw_vcell)`，
 > 以實機值代入（VCELL raw `0xC030`、SOC raw `0x366A`）→ `is_plausible_soc_raw(0xC030)`
