@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstdint>
+#include "ems_fuel_gauge.h"
 
 namespace ems {
 
@@ -29,6 +30,17 @@ constexpr float SOC_LSB_PERCENT = 1.0f / 256.0f;
  *  「讀值不可信」判定屬 FuelReading.valid 層的職責 */
 constexpr uint8_t SOC_PERCENT_MAX = 100;
 
+/** VCELL 合理性上界（mV）：單節 LiPo 充飽約 4.2V，留餘裕取 4400。
+ *  超過此值代表讀值不可信（I2C 位元翻轉／EMI），而非電池真的有那麼高的電壓。
+ *  下界不設：0mV 可能是「電池真的沒電」的合法讀數，區分兩者靠 FuelReading.valid */
+constexpr uint16_t PLAUSIBLE_MAX_MV = 4400;
+
+/** SOC 暫存器整數部分的合理性上界（%）：ModelGauge 剛充飽會短暫超衝過 100，
+ *  但不可能高到這個程度。**此值為推導初值，需上機實測校正**（比照趨勢死區的處理方式）。
+ *  注意檢查必須做在 raw 上：soc_raw_to_percent() 會把 >=100 夾到 100，
+ *  垃圾值換算完就看不出來了 */
+constexpr uint8_t PLAUSIBLE_SOC_WHOLE_MAX = 110;
+
 /**
  * 將 VCELL 原始暫存器值換算為電池電壓
  * @param raw VCELL 暫存器（位址 0x02）的 16-bit 原始值，有效資料位於 bits 15:4
@@ -42,6 +54,42 @@ uint16_t vcell_raw_to_mv(uint16_t raw);
  * @return 電量百分比 0~100（超過 100 夾到 100，無條件捨去，非四捨五入）
  */
 uint8_t soc_raw_to_percent(uint16_t raw);
+
+/**
+ * VCELL 讀值是否落在物理上可能的範圍
+ *
+ * ⚠️ 本檢查僅為上界 range check，只能抓到明顯超界的垃圾值（例如 0xFFFF）；
+ * 界內的位元翻轉（讀值仍落在合理範圍內但已失真）不在防禦範圍內。
+ *
+ * @param mv 換算後的電池電壓（mV）
+ * @return true = 可信；false = 超出上界，應視為讀取異常
+ */
+bool is_plausible_vcell_mv(uint16_t mv);
+
+/**
+ * SOC 原始暫存器值是否落在物理上可能的範圍
+ *
+ * ⚠️ 本檢查僅為上界 range check，只能抓到明顯超界的垃圾值；界內的位元翻轉
+ * （例如真實 SOC 15 翻成 79，兩者都 ≤110 會通過判定，而 79 足以誤清已鎖存的
+ * 低電量警示）不在防禦範圍內。
+ *
+ * @param raw_soc SOC 暫存器（0x04）的 16-bit 原始值，高位元組為整數 %
+ * @return true = 可信；false = 超出上界，應視為讀取異常
+ */
+bool is_plausible_soc_raw(uint16_t raw_soc);
+
+/**
+ * 把兩個原始暫存器值組成一筆讀取結果，含全部合理性判定。
+ *
+ * 這是「raw → FuelReading」的**唯一**決策點，刻意放在純邏輯層：I2C 取值是硬體相依的，
+ * 但「取到之後怎麼判斷可不可信」是純值邏輯。放在 backend 裡就永遠不會被 native test
+ * 涵蓋——實測把 SOC 守衛從 read() 刪掉，37 個測試全綠。
+ *
+ * @param raw_vcell VCELL 暫存器（0x02）的 16-bit 原始值
+ * @param raw_soc   SOC 暫存器（0x04）的 16-bit 原始值
+ * @return 兩項合理性判定都通過時 valid=true 並帶換算結果；任一未過則 valid=false
+ */
+FuelReading make_reading(uint16_t raw_vcell, uint16_t raw_soc);
 
 /**
  * 充電狀態。硬體沒有充電訊號腳，本列舉由電壓趨勢推導而來。

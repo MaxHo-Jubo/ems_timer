@@ -29,7 +29,7 @@ public:
      * 讀取當前電壓與電量。NullFuelGauge 回無效讀值。
      * @return {valid=false, 0, 0}，告訴 caller 讀取失敗，不可使用 millivolts / percent
      */
-    FuelReading read() override { return {false, 0, 0}; }
+    FuelReading read() override { return FuelReading(); }
 };
 
 }  // namespace ems

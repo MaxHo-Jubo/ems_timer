@@ -8,8 +8,8 @@
 //   不分支處理，讀不到時 valid=false，UI 端據此完全不畫電量圖示。
 //
 // 兩種具體實作：
-//   - Max17043Backend：實體燃料計（I2C 0x36，硬體相依，Task 5 尚未實作）
-//   - NullFuelGauge  ：無燃料計時的降級實作（本 task，本檔同 lib）
+//   - Max17043Backend：實體燃料計（I2C 0x36，硬體相依，Task 5 實作完成）
+//   - NullFuelGauge  ：無燃料計時的降級實作（本檔同 lib）
 
 #pragma once
 
@@ -22,14 +22,24 @@ namespace ems {
  *
  * valid=false 時 millivolts 與 percent 均無意義，caller 不可拿來顯示。
  * 特別注意不可把 percent=0 當作「沒電」——0% 是合法讀數，「讀不到」要看 valid。
- *
- * 所有欄位均有預設值，忘記初始化時自動收斂到「讀取失敗」狀態，避免未初始化 bool 讀到垃圾值
- * 而誤認為有有效讀數（該 bug 正是本 struct 存在要防的）。
  */
 struct FuelReading {
-    bool     valid       = false;  // 是否讀取成功；預設為失敗
-    uint16_t millivolts  = 0;      // 電池電壓（mV），valid=true 時有效；預設 0
-    uint8_t  percent     = 0;      // 電量百分比 0~100，valid=true 時有效；預設 0%
+    bool     valid;       // 是否讀取成功
+    uint16_t millivolts;  // 電池電壓（mV），valid=true 時有效
+    uint8_t  percent;     // 電量百分比 0~100，valid=true 時有效
+
+    /**
+     * @param v  是否讀取成功；預設 false，讓忘記初始化的宣告收斂到「不可信」而非 UB
+     * @param mv 電池電壓（mV）
+     * @param p  電量百分比 0~100
+     *
+     * 用 constructor 而非 default member initializer：ESP32 目標以 gnu++11 編譯，
+     * 帶 NSDMI 的 struct 在 C++11 不是 aggregate，`{false, 0, 0}` 會編譯失敗
+     * （native 是 gnu++17 所以看不出來）。explicit 防止隱式轉換
+     * （例如誤寫 `FuelReading r = some_bool()` 會靜默成立，這是本 struct 要防的那類錯誤）。
+     */
+    constexpr explicit FuelReading(bool v = false, uint16_t mv = 0, uint8_t p = 0)
+        : valid(v), millivolts(mv), percent(p) {}
 };
 
 /**

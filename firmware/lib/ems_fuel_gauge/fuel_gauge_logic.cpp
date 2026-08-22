@@ -22,6 +22,19 @@ uint8_t soc_raw_to_percent(uint16_t raw) {
     return static_cast<uint8_t>(percent);
 }
 
+bool is_plausible_vcell_mv(uint16_t mv) {
+    // 檢查電壓是否落在合理上界以內
+    return mv <= PLAUSIBLE_MAX_MV;
+}
+
+bool is_plausible_soc_raw(uint16_t raw_soc) {
+    // STEP 01: 檢查 SOC 暫存器的整數部分（高位元組）是否超界
+    // 注意：必須在 raw 層檢查，因為 soc_raw_to_percent() 會把 >=100 的值夾到 100，
+    // 垃圾值換算完後就看不出來了
+    const uint8_t whole = static_cast<uint8_t>(raw_soc >> 8);  // SOC 暫存器整數部分（高位元組），即電量百分比整數值
+    return whole <= PLAUSIBLE_SOC_WHOLE_MAX;
+}
+
 void ChargeTrendTracker::push(uint16_t millivolts) {
     // STEP 01: 寫入環形緩衝並前進 head
     samples_[head_] = millivolts;
@@ -97,6 +110,25 @@ bool LowBatteryLatch::consume_first_entry() {
     // STEP 02: 消費掉事件，下次呼叫回 false，直到解除後再次跨入才重新掛起
     entry_pending_ = false;
     return true;
+}
+
+FuelReading make_reading(uint16_t raw_vcell, uint16_t raw_soc) {
+    // STEP 01: SOC 合理性必須判定 raw_soc 本身，不可判定 soc_raw_to_percent() 轉換／夾值
+    //          後的結果——夾值後 >=100 的垃圾值與剛充飽的合法超衝已無法區分。
+    //          （本函式恰好先判 SOC 再判 VCELL，但兩者順序不影響正確性；
+    //            真正不可違反的是判定對象必須是未轉換的原始值。）
+    if (!is_plausible_soc_raw(raw_soc)) {
+        return FuelReading();
+    }
+
+    // STEP 02: 換算電壓並判上界
+    const uint16_t mv = vcell_raw_to_mv(raw_vcell);  // 換算後的電池電壓（mV）
+    if (!is_plausible_vcell_mv(mv)) {
+        return FuelReading();
+    }
+
+    // STEP 03: 兩項都通過才算可信讀數
+    return FuelReading(true, mv, soc_raw_to_percent(raw_soc));
 }
 
 }  // namespace ems

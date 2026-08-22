@@ -283,8 +283,94 @@ static void test_null_backend_read_is_invalid() {
     ems::NullFuelGauge nb;
     const ems::FuelReading r = nb.read();
     TEST_ASSERT_FALSE(r.valid);
-    TEST_ASSERT_EQUAL_UINT16(0, r.millivolts);  // 讀值無效時百分比須鎖住 0
-    TEST_ASSERT_EQUAL_UINT8(0, r.percent);      // 讀值無效時電壓須鎖住 0
+    TEST_ASSERT_EQUAL_UINT16(0, r.millivolts);  // 讀值無效時電壓須鎖住 0
+    TEST_ASSERT_EQUAL_UINT8(0, r.percent);      // 讀值無效時百分比須鎖住 0
+}
+
+// ============================================================
+//  Group：合理性判定（VCELL 上界與 SOC 原始值檢查）
+// ============================================================
+
+static void test_vcell_at_upper_bound_is_plausible() {
+    // 4400 是界內，不是界外——邊界值本身必須可信，否則正常充飽會被判成異常
+    TEST_ASSERT_TRUE(ems::is_plausible_vcell_mv(ems::PLAUSIBLE_MAX_MV));
+}
+
+static void test_vcell_above_upper_bound_is_implausible() {
+    // 超過上界代表 I2C 位元翻轉或 EMI 干擾，讀值不可信
+    TEST_ASSERT_FALSE(ems::is_plausible_vcell_mv(ems::PLAUSIBLE_MAX_MV + 1));
+}
+
+static void test_soc_raw_at_upper_bound_is_plausible() {
+    // 高位元組 = PLAUSIBLE_SOC_WHOLE_MAX（界內）；低位元組帶非零值確認只看整數部分。
+    // 不硬編字面值：PLAUSIBLE_SOC_WHOLE_MAX 註解明寫「需上機實測校正」，常數改動後
+    // 測試須自動跟著新邊界走，否則會靜默測到已被校正掉的舊邊界
+    const uint16_t raw = static_cast<uint16_t>(ems::PLAUSIBLE_SOC_WHOLE_MAX) << 8 | 0x80;
+    TEST_ASSERT_TRUE(ems::is_plausible_soc_raw(raw));
+}
+
+static void test_soc_raw_above_upper_bound_is_implausible() {
+    // 緊鄰上界外一格：高位元組 = PLAUSIBLE_SOC_WHOLE_MAX + 1，必須判為不可信。
+    // 與 VCELL 側 test_vcell_above_upper_bound_is_implausible 成對，補上 SOC 側原本
+    // 缺失的鑑別力——沒有這條，把 `<=` 鬆動一格（PLAUSIBLE_SOC_WHOLE_MAX + 1）
+    // 不會被任何既有測試發現
+    const uint16_t raw = static_cast<uint16_t>(ems::PLAUSIBLE_SOC_WHOLE_MAX + 1) << 8 | 0x80;
+    TEST_ASSERT_FALSE(ems::is_plausible_soc_raw(raw));
+}
+
+static void test_soc_raw_garbage_is_implausible() {
+    // 0xFFFF 是 I2C 匯流排故障的典型訊號：高位元組 255 遠超任何真實電量。
+    // 若沒有這個檢查，soc_raw_to_percent() 會把它夾成 100 並標記 valid=true，
+    // 把感測器故障偽裝成「滿電、一切正常」
+    TEST_ASSERT_FALSE(ems::is_plausible_soc_raw(0xFFFF));
+}
+
+// ============================================================
+//  Group：FuelReading constructor 映射正確性
+// ============================================================
+
+static void test_fuel_reading_constructor_maps_fields_correctly() {
+    // 用三個互不相同的值，任何一組參數互換都會讓某條斷言變紅
+    const ems::FuelReading r(true, 3843, 54);
+    TEST_ASSERT_TRUE(r.valid);
+    TEST_ASSERT_EQUAL_UINT16(3843, r.millivolts);
+    TEST_ASSERT_EQUAL_UINT8(54, r.percent);
+}
+
+// ============================================================
+//  Group：make_reading() 統合判定測試
+// ============================================================
+
+static void test_make_reading_accepts_real_hardware_values() {
+    // 2026-08-22 實機驗收值：VCELL raw=0xC030 → 3843mV、SOC raw=0x366A → 54%
+    const ems::FuelReading r = ems::make_reading(0xC030, 0x366A);
+    TEST_ASSERT_TRUE(r.valid);
+    TEST_ASSERT_EQUAL_UINT16(3843, r.millivolts);
+    TEST_ASSERT_EQUAL_UINT8(54, r.percent);
+}
+
+static void test_make_reading_rejects_garbage_soc() {
+    // VCELL 正常但 SOC 是垃圾：整筆必須無效。
+    // 少了這條守衛，soc_raw_to_percent() 會把 0xFFFF 夾成 100 並標記 valid=true，
+    // 把感測器故障偽裝成「滿電、一切正常」——低電量警示最不該有的失效方向
+    const ems::FuelReading r = ems::make_reading(0xC030, 0xFFFF);
+    TEST_ASSERT_FALSE(r.valid);
+}
+
+static void test_make_reading_rejects_implausible_vcell() {
+    // SOC 正常但電壓超出單節 LiPo 的物理上界：整筆必須無效。
+    // 0xFFF0 >> 4 = 4095 counts；4095 * 1.25 = 5118mV > 4400，超界
+    const ems::FuelReading r = ems::make_reading(0xFFF0, 0x366A);
+    TEST_ASSERT_FALSE(r.valid);
+}
+
+static void test_make_reading_zero_percent_is_valid() {
+    // 0% 是合法讀數（電池真的沒電），不可被當成異常濾掉——
+    // 這正是整個 valid 旗標設計要防的混淆
+    // 0x9600 >> 4 = 2400 counts；2400 * 1.25 = 3000mV（界內）
+    const ems::FuelReading r = ems::make_reading(0x9600, 0x0000);
+    TEST_ASSERT_TRUE(r.valid);
+    TEST_ASSERT_EQUAL_UINT8(0, r.percent);
 }
 
 int main(int, char**) {
@@ -321,5 +407,15 @@ int main(int, char**) {
     RUN_TEST(test_offline_sentinel_does_not_clear_low_battery);
     RUN_TEST(test_null_backend_not_present);
     RUN_TEST(test_null_backend_read_is_invalid);
+    RUN_TEST(test_vcell_at_upper_bound_is_plausible);
+    RUN_TEST(test_vcell_above_upper_bound_is_implausible);
+    RUN_TEST(test_soc_raw_at_upper_bound_is_plausible);
+    RUN_TEST(test_soc_raw_above_upper_bound_is_implausible);
+    RUN_TEST(test_soc_raw_garbage_is_implausible);
+    RUN_TEST(test_fuel_reading_constructor_maps_fields_correctly);
+    RUN_TEST(test_make_reading_accepts_real_hardware_values);
+    RUN_TEST(test_make_reading_rejects_garbage_soc);
+    RUN_TEST(test_make_reading_rejects_implausible_vcell);
+    RUN_TEST(test_make_reading_zero_percent_is_valid);
     return UNITY_END();
 }
