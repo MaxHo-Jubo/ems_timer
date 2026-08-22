@@ -58,12 +58,39 @@ git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部
 | 電壓合理 | `mV` 落在 3000~4200，且與電表差距 < 50mV | 換算或 I2C 組裝有問題 |
 | 百分比合理 | `%` 落在 0~100 且與電壓大致對得上 | 同上 |
 | 趨勢欄位 | 開機前 30 秒為 `Unknown`（窗未滿），之後才轉 Idle/Charging | 趨勢窗邏輯或取樣間隔有問題 |
-| **失敗不清警示** | 電量低於 20% 時拔 SDA → 低電量閃爍**必須繼續** | 失敗分支清掉了鎖存 |
-| **失敗不造警示** | 電量正常時拔 SDA → **不可**出現低電量警示 | 失敗分支把 `reading.percent`（無效時為 0）餵進了 latch |
+| ~~失敗不清警示~~ | ✅ **2026-08-22 已通過**（見下方實測 log） | — |
+| **失敗不造警示** | 處於 `low=0` 時拔 SDA → 後續每筆 log 的 `low=` **必須維持 0** | 失敗分支把 `reading.percent`（無效時為 0）餵進了 latch |
+
+> ⚠️ **這階段沒有畫面可看。** 電量圖示是 Task 9、閃爍是 Task 11，Task 6 唯一的觀測窗口是
+> serial log 的 `[FUEL] ... low=N` 欄位。判讀看 `low=` 數字，不要期待 TFT 上有東西。
 
 純邏輯層已由 `test_apply_fuel_reading_failure_preserves_latched_low_battery` 與 `test_apply_fuel_reading_failure_does_not_fabricate_low_battery` 兩條鎖住；上機這兩條是確認整合層走同一條路。拔 SDA 是最容易製造「暫時性讀取失敗」的手法，插回去應看到讀數恢復。
 
 > 🔍 **參數順序寫反會長什麼樣**：若 `read()` 誤寫成 `make_reading(raw_soc, raw_vcell)`，以實機值代入（VCELL raw `0xC030`、SOC raw `0x366A`）→ `is_plausible_soc_raw(0xC030)` 高位元組 192 > 110 → 每次讀取都 invalid。症狀是「probe 成功、log 印出 detected，但畫面持續不顯示電量」，**不是顯示錯誤數值**。看到這個先查參數順序，不要先懷疑硬體。
+
+### ✅ 已通過：失敗不清警示（2026-08-22 首次上機）
+
+`low=1` 狀態下拔 SDA 再插回，實測 log：
+
+```
+2% 3605mV state=3 low=1   ← Idle(3)、低電量鎖存中
+Wire error                ← 拔 SDA
+read failed ...           ← 失敗 log 印出
+Wire error                ← 第二次失敗，未再印 log（was_invalid 節流生效）
+2% 3605mV state=0 low=1   ← 插回，state 回 Unknown(0)（trend.reset() 生效）
+2% 3605mV state=0 low=1   ← 窗未滿
+2% 3603mV state=3 low=1   ← 第 3 筆窗滿回 Idle，精確對上 TREND_WINDOW_SAMPLES=3
+```
+
+四個機制同時確認：`low=` 全程維持 1（不清鎖存）、失敗 log 節流、`trend.reset()` 生效、
+失敗期間不輸出假讀數。
+
+### ⏳ 待做：失敗不造警示（與靜置擷取一起做）
+
+需要 `low=0` 的前置狀態，但目前電池只有 2%，永遠 `low=1`。做法：把
+`firmware/lib/ems_fuel_gauge/fuel_gauge_logic.h:196` 的 `LOW_BATTERY_ENTER_PERCENT` 從 `20`
+**暫時**改成 `1`（讓 2% 不算低電量），燒錄後應看到 `low=0`，再拔一次 SDA，確認後續 `low=`
+維持 0。**測完改回 20，不要 commit。**
 
 ### Step 6.4 順便收兩筆資料
 
