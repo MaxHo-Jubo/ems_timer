@@ -50,7 +50,11 @@ git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部
 ### 3-A. Task 7 的 review 債（**不需硬體，優先做**）
 
 commit `df33d97`（DisplaySnapshot 電池欄位）**已進版控但 review chain 未跑**——上一個 session 在
-實作者回報後依裁示暫停。閘門**未使用 `--force` 放行**，比照 Task 5 那次的處理方式記在這裡。
+實作者回報後依裁示暫停。
+
+> ⚠️ **這次閘門是用 `--force` 放行的**（使用者裁示），理由已記入
+> `~/.claude/state/pending-review/unlock-audit.log`。這是 Phase H 全程唯一一次使用 `--force`——
+> Task 1~6 都是跑滿六面向後正常解鎖。**這筆債沒有閘門會再提醒你，只剩這份文件記得。**
 
 controller 已獨立驗證過的部分（不能取代 review，但可以省你重跑）：
 
