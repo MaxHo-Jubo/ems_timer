@@ -14,6 +14,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
+#include "fuel_gauge_logic.h"
 
 // I2C bus 腳位（與 docs/gpio-allocation.md §5.4 一致）
 static constexpr int PIN_I2C_SDA = 42;
@@ -30,15 +31,8 @@ static constexpr uint8_t REG_VCELL   = 0x02;  // 電池電壓 A/D 讀值
 static constexpr uint8_t REG_SOC     = 0x04;  // 電量百分比（State Of Charge）
 static constexpr uint8_t REG_VERSION = 0x08;  // 晶片產品版本，用於確認通訊正常
 
-// VCELL 為 12-bit A/D 結果，資料位於 bits 15:4，取值需右移 4 位
-static constexpr uint8_t VCELL_SHIFT_BITS = 4;
-
-// MAX17043 的 VCELL 解析度：每 LSB 代表 1.25mV
-// ⚠️ 換成 MAX17048/49 時此值為 78.125µV，公式必須同步改
-static constexpr float VCELL_LSB_MV = 1.25f;
-
-// SOC 暫存器低位元組為小數部分，每 LSB 代表 1/256 %
-static constexpr float SOC_LSB_PERCENT = 1.0f / 256.0f;
+// VCELL_SHIFT_BITS / VCELL_LSB_MV / SOC_LSB_PERCENT 常數由 fuel_gauge_logic.h 提供
+// （單一真相來源，換型號時只需改一處，見 fuel_gauge_logic.h 註解）
 
 // LiPo 單節合理電壓範圍（mV）：低於下限視為過放或 VDD 未吃到電池，高於上限視為異常
 static constexpr float LIPO_MIN_MV = 3000.0f;
@@ -75,26 +69,28 @@ static bool readRegister16(uint8_t regAddr, uint16_t& outValue) {
 }
 
 /**
- * 將 VCELL 原始暫存器值換算為電池電壓（mV）
+ * 將 VCELL 原始暫存器值換算為電池電壓（mV）——驗收工具專用，包含 3 位小數
  * @param rawVcell REG_VCELL 的 16-bit 原始值
- * @return 電池電壓，單位 mV
+ * @return 電池電壓，單位 mV（float 版本，對應本工具的列印需求）
  */
 static float vcellToMillivolts(uint16_t rawVcell) {
-    // STEP 01: 取出高 12 bit 的 A/D counts，再乘上每 LSB 代表的電壓
-    return static_cast<float>(rawVcell >> VCELL_SHIFT_BITS) * VCELL_LSB_MV;
+    // STEP 01: 取高 12 bit 的 A/D counts，乘上每 LSB 的毫伏值
+    //          保留 float 不取整，本工具需要顯示到小數（例如 3843.75mV），
+    //          而 lib 的 uint16_t 版本捨去後無法反推精度
+    return static_cast<float>(rawVcell >> ems::VCELL_SHIFT_BITS) * ems::VCELL_LSB_MV;
 }
 
 /**
- * 將 SOC 原始暫存器值換算為電量百分比
+ * 將 SOC 原始暫存器值換算為電量百分比——驗收工具專用，包含 1 位小數
  * @param rawSoc REG_SOC 的 16-bit 原始值（高位元組為整數 %，低位元組為 1/256 %）
- * @return 電量百分比
+ * @return 電量百分比（float 版本，對應本工具的列印需求）
  */
 static float socToPercent(uint16_t rawSoc) {
     // STEP 01: 高位元組為整數部分
     float wholePercent = static_cast<float>(rawSoc >> 8);
 
-    // STEP 02: 低位元組為小數部分，每 LSB 為 1/256 %
-    float fractionPercent = static_cast<float>(rawSoc & 0xFF) * SOC_LSB_PERCENT;
+    // STEP 02: 低位元組為小數部分，每 LSB 為 1/256 %（用 fuel_gauge_logic 的常數）
+    float fractionPercent = static_cast<float>(rawSoc & 0xFF) * ems::SOC_LSB_PERCENT;
 
     return wholePercent + fractionPercent;
 }
