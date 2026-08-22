@@ -75,6 +75,7 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 |------|------|
 | [`docs/gpio-allocation.md`](docs/gpio-allocation.md) | **GPIO 分配單一真相來源**（按鍵/顯示/錄音/擴充/互斥約束/對齊狀態） |
 | [`docs/tft-migration-plan.md`](docs/tft-migration-plan.md) | 2.4" TFT 升級計劃（GPIO 已對齊 gpio-allocation.md） |
+| [`docs/superpowers/phase-h-handover.md`](docs/superpowers/phase-h-handover.md) | **Impl-Phase H 電量顯示交接文件**（現況／接手步驟／待硬體的上機驗收／殘餘風險／48 條 ruling 摘要） |
 
 ### 韌體與規格對齊狀態
 
@@ -87,6 +88,15 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 - 95 unit tests 全綠 + 韌體編譯通過（Flash 8.9% / RAM 6%）
 
 ⏳ **待實作**：見 `docs/pm-dev-spec.md §四 Phase B~H`
+
+🔋 **Impl-Phase H（電量顯示）進行中**（2026-08-22）：W1 讀取層 Task 1–6 程式碼完成、review 皆 clean，
+主韌體已每 10 秒讀取 MAX17043 並寫進全域，但 UI 層（Task 7–14）未開工、畫面尚看不到電量。
+`firmware/lib/ems_fuel_gauge/` 51 個 native test 全綠；全套 552 cases / 551 通過
+（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
+
+> **接手前必讀** [`docs/superpowers/phase-h-handover.md`](docs/superpowers/phase-h-handover.md)。
+> 第一件事是 Task 6 的上機驗收（Step 6.3/6.4，**需要實體硬體**），其中兩條方向相反的失敗驗收
+> 是 review 才補進計畫的，原本 checklist 沒有。
 
 ## 韌體交付與燒錄
 
