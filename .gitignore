@@ -16,3 +16,6 @@ dist/
 # Release 燒錄用 merged firmware（由 scripts/post_build_merge.py 產生）
 firmware/firmware-merged.bin
 firmware/firmware-merged-*.bin
+
+# superpowers SDD 工作區（ledger / brief / review package 等 scratch，不進版控）
+.superpowers/
