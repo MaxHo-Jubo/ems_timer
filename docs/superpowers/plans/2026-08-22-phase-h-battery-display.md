@@ -1142,6 +1142,7 @@ extern bool             g_battery_low;           // Phase H：低電量（含遲
 static void pollBattery() {
     // STEP 01: 未到取樣時間就跳過
     static uint32_t last_poll_ms = 0;
+    static bool     was_invalid  = false;  // 上一輪是否已處於讀取失敗狀態（供失敗 log 節流）
     const uint32_t now_ms = millis();
     if (last_poll_ms != 0 && (now_ms - last_poll_ms) < BATTERY_POLL_INTERVAL_MS) {
         return;
@@ -1163,8 +1164,18 @@ static void pollBattery() {
         // 注意此處刻意不呼叫 latch.update()——沒有可信讀值就不該推進狀態機。
         g_battery_low          = g_battery_latch.is_low();
         g_battery_trend.reset();
+
+        // 失敗要留痕：backend 把五種失敗原因（不在線／VCELL 讀失敗／SOC 讀失敗／
+        // 讀值超出合理性上界／bus 未注入）全部收斂成同一個 valid=false，此層拿不到細分原因。
+        // 但「有沒有在失敗」本身必須看得見——完全靜默的話，現場回報「電量圖示不見了」時
+        // 無從判斷是硬體接觸不良、EMI，還是韌體邏輯錯誤。節流避免洗版：只在狀態翻轉時印。
+        if (!was_invalid) {
+            Serial.println("[FUEL] read failed — 標記為不在線（原因無法細分，見 spec §10）");
+            was_invalid = true;
+        }
         return;
     }
+    was_invalid = false;  // 讀取恢復，下次失敗要重新印一次
 
     // STEP 04: 更新趨勢與低電量閂鎖
     //          趨勢用電壓（mV）而非百分比——百分比的量化粒度大於 30 秒窗內的真實
@@ -1185,6 +1196,46 @@ static void pollBattery() {
 
 - [ ] **Step 6: 編譯並上機驗證**
 
+> ⚠️ **本 step 承擔一筆從 Task 5 遞延過來的驗收債。** Task 5 交付的 `Max17043Backend` 至今
+> **從未被連結進任何可執行檔、也從未被執行過一次**——`firmware/src/` 在 Task 6 之前沒有任何
+> 檔案引用 `ems_fuel_gauge`，PlatformIO 的 LDF 因此不把該 lib 拉進 build。Task 5 review 時有
+> reviewer 實測：
+>
+> ```
+> xtensa-esp32s3-elf-nm firmware.elf | grep -i "Max17043\|make_reading"
+> （無輸出）
+> ```
+>
+> `.o` 檔編得出來（LDF 會掃 `lib/` 逐一編譯），但連結器從未從 `libems_fuel_gauge.a` 把它拉出來。
+> 也就是說 `read_register16()` 的 repeated START、位元組數判定、MSB/LSB 組裝順序，以及
+> `read()` 呼叫 `make_reading(raw_vcell, raw_soc)` 的**參數順序**，全部沒有任何自動化防護——
+> native 測不到（該檔被 `#ifdef ARDUINO` 排除）、`pio run` 的 SUCCESS 是空驗證、
+> `fuel-gauge-check` smoke 工具用的是它自己獨立手刻的實作。
+>
+> **Task 6 是第一個會真正連結並執行這段程式碼的 task，下面三項驗證缺一不可。**
+
+- [ ] **Step 6.1: 編譯**
+
+Run: `cd firmware && pio run -e esp32-s3-devkitc-1`
+Expected: SUCCESS，且編譯清單要出現 `ems_fuel_gauge/max17043_backend.cpp.o` 與
+`ems_fuel_gauge/fuel_gauge_logic.cpp.o`。
+
+- [ ] **Step 6.2: 連結驗證（關鍵——這是 Task 5 唯一沒被守住的那條線）**
+
+```bash
+cd firmware
+~/.platformio/packages/toolchain-xtensa-esp32s3/bin/xtensa-esp32s3-elf-nm \
+    .pio/build/esp32-s3-devkitc-1/firmware.elf | grep -i "Max17043\|make_reading"
+```
+
+Expected: **必須有輸出**，至少要看到 `Max17043Backend::begin`、`Max17043Backend::read`、
+`ems::make_reading` 三個符號。
+
+**沒有輸出 = 主韌體根本沒真的用到這個 backend**，此時 `pio run` 的 SUCCESS 一樣是空驗證，
+不要往下走。對照組：`DS3231Backend` 因為 `main.cpp` 有真正 instantiate，`nm` 一定撈得到。
+
+- [ ] **Step 6.3: 燒錄並上機驗證**
+
 Run: `cd firmware && pio run -e esp32-s3-devkitc-1 -t upload --upload-port $(ls /dev/cu.usbmodem* | head -1)`
 
 接著讀 serial（port 名稱每次都要用 `ls /dev/cu.*` 重新確認，macOS 會漂移）：
@@ -1204,7 +1255,35 @@ while time.time() < end:
 s.close()"
 ```
 
-Expected: 開機看到 `[FUEL] MAX17043 detected at 0x36`，之後每 10 秒一筆 `[FUEL] 54% 3844mV state=... low=0`
+Expected: 開機看到 `[FUEL] MAX17043 detected at 0x36`，之後每 10 秒一筆
+`[FUEL] 54% 3844mV state=... low=0`
+
+**逐項判讀（不是看到有 log 就算過）**：
+
+| 檢查 | 通過條件 | 沒過代表什麼 |
+|---|---|---|
+| 電壓合理 | `mV` 落在 3000~4200 之間，且與電表讀值差距 < 50mV | 換算或 I2C 組裝有問題 |
+| 百分比合理 | `%` 落在 0~100 且與電壓大致對得上 | 同上 |
+| **持續有效** | 連續數筆都有數值，**沒有變成不在線** | ⚠️ 見下方「參數順序寫反的症狀」 |
+| 趨勢欄位 | 開機前 30 秒為 `Unknown`（窗未滿），之後才轉 Idle/Charging | 趨勢窗邏輯或取樣間隔有問題 |
+
+> 🔍 **參數順序寫反會長什麼樣**：若 `read()` 誤寫成 `make_reading(raw_soc, raw_vcell)`，
+> 以實機值代入（VCELL raw `0xC030`、SOC raw `0x366A`）→ `is_plausible_soc_raw(0xC030)`
+> 的高位元組是 `0xC0` = 192 > 110 → 判定不可信 → **每次讀取都回 `valid=false`**。
+> 症狀是「probe 成功、log 印出 detected，但畫面持續不顯示電量」，**不是顯示錯誤數值**。
+> 看到這個症狀先查參數順序，不要先懷疑硬體。
+
+- [ ] **Step 6.4: 順便收集兩筆遞延的實測資料**
+
+這兩項不影響本 task 驗收，但機器既然接上了就一起收，省一次拆裝：
+
+1. **VERSION 暫存器的實際值**——在 serial log 加一行印出 `begin()` 讀到的 `version`。
+   目前 probe 只檢查「讀得到」不檢查值（Task 5 已把過度宣稱的註解改掉）；要不要加型號校驗
+   取決於這個實測值，沒有它就只能用猜的，而猜錯會把好晶片判成不在線。記進
+   `docs/power-module-purchase.md §10.8`。
+2. **靜置時 VCELL 的抖動幅度**——讓裝置靜置（不充電、不重負載）至少 10 分鐘，記錄
+   `mV` 的最大最小值。趨勢死區 `±3mV` 與 `PLAUSIBLE_SOC_WHOLE_MAX = 110` 都是推導初值，
+   需要這筆數據才能校正（見 spec §10）。
 
 - [ ] **Step 7: Commit**
 
