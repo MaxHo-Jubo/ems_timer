@@ -53,6 +53,8 @@ struct DisplaySnapshot {
     uint8_t  trainingSaveCursor;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
     uint8_t  storageFailure;    ///< W9：儲存失敗（0=無 / 1=OHCA 失敗 / 2=Training 失敗）
     uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+    uint8_t  batteryPercent;     ///< Phase H：電量 0~100；255 = 燃料計不在線（0 是合法讀數，不可共用）
+    uint8_t  batteryChargeState; ///< Phase H：ems::ChargeState 列舉值（0=Unknown 1=Charging 2=Discharging 3=Idle）
     uint32_t flags;              ///< bit-packed prompt/overlay 狀態（W8 用滿 16 bit → Phase G 擴為 32）
 };
 
@@ -78,6 +80,7 @@ enum DisplaySnapshotFlag : uint32_t {
     // ↑ uint16_t 的 16 個 bit 至此用罄，以下為 Phase G 擴充至 uint32_t 後的新 bit
     SNAP_FLAG_SETTINGS_EDITOR = 0x00010000,  // Phase G：設定值編輯畫面顯示中
     SNAP_FLAG_SETTINGS_RESTORE_CONFIRM = 0x00020000,  // Phase G：恢復預設確認對話框顯示中
+    SNAP_FLAG_BATTERY_LOW_BLINK = 0x00040000,  // Phase H：低電量 1Hz 閃爍的當前相位（每 500ms 由呼叫端翻轉）
 };
 
 
@@ -131,6 +134,11 @@ struct DisplaySnapshotInputs {
     bool     trainingResetConfirm  = false;  // W8：重置訓練二次確認顯示中
     bool     settingsEditorMode     = false;  // Phase G：設定值編輯畫面顯示中
     bool     settingsRestoreConfirm = false;  // Phase G：恢復預設確認對話框顯示中
+
+    // STEP 04: Phase H 電池欄位
+    uint8_t  batteryPercent     = 255;    // Phase H：預設 255 = 不在線
+    uint8_t  batteryChargeState = 0;      // Phase H：預設 Unknown
+    bool     batteryLowBlinkOn  = false;  // Phase H：低電量閃爍當前相位
 };
 
 
@@ -163,6 +171,8 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     s.trainingSaveCursor  = in.trainingSaveCursor;
     s.storageFailure      = in.storageFailure;  // W9：儲存失敗狀態
     s.settingsCursor      = in.settingsCursor;  // Phase G：系統設定選單游標
+    s.batteryPercent      = in.batteryPercent;      // Phase H
+    s.batteryChargeState  = in.batteryChargeState;  // Phase H
 
     // STEP 02: bool → bit-packed flags
     if (in.showEpiArmedPrompt)     s.flags |= SNAP_FLAG_EPI_ARMED;
@@ -183,6 +193,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.trainingResetConfirm)   s.flags |= SNAP_FLAG_RESET_CONFIRM;
     if (in.settingsEditorMode)     s.flags |= SNAP_FLAG_SETTINGS_EDITOR;
     if (in.settingsRestoreConfirm) s.flags |= SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
+    if (in.batteryLowBlinkOn)      s.flags |= SNAP_FLAG_BATTERY_LOW_BLINK;
 
     return s;
 }
@@ -191,6 +202,32 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
 /// snapshot 相同 → 不需重繪。
 inline bool snapshotsEqual(const DisplaySnapshot& a, const DisplaySnapshot& b) {
     return memcmp(&a, &b, sizeof(DisplaySnapshot)) == 0;
+}
+
+
+/**
+ * 除 countdownSec 外其餘欄位皆相同 → updateDisplay() 可只重繪倒數時間區塊（partial update）。
+ *
+ * updateDisplay() 原先手寫逐欄位比對，每次新增 snapshot 欄位都得記得同步加進那份清單，
+ * Phase H 的兩個電池欄位就漏了這一處：倒數中電量若與 countdownSec 在同一 frame 變化，
+ * 會走 partial 路徑而把新電量寫進 lastDisplaySnapshot，該次變化被永久吞掉。
+ * 改為「把 countdownSec 對齊後整包 memcmp」，往後新增任何欄位都自動納入比對。
+ *
+ * 前提：DisplaySnapshot 是 trivially copyable 的 POD，且兩份 snapshot 都出自
+ * captureSnapshot() 的 `DisplaySnapshot s = {};`（padding 已清零），與 snapshotsEqual()
+ * 依賴的是同一組前提。
+ *
+ * @param a 本次 snapshot
+ * @param b 上次 snapshot
+ * @return true = 僅 countdownSec 可能不同（其餘全等，可走 partial）；false = 有其他欄位變化，須完整重繪
+ */
+inline bool snapshotsEqualExceptCountdown(const DisplaySnapshot& a, const DisplaySnapshot& b) {
+    // STEP 01: 複製一份並把 countdownSec 對齊，讓該欄位不影響後續整包比對
+    DisplaySnapshot probe = a;
+    probe.countdownSec = b.countdownSec;
+
+    // STEP 02: 其餘欄位整包比對
+    return memcmp(&probe, &b, sizeof(DisplaySnapshot)) == 0;
 }
 
 #endif  // EMS_DISPLAY_SNAPSHOT_H

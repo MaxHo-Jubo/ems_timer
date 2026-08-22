@@ -905,16 +905,10 @@ void updateDisplay() {
                                    || now.ohcaState == OHCA_STATE_OVERTIME)
                                && (now.ohcaSubState == 0)
                                && ((now.flags & MODAL_FLAGS_MASK) == 0);
-    const bool sameStateAsLast = (now.globalState     == lastDisplaySnapshot.globalState)
-                              && (now.ohcaState       == lastDisplaySnapshot.ohcaState)
-                              && (now.ohcaSubState    == lastDisplaySnapshot.ohcaSubState)
-                              && (now.mainMenuCursor  == lastDisplaySnapshot.mainMenuCursor)
-                              && (now.backfillCursor  == lastDisplaySnapshot.backfillCursor)
-                              && (now.endCheckCursor  == lastDisplaySnapshot.endCheckCursor)
-                              && (now.ventBeat        == lastDisplaySnapshot.ventBeat)
-                              && (now.ventVolume      == lastDisplaySnapshot.ventVolume)
-                              && (now.ventPaused      == lastDisplaySnapshot.ventPaused)
-                              && (now.flags           == lastDisplaySnapshot.flags);
+    // 逐欄位手寫清單改為整包比對：漏加一個欄位就會讓該欄位的變化被 partial 路徑吞掉，
+    // Phase H 的 batteryPercent / batteryChargeState 已經踩過一次（見 snapshotsEqualExceptCountdown 註解）。
+    // 副作用是比對範圍變嚴（syncState / historyCursor 等原本沒比的欄位現在也算數）→ 只會多重繪，不會漏重繪。
+    const bool sameStateAsLast = snapshotsEqualExceptCountdown(now, lastDisplaySnapshot);
     if (inCountdownGroup
         && sameStateAsLast
         && (now.countdownSec != lastDisplaySnapshot.countdownSec)) {

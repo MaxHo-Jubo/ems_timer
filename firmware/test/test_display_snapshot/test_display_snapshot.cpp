@@ -254,7 +254,7 @@ static void test_flag_settings_restore_confirm_sets_bit_0x20000() {
 }
 
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 16 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 19 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -277,6 +277,7 @@ static void test_all_flags_on_combine_all_bits() {
     in.trainingResetConfirm  = true;
     in.settingsEditorMode     = true;
     in.settingsRestoreConfirm = true;
+    in.batteryLowBlinkOn      = true;
 
     const uint32_t expected = SNAP_FLAG_EPI_ARMED
                             | SNAP_FLAG_SHOCK_ARMED
@@ -295,13 +296,15 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_DELETE_CONFIRM
                             | SNAP_FLAG_RESET_CONFIRM
                             | SNAP_FLAG_SETTINGS_EDITOR
-                            | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
+                            | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
+                            | SNAP_FLAG_BATTERY_LOW_BLINK;
     TEST_ASSERT_EQUAL_UINT32(expected, captureSnapshot(in).flags);
 }
 
 static void test_all_flags_bit_masks_are_unique() {
-    // 確保 18 個 mask 沒有撞號（OR 全部應等於 set bit count = 18）
+    // 確保 19 個 mask 沒有撞號（OR 全部應等於 set bit count = 19）
     // Phase G：原 uint16_t 的 16 bit 於 W8 用罄，flags 擴為 uint32_t 容納設定 UI 兩個新 flag
+    // Phase H：新增電池低電量閃爍 flag，第 19 個 bit
     const uint32_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
@@ -310,7 +313,8 @@ static void test_all_flags_bit_masks_are_unique() {
                        | SNAP_FLAG_VENT_PRE | SNAP_FLAG_HISTORY_SUMMARY
                        | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM
                        | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM
-                       | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
+                       | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
+                       | SNAP_FLAG_BATTERY_LOW_BLINK;
     // popcount
     int bits = 0;
     for (uint32_t m = all; m; m >>= 1) {
@@ -318,7 +322,143 @@ static void test_all_flags_bit_masks_are_unique() {
             bits++;
         }
     }
-    TEST_ASSERT_EQUAL_INT(18, bits);
+    TEST_ASSERT_EQUAL_INT(19, bits);
+}
+
+// ============================================================
+//  Group 5: Impl-Phase H 電池欄位
+// ============================================================
+
+static void test_battery_percent_change_triggers_redraw() {
+    // 待機畫面電量從 55% 掉到 54% 也必須觸發重繪，否則圖示會停格
+    DisplaySnapshotInputs a;   ///< 基準：電量 55%
+    a.batteryPercent = 55;
+    DisplaySnapshotInputs b;   ///< 對照：電量 54%（僅差 1，仍須觸發重繪）
+    b.batteryPercent = 54;
+    TEST_ASSERT_FALSE_MESSAGE(snapshotsEqual(captureSnapshot(a), captureSnapshot(b)),
+        "snapshot 未反映 input.batteryPercent 變化");
+    // 值必須落在 batteryPercent 這個具名欄位上：只驗「兩份不等」的話，
+    // 實作把值寫到別的欄位（或與 batteryChargeState 互換）照樣會過。
+    TEST_ASSERT_EQUAL_UINT8(55, captureSnapshot(a).batteryPercent);
+    TEST_ASSERT_EQUAL_UINT8(54, captureSnapshot(b).batteryPercent);
+}
+
+static void test_battery_charge_state_change_triggers_redraw() {
+    DisplaySnapshotInputs a;   ///< 基準：ChargeState::Charging(1)
+    a.batteryChargeState = 1;  // Charging
+    DisplaySnapshotInputs b;   ///< 對照：ChargeState::Discharging(2)
+    b.batteryChargeState = 2;  // Discharging
+    TEST_ASSERT_FALSE_MESSAGE(snapshotsEqual(captureSnapshot(a), captureSnapshot(b)),
+        "snapshot 未反映 input.batteryChargeState 變化");
+    // 同上：確認值落在 batteryChargeState 而非鄰接欄位
+    TEST_ASSERT_EQUAL_UINT8(1, captureSnapshot(a).batteryChargeState);
+    TEST_ASSERT_EQUAL_UINT8(2, captureSnapshot(b).batteryChargeState);
+}
+
+static void test_battery_absent_differs_from_zero_percent() {
+    // 255（不在線）與 0%（真的沒電）必須是不同狀態
+    DisplaySnapshotInputs absent;   ///< 燃料計不在線（哨兵 255）
+    absent.batteryPercent = 255;
+    DisplaySnapshotInputs empty;    ///< 真的沒電（合法讀數 0%）
+    empty.batteryPercent = 0;
+    TEST_ASSERT_FALSE_MESSAGE(snapshotsEqual(captureSnapshot(absent), captureSnapshot(empty)),
+        "不在線(255) 與 0% 被壓成同一個 snapshot");
+    TEST_ASSERT_EQUAL_UINT8(255, captureSnapshot(absent).batteryPercent);
+    TEST_ASSERT_EQUAL_UINT8(0, captureSnapshot(empty).batteryPercent);
+}
+
+/**
+ * 未設定電池欄位時，snapshot 的預設值必須是「燃料計不在線」而非 0%。
+ *
+ * 預設值若退化成 0，畫面會把「還沒讀到電量」畫成「電量耗盡」。
+ */
+static void test_default_battery_percent_is_absent_sentinel() {
+    DisplaySnapshotInputs in;   ///< 全預設輸入（未碰任何電池欄位）
+    const DisplaySnapshot s = captureSnapshot(in);
+    TEST_ASSERT_EQUAL_UINT8(255, s.batteryPercent);
+    TEST_ASSERT_EQUAL_UINT8(0, s.batteryChargeState);  // ChargeState::Unknown
+}
+
+static void test_flag_battery_low_blink_sets_bit_0x40000() {
+    DisplaySnapshotInputs in;
+    in.batteryLowBlinkOn = true;
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_BATTERY_LOW_BLINK, captureSnapshot(in).flags);
+}
+
+// ============================================================
+//  Group 6: partial update 判斷（snapshotsEqualExceptCountdown）
+//
+//  updateDisplay() 在 OHCA 倒數畫面只重繪時間區塊時，靠這個判斷確認
+//  「其餘欄位都沒變」。判斷若漏掉某個欄位，該欄位的變化會被 partial
+//  路徑連同 lastDisplaySnapshot 一起吞掉，畫面永遠等不到那次重繪。
+// ============================================================
+
+/// 相鄰兩秒的倒數值：partial update 只在「僅 countdownSec 前進」時才成立
+#define COUNTDOWN_SEC_PREV 30
+#define COUNTDOWN_SEC_NEXT 29
+
+/**
+ * 只有 countdownSec 不同 → 可走 partial update。
+ */
+static void test_only_countdown_differs_allows_partial_update() {
+    DisplaySnapshotInputs a;   ///< 上一秒的輸入
+    a.countdownSec = COUNTDOWN_SEC_PREV;
+    DisplaySnapshotInputs b;   ///< 這一秒的輸入：僅倒數前進，其餘不變
+    b.countdownSec = COUNTDOWN_SEC_NEXT;
+    TEST_ASSERT_TRUE_MESSAGE(
+        snapshotsEqualExceptCountdown(captureSnapshot(b), captureSnapshot(a)),
+        "僅 countdownSec 變化卻被判為需完整重繪");
+}
+
+/**
+ * 斷言「countdownSec 與 field 在同一 frame 一起變化」必須被判為需完整重繪。
+ *
+ * 漏比任一欄位都會讓該欄位的變化被 partial 路徑連同 lastDisplaySnapshot 吞掉，
+ * 因此每個會與倒數同時變動的欄位都要有一條。
+ *
+ * @param field 與 countdownSec 同時變化的 DisplaySnapshotInputs 欄位名
+ * @param prev  該欄位在上一秒的值
+ * @param next  該欄位在這一秒的值
+ */
+#define ASSERT_COUNTDOWN_PLUS_FIELD_FORCES_FULL_REDRAW(field, prev, next)   \
+    do {                                                                   \
+        DisplaySnapshotInputs a;                                           \
+        a.countdownSec = COUNTDOWN_SEC_PREV;                               \
+        a.field = (prev);                                                  \
+        DisplaySnapshotInputs b;                                           \
+        b.countdownSec = COUNTDOWN_SEC_NEXT;                               \
+        b.field = (next);                                                  \
+        TEST_ASSERT_FALSE_MESSAGE(                                         \
+            snapshotsEqualExceptCountdown(captureSnapshot(b),              \
+                                          captureSnapshot(a)),             \
+            "input." #field " 與 countdownSec 同時變化時被誤判為可 partial"); \
+    } while (0)
+
+/**
+ * countdownSec 與 batteryPercent 同一 frame 變化 → 必須走完整重繪。
+ *
+ * 回溯測試：10 秒電池輪詢與每秒倒數 tick 必然週期性重合，
+ * 走 partial 會把該次電量變化寫進 lastDisplaySnapshot 卻不重繪圖示，永久遺失。
+ */
+static void test_countdown_plus_battery_percent_forces_full_redraw() {
+    ASSERT_COUNTDOWN_PLUS_FIELD_FORCES_FULL_REDRAW(batteryPercent, 55, 54);
+}
+
+/**
+ * countdownSec 與 batteryChargeState 同一 frame 變化 → 必須走完整重繪。
+ */
+static void test_countdown_plus_charge_state_forces_full_redraw() {
+    // 1 = ChargeState::Charging / 2 = ChargeState::Discharging
+    ASSERT_COUNTDOWN_PLUS_FIELD_FORCES_FULL_REDRAW(batteryChargeState, 1, 2);
+}
+
+/**
+ * countdownSec 與低電量閃爍相位同一 frame 變化 → 必須走完整重繪。
+ *
+ * 閃爍相位每 500ms 翻轉、倒數每 1000ms 前進，兩者必然重合。
+ */
+static void test_countdown_plus_low_blink_forces_full_redraw() {
+    ASSERT_COUNTDOWN_PLUS_FIELD_FORCES_FULL_REDRAW(batteryLowBlinkOn, false, true);
 }
 
 int main(int /*argc*/, char ** /*argv*/) {
@@ -377,6 +517,19 @@ int main(int /*argc*/, char ** /*argv*/) {
     // Group 4: combine + uniqueness
     RUN_TEST(test_all_flags_on_combine_all_bits);
     RUN_TEST(test_all_flags_bit_masks_are_unique);
+
+    // Group 5: Impl-Phase H 電池欄位
+    RUN_TEST(test_battery_percent_change_triggers_redraw);
+    RUN_TEST(test_battery_charge_state_change_triggers_redraw);
+    RUN_TEST(test_battery_absent_differs_from_zero_percent);
+    RUN_TEST(test_default_battery_percent_is_absent_sentinel);
+    RUN_TEST(test_flag_battery_low_blink_sets_bit_0x40000);
+
+    // Group 6: partial update 判斷（漏欄位會吞掉重繪）
+    RUN_TEST(test_only_countdown_differs_allows_partial_update);
+    RUN_TEST(test_countdown_plus_battery_percent_forces_full_redraw);
+    RUN_TEST(test_countdown_plus_charge_state_forces_full_redraw);
+    RUN_TEST(test_countdown_plus_low_blink_forces_full_redraw);
 
     return UNITY_END();
 }
