@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
 - **建立**：2026-08-22
-- **狀態**：W1 進行中（Task 4 完成、Task 5 待補 review，Task 6 尚未開工）
+- **狀態**：W1 進行中（Task 1–5 完成且 review clean，Task 6 尚未開工）
 - **branch**：`feat/phase-g-system-settings`
 
 ---
@@ -15,12 +15,12 @@ MAX17043 燃料計硬體驗收通過，主韌體的讀取層做到一半。已�
 | 硬體 | ✅ 驗收通過（I2C `0x36`、3.844V vs 電表 3.88V） |
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
-| W1 讀取層 | 🔄 Task 1–5 完成（Task 5 待補 review），Task 6 待做 |
+| W1 讀取層 | 🔄 Task 1–5 完成（review 皆 clean），Task 6 待做 |
 | W2 顯示層 | ⬜ Task 7–9 |
 | W3 低電量行為 | ⬜ Task 10–11 |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-`firmware/lib/ems_fuel_gauge/` 目前 41 個 native test 全綠。全套 542 cases / 541 通過（唯一未過的 `test_storage_hw` 是**既有**的編譯錯誤，已用 worktree checkout 到本工作起點驗證過，與本 wave 無關）。
+`firmware/lib/ems_fuel_gauge/` 目前 42 個 native test 全綠。全套 543 cases / 542 通過（唯一未過的 `test_storage_hw` 是**既有**的編譯錯誤，已用 worktree checkout 到本工作起點驗證過，與本 wave 無關）。
 
 > 📌 §3～§6 是 2026-08-22 上半場（Task 1–3）的紀錄，**§7 才是最新進度**，兩者衝突時以 §7 為準。
 
@@ -37,7 +37,7 @@ docs/superpowers/plans/2026-08-22-phase-h-battery-display.md
 .superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md
 
 # 3. 確認目前狀態
-cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 41/41
+cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 42/42
 git log --oneline 7fdf1ee..HEAD                              # 本 wave 的 11 個 commit
 ```
 
@@ -140,24 +140,22 @@ spec 定義 `batteryPercent == 255` 為「燃料計不在線」，而解除判�
 
 ## 7. 2026-08-22 續跑：Task 4 完成、Task 5 待補 review
 
-### ⚠️ 未結清的債：Task 5 的 review chain
+### ✅ Task 5 的 review 債已結清
 
-commit `fb9968f`（Task 5，MAX17043 I2C backend）**還沒跑過 review**。當天兩個 implementer
-相繼撞上 session limit，SDD task review 與專案 Tier 3 六面向都派不出去。
+當天兩個 implementer 相繼撞上 session limit，Task 5 的 review chain 一度欠著；額度恢復後已
+**補跑完整 7 個 seat**（SDD task review + Tier 3 六面向，7/7 全數回傳、未降級），並跑完
+fix round 3 與 scoped re-review。commit 現為 `75e3fb0`。
 
-其中 fix round 2 的收尾（復原一個被鑑別力檢查註解掉的守衛、補跑驗證、amend）是
-**controller 親自做的**，等於那段修改缺少它本該經過的 review。使用者已裁示：額度恢復後
-**補跑完整 review chain**，不用 `--force` 放行閘門。
-
-接手時第一件事就是這個：`Skill(commit-review) args: "tier=3 target=fb9968f"`，
-外加 SDD task review（package 用 `scripts/review-package <plan> 88f7fb3 fb9968f`）。
+那輪 review 有一點值得記：**每個 reviewer 都被明確告知「round 2 的收尾由 controller 本人撰寫、
+從未經 review，這是第一次被審而非複審」**，且刻意未把已知的殘餘風險餵給它們，避免錨定。
+結果它們獨立找到了 controller 自己寫錯的兩處（見下）。
 
 ### Task 4 / Task 5 產出
 
 | Task | commit | 產出 | fix 輪數 | review |
 |---|---|---|---|---|
 | 4 | `f6a9e07` | `FuelReading` / `FuelGaugeBackend` / `NullFuelGauge` | 1 | clean |
-| 5 | `fb9968f` | `Max17043Backend`、兩個合理性 predicate、`make_reading()` | 2 | **未跑** |
+| 5 | `75e3fb0` | `Max17043Backend`、兩個合理性 predicate、`make_reading()` | 3 | clean |
 
 `firmware/lib/ems_fuel_gauge/` 現有 41 個 native test；全套 542 cases / 541 通過
 （唯一 ERRORED 仍是既有的 `test_storage_hw`）。
@@ -212,3 +210,34 @@ Task 4 review 要求給 `FuelReading` 加 default member initializer——C++11 
 - `88f7fb3`：Task 6 加入 `to_display_percent()` 的具名共用 helper 要求（255 哨兵轉譯只能有一個
   出口）；`pollBattery()` 的 `g_battery_low = false` 改為 `g_battery_latch.is_low()`——原寫法會讓
   一次暫時性 I2C 失敗把已觸發的低電量閃爍靜默熄滅，正是 Task 3 要守的同一條不變式
+
+
+### 補跑的 review chain 抓到什麼（含 controller 自己的錯）
+
+**① `.o` 編得出來但從沒連進韌體**（tests 面向，用 `nm` 實測）
+
+```
+xtensa-esp32s3-elf-nm firmware.elf | grep -i "Max17043\|make_reading"
+（無輸出）
+```
+
+先前 controller 的「強制編譯」只證明編得過，沒證明連得進。`src/` 沒有任何檔案引用該 lib，
+連結器從未把 `.o` 從 `libems_fuel_gauge.a` 拉出來。已寫進 Task 6 Step 6.2 當硬性驗收。
+
+**② controller 寫的註解陳述了錯誤的不變式**（comments 面向）
+
+`make_reading()` 原註解寫「SOC 合理性必須判在換算之前」——但 `raw_soc` 是傳值，兩個 if-block
+對調結果等價（reviewer 實際改寫驗證）。真正的紅線是「**判定對象必須是 `raw_soc` 本身，
+不可是換算夾值後的結果**」。這條註解的角色就是防止後人改壞，指錯紅線等於沒防。已修正。
+
+**③ controller 寫的 fix 規格漏了一格邊界**（tests 面向）
+
+SOC 上界只測了「110 界內」與「255 界外」，中間留空隙。實測把 `<=` 鬆動一格，41 個測試全綠；
+VCELL 側有成對測試會立刻抓到。已補 `test_soc_raw_above_upper_bound_is_implausible`，
+且兩個 SOC 邊界測試都改由常數推導（該常數註記「需上機實測校正」，硬編值會靜默測到舊邊界）。
+
+**④ `version` 讀完就丟**（code-reviewer 面向）
+
+註解宣稱「bit pattern 用於確認晶片型號」但值從未被檢查——只要 0x36 上有裝置肯 ACK 就算偵測到。
+**未加型號校驗**：合理的 VERSION 值域需實機觀測資料才能定，猜錯會把好晶片判成不在線。
+改為修正過度宣稱的註解，並把「實機驗收時記錄 VERSION 實際值」排進 Task 6 Step 6.4。
