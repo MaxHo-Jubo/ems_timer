@@ -22,4 +22,43 @@ uint8_t soc_raw_to_percent(uint16_t raw) {
     return static_cast<uint8_t>(percent);
 }
 
+void ChargeTrendTracker::push(uint16_t millivolts) {
+    // STEP 01: 寫入環形緩衝並前進 head
+    samples_[head_] = millivolts;
+    head_ = static_cast<uint8_t>((head_ + 1) % ChargeTrendTracker::TREND_WINDOW_SAMPLES);
+
+    // STEP 02: count_ 只累加到窗滿為止，避免長時間執行後溢位
+    if (count_ < ChargeTrendTracker::TREND_WINDOW_SAMPLES) {
+        count_++;
+    }
+}
+
+ChargeState ChargeTrendTracker::state() const {
+    // STEP 01: 窗未滿時無從判斷趨勢，誠實回 Unknown
+    if (count_ < ChargeTrendTracker::TREND_WINDOW_SAMPLES) {
+        return ChargeState::Unknown;
+    }
+
+    // STEP 02: head_ 指向下一次寫入位置，也就是環形緩衝中最舊的那筆
+    const uint16_t oldest = samples_[head_];
+    const uint16_t newest = samples_[(head_ + ChargeTrendTracker::TREND_WINDOW_SAMPLES - 1) % ChargeTrendTracker::TREND_WINDOW_SAMPLES];
+    const int32_t  delta  = static_cast<int32_t>(newest) - static_cast<int32_t>(oldest);
+
+    // STEP 03: 依 delta 與死區判定 Charging／Discharging／Idle
+    if (delta > static_cast<int32_t>(ChargeTrendTracker::TREND_DEADBAND_MV)) {
+        return ChargeState::Charging;
+    }
+    if (delta < -static_cast<int32_t>(ChargeTrendTracker::TREND_DEADBAND_MV)) {
+        return ChargeState::Discharging;
+    }
+
+    return ChargeState::Idle;
+}
+
+void ChargeTrendTracker::reset() {
+    // STEP 01: 清掉計數與位置即可讓 state() 回到 Unknown，樣本值不需清零
+    count_ = 0;
+    head_  = 0;
+}
+
 }  // namespace ems

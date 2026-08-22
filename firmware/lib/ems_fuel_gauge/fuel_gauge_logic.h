@@ -40,4 +40,59 @@ uint16_t vcell_raw_to_mv(uint16_t raw);
  */
 uint8_t soc_raw_to_percent(uint16_t raw);
 
+/**
+ * 充電狀態。硬體沒有充電訊號腳，本列舉由電壓趨勢推導而來。
+ */
+enum class ChargeState : uint8_t {
+    Unknown     = 0,  // 開機或 reset 後，觀察窗未滿時的狀態；不可顯示充電符號，也不可預設為 Discharging（那是猜的）
+    Charging    = 1,  // 電壓在 30 秒內上升超過死區，判定為充電中
+    Discharging = 2,  // 電壓在 30 秒內下降超過死區，判定為放電中
+    Idle        = 3,  // 電壓在 30 秒內變化在死區內，判定為靜置（與 Unknown 不同：已確認無充放電）
+};
+
+/**
+ * 電池電壓趨勢追蹤器：吃連續的電壓取樣，推導充電狀態。
+ *
+ * 用固定長度的環形緩衝比較「最舊」與「最新」兩點，窗未滿前一律回 Unknown。
+ *
+ * ⚠️ 本層不對輸入做合理性檢查，單筆 I2C 垃圾讀值會被當成真實變化，可能造成假的充放電判定；
+ * 不可信讀值的判定屬於後續 FuelReading.valid 層的職責。
+ */
+class ChargeTrendTracker {
+public:
+    /** 趨勢判定窗的取樣點數：3 點 × 10 秒取樣 = 30 秒觀察窗 */
+    static constexpr uint8_t TREND_WINDOW_SAMPLES = 3;
+
+    /** 趨勢死區（mV）：窗內變化絕對值低於此值視為靜置。
+     *  下界由訊號決定——500mA 充電 30 秒窗僅變 5mV，死區須明顯小於它才偵測得到；
+     *  上界由靜置雜訊決定，而該雜訊幅度目前無實測數據。
+     *  ⚠️ 本值為推導初值，Task 6 主韌體整合後須收長時間靜置讀數校正（spec §10）。 */
+    static constexpr uint16_t TREND_DEADBAND_MV = 3;
+
+    /**
+     * 推入一筆電池電壓取樣（mV）
+     * @param millivolts 電池電壓，單位毫伏特
+     *
+     * ⚠️ 本類沒有時間概念，「30 秒觀察窗」的成立完全取決於呼叫端維持 10 秒輪詢。
+     * 若呼叫端改變輪詢間隔，本處註解與死區參數須同步調整，否則觀察窗會靜默失效。
+     */
+    void push(uint16_t millivolts);
+
+    /**
+     * 取得當前推導出的充電狀態
+     * @return 充電狀態（Unknown ⟹ 窗未滿；Charging ⟹ 上升；Discharging ⟹ 下降；Idle ⟹ 靜置）
+     */
+    ChargeState state() const;
+
+    /**
+     * 清空取樣窗，回到 Unknown（換電池或 backend 重新上線時呼叫）
+     */
+    void reset();
+
+private:
+    uint16_t samples_[TREND_WINDOW_SAMPLES] = {0};  // 環形緩衝
+    uint8_t count_ = 0;                             // 已推入次數，飽和於 TREND_WINDOW_SAMPLES；僅用於判斷窗是否已滿，不可當總推入量統計
+    uint8_t head_  = 0;                             // 下一次寫入位置
+};
+
 }  // namespace ems

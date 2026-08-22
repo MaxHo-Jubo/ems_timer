@@ -59,6 +59,106 @@ static void test_soc_exactly_100_hits_clamp_boundary() {
     TEST_ASSERT_EQUAL_UINT8(100, ems::soc_raw_to_percent(0x6400));
 }
 
+// ============================================================
+//  Group 2: 充電狀態趨勢推導
+// ============================================================
+
+static void test_trend_before_window_full_is_unknown() {
+    // 硬體無充電狀態訊號，開機後窗未滿時必須誠實回 Unknown，不可猜 Discharging
+    ems::ChargeTrendTracker t;
+    TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, t.state());
+    t.push(3800);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, t.state());
+    t.push(3800);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, t.state());
+}
+
+static void test_trend_rising_beyond_deadband_is_charging() {
+    // 窗內電壓上升超過死區判定為充電中（3810 - 3800 = +10mV > 3mV）
+    ems::ChargeTrendTracker t;
+    t.push(3800);
+    t.push(3805);
+    t.push(3810);  // 窗滿：3810 - 3800 = +10mV > 死區
+    TEST_ASSERT_EQUAL(ems::ChargeState::Charging, t.state());
+}
+
+static void test_trend_falling_beyond_deadband_is_discharging() {
+    // 窗內電壓下降超過死區判定為放電中（3800 - 3810 = -10mV < -3mV）
+    ems::ChargeTrendTracker t;
+    t.push(3810);
+    t.push(3805);
+    t.push(3800);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Discharging, t.state());
+}
+
+static void test_trend_within_deadband_is_idle() {
+    // 靜置時電壓會微幅抖動，死區內不可在充放電之間跳
+    ems::ChargeTrendTracker t;
+    t.push(3800);
+    t.push(3800);
+    t.push(3800);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Idle, t.state());
+}
+
+static void test_trend_slides_window_and_updates() {
+    // 先判定充電，之後持續下降應翻成放電（窗會滑動，不是只看最初三筆）
+    ems::ChargeTrendTracker t;
+    t.push(3800);
+    t.push(3805);
+    t.push(3810);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Charging, t.state());
+    t.push(3805);
+    t.push(3800);
+    t.push(3795);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Discharging, t.state());
+}
+
+static void test_trend_reset_returns_to_unknown() {
+    // reset() 清除取樣窗，狀態回到 Unknown；新資料應反映新趨勢，不受舊值殘留影響
+    ems::ChargeTrendTracker t;
+    t.push(3800);
+    t.push(3805);
+    t.push(3810);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Charging, t.state());
+    t.reset();
+    TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, t.state());
+    // reset 後推入相反方向的值，應明確判定為下降（驗證樣本值不會殘留）
+    t.push(3810);
+    t.push(3805);
+    t.push(3800);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Discharging, t.state());
+}
+
+static void test_trend_ignores_middle_sample_only_endpoints_matter() {
+    // 非單調數列：中間值飆高但頭尾相同 → 應為 Idle。
+    // 若 newest 索引誤寫成 (head_+1)%N（讀到中間值），會誤判 Charging，本測試即失敗。
+    // 現有的單調數列測試無法區分這兩種實作——中間樣本永遠站在正確方向上。
+    ems::ChargeTrendTracker t;
+    t.push(3800);
+    t.push(3900);
+    t.push(3800);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Idle, t.state());
+}
+
+static void test_trend_delta_equal_to_deadband_stays_idle() {
+    // 死區邊界：變化剛好等於死區值（3mV）→ 不觸發，仍為 Idle
+    ems::ChargeTrendTracker t;
+    t.push(3800);
+    t.push(3801);
+    t.push(3803);   // delta = +3，等於死區，不應觸發
+    TEST_ASSERT_EQUAL(ems::ChargeState::Idle, t.state());
+}
+
+static void test_trend_delta_just_over_deadband_charges() {
+    // 死區邊界：變化剛好超過死區值 → 觸發 Charging。
+    // 與上一個測試成對，鎖住死區常數——若 TREND_DEADBAND_MV 被誤改，兩者至少一個會 fail。
+    ems::ChargeTrendTracker t;
+    t.push(3800);
+    t.push(3801);
+    t.push(3804);   // delta = +4，超過死區
+    TEST_ASSERT_EQUAL(ems::ChargeState::Charging, t.state());
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_vcell_golden_value_from_hardware_acceptance);
@@ -70,5 +170,14 @@ int main(int, char**) {
     RUN_TEST(test_soc_zero_is_zero);
     RUN_TEST(test_soc_max_raw_clamps_to_100);
     RUN_TEST(test_soc_exactly_100_hits_clamp_boundary);
+    RUN_TEST(test_trend_before_window_full_is_unknown);
+    RUN_TEST(test_trend_rising_beyond_deadband_is_charging);
+    RUN_TEST(test_trend_falling_beyond_deadband_is_discharging);
+    RUN_TEST(test_trend_within_deadband_is_idle);
+    RUN_TEST(test_trend_slides_window_and_updates);
+    RUN_TEST(test_trend_reset_returns_to_unknown);
+    RUN_TEST(test_trend_ignores_middle_sample_only_endpoints_matter);
+    RUN_TEST(test_trend_delta_equal_to_deadband_stays_idle);
+    RUN_TEST(test_trend_delta_just_over_deadband_charges);
     return UNITY_END();
 }
