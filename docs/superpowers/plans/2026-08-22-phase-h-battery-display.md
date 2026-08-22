@@ -17,7 +17,7 @@
 - I2C：`SDA = GPIO 42`、`SCL = GPIO 41`、燃料計位址 `0x36`、時脈 100kHz
 - VCELL 換算：`mV = (raw >> 4) * 1.25`（MAX17043 為 1.25mV/LSB）
 - SOC 換算：`percent = (raw >> 8) + (raw & 0xFF) / 256.0`
-- 取樣間隔：**10 秒**；趨勢判定窗：**30 秒（3 個取樣點）**；趨勢死區：**±0.5%**
+- 取樣間隔：**10 秒**；趨勢判定窗：**30 秒（3 個取樣點）**；趨勢輸入 **VCELL(mV)**、趨勢死區：**±3mV**（2026-08-22 修訂，原 SOC(%) ±0.5% 雙向失效，見 spec §3.4.1）
 - 低電量門檻：**進入 20% ／ 解除 25%**（遲滯）
 - `batteryPercent` 的 `255` = 燃料計不在線（**不可用 0**，0% 是合法讀數）
 - 四格圖示分界：`0~24% = 1 格 / 25~49% = 2 格 / 50~74% = 3 格 / 75~100% = 4 格`
@@ -35,7 +35,7 @@
 
 | 檔案 | 責任 |
 |---|---|
-| `firmware/lib/ems_fuel_gauge/ems_fuel_gauge.h` | `FuelReading` struct、`ChargeState` enum、`FuelGaugeBackend` 純虛介面 |
+| `firmware/lib/ems_fuel_gauge/ems_fuel_gauge.h` | `FuelReading` struct、`FuelGaugeBackend` 純虛介面（`ChargeState` 實際放在 `fuel_gauge_logic.h`，隨 Task 2 落地） |
 | `firmware/lib/ems_fuel_gauge/null_backend.h` | 不在線時的降級實作，全部回無效值 |
 | `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.h` | 純邏輯宣告：換算、趨勢追蹤器、低電量遲滯 |
 | `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.cpp` | 上述實作，不含任何 Arduino/Wire 相依 |
