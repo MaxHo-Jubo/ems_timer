@@ -36,7 +36,7 @@
 | 檔案 | 責任 |
 |---|---|
 | `firmware/lib/ems_fuel_gauge/ems_fuel_gauge.h` | `FuelReading` struct、`FuelGaugeBackend` 純虛介面（`ChargeState` 實際放在 `fuel_gauge_logic.h`，隨 Task 2 落地） |
-| `firmware/lib/ems_fuel_gauge/null_backend.h` | 不在線時的降級實作，全部回無效值 |
+| `firmware/lib/ems_fuel_gauge/null_fuel_gauge.h` | 不在線時的降級實作，全部回無效值（**不可**命名 `null_backend.h`：與 `ems_rtc/null_backend.h` basename 相同，`-I$PROJECT_LIB_DIR` 下會讓 test_rtc 撈錯檔） |
 | `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.h` | 純邏輯宣告：換算、趨勢追蹤器、低電量遲滯 |
 | `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.cpp` | 上述實作，不含任何 Arduino/Wire 相依 |
 | `firmware/lib/ems_fuel_gauge/max17043_backend.h` | 硬體 backend 宣告 |
@@ -971,14 +971,105 @@ read() 對 endTransmission 失敗與 requestFrom 位元組數不足都回 valid=
 ## Task 6：main.cpp 掛載與 10 秒輪詢
 
 **Files:**
+- Modify: `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.h`
+- Modify: `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.cpp`
+- Modify: `firmware/test/test_fuel_gauge_logic/test_fuel_gauge_logic.cpp`
 - Modify: `firmware/src/main.cpp`（`STEP 06.5` RTC 區塊之後、主迴圈）
 - Modify: `firmware/src/app_globals.h`
 
 **Interfaces:**
 - Consumes: Task 2 的 `ChargeTrendTracker`、Task 3 的 `LowBatteryLatch`、Task 4/5 的 backend
-- Produces: 全域 `g_fuel_gauge`（`ems::FuelGaugeBackend*`）、`g_battery_percent`（`uint8_t`，255=不在線）、`g_battery_charge_state`（`ems::ChargeState`）、`g_battery_low`（`bool`）
+- Produces: `ems::BATTERY_PERCENT_ABSENT`、`ems::to_display_percent()`（純邏輯層）、全域 `g_fuel_gauge`（`ems::FuelGaugeBackend*`）、`g_battery_percent`（`uint8_t`，255=不在線）、`g_battery_charge_state`（`ems::ChargeState`）、`g_battery_low`（`bool`）
 
-- [ ] **Step 1: 加入全域宣告**
+> ⚠️ **2026-08-22 追加**：`FuelReading` → `batteryPercent`（255 哨兵）的轉譯**必須**走具名共用
+> helper `ems::to_display_percent()`，不得在呼叫端各自 inline 寫 `valid ? percent : 255`。
+> 理由見 Task 4 的 type-design 面向：目的地型別是裸 `uint8_t`，漏掉 `valid` 判斷時
+> `NullFuelGauge` 回的 `percent=0` 會落在合法 0~100 範圍內，沒有任何邊界檢查攔得住——
+> 精準重現 Task 4 commit 想避免的「硬體故障偽裝成電池耗盡」。哨兵常數與唯一的產生點
+> 放在一起（對齊 CLAUDE.md `EXTRACT-SHARED-HELPER` 的 `guard-placement`：守衛加在共用層，
+> 不是加在每個 caller 的記憶力上）。
+
+- [ ] **Step 1: 寫失敗測試（顯示層轉譯）**
+
+在 `firmware/test/test_fuel_gauge_logic/test_fuel_gauge_logic.cpp` 的 `int main` 之前插入：
+
+```cpp
+// ============================================================
+//  Group 5: FuelReading → 顯示百分比的轉譯
+// ============================================================
+
+static void test_display_percent_absent_when_invalid() {
+    // 讀不到就回哨兵。注意 percent 欄位這裡刻意帶 77——轉譯只能看 valid，
+    // 不可因為 percent 落在合法範圍內就把它當真
+    const ems::FuelReading r{false, 3800, 77};
+    TEST_ASSERT_EQUAL_UINT8(ems::BATTERY_PERCENT_ABSENT, ems::to_display_percent(r));
+}
+
+static void test_display_percent_zero_is_not_absent() {
+    // 0% 是合法讀數（真的沒電），絕不可被轉成哨兵——這正是不拿 0 當哨兵的理由
+    const ems::FuelReading r{true, 3000, 0};
+    TEST_ASSERT_EQUAL_UINT8(0, ems::to_display_percent(r));
+}
+
+static void test_display_percent_passes_valid_value_through() {
+    const ems::FuelReading r{true, 3844, 54};
+    TEST_ASSERT_EQUAL_UINT8(54, ems::to_display_percent(r));
+}
+
+static void test_display_percent_full_charge_passes_through() {
+    // 100 與哨兵 255 都是「邊界值」，確認滿電不會被誤判成不在線
+    const ems::FuelReading r{true, 4200, 100};
+    TEST_ASSERT_EQUAL_UINT8(100, ems::to_display_percent(r));
+}
+```
+
+並在 `main()` 補上四個 `RUN_TEST`。
+
+- [ ] **Step 2: 實作轉譯 helper**
+
+在 `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.h` 加入（檔頭需補 `#include "ems_fuel_gauge.h"`，
+`FuelReading` 定義在該檔）：
+
+```cpp
+/** 電量百分比的「不在線」哨兵。255 不是合法百分比；0 是（真的沒電），兩者不可混用。
+ *  刻意與 to_display_percent() 放在同一個檔案——哨兵值與它唯一的產生點不該分家 */
+constexpr uint8_t BATTERY_PERCENT_ABSENT = 255;
+
+/**
+ * 把一次燃料計讀取結果轉成 UI 層要顯示的電量百分比。
+ *
+ * 這是 FuelReading（valid 旗標）與 batteryPercent（255 哨兵）之間**唯一**的轉譯出口。
+ * 呼叫端不得自己寫 `reading.valid ? reading.percent : 255`：目的地是裸 uint8_t，
+ * 漏掉 valid 判斷時 NullFuelGauge 回的 percent=0 會落在合法 0~100 範圍內，
+ * 沒有任何邊界檢查攔得住，畫面會把硬體故障顯示成「電池耗盡」。
+ *
+ * @param reading 燃料計單次讀取結果
+ * @return valid=true 時回 reading.percent（0~100）；valid=false 時回 BATTERY_PERCENT_ABSENT
+ */
+uint8_t to_display_percent(const FuelReading& reading);
+```
+
+`firmware/lib/ems_fuel_gauge/fuel_gauge_logic.cpp` 實作：
+
+```cpp
+uint8_t to_display_percent(const FuelReading& reading) {
+    // STEP 01: 讀值不可信一律回哨兵——不可回 0，0% 是合法讀數
+    if (!reading.valid) {
+        return BATTERY_PERCENT_ABSENT;
+    }
+
+    // STEP 02: 有效讀值直接透傳，0~100 的範圍由 soc_raw_to_percent() 保證
+    return reading.percent;
+}
+```
+
+Run: `cd firmware && pio test -e native -f test_fuel_gauge_logic`
+Expected: 全數 PASS（Task 4 收在 32，本 step 新增 4 → 36）
+
+**鑑別力檢查（必做，輸出貼進報告）**：把 `if (!reading.valid)` 整段拿掉（變成無條件
+`return reading.percent;`），重跑測試確認 `test_display_percent_absent_when_invalid` 變紅，再改回來。
+
+- [ ] **Step 3: 加入全域宣告**
 
 在 `firmware/src/app_globals.h` 的 GPIO 常數區之後加入：
 
@@ -988,11 +1079,13 @@ read() 對 endTransmission 失敗與 requestFrom 位元組數不足都回 valid=
 /** 電量輪詢間隔（ms）：電量變化極慢，10 秒對 UI 已綽綽有餘 */
 constexpr uint32_t BATTERY_POLL_INTERVAL_MS = 10000;
 
-/** 電量百分比。255 = 燃料計不在線；0 是合法讀數（真的沒電），兩者不可混用 */
-constexpr uint8_t BATTERY_PERCENT_ABSENT = 255;
 ```
 
-- [ ] **Step 2: 在 main.cpp setup 掛載 backend**
+> 哨兵常數 `BATTERY_PERCENT_ABSENT` **不放這裡**——它與唯一的產生點 `to_display_percent()`
+> 一起定義在 `fuel_gauge_logic.h`（Step 2）。`main.cpp` 與 `ui_screens.cpp` 一律引用
+> `ems::BATTERY_PERCENT_ABSENT`，不得各自再宣告一份。
+
+- [ ] **Step 4: 在 main.cpp setup 掛載 backend**
 
 在 `firmware/src/main.cpp` 的 `STEP 06.5` RTC 區塊結束之後插入 `STEP 06.6`（若既有編號已被佔用則接續順號，並依 STEP-COMMENT-INSERT 規則重排後續編號）：
 
@@ -1016,7 +1109,7 @@ constexpr uint8_t BATTERY_PERCENT_ABSENT = 255;
 ```cpp
 // Impl-Phase H：電池狀態全域（由 pollBattery() 每 10 秒更新，UI 端唯讀）
 ems::FuelGaugeBackend*  g_fuel_gauge           = nullptr;
-uint8_t                 g_battery_percent      = BATTERY_PERCENT_ABSENT;
+uint8_t                 g_battery_percent      = ems::BATTERY_PERCENT_ABSENT;
 uint16_t                g_battery_millivolts   = 0;  // 僅在 g_battery_percent != 255 時有意義
 ems::ChargeState        g_battery_charge_state = ems::ChargeState::Unknown;
 bool                    g_battery_low          = false;
@@ -1033,9 +1126,11 @@ extern ems::ChargeState g_battery_charge_state;  // Phase H：充電狀態
 extern bool             g_battery_low;           // Phase H：低電量（含遲滯）
 ```
 
-`app_globals.h` 需先 `#include "ems_fuel_gauge.h"` 才認得 `ems::ChargeState`。
+`app_globals.h` 需先 `#include "fuel_gauge_logic.h"` 才認得 `ems::ChargeState` 與
+`ems::BATTERY_PERCENT_ABSENT`（兩者都在該檔；它自己會 include `ems_fuel_gauge.h`，
+所以 `FuelReading` 也一併取得）。
 
-- [ ] **Step 3: 加入輪詢函式並在主迴圈呼叫**
+- [ ] **Step 5: 加入輪詢函式並在主迴圈呼叫**
 
 在 main.cpp 加入：
 
@@ -1053,21 +1148,27 @@ static void pollBattery() {
     }
     last_poll_ms = now_ms;
 
-    // STEP 02: 讀取；失敗一律標成不在線，不沿用上一筆舊值假裝還讀得到
+    // STEP 02: 讀取；百分比轉譯只走 to_display_percent()，成功與失敗兩條路徑共用同一個
+    //          守衛，呼叫端不需要自己記得判斷 valid
     const ems::FuelReading reading = g_fuel_gauge->read();
+    g_battery_percent = ems::to_display_percent(reading);
+
+    // STEP 03: 讀取失敗就到此為止，不沿用上一筆舊值假裝還讀得到
     if (!reading.valid) {
-        g_battery_percent      = BATTERY_PERCENT_ABSENT;
         g_battery_millivolts   = 0;
         g_battery_charge_state = ems::ChargeState::Unknown;
-        g_battery_low          = false;
+        // 保留鎖存狀態：讀取失敗不得清除已觸發的低電量警示。寫死 false 會讓一次
+        // 暫時性 I2C 失敗把畫面上的低電量閃爍靜默熄滅，正是 Task 3 的
+        // test_offline_sentinel_does_not_clear_low_battery 要守的同一條不變式。
+        // 注意此處刻意不呼叫 latch.update()——沒有可信讀值就不該推進狀態機。
+        g_battery_low          = g_battery_latch.is_low();
         g_battery_trend.reset();
         return;
     }
 
-    // STEP 03: 更新趨勢與低電量閂鎖
+    // STEP 04: 更新趨勢與低電量閂鎖
     //          趨勢用電壓（mV）而非百分比——百分比的量化粒度大於 30 秒窗內的真實
     //          充電訊號，會同時造成漏報與誤報（spec §3.4.1）
-    g_battery_percent    = reading.percent;
     g_battery_millivolts = reading.millivolts;
     g_battery_trend.push(reading.millivolts);
     g_battery_charge_state = g_battery_trend.state();
@@ -1082,7 +1183,7 @@ static void pollBattery() {
 
 在 `loop()` 內、既有 `updateDisplay()` 呼叫之前加入 `pollBattery();`。
 
-- [ ] **Step 4: 編譯並上機驗證**
+- [ ] **Step 6: 編譯並上機驗證**
 
 Run: `cd firmware && pio run -e esp32-s3-devkitc-1 -t upload --upload-port $(ls /dev/cu.usbmodem* | head -1)`
 
@@ -1105,18 +1206,24 @@ s.close()"
 
 Expected: 開機看到 `[FUEL] MAX17043 detected at 0x36`，之後每 10 秒一筆 `[FUEL] 54% 3844mV state=... low=0`
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 cd firmware
-git add src/main.cpp src/app_globals.h
+git add lib/ems_fuel_gauge/fuel_gauge_logic.h lib/ems_fuel_gauge/fuel_gauge_logic.cpp \
+        test/test_fuel_gauge_logic/test_fuel_gauge_logic.cpp \
+        src/main.cpp src/app_globals.h
 git commit -m "[PHASE-H] feat: 主韌體掛載燃料計並每 10 秒輪詢
 
 W1 收尾：主韌體開機 probe 0x36，偵測到掛 Max17043Backend、否則掛 NullFuelGauge，
 缺硬體不阻擋開機。輪詢結果餵進趨勢追蹤器與低電量閂鎖，寫進三個全域供 UI 唯讀。
 
 讀取失敗時把 g_battery_percent 設回 255（不在線）而不是沿用上一筆舊值——沿用會讓
-拔掉燃料計後畫面繼續顯示最後那個電量，看起來一切正常。"
+拔掉燃料計後畫面繼續顯示最後那個電量，看起來一切正常。
+
+valid 旗標與 255 哨兵之間的轉譯收斂成 to_display_percent() 一個出口，哨兵常數跟著搬進
+純邏輯層。目的地是裸 uint8_t，呼叫端漏判 valid 時 percent=0 會落在合法範圍內無人攔截，
+守衛因此加在共用層而不是加在每個 caller 的記憶力上。"
 ```
 
 ---
@@ -1399,10 +1506,11 @@ constexpr uint8_t BATTERY_ICON_SEGMENTS = 4;
 
 - [ ] **Step 2: 實作繪製**
 
-`ui_screens.cpp` 需先 include 才認得 `ems::ChargeState`（若 `app_globals.h` 已依 Task 6 加入該 include，此處可省）：
+`ui_screens.cpp` 需先 include 才認得 `ems::ChargeState` 與 `ems::BATTERY_PERCENT_ABSENT`
+（若 `app_globals.h` 已依 Task 6 加入該 include，此處可省）：
 
 ```cpp
-#include "ems_fuel_gauge.h"
+#include "fuel_gauge_logic.h"
 ```
 
 把 Task 8 留下的空實作替換為：
@@ -1433,7 +1541,7 @@ static uint8_t batterySegmentsForPercent(uint8_t percent) {
  */
 void drawBatteryIcon() {
     // STEP 01: 不在線時完全不畫——畫空電池會被讀成沒電
-    if (g_battery_percent == BATTERY_PERCENT_ABSENT) {
+    if (g_battery_percent == ems::BATTERY_PERCENT_ABSENT) {
         return;
     }
 
@@ -1856,7 +1964,7 @@ void drawBatteryInfo() {
     drawCenteredText("電池資訊", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
     // STEP 02: 不在線時只顯示狀態，不編造數值
-    if (g_battery_percent == BATTERY_PERCENT_ABSENT) {
+    if (g_battery_percent == ems::BATTERY_PERCENT_ABSENT) {
         drawCenteredText("燃料計未偵測到", SCREEN_H / 2, COLOR_TEXT_MUTED);
         return;
     }

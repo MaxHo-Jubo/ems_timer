@@ -57,9 +57,10 @@ MAX17043 只提供電壓（VCELL）與電量（SOC），**沒有充電狀態暫�
 
 ```
 firmware/lib/ems_fuel_gauge/
-  ems_fuel_gauge.h          IFuelGauge 介面 + FuelReading struct
+  ems_fuel_gauge.h          FuelGaugeBackend 純虛介面 + FuelReading struct
   max17043_backend.{h,cpp}  I2C 0x36 實作（唯一碰硬體的檔案）
-  null_backend.h            不在線降級，回 valid=false
+  null_fuel_gauge.h         不在線降級，回 valid=false（不可命名 null_backend.h——與
+                            ems_rtc/null_backend.h basename 相同會讓 include 撈錯檔）
   fuel_gauge_logic.{h,cpp}  純邏輯：換算／趨勢推導／低電量判定
 ```
 
@@ -171,6 +172,12 @@ uint8_t batteryChargeState;  ///< ems::ChargeState 列舉值
 
 **`255` 當「不在線」哨兵，不用 0**：0% 是合法讀數（真的沒電），拿它兼作「讀不到」會讓硬體故障偽裝成電池耗盡。
 
+**轉譯只能有一個出口**：`FuelReading`（`valid` 旗標）→ `batteryPercent`（`255` 哨兵）的轉換一律走
+`ems::to_display_percent()`，哨兵常數 `ems::BATTERY_PERCENT_ABSENT` 與它同檔（`fuel_gauge_logic.h`）。
+呼叫端不得自己 inline 寫 `valid ? percent : 255`——目的地是裸 `uint8_t`，漏判 `valid` 時
+`NullFuelGauge` 回的 `percent = 0` 落在合法 `0~100` 內，沒有任何邊界檢查攔得住，畫面會把硬體故障
+顯示成「電池耗盡」，正是本節要避免的那件事。守衛加在共用層，不是加在每個 caller 的記憶力上。
+
 ### 4.5 閃爍的副作用
 
 低電量時畫面每 500ms 全片重繪。全片 `pushSprite` DMA 約 4ms @80MHz，量級可接受，但**低電量時反而更耗電**——這是 SoT 要求閃爍的必然代價。
@@ -212,6 +219,9 @@ uint8_t batteryChargeState;  ///< ems::ChargeState 列舉值
 - 趨勢狀態機：上升／下降／持平／死區內不跳動／窗未滿回 `Unknown`
 - **趨勢索引鑑別力**：測試數列必須能區分正確索引與 off-by-one。嚴格單調的數列（如 50,52,54）做不到——中間樣本永遠站在正確方向，選錯索引只讓 delta 變小不變號。必須有一組**非單調**數列（如 `3800 → 3900 → 3800`，正確為 Idle；誤讀中間值會判 Charging）
 - **死區邊界**：須測到最小觸發值與死區內值的分界，否則死區常數被誤改也沒有測試會 fail
+- **哨兵轉譯雙向**：`to_display_percent()` 兩個方向都要測——`valid=false` 且 `percent` 帶合法值（如 77）
+  時必須回 `255`（證明只看 `valid` 不看 `percent`）；`valid=true` 且 `percent=0` 時必須回 `0`（證明
+  合法的「真的沒電」不會被誤轉成哨兵）。只測其中一向，拿掉 `valid` 判斷的實作照樣全綠
 - 遲滯：20% 進入、25% 解除，在 20~25% 之間來回不重複觸發
 - 一次性提示：per-boot 只觸發一次
 - 哨兵：`255` 不被當成 0%
