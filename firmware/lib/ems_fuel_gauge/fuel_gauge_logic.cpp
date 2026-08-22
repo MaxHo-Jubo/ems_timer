@@ -61,4 +61,42 @@ void ChargeTrendTracker::reset() {
     head_  = 0;
 }
 
+void LowBatteryLatch::update(uint8_t percent) {
+    // STEP 01: 契約防呆——超出 0~100 的值一律視為不可信讀值（例如 255 = 燃料計不在線），
+    //          直接跳過不更新任何狀態。不可 clamp 後續走正常邏輯：那會把「讀不到」
+    //          偽裝成「電量 100%」，反而讓已鎖存的低電量警示被誤清。
+    if (percent > SOC_PERCENT_MAX) {
+        return;
+    }
+
+    // STEP 02: 已在低電量且回升到解除門檻 → 脫離遲滯
+    if (is_low_ && percent >= LowBatteryLatch::LOW_BATTERY_EXIT_PERCENT) {
+        is_low_        = false;
+        entry_pending_ = false;
+        return;
+    }
+
+    // STEP 03: 已在低電量但未達解除門檻 → 維持現狀
+    if (is_low_) {
+        return;
+    }
+
+    // STEP 04: 未在低電量，跌到進入門檻即觸發（開機首次取樣即低於門檻也走這條）
+    if (percent <= LowBatteryLatch::LOW_BATTERY_ENTER_PERCENT) {
+        is_low_        = true;
+        entry_pending_ = true;
+    }
+}
+
+bool LowBatteryLatch::consume_first_entry() {
+    // STEP 01: 沒有待消費事件就回 false（提示只顯示一次）
+    if (!entry_pending_) {
+        return false;
+    }
+
+    // STEP 02: 消費掉事件，下次呼叫回 false，直到解除後再次跨入才重新掛起
+    entry_pending_ = false;
+    return true;
+}
+
 }  // namespace ems

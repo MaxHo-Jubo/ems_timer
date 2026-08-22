@@ -159,6 +159,114 @@ static void test_trend_delta_just_over_deadband_charges() {
     TEST_ASSERT_EQUAL(ems::ChargeState::Charging, t.state());
 }
 
+// ============================================================
+//  Group 3: 低電量遲滯與一次性提示
+// ============================================================
+
+static void test_low_battery_not_triggered_above_threshold() {
+    // ENTER 門檻的寬鬆方向：21% 以上都不觸發（擋住門檻升到 21%）
+    ems::LowBatteryLatch latch;
+    latch.update(30);
+    TEST_ASSERT_FALSE(latch.is_low());
+}
+
+static void test_low_battery_triggers_at_or_below_20() {
+    // ENTER 門檻的嚴格方向：20% 以下都觸發（擋住門檻降到 20%）
+    ems::LowBatteryLatch latch;
+    latch.update(20);
+    TEST_ASSERT_TRUE(latch.is_low());
+}
+
+static void test_low_battery_stays_low_between_thresholds() {
+    // 遲滯：進入 20% 後，回升到 22% 仍算低電量（未達 25% 解除門檻）
+    ems::LowBatteryLatch latch;
+    latch.update(20);
+    latch.update(22);
+    TEST_ASSERT_TRUE(latch.is_low());
+}
+
+static void test_low_battery_clears_at_or_above_25() {
+    // EXIT 門檻的嚴格方向：25% 以上才解除（擋住門檻升到 25%）
+    ems::LowBatteryLatch latch;
+    latch.update(20);
+    latch.update(25);
+    TEST_ASSERT_FALSE(latch.is_low());
+}
+
+static void test_first_entry_consumed_only_once() {
+    // §13.16：執行中只顯示一次提示
+    ems::LowBatteryLatch latch;
+    latch.update(18);
+    TEST_ASSERT_TRUE(latch.consume_first_entry());
+    TEST_ASSERT_FALSE(latch.consume_first_entry());
+}
+
+static void test_first_entry_rearms_after_recovery() {
+    // 充完電拔掉再掉到 20%，應該重新提醒一次
+    ems::LowBatteryLatch latch;
+    latch.update(18);
+    TEST_ASSERT_TRUE(latch.consume_first_entry());
+    latch.update(30);  // 充電回升，解除
+    latch.update(18);  // 再次掉落
+    TEST_ASSERT_TRUE(latch.consume_first_entry());
+}
+
+static void test_boot_already_low_counts_as_entry() {
+    // 開機當下就低於 20%，沒有「上一次在門檻上」的紀錄，仍必須算一次跨越
+    ems::LowBatteryLatch latch;
+    latch.update(15);
+    TEST_ASSERT_TRUE(latch.is_low());
+    TEST_ASSERT_TRUE(latch.consume_first_entry());
+}
+
+static void test_hysteresis_does_not_retrigger_while_oscillating() {
+    // 先跌破 20% 觸發並消費首次事件，之後在 20~25% 之間來回抖動，不可重複觸發提示
+    ems::LowBatteryLatch latch;
+    latch.update(19);
+    TEST_ASSERT_TRUE(latch.consume_first_entry());
+    latch.update(23);
+    latch.update(21);
+    latch.update(24);
+    TEST_ASSERT_FALSE(latch.consume_first_entry());
+}
+
+static void test_first_entry_cleared_on_recovery_without_consume() {
+    // 進入低電量後未消費即回升——解除時必須一併清掉待消費事件，
+    // 否則 consume_first_entry() 會在非低電量狀態下回 true（違反契約）。
+    // 這條清除線目前無任何測試守住，刪掉它 26 個測試全綠。
+    ems::LowBatteryLatch latch;
+    latch.update(18);   // 進入，掛起事件，但不消費
+    latch.update(30);   // 回升解除
+    TEST_ASSERT_FALSE(latch.consume_first_entry());
+}
+
+static void test_low_battery_not_triggered_at_21_percent() {
+    // ENTER 門檻的寬鬆方向：21% 不應觸發。
+    // 現有測試只驗 20% 會觸發（擋住門檻降到 19），沒有測試擋住門檻升到 21。
+    ems::LowBatteryLatch latch;
+    latch.update(21);
+    TEST_ASSERT_FALSE(latch.is_low());
+}
+
+static void test_low_battery_does_not_clear_at_24_percent() {
+    // EXIT 門檻的寬鬆方向：24% 不應解除。
+    // 現有測試只驗 25% 會解除（擋住門檻升到 26），沒有測試擋住門檻降到 24。
+    ems::LowBatteryLatch latch;
+    latch.update(20);
+    latch.update(24);
+    TEST_ASSERT_TRUE(latch.is_low());
+}
+
+static void test_offline_sentinel_does_not_clear_low_battery() {
+    // 哨兵值不得清除已鎖存的低電量狀態。
+    // 255 = 燃料計不在線（spec §4.4）；若沒有契約防呆，255 >= 25 會誤判為電量回升。
+    ems::LowBatteryLatch latch;
+    latch.update(18);   // 進入低電量
+    latch.update(255);  // 感測器離線
+    TEST_ASSERT_TRUE(latch.is_low());              // 鎖存不得被清
+    TEST_ASSERT_TRUE(latch.consume_first_entry()); // 待消費事件也不得被清
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_vcell_golden_value_from_hardware_acceptance);
@@ -179,5 +287,17 @@ int main(int, char**) {
     RUN_TEST(test_trend_ignores_middle_sample_only_endpoints_matter);
     RUN_TEST(test_trend_delta_equal_to_deadband_stays_idle);
     RUN_TEST(test_trend_delta_just_over_deadband_charges);
+    RUN_TEST(test_low_battery_not_triggered_above_threshold);
+    RUN_TEST(test_low_battery_triggers_at_or_below_20);
+    RUN_TEST(test_low_battery_stays_low_between_thresholds);
+    RUN_TEST(test_low_battery_clears_at_or_above_25);
+    RUN_TEST(test_first_entry_consumed_only_once);
+    RUN_TEST(test_first_entry_rearms_after_recovery);
+    RUN_TEST(test_boot_already_low_counts_as_entry);
+    RUN_TEST(test_hysteresis_does_not_retrigger_while_oscillating);
+    RUN_TEST(test_first_entry_cleared_on_recovery_without_consume);
+    RUN_TEST(test_low_battery_not_triggered_at_21_percent);
+    RUN_TEST(test_low_battery_does_not_clear_at_24_percent);
+    RUN_TEST(test_offline_sentinel_does_not_clear_low_battery);
     return UNITY_END();
 }
