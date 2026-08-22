@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
 - **建立**：2026-08-22
-- **狀態**：W1 進行中（Task 3/14 完成，Task 4 尚未開工）
+- **狀態**：W1 進行中（Task 4 完成、Task 5 待補 review，Task 6 尚未開工）
 - **branch**：`feat/phase-g-system-settings`
 
 ---
@@ -15,12 +15,14 @@ MAX17043 燃料計硬體驗收通過，主韌體的讀取層做到一半。已�
 | 硬體 | ✅ 驗收通過（I2C `0x36`、3.844V vs 電表 3.88V） |
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
-| W1 讀取層 | 🔄 Task 1–3 完成，Task 4–6 待做 |
+| W1 讀取層 | 🔄 Task 1–5 完成（Task 5 待補 review），Task 6 待做 |
 | W2 顯示層 | ⬜ Task 7–9 |
 | W3 低電量行為 | ⬜ Task 10–11 |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-`firmware/lib/ems_fuel_gauge/` 目前 30 個 native test 全綠。全套 531 cases / 530 通過（唯一未過的 `test_storage_hw` 是**既有**的編譯錯誤，已用 worktree checkout 到本工作起點驗證過，與本 wave 無關）。
+`firmware/lib/ems_fuel_gauge/` 目前 41 個 native test 全綠。全套 542 cases / 541 通過（唯一未過的 `test_storage_hw` 是**既有**的編譯錯誤，已用 worktree checkout 到本工作起點驗證過，與本 wave 無關）。
+
+> 📌 §3～§6 是 2026-08-22 上半場（Task 1–3）的紀錄，**§7 才是最新進度**，兩者衝突時以 §7 為準。
 
 ---
 
@@ -35,13 +37,13 @@ docs/superpowers/plans/2026-08-22-phase-h-battery-display.md
 .superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md
 
 # 3. 確認目前狀態
-cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 30/30
+cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 41/41
 git log --oneline 7fdf1ee..HEAD                              # 本 wave 的 11 個 commit
 ```
 
 > ⚠️ `.superpowers/` 是 git-ignored 的本機工作區。換機器就沒有了——本文件是它的持久化摘要，但 ledger 內的逐輪細節（每個 review 面向的原始 findings）只在本機。
 
-**續跑方式**：用 `superpowers:subagent-driven-development`，它會偵測 ledger 並從第一個沒有 `complete` 記號的 task 接續。下一個是 **Task 4**（backend 介面與 Null 降級實作）。
+**續跑方式**：用 `superpowers:subagent-driven-development`，它會偵測 ledger 並從第一個沒有 `complete` 記號的 task 接續。**但先補完 Task 5 的 review（見 §7）**，再進 Task 6（main.cpp 掛載與 10 秒輪詢）。
 
 ---
 
@@ -132,3 +134,81 @@ spec 定義 `batteryPercent == 255` 為「燃料計不在線」，而解除判�
 - 這個檔案的重複失效模式（註解與實作不符、測試無鑑別力）
 - Task 5 的合理性上界要求已寫進計畫，Task 4 只負責定義 `valid` 語意
 - 常數放置慣例已寫進 `fuel_gauge_logic.h` 檔頭，新增符號照著做
+
+
+---
+
+## 7. 2026-08-22 續跑：Task 4 完成、Task 5 待補 review
+
+### ⚠️ 未結清的債：Task 5 的 review chain
+
+commit `fb9968f`（Task 5，MAX17043 I2C backend）**還沒跑過 review**。當天兩個 implementer
+相繼撞上 session limit，SDD task review 與專案 Tier 3 六面向都派不出去。
+
+其中 fix round 2 的收尾（復原一個被鑑別力檢查註解掉的守衛、補跑驗證、amend）是
+**controller 親自做的**，等於那段修改缺少它本該經過的 review。使用者已裁示：額度恢復後
+**補跑完整 review chain**，不用 `--force` 放行閘門。
+
+接手時第一件事就是這個：`Skill(commit-review) args: "tier=3 target=fb9968f"`，
+外加 SDD task review（package 用 `scripts/review-package <plan> 88f7fb3 fb9968f`）。
+
+### Task 4 / Task 5 產出
+
+| Task | commit | 產出 | fix 輪數 | review |
+|---|---|---|---|---|
+| 4 | `f6a9e07` | `FuelReading` / `FuelGaugeBackend` / `NullFuelGauge` | 1 | clean |
+| 5 | `fb9968f` | `Max17043Backend`、兩個合理性 predicate、`make_reading()` | 2 | **未跑** |
+
+`firmware/lib/ems_fuel_gauge/` 現有 41 個 native test；全套 542 cases / 541 通過
+（唯一 ERRORED 仍是既有的 `test_storage_hw`）。
+
+### 這兩個 task 抓到的實質問題
+
+**① 檔名撞名打壞既有測試（Task 4，CRITICAL）**
+
+新建的 `null_backend.h` 與既有 `ems_rtc/null_backend.h` basename 相同，native env 的
+`-I$PROJECT_LIB_DIR` 加 LDF 解析順序讓 `test_rtc` / `test_rtc_integration` 撈錯檔。
+已改名為 `null_fuel_gauge.h`。**七個 reviewer 沒有一個抓到**——它們全都只跑聚焦套件
+（是綠的），沒人跑完整套件、也沒人跟 BASE 對照。
+
+**② 兩個編譯環境的 C++ 標準不同（Task 4 埋、Task 5 才爆）**
+
+`native` 是 `-std=gnu++17`，`esp32-s3-devkitc-1` 是 `-std=gnu++11`（Arduino core 2.0.17 預設）。
+Task 4 review 要求給 `FuelReading` 加 default member initializer——C++11 下帶 NSDMI 的 struct
+不是 aggregate，`{false, 0, 0}` 編不過。改用帶預設值的 `constexpr explicit` constructor 解決。
+
+**③ 「pio run SUCCESS」對新 lib 是空驗證**
+
+`firmware/src/` 沒有任何檔案引用 `ems_fuel_gauge`，LDF 因此不把它拉進 esp32 build——
+那個 SUCCESS 完全沒編到該 lib。任何 task 只要往 `lib/<新 lib>/` 加檔案、而下一個 task 才把它
+接進 `main.cpp`，中間那個 task 的編譯驗收證據**全部是空的**。驗法：隔離 worktree 在 `main.cpp`
+注入暫時 include 強制 LDF 拉入，**必須看到該 `.cpp.o` 出現在編譯清單**，只看 `[SUCCESS]` 不算數。
+
+**④ 合理性檢查蓋錯欄位（Task 5，CRITICAL）**
+
+`mv` 有上界檢查、`percent` 完全沒有——而 spec 明訂低電量門檻**用 SOC 判定**。
+`soc_raw_to_percent()` 把 ≥100 夾到 100（那是為充飽超衝設計的，不是異常偵測），所以垃圾
+`raw_soc` 會變成「100% 滿電、valid=true」，把已鎖存的低電量警示直接解除且不重新提醒。
+
+### 殘餘風險（未解決，刻意記錄）
+
+- **`read()` 有沒有真的呼叫 `make_reading()`，沒有任何 native 測試守得住**。判定邏輯本身已有
+  鑑別力（移除任一守衛都會讓對應測試變紅），但 `max17043_backend.cpp` 被 `#ifdef ARDUINO`
+  排除在 native build 之外，所以把呼叫整行拿掉，41 個測試照樣全綠。靠 Task 6 整合後的
+  on-target 驗證覆蓋。
+- **`PLAUSIBLE_SOC_WHOLE_MAX = 110` 是推導初值**，與死區 3mV 同樣需要上機實測校正。
+- **`src_fuel_gauge_check/main.cpp` 重複實作了一份 I2C 讀取邏輯**，且測試裡的實機黃金值
+  （VCELL `0xC030` / SOC `0x366A`）來自那支舊工具，**從未經過 `Max17043Backend`**。
+  使用者已裁示**不改**（改完需接實機重驗）。所以「日後 on-target 驗證」目前對應不到會執行
+  產品程式碼的路徑——這是已接受的現況，不是待辦。
+- **失敗原因無法區分**：`read()` 的五條失敗路徑都收斂成同一個無資訊的 `FuelReading()`，
+  沒有 log 也沒有計數。已改為把「失敗路徑要 log」寫進 Task 6 計畫；診斷 enum 留待現場除錯
+  真的需要時再加。
+
+### 計畫與 spec 的變更（已 commit）
+
+- `7f21e8f`：Global Constraints 的死區 ±0.5% 改為 VCELL ±3mV（`3587283` 漏改）；File Structure
+  表更正 `ChargeState` 實際位置
+- `88f7fb3`：Task 6 加入 `to_display_percent()` 的具名共用 helper 要求（255 哨兵轉譯只能有一個
+  出口）；`pollBattery()` 的 `g_battery_low = false` 改為 `g_battery_latch.is_low()`——原寫法會讓
+  一次暫時性 I2C 失敗把已觸發的低電量閃爍靜默熄滅，正是 Task 3 要守的同一條不變式
