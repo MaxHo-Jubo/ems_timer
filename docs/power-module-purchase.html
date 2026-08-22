@@ -990,16 +990,20 @@ void checkSdOta() {
     </table>
 
     <p style="font-weight: 600; margin: 16px 0 6px;">I2C 位址表（避衝突）</p>
+    <div class="note note-red">
+      ⚠️ <strong>本表隨 §9.8 SparkFun Thing Plus 方案（未採用）一起規劃，走的是該板 Qwiic 線路（GPIO 8/9），不是現況。</strong> 本專案實際採用 GPIO 42/41——當前線路實況見 GPIO 分配文件的「當前 I2C bus 位址表」。以下補上各裝置的實際狀態（2026-08-22 校準）。
+    </div>
     <table>
-      <thead><tr><th>裝置</th><th>位址</th><th>來源</th></tr></thead>
+      <thead><tr><th>裝置</th><th>位址</th><th>本專案實際狀態</th></tr></thead>
       <tbody>
-        <tr><td>MCP23017</td><td><code>0x20</code></td><td>新採購</td></tr>
-        <tr><td>MAX17048 燃料計</td><td><code>0x36</code></td><td>板載</td></tr>
-        <tr><td>SH1106 OLED</td><td><code>0x3C</code></td><td>現行</td></tr>
-        <tr><td>DS3231 RTC（Dev-Phase 3）</td><td><code>0x68</code></td><td>預留</td></tr>
+        <tr><td>MCP23017</td><td><code>0x20</code></td><td><span class="badge badge-amber">⏸ 尚未採購</span>（按鈕擴充候選）</td></tr>
+        <tr><td>燃料計（本表寫 MAX17048 = SparkFun 板載款）</td><td><code>0x36</code></td><td><span class="badge badge-green">✅ 已上機</span> 實際採用 <strong>MAX17043</strong> 獨立模組（2026-08-22 驗收，見 §10.8）</td></tr>
+        <tr><td><s>SH1106 OLED</s></td><td><s><code>0x3C</code></s></td><td><span class="badge badge-red">❌ 已移除</span> 2026-05-08 顯示器改用 TFT ST7789 走 SPI，不再佔 I2C</td></tr>
+        <tr><td>DS3231 RTC</td><td><code>0x68</code></td><td><span class="badge badge-green">✅ 已上機</span>（2026-05-24，非本表所寫的「預留」）</td></tr>
+        <tr><td>AT24C32 EEPROM</td><td><code>0x57</code></td><td><span class="badge badge-green">✅ 已上機</span>（DS3231 模組附掛；本表漏列，2026-08-22 實機掃描發現）</td></tr>
       </tbody>
     </table>
-    <div class="note note-green">✅ 無衝突。</div>
+    <div class="note note-green">✅ 位址無衝突。</div>
 
     <p style="font-weight: 600; margin: 16px 0 6px;">按鍵分配（對齊 PM #6）</p>
     <table>
@@ -1450,7 +1454,7 @@ Time left: ~3h 20m (放電中)</pre>
         <tr>
           <td>2026-07-22<br>2026-08-22</td>
           <td><span class="badge badge-green">v2.1</span></td>
-          <td>§10.7 補上「鱷魚夾銜接」變體與 2mm 焊盤短路風險；<strong>新增 §10.8 上機驗收紀錄</strong>（四項實測數據與四項未驗證項目）；§10.1 / §10.2 / §10.4 狀態由「尚未上機接線」改為「已驗收」；改寫 §10.6 已失效的「零訊號路徑」結論</td>
+          <td>§10.7 補上「鱷魚夾銜接」變體與 2mm 焊盤短路風險；<strong>新增 §10.8 上機驗收紀錄</strong>（四項實測數據與四項未驗證項目）；§10.1 / §10.2 / §10.4 狀態由「尚未上機接線」改為「已驗收」；改寫 §10.6 已失效的「零訊號路徑」結論；§9.8.3 I2C 位址表加註「屬 SparkFun 方案（未採用）的 Qwiic 線路規劃、非現況」並補各裝置實際狀態</td>
           <td>Max Ho</td>
         </tr>
       </tbody>

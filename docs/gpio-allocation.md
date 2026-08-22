@@ -133,6 +133,20 @@
 >
 > 驗收工具：`pio run -e i2c-scan -t upload`（掃 bus）與 `pio run -e fuel-gauge-check -t upload`（讀 VCELL/SOC），兩者皆為獨立環境，不影響主韌體。
 
+#### 當前 I2C bus 位址表（GPIO 42=SDA / 41=SCL）
+
+> 📌 **這是本專案實際使用的 I2C bus，查現況以本表為準。** `hardware-procurement-v2.md` 與 `power-module-purchase.md §9.8.3` 另有兩張 I2C 位址表，那是 SparkFun Thing Plus 方案（**未採用**）的 Qwiic bus（GPIO 8/9）規劃推算，不是現況。
+
+| 位址 | 裝置 | 狀態 |
+|------|------|------|
+| `0x36` | MAX17043 燃料計 | ✅ 已上機（2026-08-22 驗收） |
+| `0x57` | AT24C32 EEPROM | ✅ 已上機（DS3231 模組附掛，非獨立採購） |
+| `0x68` | DS3231 RTC | ✅ 已上機（2026-05-24） |
+
+2026-08-22 實機掃描確認 bus 上僅此三個位址回應，無衝突。
+
+**已不在此 bus 上**：SH1106 OLED（`0x3C`）——2026-05-08 顯示器改用 TFT ST7789 走 SPI，OLED 移除，GPIO 41/42 因此釋出給 I2C 周邊。**尚未接入**：MCP23017（`0x20`）按鈕擴充候選，尚未採購。
+
 ---
 
 ## 6. 互斥約束總覽
@@ -180,3 +194,4 @@
 | 2026-05-24 | §5.4 DS3231 從「計畫」→「已上機」 | Dev-Phase 3 RTC 整合 6 wave 完成（見 `docs/ds3231-integration-plan.md`），實機 boot log 確認 0x68 偵測 + seed `g_ts_state`；OHCA case 時戳改用真實 epoch；BLE time_sync Applied 反向寫回 DS3231。永續性測試（斷電 30 秒重開）待補 |
 | 2026-07-22 | §5.4 新增 MAX17043 燃料計（0x36，掛 41/42 bus）| 使用者確認實際採購型號為 MAX17043（原規劃 MAX17048），已購入尚未上機接線 |
 | 2026-08-22 | §5.4 MAX17043 從「尚未上機」→「實機驗證通過」 | 上機接線後 i2c-scan 確認 0x36 在線且與 0x57/0x68 共存無衝突；fuel-gauge-check 讀出 VCELL 3.844V / SOC 54.4%，對比電表 3.88V 差 36mV，確認 VDD 為真實電池電壓。驗收紀錄見 `power-module-purchase.md §10.8` |
+| 2026-08-22 | §5.4 新增「當前 I2C bus 位址表」 | 專案原本沒有任何一張表記錄 42/41 bus 上實際掛了什麼——既有兩張 I2C 位址表（`hardware-procurement-v2.md`、`power-module-purchase.md §9.8.3`）都是 SparkFun Thing Plus 方案的 Qwiic bus（GPIO 8/9）規劃推算，易被誤讀為現況。新表以實機掃描為依據（`0x36`/`0x57`/`0x68`），並標明 SH1106 已隨 TFT 改 SPI 而移除、MCP23017 尚未採購 |

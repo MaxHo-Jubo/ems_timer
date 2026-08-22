@@ -486,16 +486,20 @@
     </div>
 
     <h3 class="sub-title">I2C 位址表（避衝突確認）</h3>
+    <div class="note note-red">
+      ⚠️ <strong>本表是 SparkFun Thing Plus 方案的規劃推算，不是現況。</strong> 上方接線走的是該板的 Qwiic 線路（GPIO 8/9），而本專案實際採用 GPIO 42/41——要查當前線路上有什麼，看 GPIO 分配文件的「當前 I2C bus 位址表」。以下保留原規劃供該方案評估參考，並補上各裝置在本專案的實際狀態（2026-08-22 校準）。
+    </div>
     <table>
-      <thead><tr><th>裝置</th><th>位址</th><th>來源</th></tr></thead>
+      <thead><tr><th>裝置</th><th>位址</th><th>本專案實際狀態</th></tr></thead>
       <tbody>
-        <tr><td>MCP23017</td><td><code>0x20</code></td><td>新採購</td></tr>
-        <tr><td>MAX17043 燃料計</td><td><code>0x36</code></td><td>獨立模組（2026-08-22 已接線驗收）</td></tr>
-        <tr><td>SH1106 OLED</td><td><code>0x3C</code></td><td>現行</td></tr>
-        <tr><td>DS3231 RTC（Dev-Phase 3）</td><td><code>0x68</code></td><td>預留</td></tr>
+        <tr><td>MCP23017</td><td><code>0x20</code></td><td><span class="badge badge-amber">⏸ 尚未採購</span>（按鈕擴充候選）</td></tr>
+        <tr><td>燃料計（原表寫 MAX17048）</td><td><code>0x36</code></td><td><span class="badge badge-green">✅ 已上機</span> 實際採用 <strong>MAX17043</strong>，接在 42/41 線路而非 Qwiic（2026-08-22 驗收）</td></tr>
+        <tr><td><s>SH1106 OLED</s></td><td><s><code>0x3C</code></s></td><td><span class="badge badge-red">❌ 已移除</span> 2026-05-08 顯示器改用 TFT ST7789 走 SPI，不再佔 I2C</td></tr>
+        <tr><td>DS3231 RTC</td><td><code>0x68</code></td><td><span class="badge badge-green">✅ 已上機</span>（2026-05-24，非原表所寫的「預留」）</td></tr>
+        <tr><td>AT24C32 EEPROM</td><td><code>0x57</code></td><td><span class="badge badge-green">✅ 已上機</span>（DS3231 模組附掛；原表漏列，2026-08-22 實機掃描發現）</td></tr>
       </tbody>
     </table>
-    <div class="note note-green">✅ 無衝突。</div>
+    <div class="note note-green">✅ 位址無衝突。</div>
   </div>
 </div>
 
@@ -797,7 +801,7 @@
         <tr><td>2026-05-07</td><td>v2.2</td><td>「給 PM 的 TL;DR」改名「總結」並前移至 §3，§3~§11 全數後延一號；§12 風險與注意事項保留為倒數第二章</td><td>Max Ho</td></tr>
         <tr><td>2026-05-13</td><td>v2.2-html</td><td>頁首新增 §0「目前開發硬體清單與狀態」11 項快照表（含採購/接線狀態 + 蝦皮連結）；補上排針規格 6 項確認清單 + 下單前檢核點；對應 markdown v2.2</td><td>Max Ho</td></tr>
         <tr><td>2026-05-14</td><td>v2.3</td><td>更新採購狀態：#9 電池、#10 PowerBoost 1000C 均於 5/14 下單；新增 #12 聯騰 TP4056 一體版（5/14 下單，PowerBoost 到貨前 pilot 主驗證）與 #13 MAX17048 燃料計（延後採購，觸發條件指向 power-module-purchase.md §10.4）；§3 總結與 §11 短期決策反映採購進度；對應 markdown v2.3</td><td>Max Ho</td></tr>
-        <tr><td>2026-07-22<br>2026-08-22</td><td>v2.4</td><td>修正 #13 燃料計實際採購型號為 <strong>MAX17043</strong>（非原規劃 MAX17048）；2026-08-22 補上機驗收結果——已接線，I2C <code>0x36</code> 與 RTC 共用線路無衝突，讀數 3.844V 對比電表 3.88V（差 36mV）通過，#13 接線欄由 ⏳ 改 ✅；§3 總結與 I2C 位址表同步更新；對應 markdown v2.4</td><td>Max Ho</td></tr>
+        <tr><td>2026-07-22<br>2026-08-22</td><td>v2.4</td><td>修正 #13 燃料計實際採購型號為 <strong>MAX17043</strong>（非原規劃 MAX17048）；2026-08-22 補上機驗收結果——已接線，I2C <code>0x36</code> 與 RTC 共用線路無衝突，讀數 3.844V 對比電表 3.88V（差 36mV）通過，#13 接線欄由 ⏳ 改 ✅；§3 總結同步更新；I2C 位址表加註「屬 SparkFun 方案（未採用）的 Qwiic 線路規劃、非現況」並補各裝置實際狀態（SH1106 已移除、DS3231 已上機、補列漏掉的 AT24C32 <code>0x57</code>）；對應 markdown v2.4</td><td>Max Ho</td></tr>
       </tbody>
     </table>
   </div>
