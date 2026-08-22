@@ -234,8 +234,10 @@ VCELL 低 4 bit 是無效位元，測試明確斷言改變它們不影響結果�
 - Test: `firmware/test/test_fuel_gauge_logic/test_fuel_gauge_logic.cpp`
 
 **Interfaces:**
-- Consumes: Task 1 的 `soc_raw_to_percent`
-- Produces: `ems::ChargeState` enum、`ems::ChargeTrendTracker` class（`push(uint8_t percent)`、`state() const -> ChargeState`、`reset()`）
+- Consumes: Task 1 的 `vcell_raw_to_mv`
+- Produces: `ems::ChargeState` enum、`ems::ChargeTrendTracker` class（`push(uint16_t millivolts)`、`state() const -> ChargeState`、`reset()`）
+
+> ⚠️ **2026-08-22 修訂**：趨勢輸入由 SOC(%) 改為 **VCELL(mV)**，死區由 ±0.5% 改為 **±3mV**。原設計雙向失效——`uint8_t` 百分比的量化粒度大於 30 秒窗內的真實充電訊號（500mA 下僅 0.42%），導致既漏報充電、又被 ±1 抖動誤報。完整推導見 spec §3.4.1。本 task 若已按舊版實作，需改參數型別、死區常數與全部測試數列。
 
 - [ ] **Step 1: 寫失敗測試**
 
@@ -828,6 +830,12 @@ constexpr uint8_t MAX17043_REG_VCELL   = 0x02;  // 電池電壓 A/D 讀值
 constexpr uint8_t MAX17043_REG_SOC     = 0x04;  // 電量百分比
 constexpr uint8_t MAX17043_REG_VERSION = 0x08;  // 晶片版本，用於 probe
 
+/** 合理性上界（mV）：單節 LiPo 充飽約 4.2V，留餘裕取 4400。
+ *  超過此值代表讀值不可信（I2C 位元翻轉／EMI），而非電池真的有那麼高的電壓。
+ *  下界不設：0mV 可能是「電池真的沒電」的合法讀數，不可與「讀值異常」混為一談——
+ *  區分兩者靠 FuelReading.valid，不靠數值本身。 */
+constexpr uint16_t PLAUSIBLE_MAX_MV = 4400;
+
 class Max17043Backend : public FuelGaugeBackend {
 public:
     /**
@@ -895,7 +903,19 @@ FuelReading Max17043Backend::read() {
     }
 
     // STEP 04: 換算交給純邏輯層（native 已測過）
-    return {true, vcell_raw_to_mv(raw_vcell), soc_raw_to_percent(raw_soc)};
+    const uint16_t mv      = vcell_raw_to_mv(raw_vcell);
+    const uint8_t  percent = soc_raw_to_percent(raw_soc);
+
+    // STEP 05: 合理性上界——單節 LiPo 物理上不可能超過 PLAUSIBLE_MAX_MV。
+    //          I2C 位元翻轉／EMI 干擾下，讀取本身會成功（有 ACK）但資料是垃圾，
+    //          此時回 valid=false 讓上層能區分「讀到異常值」與「正常讀數」。
+    //          不做這層檢查的話，垃圾值會被包裝成「電量 100%、一切正常」——
+    //          低電量警示系統最不該有的失效方向（Task 1/2 review 的 Important F）。
+    if (mv > PLAUSIBLE_MAX_MV) {
+        return {false, 0, 0};
+    }
+
+    return {true, mv, percent};
 }
 
 bool Max17043Backend::read_register16(uint8_t reg, uint16_t& out_value) {
@@ -1045,9 +1065,11 @@ static void pollBattery() {
     }
 
     // STEP 03: 更新趨勢與低電量閂鎖
+    //          趨勢用電壓（mV）而非百分比——百分比的量化粒度大於 30 秒窗內的真實
+    //          充電訊號，會同時造成漏報與誤報（spec §3.4.1）
     g_battery_percent    = reading.percent;
     g_battery_millivolts = reading.millivolts;
-    g_battery_trend.push(reading.percent);
+    g_battery_trend.push(reading.millivolts);
     g_battery_charge_state = g_battery_trend.state();
     g_battery_latch.update(reading.percent);
     g_battery_low = g_battery_latch.is_low();
