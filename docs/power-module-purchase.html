@@ -130,6 +130,7 @@
 <div class="meta-box">
   <div><span class="meta-label">適用階段：</span><span class="meta-value">Dev-Phase 2 起</span></div>
   <div><span class="meta-label">建立日期：</span><span class="meta-value">2026-05-06</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-08-22</span></div>
   <div><span class="meta-label">負責人：</span><span class="meta-value">Max Ho</span></div>
   <div><span class="meta-label">對應 SoT：</span><span class="meta-value">V1 §20.4 / §21.1</span></div>
 </div>
@@ -1094,10 +1095,10 @@ Time left: ~3h 20m (放電中)</pre>
           <td>對比聯騰山寨板，驗證真實 load-sharing 行為</td>
         </tr>
         <tr>
-          <td><strong>MAX17048 燃料計</strong></td>
+          <td><strong>MAX17043 燃料計</strong></td>
           <td>UX 加值</td>
-          <td><span class="badge badge-amber">⏸ 延後採購</span></td>
-          <td>等電源穩定 + PM 確認 UX 後再買（見 §10.4）</td>
+          <td><span class="badge badge-green">✅ 已上機驗收（2026-08-22）</span></td>
+          <td>實際到手型號為 MAX17043（原規劃 17048），已接線並通過讀數驗收（見 §10.8）</td>
         </tr>
       </tbody>
     </table>
@@ -1110,7 +1111,7 @@ Time left: ~3h 20m (放電中)</pre>
       <li>觀察「USB-C 拔插時 ESP32 是否 reset」（山寨板最常見的雷）</li>
       <li>救護現場跑半天～一天，確認穩定無 reset</li>
       <li>PowerBoost 到貨後重做 Step 3~4，對比 load-sharing 行為差異</li>
-      <li>確認電源拓樸後 → 採購 MAX17048（時機見 §10.4）</li>
+      <li><span class="badge badge-green">✅ 已完成</span> 燃料計上機接線 + 讀數驗收（2026-08-22，先於第 3~6 步執行，見 §10.8）</li>
     </ol>
 
     <h3 class="sub-title">10.3 為何選聯騰一體版 vs「TP4056 純充電板 + MT3608 升壓板」兩片串接</h3>
@@ -1128,19 +1129,19 @@ Time left: ~3h 20m (放電中)</pre>
       → <strong>聯騰一體版焊接工少一倍、debug 風險低</strong>，量產之前都用這個。
     </div>
 
-    <h3 class="sub-title">10.4 MAX17048 採購觸發點</h3>
-    <p>不急著買，<strong>等下面任一條件滿足再下單</strong>：</p>
+    <h3 class="sub-title">10.4 燃料計採購決策（已購入並驗收）</h3>
+    <div class="note note-green">
+      ✅ <strong>2026-08-22 狀態</strong>：實際到手型號為 <strong>MAX17043</strong>（原規劃 MAX17048）。兩者差別只在 43 少了充放電速率暫存器（剩餘時間需由韌體自行估算，不能直接讀），電量百分比、電壓讀取與接線方式完全相同。已上機接線並通過讀數驗收，詳見 §10.8。
+    </div>
+    <p>以下為當初設定的下單觸發條件，保留供歷史對照：</p>
     <table>
       <thead><tr><th>觸發條件</th><th>為何要等</th></tr></thead>
       <tbody>
-        <tr><td>聯騰版整合測試全綠</td><td>不穩定的電源會干擾 MAX17048 量測，先確認電源沒問題</td></tr>
-        <tr><td>PM 確認 UX 要顯示百分比 / 剩餘時間</td><td>若 PM 說「電量圖示閃就夠」（對齊 SoT §13.17 字面），MAX17048 可省</td></tr>
-        <tr><td>開始實作 Impl-Phase H（電源管理）</td><td>那時才會真正寫到 fuel gauge UI 程式碼</td></tr>
+        <tr><td>聯騰版整合測試全綠</td><td>不穩定的電源會干擾燃料計量測，先確認電源沒問題</td></tr>
+        <tr><td>PM 確認 UX 要顯示百分比 / 剩餘時間</td><td>若 PM 說「電量圖示閃就夠」（對齊 SoT §13.17 字面），燃料計可省</td></tr>
+        <tr><td>開始實作 Impl-Phase H（電源管理）</td><td>那時才會真正寫到電量顯示的程式</td></tr>
       </tbody>
     </table>
-    <div class="note note-blue">
-      <strong>推薦型號</strong>：Adafruit MAX17048（PID 5580）— 雙 JST-PH 接口可直接串在電池與 PowerBoost 之間、STEMMA QT 免焊 I2C、Adafruit_MAX1704X lib 直接套。
-    </div>
 
     <h3 class="sub-title">10.5 聯騰版未支援的功能（要記在工程已知缺陷）</h3>
     <table>
@@ -1153,14 +1154,14 @@ Time left: ~3h 20m (放電中)</pre>
     </table>
 
     <h3 class="sub-title">10.6 電池顯示能力現況與選項（Phase H 韌體參照）</h3>
-    <div class="note note-red">📌 <strong>做 SoT V1 Phase H（電源管理 / 電池顯示 / 低電量警告）前先讀本節。</strong> 結論：現有硬體（N16R8 + TFT + 聯騰一體板）韌體對電池「零訊號路徑」，要顯示任何電池資訊都得先補硬體訊號源。</div>
+    <div class="note note-green">✅ <strong>2026-08-22 現況更新：本節原結論已失效。</strong> 原文寫「韌體對電池零訊號路徑，要顯示任何電池資訊都得先補硬體訊號源」——選項 C（MAX17043 燃料計）已上機接線並通過驗收（見 §10.8），韌體現在讀得到電池電壓與電量百分比。以下 A / B / C 分析保留作為決策脈絡，說明當初為何沒走另外兩條路。</div>
 
-    <p><strong>為什麼現在什麼都讀不到</strong> — 兩條常見路徑都斷：</p>
+    <p><strong>為什麼不走 ADC 或數位狀態腳</strong>（2026-08-22 補上燃料計之前的困境）— 兩條常見路徑都斷，這也是最終選 C 的原因：</p>
     <ul>
       <li><strong>電壓 ADC 粗估 → 無 ADC 腳可用</strong>：ESP32-S3 的 ADC 只在 GPIO 1–20；本專案 GPIO 1/2/3（唯三 ADC1 腳）因 N16R8 模組把 SPI MOSI/SCK 逼上 GPIO 2/3、DC 上 GPIO 1，<strong>三支 ADC 全給 TFT</strong>（見 <code>gpio-allocation.md §5.1</code>）。空閒的 GPIO 43/44 是 UART0 腳、<strong>不具 ADC 能力</strong>。</li>
       <li><strong>充電狀態數位讀取 → 聯騰板沒拉狀態腳</strong>：聯騰一體板只有板上紅/綠充電 LED（韌體看不到），<strong>未拉出 CHRG/STDBY，也無 LBO 低電腳</strong>（見 §10.5）。</li>
     </ul>
-    <div class="note">→「沒有燃料計」不等於省事，目前是<strong>根本沒有訊號來源</strong>。</div>
+    <div class="note">→ 兩條路都要動硬體，而燃料計走的是既有 I2C 線路，反而是三者中改動最小的——這正是它最後被選上並實際落地的原因。</div>
 
     <p><strong>三個選項（由省到不省）</strong></p>
     <table>
@@ -1168,7 +1169,7 @@ Time left: ~3h 20m (放電中)</pre>
       <tbody>
         <tr><td><strong>A 數位狀態腳</strong></td><td>TP4056 CHRG/STDBY（+ 理想上 LBO）→ GPIO 43/44</td><td>⚡充電中 / ✅充飽 / 🔋低電量圖示閃（<strong>二元</strong>）</td><td>換/飛一片有拉出這些腳的板子（PowerBoost 有 LBO；或現板 IC CHRG 腳飛線）</td><td>❌ 不需</td></tr>
         <tr><td><strong>B 電壓 ADC</strong></td><td>電池電壓經分壓 → ADC 腳</td><td><strong>4 格粗略電量條</strong>（校準後靜態 ±10–15%，帶載飄；鋰電 3.7–3.9V 平坦區難分 40–80%）</td><td>要從 TFT 挪一支 ADC 腳出來，<strong>動 GPIO 重規劃</strong></td><td>✅ 需（現無）</td></tr>
-        <tr><td><strong>C MAX17048 燃料計</strong></td><td>I2C <code>0x36</code>（掛現有 41/42 bus，DS3231 在 0x68）</td><td>精準 %（±1%）+ 剩餘時間估算</td><td>同 I2C bus 再拉兩線 + 一顆晶片</td><td>❌（走 I2C）</td></tr>
+        <tr><td><strong>C MAX17043 燃料計</strong> <span class="badge badge-green">✅ 已採用並驗收</span></td><td>I2C <code>0x36</code>（掛現有 41/42 bus，DS3231 在 0x68）</td><td>精準電量 %（±1%）+ 電壓；剩餘時間需韌體自行估算（43 無此暫存器）</td><td>同 I2C bus 再拉兩線 + 一顆晶片</td><td>❌（走 I2C）</td></tr>
       </tbody>
     </table>
 
@@ -1176,16 +1177,93 @@ Time left: ~3h 20m (放電中)</pre>
     <ul>
       <li>SoT §2.1「電池 / 充電狀態顯示」+ 提醒行為表「低電量 → 圖示閃、不發聲」要的是<strong>圖示 + 低電警告</strong>，不是精準 %。<strong>選項 A 即可合規</strong>。</li>
       <li>但「<strong>4 格電量圖示</strong>」的分級（滿 / 中 / 低）需要<strong>電壓或燃料計的 level 資訊</strong>：選項 A 只給「二元低電 + 充電」，畫不出漸變格數；要真正 4 格條得走 B 或 C。</li>
-      <li>MAX17048 在採購清單（<code>hardware-procurement-v2.md #13</code>）標的是「<strong>選配 / UX 加值</strong>」，非 V1 硬需求。</li>
+      <li>燃料計在採購清單（<code>hardware-procurement-v2.md #13</code>）標的是「<strong>選配 / UX 加值</strong>」，非 V1 硬需求。</li>
     </ul>
 
-    <div class="note note-green"><strong>反直覺結論</strong>：只要合規（充電 + 低電閃）→ 選項 A，最小硬體改動、純數位接 GPIO 43/44 不碰 ADC。要電量 % / 4 格條 → <strong>別走 B，直接上 C（MAX17048）</strong> —— 因為 ADC 已被 TFT 佔滿，為電壓法動 TFT 腳位比「同 I2C bus 掛一顆燃料計」還麻煩。「沒燃料計」反而是最尷尬的中間態。</div>
+    <div class="note note-green"><strong>原判斷</strong>：要電量 % / 4 格條就直接上 C，別走 B——因為 ADC 已被 TFT 佔滿，為電壓法動 TFT 腳位比「同 I2C bus 掛一顆燃料計」還麻煩。<br><strong>2026-08-22 結果：判斷成立。</strong> 選項 C 落地只花兩條訊號線（併進既有 I2C 線路）加電池並聯，沒有動到任何 TFT 腳位，也沒碰 GPIO 重規劃。<strong>選項 A 現已不需要</strong>：燃料計同時給出電壓與電量，充電狀態可由趨勢推導，不必再為 CHRG/STDBY 飛線或換板。</div>
 
     <p><strong>動工前要先確認 / 補的事</strong></p>
     <ul class="check-list">
-      <li class="warn"><strong>現板 TP4056 CHRG 腳是否有可焊 pad</strong>（本節從「無 LBO pin」推斷狀態腳也沒拉出，但 CHRG 有可能在 IC 腳飛得到）→ 決定選項 A 是飛線還是換板</li>
-      <li class="warn">選定選項後，同步更新 <code>gpio-allocation.md</code>（新增狀態腳 / ADC 腳分配）與韌體 <code>main.cpp</code> 讀取邏輯</li>
+      <li><s>現板 TP4056 CHRG 腳是否有可焊 pad</s> → 已無此需求：走選項 C，不需要數位狀態腳</li>
+      <li>同步更新 GPIO 分配文件（已記載燃料計 <code>0x36</code> 掛在既有 I2C 線路）</li>
+      <li class="warn"><strong>韌體讀取邏輯尚未實作</strong>——目前主韌體開機不偵測燃料計，只有獨立的檢測程式讀得到。Impl-Phase H 要把讀取搬進主韌體</li>
       <li class="warn">韌體端電量圖示 UI 對齊 SoT 提醒行為表「低電量 → 圖示閃、不發聲」；4 格圖示規格落點見 memory「四格電量圖示規格來源」</li>
+      <li class="warn"><strong>補驗 §10.8 未驗證項目</strong>：充放電動態追蹤、低電量區（接近 3.0V）精度——後者正是低電量警告最需要準的區間，目前只在 3.84V 中段驗過</li>
+    </ul>
+
+    <h3 class="sub-title">10.7 MAX17043 實體板接線與安全測試</h3>
+    <p>買到的是紅色 SparkFun 款「LiPo Fuel Gauge」擴充板複刻版：JST 電池座直接接晶片電源腳，<strong>晶片由電池自己供電，不需另外餵電</strong>；背面排針為 2×3（<code>QST/ALT</code>、<code>SCL/GND</code>、<code>SDA/VCC</code>）。</p>
+
+    <div class="note note-red">
+      ⚠️ <strong>最容易接錯的一點</strong>：排針上的 <code>VCC</code> <strong>不是電源輸入腳</strong>，而是電池電壓的外露節點。從主控板的 3.3V 接一條進去會讓兩個電源節點互打；而且這顆是電壓式燃料計，必須量到真實電池電壓（3.0~4.2V），接穩壓後的 3.3V 會讀到恆定值、電量整個失真。
+    </div>
+
+    <table>
+      <thead><tr><th>板子接點</th><th>接到哪</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr><td>JST（+/−）或旁邊 "+"/"−" 焊盤</td><td>LiPo 電池，與 TP4056 板 <strong>並聯</strong></td><td>唯一電源輸入，直接餵晶片</td></tr>
+        <tr><td><code>GND</code> 排針</td><td>主控板 GND</td><td>系統共地</td></tr>
+        <tr><td><code>SDA</code> 排針</td><td><strong>GPIO 42</strong></td><td>掛既有 I2C 線路，位址 <code>0x36</code>，與 RTC（<code>0x68</code>）不衝突</td></tr>
+        <tr><td><code>SCL</code> 排針</td><td><strong>GPIO 41</strong></td><td>同上</td></tr>
+        <tr><td><code>VCC</code> 排針</td><td><span class="badge badge-red">不接</span></td><td>見上方紅框</td></tr>
+        <tr><td><code>QST</code> / <code>ALT</code></td><td>不接</td><td>選用功能，暫不需要</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>電池並聯方式</strong>（電池只有一個接頭，要分接給兩塊板子。兩塊板的 JST 座都是母頭，效果相同，優先選順位 1）</p>
+    <table>
+      <thead><tr><th>順位</th><th>做法</th><th>特點</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-green">1</span></td><td>轉接器鏈：PH2.0 公轉母 + 母轉雙公分接線</td><td>全程標準公母對插，<strong>不用焊接</strong>；兩種都是常見規格零件</td></tr>
+        <tr><td><span class="badge badge-blue">2</span></td><td>從 TP4056 的 B+/B− 飛線，焊到燃料計旁的備用焊盤</td><td>不用等零件到貨，最快能動手；焊前務必先拔電池</td></tr>
+        <tr><td><span class="badge badge-amber">3</span></td><td>Wago 免焊端子 + 3 條 pigtail</td><td>零件與接點數最多，備選</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note note-red">
+      <strong>極性接反的後果</strong>：晶片電源腳沒有反接保護，接反等於用晶片自己短路電池，<strong>晶片幾乎必死</strong>。電池內建保護板通常會偵測到並即時切斷，多半是「晶片死、電池被保護、其他不受影響」，但發熱或異味要立刻拔開隔離。<br>
+      另注意：若用鱷魚夾暫接 TP4056 的 B+/B−，那兩隻腳間距只有 2mm，夾嘴容易同時碰到兩隻造成瞬間短路——先各焊一小段短線讓夾子夾「線對線」。
+    </div>
+
+    <p><strong>測試順序</strong>（把錯誤代價封頂在這顆晶片，不波及主控板與 RTC）</p>
+    <ol style="margin: 8px 0 0 20px; line-height: 1.7;">
+      <li><strong>只接電源，訊號線先不接主控板</strong></li>
+      <li>通電後用電表量板子，確認讀數為<strong>正值</strong>且落在 3.0~4.2V（讀到負值或 0 代表接反，立刻拔開重接）</li>
+      <li>確認電壓正常、板子不發燙不冒煙，才接上 SDA / SCL 兩條訊號線</li>
+      <li>全部接妥後掃描 I2C，確認能在 <code>0x36</code> 掃到裝置</li>
+    </ol>
+    <div class="note note-blue">📌 第 1~2 步先不接訊號線是關鍵：就算極性真的接反，代價封頂在一顆約 NT$50 的晶片，不會透過共用線路波及主控板或同一條線上的 RTC。</div>
+
+    <h3 class="sub-title">10.8 上機驗收紀錄（2026-08-22，實測通過）</h3>
+    <div class="note note-green">
+      ✅ <strong>結論：硬體層驗收通過。</strong> 通訊、位址、供電來源、讀數合理性四項全綠，可進入 Impl-Phase H 韌體整合。
+    </div>
+
+    <table>
+      <thead><tr><th>燃料計讀到的電池電壓</th><th>對應電量百分比</th><th>與電表實測值的差距</th></tr></thead>
+      <tbody><tr><td><strong>3.844 V</strong></td><td><strong>54.4 %</strong></td><td><strong>36 mV</strong>（門檻 50mV）</td></tr></tbody>
+    </table>
+
+    <table>
+      <thead><tr><th>#</th><th>驗證項目</th><th>實測結果</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>通訊與位址</td><td>掃描到 <code>0x36</code>，連掃 5 輪無掉線</td></tr>
+        <tr><td>2</td><td>同線路共存</td><td>燃料計 <code>0x36</code> / RTC 附掛記憶體 <code>0x57</code> / RTC <code>0x68</code> 三者同時在線，無位址衝突</td></tr>
+        <tr><td>3</td><td>讀數</td><td>電壓 <strong>3.844V</strong>、電量 <strong>54.4%</strong>，兩者在鋰電池放電曲線上互相吻合</td></tr>
+        <tr><td>4</td><td>供電來源</td><td>電表量電池 <strong>3.88V</strong>，與晶片讀數差 <strong>36mV</strong>（門檻 50mV）</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note note-blue">
+      第 4 項是關鍵：36mV 落在一般手持電表本身的精度誤差帶（約 ±39mV）之內，兩者一致到儀器分不出高下，確認<strong>晶片吃到的是真實電池電壓，而非誤接的穩壓 3.3V</strong>。
+    </div>
+
+    <p><strong>本次「未」驗證的項目</strong>（別當成已驗完）</p>
+    <ul class="check-list">
+      <li class="warn"><strong>充放電動態追蹤</strong>：只在單一靜態工作點（3.88V / 54%）比對過，未驗證充電或放電過程中讀數是否跟得上</li>
+      <li class="warn"><strong>電量演算法收斂</strong>：未測試更換電池後是否需要重新校正</li>
+      <li class="warn"><strong>長時間穩定性</strong>：最長連續觀察 18 秒，未做小時級的漂移觀測</li>
+      <li class="warn"><strong>低電量區精度</strong>：電池在 3.84V 中段，未驗證接近 3.0V 截止區的讀數可信度——而這恰好是低電量警告最需要準確的區間</li>
     </ul>
 
   </div>
@@ -1363,13 +1441,25 @@ Time left: ~3h 20m (放電中)</pre>
           <td>修正製造商名稱「蓮騰」→「聯騰」（LIAN TENG ELECTRONIC）；新增 §10 目前採購決策快照（雙軌 pilot 策略、MAX17048 延後採購觸發點、聯騰版未支援功能清單）；新增 §11 量產 PCB 設計建議（buck-boost 3.3V 拓樸、IC 選型、PCB layout 三大關鍵、量產觸發條件）</td>
           <td>Max Ho</td>
         </tr>
+        <tr>
+          <td>2026-07-22</td>
+          <td><span class="badge badge-green">v1.6~v2.0</span></td>
+          <td>燃料計實際到手型號更正為 <strong>MAX17043</strong>（原規劃 MAX17048，差別僅在少了充放電速率暫存器）；新增 §10.7 實體板接線與安全測試——板型確認、接線表、<code>VCC</code> 排針不可接主控板 3.3V 的關鍵提醒、電池並聯三順位方案、極性接反後果、先電源後訊號線的分階段測試順序</td>
+          <td>Max Ho</td>
+        </tr>
+        <tr>
+          <td>2026-07-22<br>2026-08-22</td>
+          <td><span class="badge badge-green">v2.1</span></td>
+          <td>§10.7 補上「鱷魚夾銜接」變體與 2mm 焊盤短路風險；<strong>新增 §10.8 上機驗收紀錄</strong>（四項實測數據與四項未驗證項目）；§10.1 / §10.2 / §10.4 狀態由「尚未上機接線」改為「已驗收」；改寫 §10.6 已失效的「零訊號路徑」結論</td>
+          <td>Max Ho</td>
+        </tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <div class="footer">
-  EMS Timer · 電源模組採購與組裝指南 · v1.5 · 2026-05-14
+  EMS Timer · 電源模組採購與組裝指南 · v2.1 · 2026-08-22
 </div>
 
 </body>

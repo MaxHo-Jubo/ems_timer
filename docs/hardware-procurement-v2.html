@@ -150,7 +150,7 @@
 <div class="meta-box">
   <div><span class="meta-label">適用階段：</span><span class="meta-value">Dev-Phase 2 / Prod-Phase pilot</span></div>
   <div><span class="meta-label">建立日期：</span><span class="meta-value">2026-05-07</span></div>
-  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-05-13</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-08-22</span></div>
   <div><span class="meta-label">負責人：</span><span class="meta-value">Max Ho</span></div>
   <div><span class="meta-label">關聯文件：</span><span class="meta-value">power-module-purchase.md</span></div>
 </div>
@@ -301,12 +301,12 @@
         </tr>
         <tr class="path-a">
           <td class="num-col">13</td>
-          <td><strong>MAX17048 燃料計</strong>（選配 / UX 加值）</td>
-          <td>電量百分比 + 剩餘時間 + 低電量警告（精度 ±1%）</td>
-          <td>Adafruit MAX17048 PID 5580、I2C <code>0x36</code>、雙 JST-PH + STEMMA QT</td>
-          <td><a href="https://www.taiwansensor.com.tw/product/%E9%8B%B0%E9%9B%BB%E6%B1%A0%E5%AE%B9%E9%87%8F%E7%9B%A3%E6%B8%AC%E6%A8%A1%E7%B5%84-max17048-li-poly%EF%BC%8Fli-ion-%E9%9B%BB%E9%87%8F%E8%A8%88%EF%BC%88stemma-qt-qwiic-%E6%8F%92%E5%BA%A7/" class="link" target="_blank">TaiwanSensor ↗</a></td>
-          <td><span class="badge badge-amber">⏸ <strong>延後採購</strong>（觸發條件見 <a href="power-module-purchase.md" class="link">power-module-purchase.md §10.4</a>）</span></td>
-          <td><span class="badge badge-amber">⏳ 未接</span></td>
+          <td><strong>MAX17043 燃料計</strong>（選配 / UX 加值）</td>
+          <td>電量百分比 + 電壓（精度 ±1%）；剩餘時間需韌體自行估算（43 無此暫存器）</td>
+          <td>MAX17043、I2C <code>0x36</code>——<strong>實際到手型號</strong>（原規劃 MAX17048，接線與程式庫相容；賣場連結未記錄）</td>
+          <td>—</td>
+          <td><span class="badge badge-green">✅ <strong>已購入</strong></span></td>
+          <td><span class="badge badge-green">✅ 已接線驗收（2026-08-22，見 <a href="power-module-purchase.html#sec-10" class="link">電源指南 §10.8</a>）</span></td>
         </tr>
       </tbody>
     </table>
@@ -438,7 +438,11 @@
     </div>
 
     <div class="note note-amber">
-      <strong>⏸ 尚未下單</strong>：MCP23017 已焊版（<a href="https://reurl.cc/j6a4m2" class="link" target="_blank">連結</a>）、排針（<a href="https://reurl.cc/zQoGqV" class="link" target="_blank">連結</a>）、<strong>MAX17048 燃料計</strong>（<a href="https://www.taiwansensor.com.tw/product/%E9%8B%B0%E9%9B%BB%E6%B1%A0%E5%AE%B9%E9%87%8F%E7%9B%A3%E6%B8%AC%E6%A8%A1%E7%B5%84-max17048-li-poly%EF%BC%8Fli-ion-%E9%9B%BB%E9%87%8F%E8%A8%88%EF%BC%88stemma-qt-qwiic-%E6%8F%92%E5%BA%A7/" class="link" target="_blank">TaiwanSensor</a>，延後採購等聯騰穩定後評估）。
+      <strong>⏸ 尚未下單</strong>：MCP23017 已焊版（<a href="https://reurl.cc/j6a4m2" class="link" target="_blank">連結</a>）、排針（<a href="https://reurl.cc/zQoGqV" class="link" target="_blank">連結</a>）。
+    </div>
+
+    <div class="note note-green">
+      <strong>✅ 已購入並驗收（2026-08-22 更新）</strong>：燃料計實際到手型號為 <strong>MAX17043</strong>（原規劃 MAX17048，接線方式與程式庫皆相容）。已上機接線並通過實機驗收——I2C <code>0x36</code> 與 RTC 共用線路無衝突，讀出電壓 3.844V 對比電表實測 3.88V（差 36mV，落在電表自身誤差帶內）。硬體層可用，韌體電量顯示排入 Impl-Phase H；驗收紀錄見<a href="power-module-purchase.html#sec-10" class="link">電源指南 §10.8</a>。
     </div>
 
     <div class="skip-box">
@@ -486,7 +490,7 @@
       <thead><tr><th>裝置</th><th>位址</th><th>來源</th></tr></thead>
       <tbody>
         <tr><td>MCP23017</td><td><code>0x20</code></td><td>新採購</td></tr>
-        <tr><td>MAX17048 燃料計</td><td><code>0x36</code></td><td>SparkFun 板載</td></tr>
+        <tr><td>MAX17043 燃料計</td><td><code>0x36</code></td><td>獨立模組（2026-08-22 已接線驗收）</td></tr>
         <tr><td>SH1106 OLED</td><td><code>0x3C</code></td><td>現行</td></tr>
         <tr><td>DS3231 RTC（Dev-Phase 3）</td><td><code>0x68</code></td><td>預留</td></tr>
       </tbody>
@@ -793,13 +797,14 @@
         <tr><td>2026-05-07</td><td>v2.2</td><td>「給 PM 的 TL;DR」改名「總結」並前移至 §3，§3~§11 全數後延一號；§12 風險與注意事項保留為倒數第二章</td><td>Max Ho</td></tr>
         <tr><td>2026-05-13</td><td>v2.2-html</td><td>頁首新增 §0「目前開發硬體清單與狀態」11 項快照表（含採購/接線狀態 + 蝦皮連結）；補上排針規格 6 項確認清單 + 下單前檢核點；對應 markdown v2.2</td><td>Max Ho</td></tr>
         <tr><td>2026-05-14</td><td>v2.3</td><td>更新採購狀態：#9 電池、#10 PowerBoost 1000C 均於 5/14 下單；新增 #12 聯騰 TP4056 一體版（5/14 下單，PowerBoost 到貨前 pilot 主驗證）與 #13 MAX17048 燃料計（延後採購，觸發條件指向 power-module-purchase.md §10.4）；§3 總結與 §11 短期決策反映採購進度；對應 markdown v2.3</td><td>Max Ho</td></tr>
+        <tr><td>2026-07-22<br>2026-08-22</td><td>v2.4</td><td>修正 #13 燃料計實際採購型號為 <strong>MAX17043</strong>（非原規劃 MAX17048）；2026-08-22 補上機驗收結果——已接線，I2C <code>0x36</code> 與 RTC 共用線路無衝突，讀數 3.844V 對比電表 3.88V（差 36mV）通過，#13 接線欄由 ⏳ 改 ✅；§3 總結與 I2C 位址表同步更新；對應 markdown v2.4</td><td>Max Ho</td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <div class="footer">
-  EMS Timer 硬體採購清單 v2.3 · 2026-05-14 · Max Ho<br>
+  EMS Timer 硬體採購清單 v2.4 · 2026-08-22 · Max Ho<br>
   本文件對應 Markdown 版：<code>docs/hardware-procurement-v2.md</code>
 </div>
 
