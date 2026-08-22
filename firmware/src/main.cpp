@@ -54,6 +54,11 @@
 #include "null_backend.h"
 #include "ems_rtc_glue.h"
 
+// Impl-Phase H 燃料計：MAX17043 包裝（#ifdef ARDUINO 守護的具體實作）
+//   fuel_gauge_logic.h / ems_fuel_gauge.h 已由 app_globals.h 引入
+#include "max17043_backend.h"
+#include "null_fuel_gauge.h"
+
 // Wave 1：系統設定 UI（display_abstraction 包裝，供 drawSettingsMenu 使用）
 #include "ui_settings.h"
 
@@ -160,6 +165,18 @@ ems::TimeSyncState g_ts_state;
 // Dev-Phase 3 RTC — setup() 內依 DS3231 偵測結果指向 DS3231Backend 或 NullRtcBackend
 // 永不為 nullptr（setup 後）
 ems::RtcBackend* g_rtc = nullptr;
+
+// Impl-Phase H：燃料計 backend——僅於 setup() STEP 06.6 決定一次，之後終身不變
+// （無執行期重新偵測，見 spec §10）。永不為 nullptr：未偵測到 MAX17043 也會掛 NullFuelGauge
+ems::FuelGaugeBackend*  g_fuel_gauge           = nullptr;
+
+// 以下 4 個電池狀態欄位由 pollBattery() 每 BATTERY_POLL_INTERVAL_MS 更新，UI 端唯讀
+uint8_t                 g_battery_percent      = ems::BATTERY_PERCENT_ABSENT;
+uint16_t                g_battery_millivolts   = 0;  // 僅在 g_battery_percent != 255 時有意義
+ems::ChargeState        g_battery_charge_state = ems::ChargeState::Unknown;
+bool                    g_battery_low          = false;
+static ems::ChargeTrendTracker g_battery_trend;
+static ems::LowBatteryLatch    g_battery_latch;
 
 // Phase F MVP2 同步
 ems::SyncContext   g_sync_ctx;
@@ -528,6 +545,19 @@ void setup() {
         Serial.println("[RTC] not present, fallback to BLE time_sync only");
     }
 
+    // STEP 06.6: Impl-Phase H — 燃料計初始化（runtime 偵測 I2C 0x36）
+    //   Wire.begin 已於 STEP 06.5 呼叫過，此處直接沿用同一條 bus
+    //   對齊 spec §3.2：偵測到掛 Max17043Backend，否則掛 NullFuelGauge，缺硬體不阻擋開機
+    static ems::Max17043Backend fuel_be;
+    static ems::NullFuelGauge   fuel_null_be;
+    if (fuel_be.begin(Wire)) {
+        g_fuel_gauge = &fuel_be;
+        Serial.println("[FUEL] MAX17043 detected at 0x36");
+    } else {
+        g_fuel_gauge = &fuel_null_be;
+        Serial.println("[FUEL] MAX17043 not present, 電量顯示停用");
+    }
+
     // STEP 07: Phase F MVP1 — BLE NUS peripheral 初始化
     //   失敗只 log warn 不擋 boot（對齊 storage_init 容錯模式）。
     //   廣播後待 web 端（docs/ble-tester/）連線送 time_sync 才會有 epoch；
@@ -542,6 +572,61 @@ void setup() {
     // STEP 09: 初始顯示
     updateDisplay();
     Serial.println("[READY] MainMenu");
+}
+
+/**
+ * 每 BATTERY_POLL_INTERVAL_MS 讀一次燃料計，更新電量／充電狀態／低電量旗標。
+ * 讀取失敗或不在線時 g_battery_percent 設為 BATTERY_PERCENT_ABSENT；Task 7-14 UI 端
+ * 屆時應一律透過 ems::is_battery_absent() 判斷是否顯示電量圖示，不自行比對哨兵值。
+ *
+ * 決策邏輯（成功/失敗兩條路徑各自如何更新趨勢追蹤器與低電量閂鎖）收斂在純函式
+ * ems::apply_fuel_reading()（比照 ems_rtc_glue 的先例抽出，native test 可涵蓋）；
+ * 本函式只負責節流、呼叫 read()、把結果寫進全域、留 log。
+ */
+static void pollBattery() {
+    // STEP 01: 未到取樣時間就跳過。has_polled 與 last_poll_ms 分開兩個變數：
+    //          0 同時當「從未輪詢過」的哨兵與 millis() 的合法回傳值會混用，
+    //          這正是本 commit 反覆強調哨兵與合法值不可混用的同一個原則。
+    static bool     has_polled  = false;
+    static uint32_t last_poll_ms = 0;
+    static bool     was_invalid = false;  // 上一輪是否已處於讀取失敗狀態（供失敗 log 節流）
+    const uint32_t now_ms = millis();
+    if (has_polled && (now_ms - last_poll_ms) < BATTERY_POLL_INTERVAL_MS) {
+        return;
+    }
+    has_polled   = true;
+    last_poll_ms = now_ms;
+
+    // STEP 02: 讀取一次，決策邏輯（percent 轉譯、趨勢推進/重置、低電量閂鎖）全部交給
+    //          apply_fuel_reading()，兩個方向（失敗不得清警示 / 失敗不得憑空造警示）
+    //          都由它守住，見 test_apply_fuel_reading_* 系列測試
+    const ems::FuelReading reading = g_fuel_gauge->read();
+    const ems::BatteryPollOutcome outcome =
+        ems::apply_fuel_reading(reading, g_battery_trend, g_battery_latch);
+
+    // STEP 03: 寫回全域，UI 端唯讀
+    g_battery_percent      = outcome.percent;
+    g_battery_millivolts   = outcome.millivolts;
+    g_battery_charge_state = outcome.charge_state;
+    g_battery_low          = outcome.low_battery;
+
+    // STEP 04: 讀取失敗要留痕。backend 把五種失敗原因（不在線／VCELL 讀失敗／SOC 讀失敗／
+    //          讀值超出合理性上界／bus 未注入）全部收斂成同一個 valid=false，此層拿不到
+    //          細分原因。但「有沒有在失敗」本身必須看得見——完全靜默的話，現場回報
+    //          「電量圖示不見了」時無從判斷是硬體接觸不良、EMI，還是韌體邏輯錯誤。
+    //          節流避免洗版：只在狀態翻轉時印。
+    if (!reading.valid) {
+        if (!was_invalid) {
+            Serial.println("[FUEL] read failed — 標記為不在線（原因無法細分，見 spec §10）");
+            was_invalid = true;
+        }
+        return;
+    }
+    was_invalid = false;  // 讀取恢復，下次失敗要重新印一次
+
+    Serial.printf("[FUEL] %u%% %umV state=%u low=%d\n",
+                  reading.percent, reading.millivolts,
+                  static_cast<unsigned>(g_battery_charge_state), g_battery_low ? 1 : 0);
 }
 
 /**
@@ -697,6 +782,9 @@ void loop() {
 
     updateBeepMachine();
     updateOledFlashMachine();
+
+    // Impl-Phase H：電量輪詢（內部依 BATTERY_POLL_INTERVAL_MS 自行節流，不需外部 interval 判斷）
+    pollBattery();
 
     if (now - lastDisplayUpdateMs >= DISPLAY_UPDATE_INTERVAL_MS) {
         lastDisplayUpdateMs = now;

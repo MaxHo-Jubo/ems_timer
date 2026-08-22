@@ -25,6 +25,7 @@
 #include "ems_time_sync.h"
 #include "ems_sync_dispatcher.h"
 #include "ems_rtc.h"
+#include "fuel_gauge_logic.h"
 #include "summary_action.h"
 #include <ArduinoJson.h>
 #include "ble_nus.h"
@@ -153,6 +154,11 @@ constexpr uint8_t  BUZZER_PIN    = 14;
 #if ENABLE_VIBRATION
 constexpr uint8_t VIBRATION_PIN = 21;
 #endif
+
+// ── Impl-Phase H：電池狀態（由 main.cpp 每 10 秒輪詢更新）──
+
+/** 電量輪詢間隔（ms）：電量變化極慢，10 秒對 UI 已綽綽有餘 */
+constexpr uint32_t BATTERY_POLL_INTERVAL_MS = 10000;
 
 // ── 8 按鍵配置 ──
 
@@ -398,6 +404,17 @@ extern ems::TimeSyncState g_ts_state;
 //   - 對齊 docs/ds3231-integration-plan.md §4.1
 // 永不為 nullptr：setup() 內未抓到 DS3231 也會掛 NullRtcBackend
 extern ems::RtcBackend* g_rtc;
+
+// Impl-Phase H 燃料計（MAX17043 @ I2C 0x36，與 RTC 共用同一條 bus）
+/** 燃料計 backend。僅於 setup() STEP 06.6 決定一次，之後終身不變（無執行期重新偵測，
+ *  見 spec §10）。**永不為 nullptr**：未偵測到 MAX17043 也會掛 NullFuelGauge */
+extern ems::FuelGaugeBackend* g_fuel_gauge;
+
+// ── 以下 4 個電池狀態欄位由 pollBattery() 每 BATTERY_POLL_INTERVAL_MS 更新，UI 端唯讀 ──
+extern uint8_t                 g_battery_percent;       // Phase H：電量 0~100，255 = 不在線
+extern uint16_t                g_battery_millivolts;    // Phase H：電壓 mV
+extern ems::ChargeState        g_battery_charge_state;  // Phase H：充電狀態
+extern bool                    g_battery_low;           // Phase H：低電量（含遲滯）
 
 // Phase F 同步
 extern ems::SyncContext   g_sync_ctx;

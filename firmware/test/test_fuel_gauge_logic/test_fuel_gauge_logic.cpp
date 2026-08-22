@@ -262,8 +262,8 @@ static void test_offline_sentinel_does_not_clear_low_battery() {
     // 哨兵值不得清除已鎖存的低電量狀態。
     // 255 = 燃料計不在線（spec §4.4）；若沒有契約防呆，255 >= 25 會誤判為電量回升。
     ems::LowBatteryLatch latch;
-    latch.update(18);   // 進入低電量
-    latch.update(255);  // 感測器離線
+    latch.update(18);                          // 進入低電量
+    latch.update(ems::BATTERY_PERCENT_ABSENT); // 感測器離線
     TEST_ASSERT_TRUE(latch.is_low());              // 鎖存不得被清
     TEST_ASSERT_TRUE(latch.consume_first_entry()); // 待消費事件也不得被清
 }
@@ -373,6 +373,119 @@ static void test_make_reading_zero_percent_is_valid() {
     TEST_ASSERT_EQUAL_UINT8(0, r.percent);
 }
 
+// ============================================================
+//  Group 5: FuelReading → 顯示百分比的轉譯
+// ============================================================
+
+static void test_display_percent_absent_when_invalid() {
+    // 讀不到就回哨兵。注意 percent 欄位這裡刻意帶 77——轉譯只能看 valid，
+    // 不可因為 percent 落在合法範圍內就把它當真
+    const ems::FuelReading r{false, 3800, 77};
+    TEST_ASSERT_EQUAL_UINT8(ems::BATTERY_PERCENT_ABSENT, ems::to_display_percent(r));
+}
+
+static void test_display_percent_zero_is_not_absent() {
+    // 0% 是合法讀數（真的沒電），絕不可被轉成哨兵——這正是不拿 0 當哨兵的理由
+    const ems::FuelReading r{true, 3000, 0};
+    TEST_ASSERT_EQUAL_UINT8(0, ems::to_display_percent(r));
+}
+
+static void test_display_percent_passes_valid_value_through() {
+    const ems::FuelReading r{true, 3844, 54};
+    TEST_ASSERT_EQUAL_UINT8(54, ems::to_display_percent(r));
+}
+
+static void test_display_percent_full_charge_passes_through() {
+    // 100 與哨兵 255 都是「邊界值」，確認滿電不會被誤判成不在線
+    const ems::FuelReading r{true, 4200, 100};
+    TEST_ASSERT_EQUAL_UINT8(100, ems::to_display_percent(r));
+}
+
+// ============================================================
+//  Group 6: apply_fuel_reading() —— pollBattery() 決策邏輯抽出的純函式
+//  （Fix Round 1 C1/I1：兩個方向都要鎖，鑑別力檢查見 task-6-report.md）
+// ============================================================
+
+static void test_apply_fuel_reading_failure_preserves_latched_low_battery() {
+    // 方向一（既有）：讀取失敗不得清除已鎖存的低電量——先把 latch 餵到 low，
+    // 再餵 invalid reading，鎖存狀態必須原封不動地透過 outcome 回傳。
+    ems::ChargeTrendTracker trend;
+    ems::LowBatteryLatch    latch;
+    latch.update(18);  // 先進入低電量
+
+    const ems::BatteryPollOutcome outcome =
+        ems::apply_fuel_reading(ems::FuelReading(), trend, latch);  // invalid reading
+
+    TEST_ASSERT_TRUE(outcome.low_battery);
+}
+
+static void test_apply_fuel_reading_failure_does_not_fabricate_low_battery() {
+    // 方向二（C1 指出、目前完全沒防護的方向）：讀取失敗不得憑空觸發低電量。
+    // latch 先餵一筆正常電量（非低電量），再餵 invalid reading，outcome.low_battery
+    // 必須維持 false——若實作誤寫成 latch.update(reading.percent)，無效讀值的
+    // percent 預設 0 會被判成跌破 20% 門檻，這條測試必須抓到。
+    ems::ChargeTrendTracker trend;
+    ems::LowBatteryLatch    latch;
+    latch.update(50);  // 電量正常，非低電量
+
+    const ems::BatteryPollOutcome outcome =
+        ems::apply_fuel_reading(ems::FuelReading(), trend, latch);  // invalid reading
+
+    TEST_ASSERT_FALSE(outcome.low_battery);
+}
+
+static void test_apply_fuel_reading_failure_returns_absent_defaults() {
+    // 讀取失敗時三個欄位都要回到安全預設：percent 用哨兵、millivolts 歸零、
+    // charge_state 回 Unknown（沒有可信讀值可判斷趨勢）。
+    ems::ChargeTrendTracker trend;
+    ems::LowBatteryLatch    latch;
+
+    const ems::BatteryPollOutcome outcome =
+        ems::apply_fuel_reading(ems::FuelReading(), trend, latch);
+
+    TEST_ASSERT_EQUAL_UINT8(ems::BATTERY_PERCENT_ABSENT, outcome.percent);
+    TEST_ASSERT_EQUAL_UINT16(0, outcome.millivolts);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, outcome.charge_state);
+}
+
+static void test_apply_fuel_reading_success_updates_all_fields() {
+    // 讀取成功時三者都要正確更新：percent 透傳、趨勢推進（窗未滿仍是 Unknown，
+    // 但樣本已確實被 push，見下一個測試驗證窗滿後會變化）、latch 依門檻判定。
+    ems::ChargeTrendTracker trend;
+    ems::LowBatteryLatch    latch;
+
+    const ems::BatteryPollOutcome outcome =
+        ems::apply_fuel_reading(ems::FuelReading(true, 3844, 18), trend, latch);
+
+    TEST_ASSERT_EQUAL_UINT8(18, outcome.percent);
+    TEST_ASSERT_EQUAL_UINT16(3844, outcome.millivolts);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, outcome.charge_state);  // 窗未滿（1/3）
+    TEST_ASSERT_TRUE(outcome.low_battery);  // 18% <= LOW_BATTERY_ENTER_PERCENT(20)，應觸發
+}
+
+static void test_apply_fuel_reading_failure_resets_trend_window() {
+    // 讀取失敗必須重置趨勢視窗，讓讀取恢復後從乾淨的窗重新累積，
+    // 不可沿用失敗前殘留的樣本混算趨勢。
+    ems::ChargeTrendTracker trend;
+    ems::LowBatteryLatch    latch;
+
+    // STEP 01: 連續餵 3 筆遞增電壓填滿窗（TREND_WINDOW_SAMPLES = 3），確認已判定 Charging
+    ems::apply_fuel_reading(ems::FuelReading(true, 3800, 60), trend, latch);
+    ems::apply_fuel_reading(ems::FuelReading(true, 3820, 60), trend, latch);
+    const ems::BatteryPollOutcome filled =
+        ems::apply_fuel_reading(ems::FuelReading(true, 3850, 60), trend, latch);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Charging, filled.charge_state);
+
+    // STEP 02: 餵一筆讀取失敗，趨勢窗必須被清空
+    ems::apply_fuel_reading(ems::FuelReading(), trend, latch);
+
+    // STEP 03: 失敗後只餵 1 筆有效值——窗未滿（1/3），必須回 Unknown，
+    //          不可沿用失敗前殘留的樣本判斷
+    const ems::BatteryPollOutcome after_recover =
+        ems::apply_fuel_reading(ems::FuelReading(true, 3900, 60), trend, latch);
+    TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, after_recover.charge_state);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_vcell_golden_value_from_hardware_acceptance);
@@ -417,5 +530,14 @@ int main(int, char**) {
     RUN_TEST(test_make_reading_rejects_garbage_soc);
     RUN_TEST(test_make_reading_rejects_implausible_vcell);
     RUN_TEST(test_make_reading_zero_percent_is_valid);
+    RUN_TEST(test_display_percent_absent_when_invalid);
+    RUN_TEST(test_display_percent_zero_is_not_absent);
+    RUN_TEST(test_display_percent_passes_valid_value_through);
+    RUN_TEST(test_display_percent_full_charge_passes_through);
+    RUN_TEST(test_apply_fuel_reading_failure_preserves_latched_low_battery);
+    RUN_TEST(test_apply_fuel_reading_failure_does_not_fabricate_low_battery);
+    RUN_TEST(test_apply_fuel_reading_failure_returns_absent_defaults);
+    RUN_TEST(test_apply_fuel_reading_success_updates_all_fields);
+    RUN_TEST(test_apply_fuel_reading_failure_resets_trend_window);
     return UNITY_END();
 }

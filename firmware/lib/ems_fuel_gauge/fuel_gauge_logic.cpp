@@ -131,4 +131,44 @@ FuelReading make_reading(uint16_t raw_vcell, uint16_t raw_soc) {
     return FuelReading(true, mv, soc_raw_to_percent(raw_soc));
 }
 
+uint8_t to_display_percent(const FuelReading& reading) {
+    // STEP 01: 讀值不可信一律回哨兵——不可回 0，0% 是合法讀數
+    if (!reading.valid) {
+        return BATTERY_PERCENT_ABSENT;
+    }
+
+    // STEP 02: 有效讀值直接透傳。0~100 的範圍由目前唯一的生產路徑 make_reading() 保證，
+    //          非型別層級保證——FuelReading 的 constructor 沒有 range check，呼叫端仍可能
+    //          自行建構出 percent > 100 的實例，只是目前 call graph 上沒有人這樣做
+    return reading.percent;
+}
+
+BatteryPollOutcome apply_fuel_reading(const FuelReading& reading,
+                                      ChargeTrendTracker& trend,
+                                      LowBatteryLatch& latch) {
+    // STEP 01: 顯示百分比只透過 to_display_percent() 這唯一出口轉譯，成功/失敗共用同一守衛
+    const uint8_t percent = to_display_percent(reading);
+
+    // STEP 02: 讀取失敗——不沿用上一筆舊值假裝還讀得到，鎖存狀態只讀不寫
+    if (!reading.valid) {
+        // STEP 02.01: 趨勢窗必須重置，確保讀取恢復後從乾淨的窗重新累積（見 reset() 的 doc）
+        trend.reset();
+
+        // STEP 02.02: 鎖存狀態只讀 is_low()，絕不呼叫 latch.update(reading.percent)——
+        //             無效讀值的 reading.percent 是建構子預設值 0，而 0 <= SOC_PERCENT_MAX
+        //             會通過 LowBatteryLatch::update() 的 guard；若當下電量正常，一次
+        //             暫時性 I2C 失敗就會被誤判成跌破 20% 門檻，憑空觸發低電量警示。
+        //             此路徑由 test_apply_fuel_reading_failure_does_not_fabricate_low_battery
+        //             鎖住（把這裡改成呼叫 latch.update(reading.percent) 該測試必須變紅）。
+        return {percent, 0, ChargeState::Unknown, latch.is_low()};
+    }
+
+    // STEP 03: 讀取成功——推進趨勢與低電量閂鎖
+    //          趨勢用電壓（mV）而非百分比——百分比的量化粒度大於 30 秒窗內的真實
+    //          充電訊號，會同時造成漏報與誤報（spec §3.4.1）
+    trend.push(reading.millivolts);
+    latch.update(reading.percent);
+    return {percent, reading.millivolts, trend.state(), latch.is_low()};
+}
+
 }  // namespace ems

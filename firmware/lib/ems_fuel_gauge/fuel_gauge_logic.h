@@ -91,6 +91,34 @@ bool is_plausible_soc_raw(uint16_t raw_soc);
  */
 FuelReading make_reading(uint16_t raw_vcell, uint16_t raw_soc);
 
+/** 電量百分比的「不在線」哨兵。255 不是合法百分比；0 是（真的沒電），兩者不可混用。
+ *  刻意與 to_display_percent() 放在同一個檔案——哨兵值與它唯一的產生點不該分家 */
+constexpr uint8_t BATTERY_PERCENT_ABSENT = 255;
+
+// 哨兵必須落在 0~100 合法電量範圍之外，否則 LowBatteryLatch::update() 的過濾會把它當成
+// 合法電量放行（該函式的 guard 是 `percent > SOC_PERCENT_MAX`）。編譯期擋死，不需額外測試。
+static_assert(BATTERY_PERCENT_ABSENT > SOC_PERCENT_MAX,
+              "哨兵必須落在 0~100 合法電量範圍之外，否則 LowBatteryLatch::update() 的過濾失效");
+
+/**
+ * 把一次燃料計讀取結果轉成 UI 層要顯示的電量百分比。
+ *
+ * 這是 FuelReading（valid 旗標）與 batteryPercent（255 哨兵）之間**唯一**的轉譯出口。
+ * 呼叫端不得自己寫 `reading.valid ? reading.percent : 255`：目的地是裸 uint8_t，
+ * 漏掉 valid 判斷時 NullFuelGauge 回的 percent=0 會落在合法 0~100 範圍內，
+ * 沒有任何邊界檢查攔得住，畫面會把硬體故障顯示成「電池耗盡」。
+ *
+ * @param reading 燃料計單次讀取結果
+ * @return valid=true 時回 reading.percent（0~100）；valid=false 時回 BATTERY_PERCENT_ABSENT
+ */
+uint8_t to_display_percent(const FuelReading& reading);
+
+/** 這個顯示百分比是否代表「燃料計不在線」。
+ *  UI 端讀取電量前一律先呼叫本函式，不要在 render 程式碼裡各自比對 255 */
+constexpr bool is_battery_absent(uint8_t display_percent) {
+    return display_percent == BATTERY_PERCENT_ABSENT;
+}
+
 /**
  * 充電狀態。硬體沒有充電訊號腳，本列舉由電壓趨勢推導而來。
  */
@@ -136,7 +164,12 @@ public:
     ChargeState state() const;
 
     /**
-     * 清空取樣窗，回到 Unknown（換電池或 backend 重新上線時呼叫）
+     * 清空取樣窗，回到 Unknown。
+     *
+     * 呼叫時機不只「換電池或 backend 重新上線」：讀取暫時性失敗時也要 reset
+     * （見 apply_fuel_reading() 的失敗分支，每輪失敗都會呼叫），確保讀取恢復後從
+     * 乾淨的窗重新累積，避免拿失敗前後不連續的樣本混算趨勢。本函式冪等，
+     * 連續失敗期間重複呼叫沒有副作用。
      */
     void reset();
 
@@ -190,5 +223,40 @@ private:
     bool is_low_          = false;  // 當前低電量狀態（帶遲滯）
     bool entry_pending_   = false;  // 尚未被消費的「首次進入」事件
 };
+
+/**
+ * 一次輪詢的結果。呼叫端（main.cpp 的 pollBattery()）把這四個值寫進對應全域即可，
+ * 不需要自己重複決策邏輯。
+ */
+struct BatteryPollOutcome {
+    uint8_t     percent;       // 已轉譯的顯示百分比（含 BATTERY_PERCENT_ABSENT 哨兵）
+    uint16_t    millivolts;    // 電池電壓；讀取失敗時為 0
+    ChargeState charge_state;  // 充電狀態；讀取失敗時為 Unknown
+    bool        low_battery;   // 低電量（含遲滯）；讀取失敗時保留既有鎖存
+};
+
+/**
+ * 把一次燃料計讀取結果套用到趨勢追蹤器與低電量閂鎖，回傳要寫進全域的值。
+ *
+ * main.cpp 的 pollBattery() STEP 03/04 決策部分的純函式版本——比照本 repo
+ * ems_rtc_glue 的先例（把原本內嵌在 main.cpp 的膠合邏輯抽成純函式），對齊 memory
+ * feedback_extract_testable_pure_logic。main.cpp 只留節流、read() 呼叫、寫全域、
+ * Serial log；決策邏輯搬進這裡才能被 native test 涵蓋到（原本 pollBattery() 是
+ * main.cpp 裡的 static 函式，在任何測試環境都不會被連結進去，是真正的 0 覆蓋率）。
+ *
+ * 讀取失敗時**完全不呼叫** `latch.update()`——不是為了「不推進狀態機」這個籠統理由，
+ * 而是因為傳未轉譯的 `reading.percent` 進去是危險的：無效讀值時它是建構子預設值 0，
+ * 而 `0 <= SOC_PERCENT_MAX` 會穿透 `LowBatteryLatch::update()` 的 guard。若當下電量
+ * 正常（未鎖存低電量），一次暫時性 I2C 失敗就會被誤判成跌破 20% 門檻，在電量正常時
+ * 憑空觸發低電量警示——這與「失敗把既有警示清掉」是相反方向的錯誤，兩者都必須防。
+ *
+ * @param reading 本輪讀取結果
+ * @param trend   趨勢追蹤器（讀取失敗時會被 reset；成功時 push 一筆新樣本）
+ * @param latch   低電量閂鎖（讀取失敗時只讀 is_low()，絕不呼叫 update()）
+ * @return 要寫進 g_battery_percent / millivolts / charge_state / low 四個全域的值
+ */
+BatteryPollOutcome apply_fuel_reading(const FuelReading& reading,
+                                      ChargeTrendTracker& trend,
+                                      LowBatteryLatch& latch);
 
 }  // namespace ems
