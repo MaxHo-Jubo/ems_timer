@@ -125,9 +125,13 @@
 
 | 用途 | GPIO | 備註 |
 |------|------|------|
-| I2C SDA | **GPIO 42** | 原 OLED bus，TFT 升級後釋出；DS3231 地址 0x68；boot 時 `Wire.begin(42, 41)` |
+| I2C SDA | **GPIO 42** | 原 OLED bus，TFT 升級後釋出；DS3231 地址 0x68、MAX17043 燃料計 0x36；boot 時 `Wire.begin(42, 41)` |
 | I2C SCL | **GPIO 41** | 原 OLED bus，TFT 升級後釋出 |
 | INT（選用） | **GPIO 43** 或不接 | 目前未接；用於秒中斷喚醒；GPIO 43 為 UART0 腳、與 USB-CDC 無關，但與 §5.2 MicroSD CS、§5.3 CO-UART 同腳，多者並用需重新盤點 |
+
+> ✅ **2026-08-22 實機驗證通過**：MAX17043 燃料計（I2C 地址 `0x36`）已上機接線，與 DS3231（`0x68`）、模組附掛 EEPROM（`0x57`）三者同時掛在本 41/42 bus 上，位址不衝突、連掃 5 輪無掉線。VCELL 讀數 3.844V 對比電表實測 3.88V（差 36mV，在電表誤差帶內），確認 VDD 吃到真實電池電壓。韌體 UI 整合仍排入 Impl-Phase H（採購決策見 `power-module-purchase.md §10.4/§10.6`，接線與安全測試 SOP 見 §10.7，**驗收紀錄與暫存器換算公式見 §10.8**）。
+>
+> 驗收工具：`pio run -e i2c-scan -t upload`（掃 bus）與 `pio run -e fuel-gauge-check -t upload`（讀 VCELL/SOC），兩者皆為獨立環境，不影響主韌體。
 
 ---
 
@@ -174,3 +178,5 @@
 | 2026-05-21 | 修正 GPIO 43/44 與 USB-CDC 的錯誤關聯（§5.1/§5.2/§5.3/§5.4/§6） | 原文件將 GPIO 43/44 標為「USB-CDC TX/RX」、並要求「放棄 USB-CDC」才能挪用 —— 事實錯誤：43/44 是 UART0（U0TXD/U0RXD），USB-CDC 走晶片內建 USB（GPIO 19/20，§5.1 禁用清單已正確標示）。挪用 43/44 給 MicroSD / CO-UART / RTC INT 不影響 USB 除錯。真實衝突為 43/44 在 MicroSD、CO-UART、DS3231 INT 三方重疊 |
 | 2026-05-21 | 收斂 §5.2 MicroSD MISO 腳位為明確 44 | 原 §5.2 MISO 寫「用 43/44」含糊（兩腳只需一支），且 `tft-migration-plan.md` §3.2 仍寫 MISO=GPIO 1（過時：GPIO 1 已於 2026-05-08 改派 TFT DC）。確定 MicroSD MISO=44、CS=43 配對，並同步修正 `tft-migration-plan.md` |
 | 2026-05-24 | §5.4 DS3231 從「計畫」→「已上機」 | Dev-Phase 3 RTC 整合 6 wave 完成（見 `docs/ds3231-integration-plan.md`），實機 boot log 確認 0x68 偵測 + seed `g_ts_state`；OHCA case 時戳改用真實 epoch；BLE time_sync Applied 反向寫回 DS3231。永續性測試（斷電 30 秒重開）待補 |
+| 2026-07-22 | §5.4 新增 MAX17043 燃料計（0x36，掛 41/42 bus）| 使用者確認實際採購型號為 MAX17043（原規劃 MAX17048），已購入尚未上機接線 |
+| 2026-08-22 | §5.4 MAX17043 從「尚未上機」→「實機驗證通過」 | 上機接線後 i2c-scan 確認 0x36 在線且與 0x57/0x68 共存無衝突；fuel-gauge-check 讀出 VCELL 3.844V / SOC 54.4%，對比電表 3.88V 差 36mV，確認 VDD 為真實電池電壓。驗收紀錄見 `power-module-purchase.md §10.8` |

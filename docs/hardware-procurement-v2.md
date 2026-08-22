@@ -22,7 +22,7 @@
 | 10 | 電池模組（量產候選）| 充放電與 5V 升壓 + 真實 load-sharing | PowerBoost 1000 C | [露天](https://www.ruten.com.tw/item/21644203728515) | 🚚 已下單未到貨（5/14 下單，**預計 ~6/4 到貨**）| ⏳ 待到貨（3~4 週）|
 | 11 | 排針（公頭）| PowerBoost 焊接用 | 2.54mm 單排直插公頭 40pin | [賣場](https://reurl.cc/zQoGqV) | ❌ 未下單 | ⏳ 待採購（焊在 PowerBoost 上）|
 | 12 | **聯騰 TP4056 一體版**（pilot 主驗證）| 充電 + 升壓 5V（PowerBoost 到貨前的 pilot 替代）| MTARDTP4056S（TP4056 + DW01 + 8205A + SX1308 升壓 + Type-C）| [蝦皮](https://reurl.cc/O6zjZr) | 🚚 已下單未到貨（5/14 下單）| ⏳ 待到貨（1~3 天） |
-| 13 | **MAX17048 燃料計**（選配 / UX 加值）| 電量百分比 + 剩餘時間 + 低電量警告（精度 ±1%）| Adafruit MAX17048 PID 5580、I2C `0x36`、雙 JST-PH + STEMMA QT | [TaiwanSensor](https://www.taiwansensor.com.tw/product/%E9%8B%B0%E9%9B%BB%E6%B1%A0%E5%AE%B9%E9%87%8F%E7%9B%A3%E6%B8%AC%E6%A8%A1%E7%B5%84-max17048-li-poly%EF%BC%8Fli-ion-%E9%9B%BB%E9%87%8F%E8%A8%88%EF%BC%88stemma-qt-qwiic-%E6%8F%92%E5%BA%A7/) | ⏸ **延後採購**（觸發條件見 [`power-module-purchase.md §10.4`](power-module-purchase.md)）| ⏳ 未接 |
+| 13 | **MAX17043 燃料計**（選配 / UX 加值，2026-07-22 更正實際採購型號，原規劃 MAX17048）| 電量百分比 + 電壓（無充放電速率暫存器，其餘規格與接線同 48）| MAX17043、I2C `0x36`（賣場連結未記錄）| — | ✅ **已購入** | ✅ **已接線驗收**（2026-08-22，讀數實測見 `power-module-purchase.md §10.8`）|
 
 **圖例**：✅ 已採購 / 已接線 ｜ 🚚 已下單未到貨 ｜ ⏸ 延後採購 ｜ ❌ 未下單 ｜ ⏳ 尚未進入麵包板 ｜ 🚫 V1 功能範圍外（保留至 Dev-Phase 1.5+ / V1.1 啟用）
 
@@ -315,7 +315,9 @@ PM 提醒：硬體弱項。本表標清楚每個焊點是否可省。
 
 > **2026-05-14 採購已執行**：電池 ×1 + PowerBoost 1000 C ×1 + 聯騰 TP4056 一體版 ×1 已下單。PowerBoost 預計 ~6/4 到貨，聯騰 1~3 天到貨先行 pilot 驗證。
 >
-> **尚未下單**：MCP23017 已焊版（[連結](https://reurl.cc/j6a4m2)）、排針（[連結](https://reurl.cc/zQoGqV)）、MAX17048 燃料計（延後採購，等聯騰穩定後評估）。
+> **尚未下單**：MCP23017 已焊版（[連結](https://reurl.cc/j6a4m2)）、排針（[連結](https://reurl.cc/zQoGqV)）。
+>
+> **已購入並驗收（2026-08-22 更新）**：燃料計實際到手型號為 **MAX17043**（原規劃為 MAX17048），接線方式與韌體 library 皆與 48 相容。已上機接線並通過實機驗收——I2C `0x36` 與 DS3231 共 bus 無衝突，讀出電壓 3.844V 對比電表 3.88V（差 36mV，在電表誤差帶內）。硬體層可用，韌體 UI 整合排入 Impl-Phase H；驗收紀錄見 `power-module-purchase.md §10.8`。
 >
 > **不建議現在下單**：**開發板+電池模組 SparkFun Thing Plus-ESP32-S3**（[蝦皮](https://tw.shp.ee/FB8qpDPZ)）— 等 Prod-Phase pilot 階段再評估。
 >
@@ -331,3 +333,4 @@ PM 提醒：硬體弱項。本表標清楚每個焊點是否可省。
 | 2026-05-07 | v2.1 | 賣場條目命名對齊 PM 提供：電池模組明確標示 PowerBoost 1000 C、開發板+電池模組明確標示 SparkFun Thing Plus-ESP32-S3 | Max Ho |
 | 2026-05-13 | v2.2 | 文件頁首新增「目前開發硬體清單與狀態」11 項快照表（含採購/接線狀態 + 蝦皮連結）；補上 §排針規格 6 項確認清單 + 下單前檢核點 | Max Ho |
 | 2026-05-14 | v2.3 | 更新採購狀態：#9 電池、#10 PowerBoost 1000C 均於 5/14 下單；新增 #12 聯騰 TP4056 一體版（5/14 下單，PowerBoost 到貨前 pilot 主驗證）與 #13 MAX17048 燃料計（延後採購，觸發條件指向 power-module-purchase.md §10.4）；§10.1 採購建議標記已下單狀態；§12 TL;DR 反映採購進度 | Max Ho |
+| 2026-07-22<br>2026-08-22 | v2.4 | 修正 #13 燃料計實際採購型號：**MAX17043**（非原規劃 MAX17048），使用者確認已購入；2026-08-22 補上機驗收結果——已接線，I2C `0x36` 與 DS3231 共 bus 無衝突，讀數 3.844V 對比電表 3.88V（差 36mV）通過，#13 接線欄由 ⏳ 改 ✅；§12 TL;DR 兩次均同步更新（驗收紀錄見 `power-module-purchase.md §10.8`）| Max Ho |
