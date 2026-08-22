@@ -89,14 +89,14 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 
 ⏳ **待實作**：見 `docs/pm-dev-spec.md §四 Phase B~H`
 
-🔋 **Impl-Phase H（電量顯示）進行中**（2026-08-22）：W1 讀取層 Task 1–6 程式碼完成、review 皆 clean，
-主韌體已每 10 秒讀取 MAX17043 並寫進全域，但 UI 層（Task 7–14）未開工、畫面尚看不到電量。
-`firmware/lib/ems_fuel_gauge/` 51 個 native test 全綠；全套 552 cases / 551 通過
-（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
+🔋 **Impl-Phase H（電量顯示）進行中**（2026-08-22）：W1 讀取層 Task 1–6 完成、review 皆 clean，
+主韌體已每 10 秒讀取 MAX17043 並寫進全域。W2 顯示層 Task 7（DisplaySnapshot 欄位）已 commit
+但 **review 未跑**；Task 8–14 未開工，畫面尚看不到電量。
+全套 556 cases / 555 通過（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
 
 > **接手前必讀** [`docs/superpowers/phase-h-handover.md`](docs/superpowers/phase-h-handover.md)。
-> 第一件事是 Task 6 的上機驗收（Step 6.3/6.4，**需要實體硬體**），其中兩條方向相反的失敗驗收
-> 是 review 才補進計畫的，原本 checklist 沒有。
+> 待辦有兩筆：**Task 7 的 review 債（不需硬體，優先做）**，以及 Task 6 上機驗收剩下的兩項
+> （需要實體硬體）。兩者都在該文件 §3。
 
 ## 韌體交付與燒錄
 

@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
 - **最後更新**：2026-08-22
-- **狀態**：**W1 讀取層程式碼全數完成**（Task 1–6，review 皆 clean）。Task 6 的上機驗收待硬體；W2–W4（Task 7–14）未開工
+- **狀態**：W1 完成（Task 1–6，review clean）。**Task 7 已 commit 但 review 未跑**（見 §3）。Task 6 上機驗收剩兩項待硬體；Task 8–14 未開工
 - **branch**：`feat/phase-g-system-settings`
 
 > 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-22 收工時實測過。
@@ -17,12 +17,12 @@ MAX17043 燃料計硬體驗收通過，**主韌體已經真的在讀電量了**�
 | 硬體 | ✅ 驗收通過（I2C `0x36`、3.844V vs 電表 3.88V） |
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
-| W1 讀取層 | ✅ Task 1–6 程式碼完成、review clean；**Task 6 上機驗收待硬體** |
-| W2 顯示層 | ⬜ Task 7–9 |
+| W1 讀取層 | ✅ Task 1–6 review clean；**上機驗收剩兩項待硬體** |
+| W2 顯示層 | 🔄 Task 7 已 commit（**review 未跑**），Task 8–9 未開工 |
 | W3 低電量行為 | ⬜ Task 10–11 |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-**實測數字**：`firmware/lib/ems_fuel_gauge/` 51 個 native test 全綠；全套 552 cases / 551 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。
+**實測數字**：`firmware/lib/ems_fuel_gauge/` 51 個、`test_display_snapshot` 45 個 native test 全綠；全套 556 cases / 555 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。
 
 ---
 
@@ -35,17 +35,41 @@ docs/superpowers/plans/2026-08-22-phase-h-battery-display.md
 
 # 2. 確認目前狀態
 cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 51/51
-cd firmware && pio test -e native                            # 應為 552/551，唯一 ERRORED = test_storage_hw
+cd firmware && pio test -e native                            # 應為 556/555，唯一 ERRORED = test_storage_hw
 git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部 commit
 ```
 
-**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續（下一個是 **Task 7**）。
+**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**但先補完 Task 7 的 review（見 §3），再進 Task 8。**
 
 > ⚠️ `.superpowers/` 是 git-ignored 的本機工作區，換機器就沒有了。本文件是它的持久化摘要；ledger 內的逐輪細節（每個 review 面向的原始 findings、48 條 ruling 的完整上下文）只在本機。
 
 ---
 
-## 3. ⚠️ 接手第一件事：Task 6 的上機驗收（需要硬體）
+## 3. ⚠️ 接手待辦（兩筆，一筆不需硬體）
+
+### 3-A. Task 7 的 review 債（**不需硬體，優先做**）
+
+commit `df33d97`（DisplaySnapshot 電池欄位）**已進版控但 review chain 未跑**——上一個 session 在
+實作者回報後依裁示暫停。閘門**未使用 `--force` 放行**，比照 Task 5 那次的處理方式記在這裡。
+
+controller 已獨立驗證過的部分（不能取代 review，但可以省你重跑）：
+
+- 完整套件 556/555，逐一比對唯一 ERRORED 是既有的 `test_storage_hw`
+- 聚焦套件 `test_display_snapshot` 45/45
+- 鑑別力已驗：拿掉 `s.batteryPercent = in.batteryPercent;` → 兩個測試同時變紅
+- 那個「加 flag 但 OR 串沒同步就靜默維持綠」的陷阱**沒踩**，三處都改了
+
+補跑指令：
+
+```
+Skill(commit-review) args: "tier=3 target=df33d97"
+```
+外加 SDD task review（package 用 `scripts/review-package <plan> c180cb3 df33d97`）。
+
+> 📌 Task 8 會用到 `batteryChargeState`。實作者提醒：snapshot 層只搬運原始 `uint8_t`，**沒有範圍
+> 檢查**，上游要確保只餵合法的 `ems::ChargeState` 轉型值。
+
+### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
 程式碼寫完了，但計畫 Task 6 的 **Step 6.3 / 6.4 尚未執行**。步驟在計畫檔裡，重點如下。
 
@@ -111,6 +135,7 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 4 | `f6a9e07` | `FuelReading` / `FuelGaugeBackend` / `NullFuelGauge` | 1 | clean |
 | 5 | `75e3fb0` | `Max17043Backend`、兩個合理性 predicate、`make_reading()` | 3 | clean |
 | 6 | `917d072` | main.cpp 掛載、`pollBattery()`、`to_display_percent()`、`apply_fuel_reading()` | 1 | clean |
+| 7 | `df33d97` | `DisplaySnapshot` 電池欄位、`SNAP_FLAG_BATTERY_LOW_BLINK` | 0 | **未跑**（見 §3-A） |
 
 每個 task 都跑 SDD task review + 專案 Tier 3 六面向（共 7 個 reviewer），全部 findings 已處理或 parked，pending-review 閘門皆正常解鎖（`--aspects-done=6`，**全程未使用 `--force`**）。
 
