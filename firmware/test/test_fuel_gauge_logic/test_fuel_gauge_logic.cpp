@@ -5,6 +5,7 @@
 //   SOC   raw=0x366A → 54.41%，函式回傳 uint8_t 取整（無條件捨去）為 54
 #include <unity.h>
 #include "fuel_gauge_logic.h"
+#include "null_fuel_gauge.h"
 
 void setUp()    {}
 void tearDown() {}
@@ -267,6 +268,25 @@ static void test_offline_sentinel_does_not_clear_low_battery() {
     TEST_ASSERT_TRUE(latch.consume_first_entry()); // 待消費事件也不得被清
 }
 
+// ============================================================
+//  Group 4: Null backend 降級
+// ============================================================
+
+static void test_null_backend_not_present() {
+    // NullFuelGauge 表示無實體硬體在線；上層無條件呼叫不需分支
+    ems::NullFuelGauge nb;
+    TEST_ASSERT_FALSE(nb.is_present());
+}
+
+static void test_null_backend_read_is_invalid() {
+    // 不在線時 valid=false；caller 不可把 millivolts / percent 當合法讀數
+    ems::NullFuelGauge nb;
+    const ems::FuelReading r = nb.read();
+    TEST_ASSERT_FALSE(r.valid);
+    TEST_ASSERT_EQUAL_UINT16(0, r.millivolts);  // 讀值無效時百分比須鎖住 0
+    TEST_ASSERT_EQUAL_UINT8(0, r.percent);      // 讀值無效時電壓須鎖住 0
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_vcell_golden_value_from_hardware_acceptance);
@@ -299,5 +319,7 @@ int main(int, char**) {
     RUN_TEST(test_low_battery_not_triggered_at_21_percent);
     RUN_TEST(test_low_battery_does_not_clear_at_24_percent);
     RUN_TEST(test_offline_sentinel_does_not_clear_low_battery);
+    RUN_TEST(test_null_backend_not_present);
+    RUN_TEST(test_null_backend_read_is_invalid);
     return UNITY_END();
 }
