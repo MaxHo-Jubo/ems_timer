@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
 - **建立**：2026-08-22
-- **狀態**：W1 進行中（Task 1–5 完成且 review clean，Task 6 尚未開工）
+- **狀態**：**W1 程式碼全數完成**（Task 1–6 review clean）。Task 6 的上機驗收（Step 6.3/6.4）待硬體
 - **branch**：`feat/phase-g-system-settings`
 
 ---
@@ -15,12 +15,12 @@ MAX17043 燃料計硬體驗收通過，主韌體的讀取層做到一半。已�
 | 硬體 | ✅ 驗收通過（I2C `0x36`、3.844V vs 電表 3.88V） |
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
-| W1 讀取層 | 🔄 Task 1–5 完成（review 皆 clean），Task 6 待做 |
+| W1 讀取層 | ✅ Task 1–6 程式碼完成（review 皆 clean）；Task 6 上機驗收待硬體 |
 | W2 顯示層 | ⬜ Task 7–9 |
 | W3 低電量行為 | ⬜ Task 10–11 |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-`firmware/lib/ems_fuel_gauge/` 目前 42 個 native test 全綠。全套 543 cases / 542 通過（唯一未過的 `test_storage_hw` 是**既有**的編譯錯誤，已用 worktree checkout 到本工作起點驗證過，與本 wave 無關）。
+`firmware/lib/ems_fuel_gauge/` 目前 51 個 native test 全綠。全套 552 cases / 551 通過（唯一未過的 `test_storage_hw` 是**既有**的編譯錯誤，已用 worktree checkout 到本工作起點驗證過，與本 wave 無關）。
 
 > 📌 §3～§6 是 2026-08-22 上半場（Task 1–3）的紀錄，**§7 才是最新進度**，兩者衝突時以 §7 為準。
 
@@ -37,7 +37,7 @@ docs/superpowers/plans/2026-08-22-phase-h-battery-display.md
 .superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md
 
 # 3. 確認目前狀態
-cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 42/42
+cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 51/51
 git log --oneline 7fdf1ee..HEAD                              # 本 wave 的 11 個 commit
 ```
 
@@ -241,3 +241,72 @@ VCELL 側有成對測試會立刻抓到。已補 `test_soc_raw_above_upper_bound
 註解宣稱「bit pattern 用於確認晶片型號」但值從未被檢查——只要 0x36 上有裝置肯 ACK 就算偵測到。
 **未加型號校驗**：合理的 VERSION 值域需實機觀測資料才能定，猜錯會把好晶片判成不在線。
 改為修正過度宣稱的註解，並把「實機驗收時記錄 VERSION 實際值」排進 Task 6 Step 6.4。
+
+
+---
+
+## 8. Task 6 完成（程式碼），上機驗收待硬體
+
+commit `917d072`。主韌體首次真正掛載燃料計：開機 probe I2C `0x36` 的三分支（比照 RTC 的
+`STEP 06.5`）、每 10 秒 `pollBattery()`、結果寫進四個全域供 UI 唯讀。
+
+**Task 5 遺留的連結債已還清**——對真實 `firmware.elf`（未注入任何暫時 include）跑 `nm`，
+`ems::apply_fuel_reading`、`ems::make_reading`、`Max17043Backend::begin`/`::read` 全部在符號表裡。
+`ems_fuel_gauge` 也首次出現在 LDF 依賴樹。
+
+### ⚠️ 接手第一件事：上機驗收（需要硬體）
+
+計畫 Task 6 的 **Step 6.3 / 6.4 尚未執行**。步驟與判讀表在
+`docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`，重點：
+
+**Step 6.3 判讀表有方向相反的兩條，缺一不可**——這是 review 時才補進去的，原本的 checklist
+根本沒排：
+
+| 檢查 | 通過條件 |
+|---|---|
+| 失敗不清警示 | 電量低於 20% 時拔 SDA → 低電量閃爍**必須繼續** |
+| 失敗不造警示 | 電量正常時拔 SDA → **不可**出現低電量警示 |
+
+純邏輯層已有對應的兩條 native test，上機這兩條是確認整合層走同一條路。
+
+**Step 6.4 順便收兩筆資料**（都是先前 park 決定的前提，機器接上就一起收，省一次拆裝）：
+
+1. **VERSION 暫存器實際值** —— 決定要不要加 MAX17043 型號校驗。目前 probe 只驗 ACK 不驗值，
+   因為合理值域需要實機觀測才能定，猜錯會把好晶片判成不在線。
+2. **靜置 10 分鐘的 VCELL 抖動幅度** —— 校正趨勢死區 `±3mV` 與 `PLAUSIBLE_SOC_WHOLE_MAX = 110`，
+   兩者都是推導初值。
+
+### 這個 task 的 review 抓到什麼
+
+**① 我們一路防錯了方向**（comments 面向，Critical）
+
+整個 wave 都在防「讀取失敗把低電量警示清掉」。沒有人想過**失敗憑空製造警示**：
+
+若失敗分支比照成功分支寫成 `latch.update(reading.percent)`，傳進去的不是哨兵 255，而是無效
+`FuelReading` 的建構子預設值 **0**——而 `0 <= SOC_PERCENT_MAX` **會穿透 `LowBatteryLatch` 的 guard**。
+電量正常時，一次暫時性 I2C 失敗就被判成跌破 20% 門檻，救護人員看到不存在的低電量警告。
+
+而原本那句註解引用 `test_offline_sentinel_does_not_clear_low_battery` 當佐證，歸屬是反的——
+該測試直接呼叫 `latch.update(255)`，證明的是 **latch 內部 guard 擋得住 >100**，不是「呼叫端
+不呼叫才安全」。
+
+**② 解法是 repo 自己早就有的**（code-reviewer + tests 面向）
+
+`firmware/lib/ems_rtc_glue/` 的檔頭明講「把內嵌在 main.cpp 的膠合邏輯抽成純函式」並配
+`test_rtc_integration` 測三分支。燃料計沒照做，決策邏輯全寫死在 `pollBattery()` 裡，而
+`[env:native]` 明確 `build_src_filter = -<*>`——**0 覆蓋率**。
+
+已抽成 `ems::apply_fuel_reading()`，五條 native test 鎖住**兩個方向**。鑑別力已驗證：把失敗分支
+加上 `latch.update(reading.percent)`，`test_apply_fuel_reading_failure_does_not_fabricate_low_battery`
+立刻變紅。
+
+**③ 哨兵常數本身改壞沒人攔得下來**（tests 面向）
+
+把 `BATTERY_PERCENT_ABSENT` 從 255 改成 90（落在合法電量範圍內），46 個測試全綠。隱性契約
+「哨兵必須 > `SOC_PERCENT_MAX`」無任何守護。已加 `static_assert` 編譯期擋死。
+
+**④ 消費端零防護**（types 面向）
+
+`to_display_percent()` 守住了生產端，但 `g_battery_percent` 型別上就是個普通 `uint8_t`。
+具體預期 bug：四格圖示 `frame = percent / 25`，255 算出 `frame = 10` index 到陣列外。
+已加 `ems::is_battery_absent()`，**Task 7-14 的 UI 端一律用它，不要各自比對 255**。
