@@ -1,10 +1,13 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
-- **最後更新**：2026-08-22
-- **狀態**：W1 完成（Task 1–6，review clean）。**Task 7 已 commit 但 review 未跑**（見 §3）。Task 6 上機驗收剩兩項待硬體；Task 8–14 未開工
-- **branch**：`feat/phase-g-system-settings`
+- **最後更新**：2026-08-23
+- **狀態**：W1 完成（Task 1–6，review clean）。**Task 7 review 已補跑完畢並修掉 1 個 Critical**（見 §3-A）。Task 6 上機驗收剩兩項待硬體；Task 8–14 未開工
+- **branch**：`feat/phase-g-system-settings`（未推送）
 
-> 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-22 收工時實測過。
+> 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-23 收工時實測過。
+>
+> ⚠️ **2026-08-23 補跑 Task 7 review 時 rebase 過，Phase H 的 commit hash 全部變了。**
+> 舊文件與舊對話紀錄裡的 `df33d97`（Task 7）已不存在，現為 `94bc3fb`。
 
 ---
 
@@ -18,11 +21,11 @@ MAX17043 燃料計硬體驗收通過，**主韌體已經真的在讀電量了**�
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
 | W1 讀取層 | ✅ Task 1–6 review clean；**上機驗收剩兩項待硬體** |
-| W2 顯示層 | 🔄 Task 7 已 commit（**review 未跑**），Task 8–9 未開工 |
+| W2 顯示層 | ✅ Task 7 review clean（`94bc3fb`），Task 8–9 未開工 |
 | W3 低電量行為 | ⬜ Task 10–11 |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-**實測數字**：`firmware/lib/ems_fuel_gauge/` 51 個、`test_display_snapshot` 45 個 native test 全綠；全套 556 cases / 555 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。
+**實測數字**：`firmware/lib/ems_fuel_gauge/` 51 個、`test_display_snapshot` 50 個 native test 全綠；全套 561 cases / 560 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS（App 69.2%）。
 
 ---
 
@@ -35,43 +38,71 @@ docs/superpowers/plans/2026-08-22-phase-h-battery-display.md
 
 # 2. 確認目前狀態
 cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 51/51
-cd firmware && pio test -e native                            # 應為 556/555，唯一 ERRORED = test_storage_hw
+cd firmware && pio test -e native                            # 應為 561/560，唯一 ERRORED = test_storage_hw
+cd firmware && pio run -e esp32-s3-devkitc-1                 # 應為 SUCCESS
 git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部 commit
 ```
 
-**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**但先補完 Task 7 的 review（見 §3），再進 Task 8。**
+**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 7 的 review 債已於 2026-08-23 清掉，可直接進 Task 8**——但先讀 §3-A 的兩條交接事項。
 
 > ⚠️ `.superpowers/` 是 git-ignored 的本機工作區，換機器就沒有了。本文件是它的持久化摘要；ledger 內的逐輪細節（每個 review 面向的原始 findings、48 條 ruling 的完整上下文）只在本機。
 
 ---
 
-## 3. ⚠️ 接手待辦（兩筆，一筆不需硬體）
+## 3. 接手待辦（剩一筆，需要硬體）
 
-### 3-A. Task 7 的 review 債（**不需硬體，優先做**）
+### 3-A. ✅ Task 7 的 review 債已清（2026-08-23）
 
-commit `df33d97`（DisplaySnapshot 電池欄位）**已進版控但 review chain 未跑**——上一個 session 在
-實作者回報後依裁示暫停。
+原本的 `--force` 放行債務已還完。跑了兩條獨立通道：
 
-> ⚠️ **這次閘門是用 `--force` 放行的**（使用者裁示），理由已記入
-> `~/.claude/state/pending-review/unlock-audit.log`。這是 Phase H 全程唯一一次使用 `--force`——
-> Task 1~6 都是跑滿六面向後正常解鎖。**這筆債沒有閘門會再提醒你，只剩這份文件記得。**
+- **codex 六面向**（`rules` / `code-review` / `silent-failure` / `comments` / `tests` / `types`，effort=high）：6/6 通過無降級
+- **SDD task review**（spec 合規 + 品質）：✅ Spec compliant / Approved
 
-controller 已獨立驗證過的部分（不能取代 review，但可以省你重跑）：
+**兩邊結論分歧很大**——SDD reviewer 判零 Critical，codex 報 1 Critical + 13 Important。
+差別在於 SDD reviewer 被 prompt 限制在 diff 範圍內，codex 去查了 `main.cpp` 的呼叫端。
+逐條驗證後 **codex 對三條、誤報七條**，且它自己把最重的那條標成 Important 而非 Critical。
 
-- 完整套件 556/555，逐一比對唯一 ERRORED 是既有的 `test_storage_hw`
-- 聚焦套件 `test_display_snapshot` 45/45
-- 鑑別力已驗：拿掉 `s.batteryPercent = in.batteryPercent;` → 兩個測試同時變紅
-- 那個「加 flag 但 OR 串沒同步就靜默維持綠」的陷阱**沒踩**，三處都改了
+**修掉的（已 amend 進 `94bc3fb`）**：
 
-補跑指令：
+1. **Critical — `main.cpp` 的第二套比較漏欄位**。`updateDisplay()` 除了 STEP 01 的整包
+   `memcmp`，還有一份手寫的 `sameStateAsLast` 只比 10 個欄位，新增的電池欄位沒進去。
+   倒數畫面下電量與 `countdownSec` 同 frame 變化 → 走 partial 路徑 → `lastDisplaySnapshot = now`
+   把新電量吞掉且不重繪。10 秒輪詢與每秒 tick 必然週期性重合。
+   **這是同型 bug 的第 6 次**（前 5 次見 §7 第 3 條），也是 Task 7 commit message 自稱
+   「四處一起改」卻漏掉的第五處。
+   解法沒有照 codex 建議「把兩個欄位加進清單」——那第 7 次還會漏。改成
+   `snapshotsEqualExceptCountdown()`：複製一份把 `countdownSec` 對齊後整包 `memcmp`，
+   10 行欄位清單變 1 行，往後新增任何欄位自動納入。
+   **副作用（刻意接受）**：比對範圍變嚴，`syncState` / `historyCursor` 等原本沒比的欄位
+   現在也算數 → 只會多重繪，不會漏重繪。
+2. **Important — `test_all_flags_on_combine_all_bits` 沒納入新 flag**。名為「所有 flag 同時開」
+   卻只開 18 個，新 bit 逃過組合驗證；Group 4 註解還寫「16 個 bit」（舊誤，一併修成 19）。
+3. **Important — 電池測試只驗「兩份 snapshot 不相等」**，沒斷言值落在具名欄位上。
 
-```
-Skill(commit-review) args: "tier=3 target=df33d97"
-```
-外加 SDD task review（package 用 `scripts/review-package <plan> c180cb3 df33d97`）。
+**駁回的（附理由，不要再被同一批 finding 打斷）**：
 
-> 📌 Task 8 會用到 `batteryChargeState`。實作者提醒：snapshot 層只搬運原始 `uint8_t`，**沒有範圍
-> 檢查**，上游要確保只餵合法的 `ems::ChargeState` 轉型值。
+| finding | 為什麼駁回 |
+|---|---|
+| silent-failure 標的 Critical：三個新 input 有預設值會掩蓋 caller 漏傳 | `DisplaySnapshotInputs` 全部 18 個既有欄位都有預設值，是既有設計不是本次退化。Task 8 必須確實填值 → 見下方 📌 |
+| `if` 缺大括號違反 IF-BRACES | 該檔 19/19 全是單行 `if`，改一行製造 1-vs-19 不一致。要改是全檔範圍決策 |
+| `captureSnapshot` 欄位賦值違反不可變性 | 全檔 POD 逐欄位賦值慣例，且 esp32 環境是 `gnu++11` |
+| types：改用強型別包裝 percent / ChargeState | `DisplaySnapshot` 是 `memcmp` 去重用的扁平 POD，包裝型別直接破壞該語意（已有 ruling） |
+| Magic Number 255 應改用 `ems::BATTERY_PERCENT_ABSENT` | `ems_display_snapshot` 不依賴 `ems_fuel_gauge` 是刻意分層 |
+| 測試缺 STEP 註解 / 函式註解 | 全檔 45 個測試函式、0 個 STEP 註解，既有慣例（字面檢查只對全新檔案） |
+
+**這次也補上一個上個 session 漏掉的驗證方向**：當時的鑑別力檢查只驗了「拿掉拷貝 → 變紅」，
+沒驗「拷貝到錯欄位」。在隔離 worktree 實測：把 `batteryPercent` 與 `batteryChargeState`
+**互換寫入**，Task 7 原版測試 **45/45 全綠**，完全無感。這是 §6 `verify-the-observer` 的第 6 次命中。
+補上具名欄位值斷言後，同一個 mutation 讓 4 條測試轉紅。
+
+> 📌 **Task 8 會用到 `batteryChargeState`。** snapshot 層只搬運原始 `uint8_t`，**沒有範圍檢查**，
+> 上游要確保只餵合法的 `ems::ChargeState` 轉型值。另外 Task 8 必須真的把
+> `g_battery_percent` / `g_battery_charge_state` / 閃爍相位填進 `DisplaySnapshotInputs`——
+> 不填不會有任何編譯或測試錯誤，畫面會安靜地永遠顯示「燃料計不在線」。
+
+### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
+
+程式碼寫完了，但計畫 Task 6 的 **Step 6.3 / 6.4 尚未執行**。步驟在計畫檔裡，重點如下。
 
 ### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
@@ -139,9 +170,13 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 4 | `f6a9e07` | `FuelReading` / `FuelGaugeBackend` / `NullFuelGauge` | 1 | clean |
 | 5 | `75e3fb0` | `Max17043Backend`、兩個合理性 predicate、`make_reading()` | 3 | clean |
 | 6 | `917d072` | main.cpp 掛載、`pollBattery()`、`to_display_percent()`、`apply_fuel_reading()` | 1 | clean |
-| 7 | `df33d97` | `DisplaySnapshot` 電池欄位、`SNAP_FLAG_BATTERY_LOW_BLINK` | 0 | **未跑**（見 §3-A） |
+| 7 | `94bc3fb` | `DisplaySnapshot` 電池欄位、`SNAP_FLAG_BATTERY_LOW_BLINK`、`snapshotsEqualExceptCountdown()` | 1（2026-08-23 補跑） | clean |
 
-每個 task 都跑 SDD task review + 專案 Tier 3 六面向（共 7 個 reviewer），全部 findings 已處理或 parked，pending-review 閘門皆正常解鎖（`--aspects-done=6`，**全程未使用 `--force`**）。
+> Task 1–6 的 hash 不受 2026-08-23 那次 rebase 影響（rebase 基底是 `c180cb3`，都在它之前）。
+
+每個 task 都跑 SDD task review + 專案 Tier 3 六面向（共 7 個 reviewer），全部 findings 已處理或 parked。
+Task 1–6 的 pending-review 閘門正常解鎖（`--aspects-done=6`）；Task 7 當下用 `--force` 放行、
+2026-08-23 補跑六面向還清（見 §3-A）。
 
 **Task 5 曾一度欠著 review 債**（兩個 implementer 相繼撞上 session limit），額度恢復後已補跑完整 7 個 seat 並跑完 fix round 3 與 scoped re-review。
 
@@ -191,10 +226,20 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 - Task 3：邊界只測單向；`entry_pending_` 的清除線刪掉，26 個測試照樣全綠
 - Task 5：SOC 上界鬆動一格，41 個測試全綠
 - Task 6：**哨兵常數本身從 255 改成 90**（落在合法電量範圍內），46 個測試全綠——已加 `static_assert(BATTERY_PERCENT_ABSENT > SOC_PERCENT_MAX)` 編譯期擋死
+- Task 7：把 `batteryPercent` 與 `batteryChargeState` **互換寫入**，45 個測試全綠。根因是那批測試只斷言「兩份 snapshot 不相等」，欄位寫到哪裡完全不驗——而「不相等」在互換後依然成立。已補具名欄位值斷言（2026-08-23）
+
+### ⑧ 同一份狀態有第二套比較邏輯（Task 7，Critical，2026-08-23 補跑 review 才抓到）
+
+`DisplaySnapshot` 的去重有兩處：`updateDisplay()` STEP 01 的整包 `memcmp`，以及 partial update
+判斷裡**另一份手寫的 10 欄位清單**。新增欄位時第一處自動涵蓋、第二處必須手動同步——而
+「四處一起改」的 checklist 只列到 `captureSnapshot`，第二處從來不在清單上。
+
+這也是 `EXTRACT-SHARED-HELPER` 的 `guard-placement` 條目講的同一件事：**把正確性押在
+「每個維護者都記得同步另一處」上，遲早會輸**。已改成整包 `memcmp` 消除該邊界情況。
 
 ---
 
-## 6. `verify-the-observer` 在這個 wave 命中五次
+## 6. `verify-the-observer` 在這個 wave 命中六次
 
 形狀完全相同：**觀測手段涵蓋不到宣稱要衡量的對象，而輸出看起來完全正常。**
 
@@ -203,6 +248,7 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 3. 連 controller 的「強制編譯」也只證明編得過——reviewer 用 `nm` 才證明連不進
 4. controller 自己跑 mutation 得到「41/41 全綠」而誤判測試無鑑別力——實為 worktree 檢出的 HEAD 尚未含該測試
 5. 實作者把 `git rebase` 的 stdout 當成分支已移動，未用 `git rev-parse HEAD` 核對，產生 dangling object 卻回報成已生效
+6. controller 的 Task 7 鑑別力檢查只驗了「拿掉欄位拷貝 → 變紅」一個方向，**沒驗「拷貝到錯欄位」**——後者在原版測試下 45/45 全綠（2026-08-23 補跑 review 時實測確認）
 
 **共同解法**：下結論前先確認觀測手段真的碰得到要衡量的東西——對照 BASE、看編譯清單、看連結符號、看測試數、看 `rev-parse`，不要只看 exit code 或摘要行。
 
@@ -212,7 +258,11 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 
 1. **UI 端一律用 `ems::is_battery_absent()`，不要各自比對 255。** types 面向舉的具體 bug：四格圖示常見寫法 `frame = percent / 25`，255 會算出 `frame = 10`，直接 index 到圖示陣列外。這個 helper 已經加好了，`fuel_gauge_logic.h` 裡。
 2. **不要用 `is_present()` 決定畫不畫圖示。** 它是 `begin()` 當下的 probe 快取，硬體事後物理斷線時會繼續回 `true`（`read()` 仍正確回 invalid，未違反契約）。要判斷畫不畫，看 `g_battery_percent` 是不是哨兵。
-3. **新增 UI state 必須同步加進 `DisplaySnapshot`。** 這個 repo 已連踩 4 次（historyCursor / summarySubmenuCursor / endCheckCursor / Phase G 設定選單），spec §4.4 有 5 步驟 checklist。
+3. **新增 UI state 必須同步加進 `DisplaySnapshot`。** 這個 repo 已連踩 5 次（historyCursor / summarySubmenuCursor / endCheckCursor / Phase G 設定選單 / Phase H 電池欄位），spec §4.4 有 5 步驟 checklist。
+   > ⚠️ **那份 checklist 本身有漏**：它只涵蓋 `DisplaySnapshot` struct、`DisplaySnapshotInputs`、
+   > `captureSnapshot()` 拷貝、flag bit 四處，**沒有涵蓋 `updateDisplay()` 的 partial update 判斷**——
+   > Phase H 就是漏在第五處（見 §5 ⑧）。該處已於 2026-08-23 改成整包 `memcmp`，往後新增欄位
+   > **不需要**再手動同步它；但如果有人日後又在別處寫第二套逐欄位比較，這個坑會原樣回來。
 4. **`FuelReading` 是 `constexpr explicit`**，不能用 `{a, b, c}` brace-init。
 
 ---
