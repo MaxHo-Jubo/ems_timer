@@ -90,17 +90,19 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 ⏳ **待實作**：見 `docs/pm-dev-spec.md §四 Phase B~H`
 
 🔋 **Impl-Phase H（電量顯示）進行中**（2026-08-23）：W1 讀取層 Task 1–6 完成、review 皆 clean，
-主韌體已每 10 秒讀取 MAX17043 並寫進全域。W2 顯示層 Task 7（DisplaySnapshot 欄位，`94bc3fb`）與
-Task 8（`presentFrame()` 統一重繪出口，`3333235`）皆 review clean；**Task 9–14 未開工，畫面尚看不到
-電量**（`drawBatteryIcon()` 目前是標示清楚的 no-op placeholder）。
-全套 567 cases / 566 通過（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
+主韌體已每 10 秒讀取 MAX17043 並寫進全域。**W2 顯示層完成**：Task 7（DisplaySnapshot 欄位，
+`94bc3fb`）、Task 8（`presentFrame()` 統一重繪出口，`3333235`）、Task 9（四格電量圖示與低電量閃爍，
+`5634b52`）皆 review clean。**程式碼上圖示已經會畫，但一次都沒在實機看過**——本階段全程無硬體，
+上機驗收累積到最後一次做完。Task 10 已完成 pre-flight 查證但尚未 dispatch；Task 11–14 未開工。
+全套 579 cases / 578 通過（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
 
 > ⚠️ 2026-08-23 補跑 review 時 rebase 過，**Phase H 的 Task 7 之後 commit hash 全變**
 > （`df33d97` → `94bc3fb`）。Task 1–6 的 hash 不受影響。分支尚未推送。
 
 > **接手前必讀** [`docs/superpowers/phase-h-handover.md`](docs/superpowers/phase-h-handover.md)。
-> 待辦剩一筆：**Task 6 上機驗收剩下的兩項**（需要實體硬體），在該文件 §3-B。
-> Task 8 開工前先讀 §3-A 末尾的兩條交接事項（`ChargeState` 無範圍檢查、snapshot 不填值會靜默顯示「不在線」）。
+> **下一步是 Task 10**，但 §3-A3 列了四條 dispatch 前必須處理的計畫缺陷（最重要的一條：低電量提示
+> 狀態沒進 DisplaySnapshot，會是同型 bug 的第 6 次），先讀完再派工。
+> 所有上機驗收累積在 §3-B，需要實體硬體。
 
 ## 韌體交付與燒錄
 

@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
-- **最後更新**：2026-08-23
-- **狀態**：W1 完成（Task 1–6，review clean）。**Task 7 review 已補跑完畢並修掉 1 個 Critical**（見 §3-A）。**Task 8 完成**（review clean after 1 fix round）。Task 6 上機驗收剩兩項待硬體；Task 9–14 未開工
+- **最後更新**：2026-08-23（W2 完成收工）
+- **狀態**：W1 完成（Task 1–6，review clean）。**W2 完成**：Task 7（review 已補跑，修掉 1 Critical）、Task 8、Task 9（各 review clean）。**Task 10 已完成 pre-flight 查證但尚未 dispatch**（見 §3-A3）。所有上機驗收累積待硬體；Task 11–14 未開工
 - **branch**：`feat/phase-g-system-settings`（未推送）
 
 > 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-23 收工時實測過。
@@ -13,7 +13,7 @@
 
 ## 1. 三十秒看懂現況
 
-MAX17043 燃料計硬體驗收通過，**主韌體已經真的在讀電量了**——開機 probe I2C `0x36`，每 10 秒輪詢一次，結果寫進四個全域供 UI 唯讀。但**畫面上還看不到任何東西**：UI 層（Task 7–14）尚未實作。
+MAX17043 燃料計硬體驗收通過，主韌體每 10 秒輪詢一次寫進四個全域。**W2 顯示層已完成——程式碼上右上角四格電量圖示與低電量閃爍都寫好了，但一次都沒在實機上看過**（本階段全程無硬體，所有上機驗收累積到最後）。W3（低電量提示與開案確認框）與 W4（電池資訊畫面）未開工。
 
 | 項目 | 狀態 |
 |---|---|
@@ -21,11 +21,11 @@ MAX17043 燃料計硬體驗收通過，**主韌體已經真的在讀電量了**�
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
 | W1 讀取層 | ✅ Task 1–6 review clean；**上機驗收剩兩項待硬體** |
-| W2 顯示層 | ✅ Task 7（`94bc3fb`）、Task 8（`3333235`）review clean；Task 9 未開工 |
-| W3 低電量行為 | ⬜ Task 10–11 |
+| W2 顯示層 | ✅ 完成：Task 7（`94bc3fb`）、Task 8（`3333235`）、Task 9（`5634b52`）review clean |
+| W3 低電量行為 | 🔄 Task 10 pre-flight 查證完成、未 dispatch（見 §3-A3）；Task 11 未開工 |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-**實測數字**：`firmware/lib/ems_fuel_gauge/` 57 個、`test_display_snapshot` 50 個 native test 全綠；全套 567 cases / 566 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS。
+**實測數字**：`firmware/lib/ems_fuel_gauge/` 69 個、`test_display_snapshot` 50 個 native test 全綠；全套 579 cases / 578 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS。
 
 ---
 
@@ -37,13 +37,13 @@ docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md
 docs/superpowers/plans/2026-08-22-phase-h-battery-display.md
 
 # 2. 確認目前狀態
-cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 51/51
-cd firmware && pio test -e native                            # 應為 561/560，唯一 ERRORED = test_storage_hw
+cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 69/69
+cd firmware && pio test -e native                            # 應為 579/578，唯一 ERRORED = test_storage_hw
 cd firmware && pio run -e esp32-s3-devkitc-1                 # 應為 SUCCESS
 git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部 commit
 ```
 
-**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 7 的 review 債已於 2026-08-23 清掉，可直接進 Task 8**——但先讀 §3-A 的兩條交接事項。
+**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 1–9 全部 complete，下一個是 Task 10**——但 §3-A3 有四條 dispatch 前必須處理的計畫缺陷，先讀完再派工。
 
 > ⚠️ `.superpowers/` 是 git-ignored 的本機工作區，換機器就沒有了。本文件是它的持久化摘要；ledger 內的逐輪細節（每個 review 面向的原始 findings、48 條 ruling 的完整上下文）只在本機。
 
@@ -125,6 +125,58 @@ fix round 1 修掉兩條 Important。
 pushSprite 前恰好執行一次」、各早退分支是否漏呼叫）。要測得把呈現流程抽成可注入的協調層，
 屬計畫層架構決策。日後新增畫面若漏呼叫 `presentFrame()`，native 測試不會發現，只能靠 grep 與 review。
 
+### 3-A3. Task 9 完成；Task 10 的 pre-flight 已做完但**還沒 dispatch**（2026-08-23 收工點）
+
+**Task 9（`5634b52`）**：四格電量圖示、低電量閃爍、幾何閃電符號。經 2 輪 fix。
+新增到 lib 的純函式：`should_draw_battery_icon(percent, low, lowBlinkOn)`、
+`battery_segments_for_percent(percent)`，都有 native test。
+
+> ⚠️ Task 9 過程中 controller 抓到一個 Critical：`drawBatteryIcon()` 原本寫成
+> `if (!lowBlinkOn) return;`，而 `compute_low_battery_blink_on()` 在非低電量時恆回 false
+> ——**電量正常時圖示完全不畫**。根因是 controller 自己 dispatch 的措辭誤導。
+> 這個缺陷編譯會過、native 抓不到（`ui_screens.cpp` 不進 native build）、也沒有硬體可上機發現，
+> 三層觀測全部涵蓋不到。修法是抽出 `should_draw_battery_icon()` 三分支純函式並加測試。
+
+#### Task 10 接手包：查證結論（不必重查）
+
+- `COLOR_ACCENT_WARN = 0xFDE0`（`app_globals.h:114`）、`SCREEN_H = 240`（`:99`）
+- `LowBatteryLatch::consume_first_entry()` 在 `fuel_gauge_logic.h:314`
+- **Training 進行中的 `globalState` 也是 `GLOBAL_OHCA`**（`input_handler.cpp:485` 開案時設定，
+  模式用 `g_case_mode == CASE_MODE_TRAINING` 區分）。所以計畫寫的
+  `in_active_case = (globalState == GLOBAL_OHCA) || (globalState == GLOBAL_VENT)`
+  **已經涵蓋 Training**，不需要再加條件；`GLOBAL_TRAINING_SETUP` 是開案前的設定畫面，不該觸發（正確）。
+- 下一個可用 flag bit 是 **`0x00080000`**（第 20 個；`SNAP_FLAG_BATTERY_LOW_BLINK = 0x00040000` 是目前最高位）
+
+#### Task 10 接手包：dispatch 前必須處理的四條計畫缺陷
+
+1. 🔴 **提示狀態沒有進 `DisplaySnapshot`——這會是同型 bug 的第 6 次。**
+   計畫的 `drawLowBatteryNotice()` 用 `millis() > g_low_battery_notice_until_ms` 在**繪製時**
+   判斷是否還在顯示期間，但「提示顯示中」這個狀態不在 snapshot 裡 → `memcmp` 相等 → 不重繪
+   → 提示不會出現、3 秒到期也不會消失。
+   目前「碰巧」會動的唯一原因是低電量時 `SNAP_FLAG_BATTERY_LOW_BLINK` 每 500ms 翻轉、
+   順帶提供了重繪節奏——**這是依賴巧合**，出現／消失時機有最多 500ms 誤差，且 Task 11
+   一改閃爍邏輯就會卡住。
+   **裁決方向**（與 Task 9 的相位處理一致）：`captureDisplaySnapshot()` 算好
+   `lowBatteryNoticeVisible` → `DisplaySnapshotInputs` → 新 flag bit `0x00080000` →
+   `presentFrame(snap)` 取 bit 傳給 `drawLowBatteryNotice(bool visible)`，繪製函式不自算 `millis()`。
+   spec §4.4 的 5 步驟 checklist 全部要跑。
+2. 「是否在顯示期間」是純邏輯（輸入 `until_ms`、`now_ms`），比照 `compute_low_battery_blink_on()`
+   抽進 `ems_fuel_gauge` lib 加 native test，否則又是 `ui_screens.cpp` 的 0 覆蓋率。
+3. `presentFrame()` 簽名已是 `presentFrame(const DisplaySnapshot& snap)`（Task 9 改的），
+   計畫寫的「在 STEP 01 之後、STEP 02 之前插入」STEP 編號已漂移，插入後要整段重排。
+4. Step 4 上機驗證降級（無硬體）。計畫提到的「暫時把 `LOW_BATTERY_ENTER_PERCENT` 改成 90
+   驗證後改回」與 §3-B Task 6 的做法相同，上機時一併安排。
+
+#### Task 10–14 的 dispatch 都要帶的一條約定
+
+**呼叫 `ems::battery_segments_for_percent()` 前必須先用 `ems::is_battery_absent()` 擋掉哨兵。**
+該函式對 255 會回滿格（255 ≥ 75）。Task 9 review 時 codex 要求在函式內加 guard，
+但 implementer 論證「呼叫端本來就得先做不在線的早退判斷，加第二個判斷點不消除第一個」，
+controller 採納該論證（不可達的 guard 是死碼＋誤導註解）。
+**代價已知**：這是把正確性押在呼叫端記憶力上，正是 `guard-placement` 原則反對的模式。
+**若 Task 12–14 出現第二個呼叫點，應改採 `enum class BatteryIconState { Absent, Normal, LowOn, LowOff }`**
+（見 §9 的 park 條目）。
+
 ### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
 程式碼寫完了，但計畫 Task 6 的 **Step 6.3 / 6.4 尚未執行**。步驟在計畫檔裡，重點如下。
@@ -193,6 +245,7 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 6 | `917d072` | main.cpp 掛載、`pollBattery()`、`to_display_percent()`、`apply_fuel_reading()` | 1 | clean |
 | 7 | `94bc3fb` | `DisplaySnapshot` 電池欄位、`SNAP_FLAG_BATTERY_LOW_BLINK`、`snapshotsEqualExceptCountdown()` | 1（2026-08-23 補跑） | clean |
 | 8 | `3333235` | `presentFrame()` 統一重繪出口（15 處收斂）、snapshot 電池填值、`compute_low_battery_blink_on()` | 1 | clean |
+| 9 | `5634b52` | 四格電量圖示繪製、幾何閃電、`should_draw_battery_icon()`、`battery_segments_for_percent()` | 2 | clean |
 
 > Task 1–6 的 hash 不受 2026-08-23 那次 rebase 影響（rebase 基底是 `c180cb3`，都在它之前）。
 
