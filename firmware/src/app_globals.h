@@ -160,6 +160,9 @@ constexpr uint8_t VIBRATION_PIN = 21;
 /** 電量輪詢間隔（ms）：電量變化極慢，10 秒對 UI 已綽綽有餘 */
 constexpr uint32_t BATTERY_POLL_INTERVAL_MS = 10000;
 
+// BATTERY_BLINK_HALF_PERIOD_MS 已搬至 lib/ems_fuel_gauge/fuel_gauge_logic.h（Fix Round 1）：
+// 它是 ems::compute_low_battery_blink_on() 的參數，與唯一使用它的邏輯同檔才不會分處兩地。
+
 // ── 8 按鍵配置 ──
 
 constexpr uint8_t BTN_COUNT = 8;
@@ -620,6 +623,7 @@ void drawStorageFailure(CaseMode type);
 
 // ── ui_screens.cpp ──
 void drawMainMenu();
+void drawBatteryIcon();  // Phase H：右上角電量圖示，由 presentFrame() 統一呼叫
 void drawSyncScreen();
 void drawHistoryList();
 void drawPlaceholder(const char* title, const char* phase);

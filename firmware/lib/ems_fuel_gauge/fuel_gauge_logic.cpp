@@ -35,6 +35,21 @@ bool is_plausible_soc_raw(uint16_t raw_soc) {
     return whole <= PLAUSIBLE_SOC_WHOLE_MAX;
 }
 
+bool compute_low_battery_blink_on(uint8_t percent, bool low, uint32_t now_ms) {
+    // STEP 01: 燃料計不在線時圖示本來就不畫，仍翻轉相位只會造成無效的永久性全螢幕重繪
+    if (is_battery_absent(percent)) {
+        return false;
+    }
+
+    // STEP 02: 非低電量不閃爍
+    if (!low) {
+        return false;
+    }
+
+    // STEP 03: 低電量且在線 → 依時間戳計算閃爍相位（BATTERY_BLINK_HALF_PERIOD_MS 半週期）
+    return (now_ms / BATTERY_BLINK_HALF_PERIOD_MS) % 2 == 0;
+}
+
 void ChargeTrendTracker::push(uint16_t millivolts) {
     // STEP 01: 寫入環形緩衝並前進 head
     samples_[head_] = millivolts;

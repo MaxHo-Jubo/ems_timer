@@ -486,6 +486,43 @@ static void test_apply_fuel_reading_failure_resets_trend_window() {
     TEST_ASSERT_EQUAL(ems::ChargeState::Unknown, after_recover.charge_state);
 }
 
+// ============================================================
+//  Group 7: compute_low_battery_blink_on() —— 低電量閃爍相位
+//  （Fix Round 1 A：抽出前 captureDisplaySnapshot() 內這三行完全沒有測試保護，
+//    燃料計不在線時未加守衛會造成永久性的每 500ms 無效全螢幕重繪）
+// ============================================================
+
+static void test_blink_offline_sentinel_forces_false_even_when_low() {
+    // 核心修復：不在線（percent = 哨兵）時，即使 low 鎖存仍是 true，也必須回 false——
+    // 圖示本來就不畫，讓相位繼續翻轉只會造成無意義的全螢幕重繪。沒這條等於沒修。
+    TEST_ASSERT_FALSE(ems::compute_low_battery_blink_on(ems::BATTERY_PERCENT_ABSENT, true, 0));
+}
+
+static void test_blink_not_low_stays_false_while_online() {
+    // 在線但非低電量：不閃爍
+    TEST_ASSERT_FALSE(ems::compute_low_battery_blink_on(50, false, 0));
+}
+
+static void test_blink_phase_boundary_499ms_is_on() {
+    // 499 / 500 = 0（整數除法）→ 0 % 2 == 0 → 亮相位
+    TEST_ASSERT_TRUE(ems::compute_low_battery_blink_on(15, true, 499));
+}
+
+static void test_blink_phase_boundary_500ms_is_off() {
+    // 500 / 500 = 1 → 1 % 2 == 0 為 false → 滅相位；跨過半週期邊界翻轉
+    TEST_ASSERT_FALSE(ems::compute_low_battery_blink_on(15, true, 500));
+}
+
+static void test_blink_phase_boundary_999ms_is_off() {
+    // 999 / 500 = 1 → 仍在第二個半週期內，滅相位
+    TEST_ASSERT_FALSE(ems::compute_low_battery_blink_on(15, true, 999));
+}
+
+static void test_blink_phase_boundary_1000ms_is_on() {
+    // 1000 / 500 = 2 → 2 % 2 == 0 → 翻回亮相位，完成一次 1Hz 全週期
+    TEST_ASSERT_TRUE(ems::compute_low_battery_blink_on(15, true, 1000));
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_vcell_golden_value_from_hardware_acceptance);
@@ -539,5 +576,11 @@ int main(int, char**) {
     RUN_TEST(test_apply_fuel_reading_failure_returns_absent_defaults);
     RUN_TEST(test_apply_fuel_reading_success_updates_all_fields);
     RUN_TEST(test_apply_fuel_reading_failure_resets_trend_window);
+    RUN_TEST(test_blink_offline_sentinel_forces_false_even_when_low);
+    RUN_TEST(test_blink_not_low_stays_false_while_online);
+    RUN_TEST(test_blink_phase_boundary_499ms_is_on);
+    RUN_TEST(test_blink_phase_boundary_500ms_is_off);
+    RUN_TEST(test_blink_phase_boundary_999ms_is_off);
+    RUN_TEST(test_blink_phase_boundary_1000ms_is_on);
     return UNITY_END();
 }

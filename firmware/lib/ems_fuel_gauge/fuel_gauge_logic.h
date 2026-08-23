@@ -119,6 +119,24 @@ constexpr bool is_battery_absent(uint8_t display_percent) {
     return display_percent == BATTERY_PERCENT_ABSENT;
 }
 
+/** 低電量閃爍半週期（ms）：500ms 翻轉一次 = 1Hz 閃爍
+ *  與 compute_low_battery_blink_on() 同檔——常數與唯一使用它的邏輯不分處兩地 */
+constexpr uint32_t BATTERY_BLINK_HALF_PERIOD_MS = 500;
+
+/**
+ * 低電量閃爍相位：是否處於「亮」的半週期。
+ *
+ * 燃料計不在線（percent 為哨兵）時一律回 false——此時圖示本來就不畫，
+ * 若仍讓相位翻轉會使 snapshot 每半週期變化一次，造成永久性的無效全螢幕重繪。
+ * 低電量鎖存狀態本身不受影響，維持既有語意。
+ *
+ * @param percent 目前電量百分比（255 = 燃料計不在線）
+ * @param low     低電量鎖存狀態（含遲滯）
+ * @param now_ms  目前時間戳（毫秒），呼叫端傳入 millis()
+ * @return true = 亮相位；false = 滅相位、非低電量、或燃料計不在線
+ */
+bool compute_low_battery_blink_on(uint8_t percent, bool low, uint32_t now_ms);
+
 /**
  * 充電狀態。硬體沒有充電訊號腳，本列舉由電壓趨勢推導而來。
  */

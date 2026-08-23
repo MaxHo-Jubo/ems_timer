@@ -468,7 +468,7 @@ void setup() {
     //   - invert: false（蝦皮紅板 polarity，已寫死於 LGFX panel cfg）
     //   - display 為全頁 LGFX_Sprite（320×240 @ 16bpp = 153,600 bytes，
     //     優先嘗試 PSRAM；fail 退 internal RAM）
-    //   - 所有 draw 寫到 display sprite，updateDisplay 結尾 pushSprite DMA 推到 tft
+    //   - 所有 draw 寫到 display sprite，updateDisplay 結尾呼叫 presentFrame() 統一 DMA 推到 tft
     tft.init();
     tft.setRotation(3);  // 3 = 橫向 320x240（LGFX 跟 Adafruit_ST7789 rotation index 差 180）
     tft.fillScreen(0x0000);
@@ -871,7 +871,29 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.settingsEditorMode     = settingsEditorMode;     // Phase G
     in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
 
+    // STEP 06: Phase H 電池欄位
+    in.batteryPercent     = g_battery_percent;
+    in.batteryChargeState = static_cast<uint8_t>(g_battery_charge_state);
+    // 低電量閃爍相位：純函式決策放 ems_fuel_gauge lib（native 可測），燃料計不在線時
+    // 一律回 false，避免失聯後每 BATTERY_BLINK_HALF_PERIOD_MS 翻轉一次造成無效全螢幕重繪
+    in.batteryLowBlinkOn  = ems::compute_low_battery_blink_on(g_battery_percent, g_battery_low, millis());
+
     return captureSnapshot(in);
+}
+
+/**
+ * 統一重繪出口：畫全域 overlay 後把 sprite 推到實體 TFT。
+ *
+ * 所有畫面都必須經由本函式推送，不可直接呼叫 display.pushSprite()——
+ * 電量圖示等全域 overlay 只在這裡畫一次，新畫面才不會漏。
+ */
+static void presentFrame() {
+    // STEP 01: 全域 overlay（電量圖示；Task 9 前 drawBatteryIcon() 為 no-op placeholder，
+    // 目前呼叫不畫任何東西——「不在線時不畫」是 Task 9 完成後的預定行為，尚未實作）
+    drawBatteryIcon();
+
+    // STEP 02: DMA 整片推送
+    display.pushSprite(0, 0);
 }
 
 /**
@@ -913,9 +935,9 @@ void updateDisplay() {
         && sameStateAsLast
         && (now.countdownSec != lastDisplaySnapshot.countdownSec)) {
         drawOhcaCountdownTimeOnly(now.ohcaState);
-        // LGFX DMA pushSprite 整片 ~4ms @80MHz；sub-region push 雖更短，
-        // 但 DMA 整片視覺已近瞬完成，留簡化邏輯
-        display.pushSprite(0, 0);
+        // LGFX DMA pushSprite（由 presentFrame() 統一呼叫）整片 ~4ms @80MHz；
+        // sub-region push 雖更短，但 DMA 整片視覺已近瞬完成，留簡化邏輯
+        presentFrame();
         lastDisplaySnapshot = now;
         return;
     }
@@ -932,7 +954,7 @@ void updateDisplay() {
     //   SUMMARY 時亦會重置，故此處早退安全（不會蓋掉非 SUMMARY 畫面）。
     if (resyncConfirmShown) {
         drawResyncConfirmDialog();
-        display.pushSprite(0, 0);
+        presentFrame();
         return;
     }
 
@@ -942,18 +964,18 @@ void updateDisplay() {
         drawSyncScreen();
     } else if (globalState == GLOBAL_OHCA) {
         // Phase B: sub-state 子流程畫面優先
-        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_TRAINING_SAVE)     { drawTrainingSave();    display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_TRAINING_HISTORY_OPT) { drawTrainingHistoryOptions(); display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_DELETE_CONFIRM)    { drawConfirmDialog("刪除此訓練紀錄？", "刪除後不可復原"); display.pushSprite(0, 0); return; }
-        if (ohcaSubState == SUBSTATE_RESET_CONFIRM)     { drawConfirmDialog("重置訓練？", "將清除本次訓練的\nEPI 與電擊紀錄並重新計時"); display.pushSprite(0, 0); return; }
+        if (ohcaSubState == SUBSTATE_QUICK_MENU)        { drawQuickMenu();       presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_DRUG_MENU)         { drawDrugMenu();        presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_TYPE)     { drawBackfillType();    presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_COUNT)    { drawBackfillCount();   presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_CONFIRM)  { drawBackfillConfirm(); presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_BACKFILL_SUCCESS)  { drawBackfillSuccess(); presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_AMIO_CONFIRM)      { drawAmioConfirmPrompt(); presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_TIMELINE)          { drawTimeline();        presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_TRAINING_SAVE)     { drawTrainingSave();    presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_TRAINING_HISTORY_OPT) { drawTrainingHistoryOptions(); presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_DELETE_CONFIRM)    { drawConfirmDialog("刪除此訓練紀錄？", "刪除後不可復原"); presentFrame(); return; }
+        if (ohcaSubState == SUBSTATE_RESET_CONFIRM)     { drawConfirmDialog("重置訓練？", "將清除本次訓練的\nEPI 與電擊紀錄並重新計時"); presentFrame(); return; }
 
         switch (ohcaState) {
             case OHCA_STATE_START_FLASH:
@@ -1063,7 +1085,9 @@ void updateDisplay() {
         drawFlashOverlay();
     }
 
-    // STEP 03: pushSprite DMA 一次推到實體 TFT — 消除「fillScreen → 慢慢出文字」中間態
-    display.pushSprite(0, 0);
+    // STEP 03: presentFrame() 統一重繪出口 — 呼叫 drawBatteryIcon()（Task 9 前為
+    // no-op placeholder）後 pushSprite DMA 一次推到實體 TFT，消除「fillScreen →
+    // 慢慢出文字」中間態
+    presentFrame();
 }
 

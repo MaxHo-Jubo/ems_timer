@@ -801,3 +801,13 @@ void drawConfirmDialog(const char* title, const char* body) {
     drawCenteredText("主鍵確認  返回取消",
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
+
+/**
+ * 右上角電量圖示（Impl-Phase H）。
+ *
+ * 現況：no-op placeholder，任何情況都不畫任何東西——繪製內容由 Task 9 實作。
+ * 預定行為（Task 9 完成後）：於 presentFrame() 內對所有畫面統一繪製；燃料計不在線時完全不畫。
+ */
+void drawBatteryIcon() {
+    // Task 9 實作繪製內容
+}
