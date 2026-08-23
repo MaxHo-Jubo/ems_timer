@@ -1716,58 +1716,203 @@ git commit -m "[PHASE-H] feat: 右上角四格電量圖示與低電量閃爍
 
 ## Task 10：§13.16 執行中低電量一次性提示
 
+> ⚠️ **本段已於 2026-08-23 依 handover §3-A3 的四條 dispatch 前裁決重寫。**
+> 原版把「提示是否顯示中」留在 `drawLowBatteryNotice()` 內用 `millis()` 現算，該狀態不進
+> `DisplaySnapshot` → `memcmp` 相等 → 不重繪 → 提示不會出現、3 秒到期也不會消失。
+> 原版之所以看起來會動，只是因為低電量時 `SNAP_FLAG_BATTERY_LOW_BLINK` 每 500ms 翻轉、
+> 順帶提供重繪節奏——**依賴巧合**，且 Task 11 一改閃爍邏輯就卡死。這會是 DisplaySnapshot
+> 漏欄位的第 6 次。
+
 **Files:**
-- Modify: `firmware/src/main.cpp`
-- Modify: `firmware/src/ui_screens.cpp`
-- Modify: `firmware/src/app_globals.h`
+- Modify: `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.h`（常數 + 純函式宣告）
+- Modify: `firmware/lib/ems_fuel_gauge/fuel_gauge_logic.cpp`（純函式實作）
+- Modify: `firmware/lib/ems_display_snapshot/ems_display_snapshot.h`（新 flag bit + input 欄位 + 映射）
+- Modify: `firmware/src/main.cpp`（全域、`pollBattery()` 觸發、`captureDisplaySnapshot()`、`presentFrame()`）
+- Modify: `firmware/src/ui_screens.cpp`（`drawLowBatteryNotice(bool visible)`）
+- Modify: `firmware/src/app_globals.h`（全域 extern + 繪製函式宣告）
+- Modify: `firmware/test/test_fuel_gauge_logic/test_fuel_gauge_logic.cpp`（純函式 native test）
+- Modify: `firmware/test/test_display_snapshot/test_display_snapshot.cpp`（新 flag 的 regression test）
 
 **Interfaces:**
-- Consumes: Task 3 的 `LowBatteryLatch::consume_first_entry()`、Task 6 的輪詢
-- Produces: `g_low_battery_notice_until_ms`（`uint32_t`）、`drawLowBatteryNotice()`
+- Consumes: Task 3 的 `ems::LowBatteryLatch::consume_first_entry()`（`fuel_gauge_logic.h:314`）、Task 6 的 `pollBattery()`
+- Produces: `ems::is_low_battery_notice_visible()`、`SNAP_FLAG_LOW_BATTERY_NOTICE = 0x00080000`、
+  `DisplaySnapshotInputs::lowBatteryNoticeVisible`、`g_low_battery_notice_active` /
+  `g_low_battery_notice_start_ms`、`drawLowBatteryNotice(bool visible)`
 
-- [ ] **Step 1: 加入常數與全域**
+**已查證的既有介面（不必重查）：**
+- `COLOR_ACCENT_WARN = 0xFDE0`（`app_globals.h:114`）、`SCREEN_H = 240`（`app_globals.h:99`）
+- 目前最高 flag bit 是 `SNAP_FLAG_BATTERY_LOW_BLINK = 0x00040000`（第 19 個），下一個可用是 `0x00080000`
+- `presentFrame()` 現況為 `static void presentFrame(const DisplaySnapshot& snap)`（`main.cpp:899`），
+  內含 STEP 01（`drawBatteryIcon`）與 STEP 02（`display.pushSprite`）
+- `pollBattery()` 現況已有 STEP 01~04，STEP 04 是「讀取失敗留痕」且內含 `return;` 早退
+- **Training 進行中的 `globalState` 也是 `GLOBAL_OHCA`**（`input_handler.cpp:485` 開案時設定，
+  模式由 `g_case_mode == CASE_MODE_TRAINING` 區分）。因此下方
+  `in_active_case = (globalState == GLOBAL_OHCA) || (globalState == GLOBAL_VENT)`
+  **已涵蓋 Training**，不要再加條件；`GLOBAL_TRAINING_SETUP` 是開案前設定畫面，不該觸發
 
-`app_globals.h`：
+- [ ] **Step 1: 常數與純函式（`ems_fuel_gauge` lib）+ native test**
+
+「提示是否還在顯示期間」是純邏輯，必須抽進 lib——`ui_screens.cpp` 不在 `[env:native]` 的
+`build_src_filter` 內，留在 UI 層等同 0 測試覆蓋率（Task 9 的 `should_draw_battery_icon()`
+就是為此抽出來的，比照辦理）。
+
+`fuel_gauge_logic.h`（放在 `should_draw_battery_icon()` 宣告之後，與 `BATTERY_BLINK_HALF_PERIOD_MS`
+同一個「常數與唯一使用它的邏輯不分處兩地」的模式）：
 
 ```cpp
-/** 低電量提示顯示時長（ms）：SoT §13.16 顯示一次後自動消失 */
+/** 低電量提示顯示時長（ms）：SoT §13.16 顯示一次後自動消失
+ *  與 is_low_battery_notice_visible() 同檔——常數與唯一使用它的邏輯不分處兩地 */
 constexpr uint32_t LOW_BATTERY_NOTICE_MS = 3000;
+
+/**
+ * §13.16 低電量提示目前是否應該顯示。
+ *
+ * 以「起始時間 + 經過時長」判斷而非「截止時間 + 大小比較」：無號減法
+ * `now_ms - start_ms` 跨 millis() 溢位仍得到正確差值，與 pollBattery() 的節流
+ * 寫法同一個慣例；`millis() > until_ms` 則會在溢位後永久判成已過期。
+ *
+ * active 與 start_ms 分開兩個變數，不用 0 兼作「未觸發」哨兵——0 是 millis()
+ * 的合法回傳值，混用正是 pollBattery() STEP 01 已經避開過的同一個坑。
+ *
+ * @param active   提示是否已被觸發過（false = 從未觸發，一律不顯示）
+ * @param start_ms 觸發當下的時間戳（毫秒）
+ * @param now_ms   目前時間戳（毫秒），呼叫端傳入 millis()
+ * @return true = 仍在 LOW_BATTERY_NOTICE_MS 的顯示期間內
+ */
+bool is_low_battery_notice_visible(bool active, uint32_t start_ms, uint32_t now_ms);
 ```
 
-main.cpp 全域區：
+`fuel_gauge_logic.cpp`（接在 `should_draw_battery_icon()` 實作之後）：
 
 ```cpp
-// Impl-Phase H：低電量提示的顯示截止時間（0 = 未顯示）
-uint32_t g_low_battery_notice_until_ms = 0;
+bool is_low_battery_notice_visible(bool active, uint32_t start_ms, uint32_t now_ms) {
+    // STEP 01: 從未觸發過就不顯示
+    if (!active) {
+        return false;
+    }
+
+    // STEP 02: 無號減法取經過時間，跨 millis() 溢位仍正確
+    return (now_ms - start_ms) < LOW_BATTERY_NOTICE_MS;
+}
 ```
 
-- [ ] **Step 2: 在 pollBattery 觸發提示**
+`test/test_fuel_gauge_logic/test_fuel_gauge_logic.cpp` 新增五個 test（接在既有
+`test_should_draw_*` 系列之後，並在 `main()` 補 `RUN_TEST` 註冊）：
 
-在 Task 6 的 `pollBattery()` STEP 03 末尾加入：
+| test 名稱 | 輸入 | 期望 |
+|---|---|---|
+| `test_notice_inactive_is_never_visible` | `active=false, start=1000, now=1000` | `false` |
+| `test_notice_at_start_is_visible` | `active=true, start=1000, now=1000` | `true` |
+| `test_notice_boundary_2999ms_is_visible` | `active=true, start=1000, now=3999` | `true` |
+| `test_notice_boundary_3000ms_is_hidden` | `active=true, start=1000, now=4000` | `false` |
+| `test_notice_survives_millis_overflow` | `active=true, start=0xFFFFFF00, now=0x00000100`（差 512ms） | `true` |
+
+最後一個是這個設計的重點——用 `millis() > until_ms` 寫法時它會是 `false`。
+
+Run: `cd firmware && ~/.platformio/penv/bin/pio test -e native -f test_fuel_gauge_logic`
+
+- [ ] **Step 2: 全域狀態與 `pollBattery()` 觸發**
+
+`app_globals.h` 的 Phase H 全域 extern 區（`g_battery_low` 之後，`:453` 附近）：
+
+```cpp
+extern bool                    g_low_battery_notice_active;    // Phase H：§13.16 提示是否已觸發（per-boot）
+extern uint32_t                g_low_battery_notice_start_ms;  // Phase H：§13.16 提示觸發時間戳
+```
+
+`main.cpp` 全域定義區（`g_battery_low` 定義之後，`:177` 附近）：
+
+```cpp
+bool                    g_low_battery_notice_active   = false;  // Phase H：§13.16 提示尚未觸發
+uint32_t                g_low_battery_notice_start_ms = 0;      // Phase H：僅在 active 為 true 時有意義
+```
+
+`pollBattery()`：**在 STEP 03 之後、既有的「讀取失敗留痕」之前插入**，插入後把原 STEP 04
+整段重編為 STEP 05（`STEP-COMMENT-INSERT` 規則：序列中插入須往後重排，禁止 STEP 00）。
+
+放在早退之前是刻意的：latch 的 `entry_pending_` 是持久狀態，若使用者在非案件狀態下跨進
+低電量、進案件當輪剛好讀取失敗，放在 STEP 04 的 `return;` 之後會讓提示延後一整個
+`BATTERY_POLL_INTERVAL_MS`（10 秒）。
 
 ```cpp
     // STEP 04: §13.16 — 案件進行中首次跨進低電量顯示一次提示，不發聲
-    //          Training 一併適用（同樣耗電，練習時也需要知道電池狀況）
+    //          Training 一併適用：globalState 在 Training 開案後同為 GLOBAL_OHCA
+    //          （模式由 g_case_mode 區分），此判斷已涵蓋，不需額外條件。
+    //          短路求值是必要的：不在案件中時不可呼叫 consume_first_entry()，
+    //          否則會把「首次進入」事件消費掉，之後進案件就再也不提示。
     const bool in_active_case = (globalState == GLOBAL_OHCA)
                              || (globalState == GLOBAL_VENT);
     if (in_active_case && g_battery_latch.consume_first_entry()) {
-        g_low_battery_notice_until_ms = now_ms + LOW_BATTERY_NOTICE_MS;
+        g_low_battery_notice_active   = true;
+        g_low_battery_notice_start_ms = now_ms;
         Serial.println("[FUEL] 低電量提示觸發（§13.16，不發聲）");
     }
 ```
 
-- [ ] **Step 3: 繪製提示並接進 presentFrame**
+- [ ] **Step 3: DisplaySnapshot 五步驟 checklist（全部要跑，缺一即為本 task 的失敗）**
 
-`ui_screens.cpp`：
+1. `lib/ems_display_snapshot/ems_display_snapshot.h` 的 `DisplaySnapshotFlag` enum 末尾加：
+
+```cpp
+    SNAP_FLAG_LOW_BATTERY_NOTICE = 0x00080000,  // Phase H：§13.16 低電量提示顯示中（3 秒）
+```
+
+2. 同檔 `DisplaySnapshotInputs` 的「STEP 04: Phase H 電池欄位」區塊加：
+
+```cpp
+    bool     lowBatteryNoticeVisible = false;  // Phase H：§13.16 提示顯示中
+```
+
+3. 同檔 `captureSnapshot()` 的 STEP 02 bool→flags 區塊末尾加：
+
+```cpp
+    if (in.lowBatteryNoticeVisible) s.flags |= SNAP_FLAG_LOW_BATTERY_NOTICE;
+```
+
+4. `src/main.cpp:captureDisplaySnapshot()` 的 STEP 06（Phase H 電池欄位）末尾加：
+
+```cpp
+    // §13.16 提示是否顯示中：與閃爍相位同樣由 lib 純函式決策，繪製端不自算 millis()
+    in.lowBatteryNoticeVisible = ems::is_low_battery_notice_visible(
+        g_low_battery_notice_active, g_low_battery_notice_start_ms, millis());
+```
+
+5. `test/test_display_snapshot/test_display_snapshot.cpp` 三處都要改（前兩處漏改會讓既有測試
+   變成「新 flag 存在但沒人驗」的假綠燈）：
+   - 新增 `test_flag_low_battery_notice_sets_bit_0x80000()`，比照
+     `test_flag_battery_low_blink_sets_bit_0x40000()`（`:382`）的寫法，並註冊 `RUN_TEST`
+   - 「所有 bool 全設」的 expected 清單（`:300` 附近）補 `| SNAP_FLAG_LOW_BATTERY_NOTICE`，
+     且該 test 的 input 設定處要補 `in.lowBatteryNoticeVisible = true;`
+   - `test_all_flags_bit_masks_are_unique()`（`:304`）的 `all` 補新 flag，popcount 期望值
+     **19 → 20**，並更新該函式的說明註解
+
+Run: `cd firmware && ~/.platformio/penv/bin/pio test -e native -f test_display_snapshot`
+
+- [ ] **Step 4: 繪製提示並接進 `presentFrame()`**
+
+`app_globals.h` 的繪製函式宣告區（`drawBatteryIcon(bool lowBlinkOn);`，`:665` 之後）：
+
+```cpp
+void drawLowBatteryNotice(bool visible);
+```
+
+`ui_screens.cpp`（接在 `drawBatteryIcon()` 之後）：
 
 ```cpp
 /**
  * §13.16 低電量提示：案件進行中首次跨進低電量時顯示 3 秒。
- * 依規格不發聲；時間到後由 presentFrame 自動停止繪製。
+ *
+ * 依規格不發聲。是否仍在顯示期間由 captureDisplaySnapshot() 經
+ * ems::is_low_battery_notice_visible() 算好並存進 snapshot flag，本函式不自行呼叫
+ * millis()——理由與 drawBatteryIcon() 的相位處理相同：擷取時間點與繪製時間點若各自
+ * 取樣，跨越邊界時 snapshot 與畫面會不同步，且「顯示中」這個狀態不進 snapshot 就
+ * 不會觸發重繪（DisplaySnapshot 漏欄位已連踩 5 次）。
+ *
+ * @param visible 本次是否要畫（來自 snapshot 的 SNAP_FLAG_LOW_BATTERY_NOTICE bit）
  */
-void drawLowBatteryNotice() {
-    // STEP 01: 未在顯示期間就不畫
-    if (g_low_battery_notice_until_ms == 0 || millis() > g_low_battery_notice_until_ms) {
+void drawLowBatteryNotice(bool visible) {
+    // STEP 01: 不在顯示期間就不畫
+    if (!visible) {
         return;
     }
 
@@ -1781,33 +1926,53 @@ void drawLowBatteryNotice() {
 }
 ```
 
-在 `presentFrame()` 的 STEP 01 之後、STEP 02 之前插入（並把原 STEP 02 重編為 STEP 03）：
+`main.cpp:presentFrame()` — 在既有 STEP 01（`drawBatteryIcon`）之後插入，**原 STEP 02
+（`pushSprite`）重編為 STEP 03**：
 
 ```cpp
-    // STEP 02: §13.16 低電量提示（顯示期間蓋在畫面最上層）
-    drawLowBatteryNotice();
+    // STEP 02: §13.16 低電量提示（顯示期間蓋在畫面最上層，畫在電量圖示之後）
+    drawLowBatteryNotice((snap.flags & SNAP_FLAG_LOW_BATTERY_NOTICE) != 0);
 ```
 
-- [ ] **Step 4: 上機驗證**
+同時把 `presentFrame()` 的 JSDoc `@param snap` 說明補上這個 flag（現有說明只提
+`SNAP_FLAG_BATTERY_LOW_BLINK`）。
 
-因為要驗低電量，需讓電量降到 20% 以下。若電池電量充足不便實測，暫時把 `LOW_BATTERY_ENTER_PERCENT` 改成高於當前電量的值（例如 90）燒錄驗證，驗完改回 20 重新燒錄。
+**編譯驗證**：`cd firmware && ~/.platformio/penv/bin/pio run -e esp32-s3-devkitc-1`
+（`ui_screens.cpp` 不進 native build，只有這個環境會編到它）
 
-Run: `cd firmware && pio run -e esp32-s3-devkitc-1 -t upload --upload-port $(ls /dev/cu.usbmodem* | head -1)`
+- [ ] **Step 5: 上機驗證 — 本階段無硬體，累積到 handover §3-B**
 
-Expected: 進 OHCA 後出現一次「低電量／建議接上行動電源」，3 秒後消失、**不發聲**，之後電量圖示持續閃爍；離開再進 OHCA 不再重複顯示
+本 wave 全程無實體裝置，**不在 task 內做上機驗證**，改為把驗證項目寫進
+`docs/superpowers/phase-h-handover.md` §3-B 的待驗清單。要驗的內容：
 
-- [ ] **Step 5: Commit**
+- 進 OHCA 後出現一次「低電量／建議接上行動電源」，3 秒後消失、**不發聲**
+- 提示消失後電量圖示持續閃爍
+- 離開再進 OHCA 不再重複顯示（per-boot 一次）
+- 觸發手法與 §3-B Task 6 相同：暫時把 `LOW_BATTERY_ENTER_PERCENT` 改成高於當前電量的值
+  （例如 90）燒錄驗證，驗完改回 20 重新燒錄
+- Training 開案同樣會觸發（`globalState` 同為 `GLOBAL_OHCA`）
+
+- [ ] **Step 6: Commit**
 
 ```bash
 cd firmware
-git add src/main.cpp src/ui_screens.cpp src/app_globals.h
+git add lib/ems_fuel_gauge/ lib/ems_display_snapshot/ src/main.cpp src/ui_screens.cpp \
+        src/app_globals.h test/test_fuel_gauge_logic/ test/test_display_snapshot/
 git commit -m "[PHASE-H] feat: 執行中低電量一次性提示（SoT §13.16）
 
 案件進行中首次跨進 20% 顯示一次「低電量／建議接上行動電源」，3 秒自動消，之後只
 閃圖示。依規格不發聲——這是 SoT 明文，不是疏漏。
 
-「案件進行中」含 Training：練習同樣耗電，救護員需要知道電池狀況。純選單瀏覽不觸發，
-避免待機時跳提示。"
+「顯示中」這個狀態走 DisplaySnapshot 的新 flag bit（0x00080000），由
+captureDisplaySnapshot() 用 lib 純函式算好後傳給繪製端，繪製端不自算 millis()。
+留在繪製端現算會讓 memcmp 判定畫面沒變而不重繪，提示既不會出現也不會消失——
+DisplaySnapshot 漏欄位的第 6 次。
+
+到期判斷用「起始時間 + 經過時長」的無號減法，不用「截止時間 + 大小比較」，
+跨 millis() 溢位仍正確；active 與 start_ms 分開兩個變數，不拿 0 兼作未觸發哨兵。
+
+「案件進行中」含 Training：Training 開案後 globalState 同為 GLOBAL_OHCA，此判斷
+已涵蓋。純選單瀏覽不觸發，避免待機時跳提示。"
 ```
 
 ---
