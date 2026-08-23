@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
 - **最後更新**：2026-08-23
-- **狀態**：W1 完成（Task 1–6，review clean）。**Task 7 review 已補跑完畢並修掉 1 個 Critical**（見 §3-A）。Task 6 上機驗收剩兩項待硬體；Task 8–14 未開工
+- **狀態**：W1 完成（Task 1–6，review clean）。**Task 7 review 已補跑完畢並修掉 1 個 Critical**（見 §3-A）。**Task 8 完成**（review clean after 1 fix round）。Task 6 上機驗收剩兩項待硬體；Task 9–14 未開工
 - **branch**：`feat/phase-g-system-settings`（未推送）
 
 > 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-23 收工時實測過。
@@ -21,11 +21,11 @@ MAX17043 燃料計硬體驗收通過，**主韌體已經真的在讀電量了**�
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
 | W1 讀取層 | ✅ Task 1–6 review clean；**上機驗收剩兩項待硬體** |
-| W2 顯示層 | ✅ Task 7 review clean（`94bc3fb`），Task 8–9 未開工 |
+| W2 顯示層 | ✅ Task 7（`94bc3fb`）、Task 8（`3333235`）review clean；Task 9 未開工 |
 | W3 低電量行為 | ⬜ Task 10–11 |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-**實測數字**：`firmware/lib/ems_fuel_gauge/` 51 個、`test_display_snapshot` 50 個 native test 全綠；全套 561 cases / 560 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS（App 69.2%）。
+**實測數字**：`firmware/lib/ems_fuel_gauge/` 57 個、`test_display_snapshot` 50 個 native test 全綠；全套 567 cases / 566 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS。
 
 ---
 
@@ -100,9 +100,30 @@ git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部
 > `g_battery_percent` / `g_battery_charge_state` / 閃爍相位填進 `DisplaySnapshotInputs`——
 > 不填不會有任何編譯或測試錯誤，畫面會安靜地永遠顯示「燃料計不在線」。
 
-### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
+### 3-A2. Task 8 完成，給 Task 9 的三條交接（2026-08-23）
 
-程式碼寫完了，但計畫 Task 6 的 **Step 6.3 / 6.4 尚未執行**。步驟在計畫檔裡，重點如下。
+`3333235` — `presentFrame()` 統一重繪出口。15 處 `display.pushSprite(0,0)` 全數收斂
+（grep 驗過只剩 `presentFrame()` 內部那一處），`captureDisplaySnapshot()` 已填入三個電池欄位。
+fix round 1 修掉兩條 Important。
+
+1. ⚠️ **partial update 路徑不 `clearDisplay()` 就推送。** `updateDisplay()` 的
+   `inCountdownGroup && sameStateAsLast` 分支呼叫 `drawOhcaCountdownTimeOnly()` 後直接經
+   `presentFrame()` 推送，中間沒有清屏。目前 `drawBatteryIcon()` 是 no-op 所以沒影響，但
+   **Task 9 畫出圖示後，圖示必須自己清除它那一小塊區域的背景**，不能依賴外層 `clearDisplay()`，
+   否則倒數畫面上的電量圖示會疊字。Task 9 的 review 要特別看這條路徑。
+2. **`drawBatteryIcon()` 目前是誠實標示的 no-op placeholder**（`ui_screens.cpp:804-810`
+   的 JSDoc 分「現況」與「預定行為」兩段寫）。Task 9 填完內容後記得把那兩段合併回單一敘述。
+3. **低電量閃爍相位已經是純函式** `ems::compute_low_battery_blink_on(percent, low, now_ms)`
+   （`fuel_gauge_logic.h/.cpp`），含「燃料計不在線一律回 false」的守衛與 6 條 native test。
+   Task 9 只要讀 `SNAP_FLAG_BATTERY_LOW_BLINK` 這個 bit 決定畫不畫，**不要自己再算一次相位**。
+
+> 💡 那條守衛擋的是實際問題：失聯時 `g_battery_percent` 變哨兵但 `g_battery_low` 依設計保持
+> 鎖存，相位若繼續翻轉會讓 snapshot 每 500ms 變化 → 整片重繪，而圖示在不在線時本來就不畫
+> → 畫面毫無變化的永久性空轉重繪。失聯不會自己好，所以那個狀態是永久的。
+
+**Task 8 的 1 個 parked**：`presentFrame()` 的呼叫順序與次數沒有測試（無法驗證「overlay 必定在
+pushSprite 前恰好執行一次」、各早退分支是否漏呼叫）。要測得把呈現流程抽成可注入的協調層，
+屬計畫層架構決策。日後新增畫面若漏呼叫 `presentFrame()`，native 測試不會發現，只能靠 grep 與 review。
 
 ### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
@@ -171,6 +192,7 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 5 | `75e3fb0` | `Max17043Backend`、兩個合理性 predicate、`make_reading()` | 3 | clean |
 | 6 | `917d072` | main.cpp 掛載、`pollBattery()`、`to_display_percent()`、`apply_fuel_reading()` | 1 | clean |
 | 7 | `94bc3fb` | `DisplaySnapshot` 電池欄位、`SNAP_FLAG_BATTERY_LOW_BLINK`、`snapshotsEqualExceptCountdown()` | 1（2026-08-23 補跑） | clean |
+| 8 | `3333235` | `presentFrame()` 統一重繪出口（15 處收斂）、snapshot 電池填值、`compute_low_battery_blink_on()` | 1 | clean |
 
 > Task 1–6 的 hash 不受 2026-08-23 那次 rebase 影響（rebase 基底是 `c180cb3`，都在它之前）。
 

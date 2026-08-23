@@ -90,9 +90,10 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 ⏳ **待實作**：見 `docs/pm-dev-spec.md §四 Phase B~H`
 
 🔋 **Impl-Phase H（電量顯示）進行中**（2026-08-23）：W1 讀取層 Task 1–6 完成、review 皆 clean，
-主韌體已每 10 秒讀取 MAX17043 並寫進全域。W2 顯示層 Task 7（DisplaySnapshot 欄位）**review 已補跑
-完畢**（`94bc3fb`，修掉 1 個 Critical）；Task 8–14 未開工，畫面尚看不到電量。
-全套 561 cases / 560 通過（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
+主韌體已每 10 秒讀取 MAX17043 並寫進全域。W2 顯示層 Task 7（DisplaySnapshot 欄位，`94bc3fb`）與
+Task 8（`presentFrame()` 統一重繪出口，`3333235`）皆 review clean；**Task 9–14 未開工，畫面尚看不到
+電量**（`drawBatteryIcon()` 目前是標示清楚的 no-op placeholder）。
+全套 567 cases / 566 通過（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
 
 > ⚠️ 2026-08-23 補跑 review 時 rebase 過，**Phase H 的 Task 7 之後 commit hash 全變**
 > （`df33d97` → `94bc3fb`）。Task 1–6 的 hash 不受影響。分支尚未推送。
