@@ -35,6 +35,23 @@ bool is_plausible_soc_raw(uint16_t raw_soc) {
     return whole <= PLAUSIBLE_SOC_WHOLE_MAX;
 }
 
+uint8_t battery_segments_for_percent(uint8_t percent) {
+    // STEP 01: 由高到低比對四級門檻，依 spec §4.3：0~24/25~49/50~74/75~100
+    if (percent >= BATTERY_SEGMENT_4_MIN_PERCENT) {
+        return BATTERY_ICON_SEGMENT_COUNT;  // 滿格 = 格數上限，單一真相見常數註解
+    }
+    if (percent >= BATTERY_SEGMENT_3_MIN_PERCENT) {
+        return 3;
+    }
+    if (percent >= BATTERY_SEGMENT_2_MIN_PERCENT) {
+        return 2;
+    }
+
+    // STEP 02: 低於 BATTERY_SEGMENT_2_MIN_PERCENT 仍回 1——外框本身已表示
+    //          「有讀到值」，SOC 為 0（真的沒電）也不例外
+    return 1;
+}
+
 bool compute_low_battery_blink_on(uint8_t percent, bool low, uint32_t now_ms) {
     // STEP 01: 燃料計不在線時圖示本來就不畫，仍翻轉相位只會造成無效的永久性全螢幕重繪
     if (is_battery_absent(percent)) {
@@ -48,6 +65,24 @@ bool compute_low_battery_blink_on(uint8_t percent, bool low, uint32_t now_ms) {
 
     // STEP 03: 低電量且在線 → 依時間戳計算閃爍相位（BATTERY_BLINK_HALF_PERIOD_MS 半週期）
     return (now_ms / BATTERY_BLINK_HALF_PERIOD_MS) % 2 == 0;
+}
+
+bool should_draw_battery_icon(uint8_t percent, bool low, bool lowBlinkOn) {
+    // STEP 01: 不在線 → 不畫，連外框都不畫（畫空電池會被讀成沒電）
+    if (is_battery_absent(percent)) {
+        return false;
+    }
+
+    // STEP 02: 非低電量 → 一律畫，不受 lowBlinkOn 影響。lowBlinkOn 在非低電量時
+    //          恆為 false（compute_low_battery_blink_on() 的既有保證）——若這裡
+    //          直接 `return lowBlinkOn;` 會把「電量正常」誤判成「不該畫」，這正是
+    //          2026-08-23 controller 在 UI 層抓到的那個 bug 的根因
+    if (!low) {
+        return true;
+    }
+
+    // STEP 03: 低電量 → 依相位決定，亮相位畫、暗相位不畫
+    return lowBlinkOn;
 }
 
 void ChargeTrendTracker::push(uint16_t millivolts) {

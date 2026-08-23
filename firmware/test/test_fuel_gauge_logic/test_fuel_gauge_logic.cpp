@@ -487,6 +487,52 @@ static void test_apply_fuel_reading_failure_resets_trend_window() {
 }
 
 // ============================================================
+//  Group 7A: battery_segments_for_percent() —— 四格電量圖示格數換算
+//  （Task 9 裁決 4：從 ui_screens.cpp 的 static 函式抽出，native 才測得到；
+//    每個分界的兩側各一條，8 個邊界值 0/24/25/49/50/74/75/100）
+// ============================================================
+
+static void test_battery_segments_at_0_percent_is_1() {
+    // 下界：SOC 為 0（真的沒電）仍回 1，外框本身已表示「有讀到值」
+    TEST_ASSERT_EQUAL_UINT8(1, ems::battery_segments_for_percent(0));
+}
+
+static void test_battery_segments_at_24_percent_is_1() {
+    // 第一個分界的寬鬆方向：24% 仍屬第 1 級（擋住門檻降到 24）
+    TEST_ASSERT_EQUAL_UINT8(1, ems::battery_segments_for_percent(24));
+}
+
+static void test_battery_segments_at_25_percent_is_2() {
+    // 第一個分界的嚴格方向：25% 起進第 2 級（擋住門檻升到 26）
+    TEST_ASSERT_EQUAL_UINT8(2, ems::battery_segments_for_percent(25));
+}
+
+static void test_battery_segments_at_49_percent_is_2() {
+    // 第二個分界的寬鬆方向：49% 仍屬第 2 級
+    TEST_ASSERT_EQUAL_UINT8(2, ems::battery_segments_for_percent(49));
+}
+
+static void test_battery_segments_at_50_percent_is_3() {
+    // 第二個分界的嚴格方向：50% 起進第 3 級
+    TEST_ASSERT_EQUAL_UINT8(3, ems::battery_segments_for_percent(50));
+}
+
+static void test_battery_segments_at_74_percent_is_3() {
+    // 第三個分界的寬鬆方向：74% 仍屬第 3 級
+    TEST_ASSERT_EQUAL_UINT8(3, ems::battery_segments_for_percent(74));
+}
+
+static void test_battery_segments_at_75_percent_is_4() {
+    // 第三個分界的嚴格方向：75% 起滿格
+    TEST_ASSERT_EQUAL_UINT8(4, ems::battery_segments_for_percent(75));
+}
+
+static void test_battery_segments_at_100_percent_is_4() {
+    // 上界：滿電仍是 4 格，不因合法範圍頂端而溢出
+    TEST_ASSERT_EQUAL_UINT8(4, ems::battery_segments_for_percent(100));
+}
+
+// ============================================================
 //  Group 7: compute_low_battery_blink_on() —— 低電量閃爍相位
 //  （Fix Round 1 A：抽出前 captureDisplaySnapshot() 內這三行完全沒有測試保護，
 //    燃料計不在線時未加守衛會造成永久性的每 500ms 無效全螢幕重繪）
@@ -521,6 +567,38 @@ static void test_blink_phase_boundary_999ms_is_off() {
 static void test_blink_phase_boundary_1000ms_is_on() {
     // 1000 / 500 = 2 → 2 % 2 == 0 → 翻回亮相位，完成一次 1Hz 全週期
     TEST_ASSERT_TRUE(ems::compute_low_battery_blink_on(15, true, 1000));
+}
+
+// ============================================================
+//  Group 7B: should_draw_battery_icon() —— 電量圖示是否該畫的決策
+//  （2026-08-23 controller 驗證抓到的 Critical：ui_screens.cpp 曾用
+//    `if (!lowBlinkOn) return;` 單獨判斷是否跳過繪製，但 lowBlinkOn 在非低電量時
+//    恆為 false，導致電量正常（絕大多數時間）時圖示完全不會出現。抽成純函式後
+//    這四條測試直接鎖住三種情境，ui_screens.cpp 本身不在 native build 範圍內、
+//    這個決策若留在 render 程式碼裡是測不到的）
+// ============================================================
+
+static void test_should_draw_absent_is_false_even_when_low_and_blink_on() {
+    // 不在線一律不畫，即使低電量且正處於閃爍亮相位——連外框都不畫，
+    // 避免「不在線」被讀成「已讀到電量、只是圖示恰好在暗相位」
+    TEST_ASSERT_FALSE(ems::should_draw_battery_icon(ems::BATTERY_PERCENT_ABSENT, true, true));
+}
+
+static void test_should_draw_present_not_low_is_true_even_when_blink_off() {
+    // 核心回歸測試：這正是實際會發生的路徑——電量正常時 low=false，
+    // compute_low_battery_blink_on() 在這種情況下恆回 false，本測試鎖住
+    // 「lowBlinkOn==false 但非低電量」時仍必須畫，不可被誤判成跳過繪製
+    TEST_ASSERT_TRUE(ems::should_draw_battery_icon(50, false, false));
+}
+
+static void test_should_draw_present_low_and_blink_on_is_true() {
+    // 低電量且處於閃爍亮相位 → 畫
+    TEST_ASSERT_TRUE(ems::should_draw_battery_icon(15, true, true));
+}
+
+static void test_should_draw_present_low_and_blink_off_is_false() {
+    // 低電量且處於閃爍暗相位 → 不畫（這才是 lowBlinkOn==false 真正該跳過繪製的情境）
+    TEST_ASSERT_FALSE(ems::should_draw_battery_icon(15, true, false));
 }
 
 int main(int, char**) {
@@ -571,6 +649,14 @@ int main(int, char**) {
     RUN_TEST(test_display_percent_zero_is_not_absent);
     RUN_TEST(test_display_percent_passes_valid_value_through);
     RUN_TEST(test_display_percent_full_charge_passes_through);
+    RUN_TEST(test_battery_segments_at_0_percent_is_1);
+    RUN_TEST(test_battery_segments_at_24_percent_is_1);
+    RUN_TEST(test_battery_segments_at_25_percent_is_2);
+    RUN_TEST(test_battery_segments_at_49_percent_is_2);
+    RUN_TEST(test_battery_segments_at_50_percent_is_3);
+    RUN_TEST(test_battery_segments_at_74_percent_is_3);
+    RUN_TEST(test_battery_segments_at_75_percent_is_4);
+    RUN_TEST(test_battery_segments_at_100_percent_is_4);
     RUN_TEST(test_apply_fuel_reading_failure_preserves_latched_low_battery);
     RUN_TEST(test_apply_fuel_reading_failure_does_not_fabricate_low_battery);
     RUN_TEST(test_apply_fuel_reading_failure_returns_absent_defaults);
@@ -582,5 +668,9 @@ int main(int, char**) {
     RUN_TEST(test_blink_phase_boundary_500ms_is_off);
     RUN_TEST(test_blink_phase_boundary_999ms_is_off);
     RUN_TEST(test_blink_phase_boundary_1000ms_is_on);
+    RUN_TEST(test_should_draw_absent_is_false_even_when_low_and_blink_on);
+    RUN_TEST(test_should_draw_present_not_low_is_true_even_when_blink_off);
+    RUN_TEST(test_should_draw_present_low_and_blink_on_is_true);
+    RUN_TEST(test_should_draw_present_low_and_blink_off_is_false);
     return UNITY_END();
 }

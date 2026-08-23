@@ -803,11 +803,93 @@ void drawConfirmDialog(const char* title, const char* body) {
 }
 
 /**
- * 右上角電量圖示（Impl-Phase H）。
+ * 右上角電量圖示（Impl-Phase H）：四格電量條 + 低電量閃爍 + 充電中疊加閃電符號。
+ * 於 presentFrame() 內對所有畫面統一繪製；燃料計不在線時完全不畫（連外框都不畫，
+ * 因為畫空電池會被讀成沒電）。
  *
- * 現況：no-op placeholder，任何情況都不畫任何東西——繪製內容由 Task 9 實作。
- * 預定行為（Task 9 完成後）：於 presentFrame() 內對所有畫面統一繪製；燃料計不在線時完全不畫。
+ * @param lowBlinkOn 低電量閃爍的目前相位（true=亮相位）。⚠️ 這**不是**「該不該畫圖示」
+ *                   的開關——它只在「低電量」情境下才決定畫或不畫；非低電量時
+ *                   compute_low_battery_blink_on() 恆回 false，此時圖示仍要正常
+ *                   畫出來，不可拿 lowBlinkOn==false 當跳過繪製的條件（2026-08-23
+ *                   controller 驗證抓到的實際回歸：曾誤寫成單獨的
+ *                   `if (!lowBlinkOn) return;`，導致電量正常時圖示完全不會出現）。
+ *                   真正「該不該畫」的判斷見 STEP 03 的 ems::should_draw_battery_icon()。
+ *                   相位本身由呼叫端從 DisplaySnapshot 的 SNAP_FLAG_BATTERY_LOW_BLINK
+ *                   bit 傳入，本函式不自行重算 millis()：snapshot 擷取時間與繪製
+ *                   時間若各自算一次相位，兩者跨越 500ms 邊界時會不同步
+ *                   （snapshot 記亮、畫面畫暗）。
  */
-void drawBatteryIcon() {
-    // Task 9 實作繪製內容
+void drawBatteryIcon(bool lowBlinkOn) {
+    // STEP 01: 計算外框位置（右緣對齊，往左展開），並算出含正極頭的完整佔用矩形
+    const int16_t body_x = SCREEN_W - BATTERY_ICON_RIGHT_MARGIN
+                         - BATTERY_ICON_TIP_W - BATTERY_ICON_BODY_W;
+    const int16_t body_y = BATTERY_ICON_Y;
+    const int16_t icon_w = BATTERY_ICON_BODY_W + BATTERY_ICON_TIP_W;  // 含正極頭的總寬
+    const int16_t icon_h = BATTERY_ICON_BODY_H;  // 正極頭高度 < 外框高度，外框範圍已含蓋
+
+    // STEP 02: 先清除圖示佔用區域——updateDisplay() 的 partial update 路徑
+    // （inCountdownGroup && sameStateAsLast 分支）不經過外層 clearDisplay() 就推送，
+    // 圖示不自己清背景會在倒數畫面上疊字；閃爍暗相位若不清除，上一次畫的圖示會殘留成常亮
+    display.fillRect(body_x, body_y, icon_w, icon_h, COLOR_BG);
+
+    // STEP 03: 決定本次是否該繼續畫內容——不在線、或低電量暗相位都不畫，只清背景
+    // 就返回。判斷邏輯抽進 ems::should_draw_battery_icon()（純函式、native 測試
+    // 涵蓋），不在這裡用兩個獨立 if 各自判斷：lowBlinkOn 在非低電量時恆為
+    // false，先前版本寫成 `if (!lowBlinkOn) return;` 會把「電量正常」誤判成
+    // 「該跳過繪製」，圖示變成只有低電量亮相位才出現，與 Task 9 的目的正好相反
+    // （2026-08-23 controller 驗證時抓到）
+    if (!ems::should_draw_battery_icon(g_battery_percent, g_battery_low, lowBlinkOn)) {
+        return;
+    }
+
+    // STEP 04: 低電量用警示色，其餘用一般前景色
+    const uint16_t color = g_battery_low ? COLOR_ACCENT_ALERT : COLOR_TEXT_MUTED;
+
+    // STEP 05: 畫外框與正極頭
+    display.drawRect(body_x, body_y, BATTERY_ICON_BODY_W, BATTERY_ICON_BODY_H, color);
+    display.fillRect(body_x + BATTERY_ICON_BODY_W,
+                     body_y + (BATTERY_ICON_BODY_H - BATTERY_ICON_TIP_H) / 2,
+                     BATTERY_ICON_TIP_W, BATTERY_ICON_TIP_H, color);
+
+    // STEP 06: 依電量填格（格與格之間留 BATTERY_ICON_SEGMENT_GAP_PX 間隙）。
+    // 分界邏輯抽在 ems::battery_segments_for_percent()（lib/ems_fuel_gauge），
+    // native 測試涵蓋每個分界兩側，UI 層本身不重算門檻。STEP 03 已保證
+    // g_battery_percent 不是哨兵值（should_draw_battery_icon 為 true 時必然在線），
+    // 這裡可直接傳入。可用寬度/高度的雙邊合計扣除量由單邊留白
+    // BATTERY_ICON_SEGMENT_INSET_PX 推導（× 2），不另外寫一個裸數字
+    const uint8_t segments = ems::battery_segments_for_percent(g_battery_percent);
+    const int16_t seg_w = (BATTERY_ICON_BODY_W - BATTERY_ICON_SEGMENT_INSET_PX * 2)
+                         / BATTERY_ICON_SEGMENTS;
+    for (uint8_t i = 0; i < segments; i++) {
+        display.fillRect(body_x + BATTERY_ICON_SEGMENT_INSET_PX + i * seg_w,
+                         body_y + BATTERY_ICON_SEGMENT_INSET_PX,
+                         seg_w - BATTERY_ICON_SEGMENT_GAP_PX,
+                         BATTERY_ICON_BODY_H - BATTERY_ICON_SEGMENT_INSET_PX * 2,
+                         color);
+    }
+
+    // STEP 07: 充電中在電量格上疊一個幾何閃電符號。不可用文字 "⚡"：字型來源
+    // STHeiti Medium.ttc 未含該字元，且 vlw 字集是掃描原始碼字串 union 生成的
+    // PROGMEM header，改字串不重跑 regen_vlw.sh 就會實機缺字（2026-05-25 教訓）。
+    // 改用兩個三角形拼出的折線形狀，畫在電量格內部（16×6px 可用空間），
+    // 顏色用 COLOR_ACCENT_OK 與電量條顏色區隔
+    if (g_battery_charge_state == ems::ChargeState::Charging) {
+        constexpr int16_t BOLT_W = 8;  // 閃電圖形寬度（px），小於可用空間 16px
+        constexpr int16_t BOLT_H = 6;  // 閃電圖形高度（px），等於電量格內部高度（BODY_H-4）
+        // STEP 07.01: 閃電外框水平置中於電量格內部：(16-8)/2=4px 內縮
+        const int16_t bolt_x = body_x + 2 + (BATTERY_ICON_BODY_W - 4 - BOLT_W) / 2;
+        const int16_t bolt_y = body_y + 2;
+
+        // STEP 07.02: 上半三角形（頂點在右上，底邊落在垂直中線）+
+        // 下半三角形（頂邊落在垂直中線，頂點在左下），兩者共用中線交錯出 Z 字折線，
+        // 是最小可辨識的閃電輪廓
+        display.fillTriangle(bolt_x + BOLT_W,         bolt_y,
+                             bolt_x,                   bolt_y + BOLT_H / 2,
+                             bolt_x + BOLT_W * 5 / 8,   bolt_y + BOLT_H / 2,
+                             COLOR_ACCENT_OK);
+        display.fillTriangle(bolt_x + BOLT_W * 3 / 8,  bolt_y + BOLT_H / 2,
+                             bolt_x + BOLT_W,           bolt_y + BOLT_H / 2,
+                             bolt_x,                    bolt_y + BOLT_H,
+                             COLOR_ACCENT_OK);
+    }
 }

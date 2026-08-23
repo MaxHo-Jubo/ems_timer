@@ -119,6 +119,56 @@ constexpr bool is_battery_absent(uint8_t display_percent) {
     return display_percent == BATTERY_PERCENT_ABSENT;
 }
 
+/** 四格電量圖示的格數上限：對應 spec §4.3 的四級分界，也是
+ *  battery_segments_for_percent() 的回傳值上限。
+ *
+ *  app_globals.h 的版面常數 BATTERY_ICON_SEGMENTS（決定電量條要分成幾個繪製槽位）
+ *  直接引用本常數，不是各自維護一份字面值 4——這部分是真的單一真相來源。
+ *
+ *  ⚠️ 但本常數**不是** battery_segments_for_percent() 格數映射的單一真相來源：
+ *  該函式內的 `return 3; / return 2; / return 1;` 三個分支與三個門檻常數
+ *  （BATTERY_SEGMENT_4/3/2_MIN_PERCENT）都是各自獨立寫死的資料，不是由本常數
+ *  推導出來的。把本常數改成 5 不會讓格數真的變成 5 級，只會讓下面的
+ *  static_assert 編譯失敗——這是刻意設計的「改格數需要同步改四個地方」提醒，
+ *  不是自動同步機制。spec §4.3 把格數寫死為四格，不是可配置參數；為「改成
+ *  5 格」這個目前不會發生的需求先做通用化（門檻收進 array、格數由 array 大小
+ *  推導）屬過度設計，真的要改格數時再一併重構本檔與下面的 assert。 */
+constexpr uint8_t BATTERY_ICON_SEGMENT_COUNT = 4;
+
+static_assert(BATTERY_ICON_SEGMENT_COUNT == 4,
+              "battery_segments_for_percent() 的 return 3/2/1 分支與三個 "
+              "BATTERY_SEGMENT_*_MIN_PERCENT 門檻常數皆為寫死四級，不會因為改這個"
+              "常數而自動跟著變；要改動格數必須同步重寫該函式與三個門檻常數，"
+              "改完後才能把這個 assert 的比較值一併改掉");
+
+/** 四格電量圖示的分界值（%，含下界）：對應 spec §4.3 的四級分界。
+ *  由高到低比對，達到門檻即填滿對應格數，避免呼叫端各自猜測閾值 */
+constexpr uint8_t BATTERY_SEGMENT_4_MIN_PERCENT = 75;
+constexpr uint8_t BATTERY_SEGMENT_3_MIN_PERCENT = 50;
+constexpr uint8_t BATTERY_SEGMENT_2_MIN_PERCENT = 25;
+
+/**
+ * 依電量百分比換算四格電量圖示應填滿的格數。
+ *
+ * 分界依 spec §4.3：0~24 / 25~49 / 50~74 / 75~100，四級對應填滿 1~BATTERY_ICON_SEGMENT_COUNT 格
+ * （SOC 為 0 時仍回 1，這是 spec §4.3 最低一級分界本身如此——0% 是合法讀數，不是
+ * 需要特殊處理的例外。「不在線」是完全不同的另一條路徑，由
+ * ems::should_draw_battery_icon() 處理且連外框都不畫，不會走到本函式）。
+ *
+ * 抽進本檔（而非留在 UI 層的 static 函式）的理由：native 環境的 [env:native]
+ * build_src_filter 排除整個 src/，UI 層函式沒有測試涵蓋；四格分界是 spec 明訂的
+ * 全域約束，被改動不該無聲無息地漏測。
+ *
+ * ⚠️ 呼叫端必須先用 is_battery_absent() 擋掉哨兵值 255——本函式只負責合法電量
+ * （0~100）到格數的換算，「在不在線」是另一個函式的職責，兩者不合併是因為
+ * 呼叫端（drawBatteryIcon）本來就得先做「不在線就整個不畫」的早退判斷，
+ * 這裡加一層哨兵防呆只會製造第二個判斷點，不會消除第一個。
+ *
+ * @param percent 電量百分比 0~100（呼叫端已排除哨兵值）
+ * @return 填滿格數 1~BATTERY_ICON_SEGMENT_COUNT
+ */
+uint8_t battery_segments_for_percent(uint8_t percent);
+
 /** 低電量閃爍半週期（ms）：500ms 翻轉一次 = 1Hz 閃爍
  *  與 compute_low_battery_blink_on() 同檔——常數與唯一使用它的邏輯不分處兩地 */
 constexpr uint32_t BATTERY_BLINK_HALF_PERIOD_MS = 500;
@@ -136,6 +186,32 @@ constexpr uint32_t BATTERY_BLINK_HALF_PERIOD_MS = 500;
  * @return true = 亮相位；false = 滅相位、非低電量、或燃料計不在線
  */
 bool compute_low_battery_blink_on(uint8_t percent, bool low, uint32_t now_ms);
+
+/**
+ * 電量圖示本次是否該畫內容（不含清背景——清背景由呼叫端無條件先執行，本函式
+ * 只決定接下來要不要繼續畫外框/格子/閃電）。
+ *
+ * 三種情況：
+ *   - 不在線（is_battery_absent(percent)）→ 不畫，連外框都不畫，避免被讀成沒電
+ *   - 在線且非低電量 → 一律畫，不受 lowBlinkOn 影響
+ *   - 在線且低電量 → 依 lowBlinkOn 相位決定（亮相位畫、暗相位不畫）
+ *
+ * 抽成本函式的理由：2026-08-23 controller 驗證時抓到 UI 層曾把「非低電量時
+ * lowBlinkOn 恆為 false」誤讀成「lowBlinkOn==false 就該跳過繪製」（`if (!lowBlinkOn)
+ * return;`），導致電量正常（絕大多數時間）時圖示完全不會出現，只有低電量亮相位
+ * 才畫得出來——與 Task 9 的目的正好相反。三個布林的交互關係若散在 render 程式碼
+ * 裡用連續 if 各自判斷，容易重蹈同一種耦合誤讀；抽成純函式後這個決策可以被
+ * native test 鎖住（ui_screens.cpp 不在 [env:native] 的 build_src_filter 內，
+ * UI 層程式碼本身完全測不到，這正是原本的 bug 能編譯通過、測試也不會抓到的原因）。
+ *
+ * @param percent    電量百分比（255 = 燃料計不在線）
+ * @param low        低電量鎖存狀態（含遲滯）
+ * @param lowBlinkOn 低電量閃爍目前相位；非低電量時呼叫端應恆傳 false
+ *                   （compute_low_battery_blink_on() 的既有保證），但本函式不依賴
+ *                   這個前提成立——非低電量分支直接回 true，不查看 lowBlinkOn
+ * @return true = 該畫；false = 不畫（不在線，或低電量暗相位）
+ */
+bool should_draw_battery_icon(uint8_t percent, bool low, bool lowBlinkOn);
 
 /**
  * 充電狀態。硬體沒有充電訊號腳，本列舉由電壓趨勢推導而來。

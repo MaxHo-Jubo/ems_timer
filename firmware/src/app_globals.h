@@ -139,6 +139,39 @@ constexpr int16_t  DIALOG_BAR_H        = 44;
 /** Vent 結束提示 bar 高度 */
 constexpr int16_t  VENT_BAR_H          = 32;
 
+// ── Impl-Phase H：右上角電量圖示版面（獨立頂行，不與 OHCA_BADGE_Y 那行爭位）──
+
+/** 圖示右緣距螢幕右邊界（px），與既有 overlay 的 8px 邊距一致 */
+constexpr int16_t BATTERY_ICON_RIGHT_MARGIN = 8;
+
+/** 圖示頂緣 y 座標（px）：位於 OHCA_BADGE_Y=14 那行之上的空白頂行 */
+constexpr int16_t BATTERY_ICON_Y = 2;
+
+/** 電池外框寬度（px，不含正極頭） */
+constexpr int16_t BATTERY_ICON_BODY_W = 20;
+
+/** 電池外框高度（px），受限於頂行僅 14px 可用 */
+constexpr int16_t BATTERY_ICON_BODY_H = 10;
+
+/** 正極頭寬度（px） */
+constexpr int16_t BATTERY_ICON_TIP_W = 2;
+
+/** 正極頭高度（px） */
+constexpr int16_t BATTERY_ICON_TIP_H = 4;
+
+/** 電量格與外框內緣的單邊留白（px）：格子矩形往外框內縮這麼多，
+ *  上下左右四邊共用同一個值——外框可用寬度的雙邊合計扣除量即為本值 × 2 */
+constexpr int16_t BATTERY_ICON_SEGMENT_INSET_PX = 2;
+
+/** 相鄰電量格之間的間隙（px），畫在每一格矩形寬度裡扣除 */
+constexpr int16_t BATTERY_ICON_SEGMENT_GAP_PX = 1;
+
+/** 四格電量條要分成幾個繪製槽位。直接引用 ems::BATTERY_ICON_SEGMENT_COUNT
+ *  （fuel_gauge_logic.h）而非另外維護一份字面值 4，避免「改一處另一處靜默
+ *  不同步」（Task 7 flag OR 串就吃過這個虧）。⚠️ 該常數本身固定為 4 且以
+ *  static_assert 鎖住、不是通用推導來源，適用範圍與理由見它的定義處註解。 */
+constexpr uint8_t BATTERY_ICON_SEGMENTS = ems::BATTERY_ICON_SEGMENT_COUNT;
+
 // ── GPIO 腳位 ──
 
 constexpr int8_t   TFT_CS_PIN    = 21;
@@ -623,7 +656,13 @@ void drawStorageFailure(CaseMode type);
 
 // ── ui_screens.cpp ──
 void drawMainMenu();
-void drawBatteryIcon();  // Phase H：右上角電量圖示，由 presentFrame() 統一呼叫
+// Phase H：右上角電量圖示，由 presentFrame() 統一呼叫。
+// @param lowBlinkOn 低電量閃爍目前相位（true=亮相位）。⚠️ 不是「該不該畫」的開關——
+//                    非低電量時本值恆為 false，不可據此跳過繪製（真正的判斷見
+//                    ems::should_draw_battery_icon()）。相位由呼叫端從
+//                    DisplaySnapshot 的 SNAP_FLAG_BATTERY_LOW_BLINK bit 傳入，
+//                    本函式不自行重算 millis()，避免與 snapshot 擷取時間不同步。
+void drawBatteryIcon(bool lowBlinkOn);
 void drawSyncScreen();
 void drawHistoryList();
 void drawPlaceholder(const char* title, const char* phase);
