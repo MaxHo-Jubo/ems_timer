@@ -130,19 +130,20 @@
 <div class="header">
   <h1>📋 EMS Timer 進度報告</h1>
   <div class="subtitle">EMS DoseSync Pro — 救護人員給藥計時器</div>
-  <div class="version">PM 版 · 最後更新 2026-07-04</div>
+  <div class="version">PM 版 · 最後更新 2026-08-24</div>
 </div>
 
 <div class="meta-box">
   <div><span class="meta-label">產品：</span><span class="meta-value">EMS DoseSync Pro</span></div>
-  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-07-04</span></div>
-  <div><span class="meta-label">累計進度：</span><span class="meta-value">9 筆</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-08-24</span></div>
+  <div><span class="meta-label">累計進度：</span><span class="meta-value">10 筆</span></div>
   <div><span class="meta-label">負責：</span><span class="meta-value">Max Ho</span></div>
 </div>
 
 <div class="toc">
   <div class="toc-title">章節導覽（點擊跳轉到該次進度）</div>
   <div class="toc-list">
+    <a href="#progress-2026-08-24"><span class="toc-date">2026-08-24</span>進度 10 — 電量顯示做出來了（讀數／圖示／低電量提示），但一次都還沒在實機上看過</a>
     <a href="#progress-2026-07-04"><span class="toc-date">2026-07-04</span>進度 9 — 沒有畫面變化的地基補強：時間戳型別防呆 + 醫療規則測試網 + 字型工具防坑（含電源白屏修復收尾）</a>
     <a href="#progress-2026-05-25"><span class="toc-date">2026-05-25</span>進度 8 — 實機 UI bug 5 隻一日清完（B1-B5 含 PROGMEM 載入陷阱 + Snapshot 漏欄位第三次踩）</a>
     <a href="#progress-2026-05-24-2"><span class="toc-date">2026-05-24</span>進度 7 — DS3231 RTC 整合上機（裝置從此有真實時間戳）</a>
@@ -152,6 +153,84 @@
     <a href="#progress-2026-05-11"><span class="toc-date">2026-05-11</span>進度 3 — 用自動化測試掃出 10 個畫面文字溢出並修正</a>
     <a href="#progress-2026-05-09-2"><span class="toc-date">2026-05-09</span>進度 2 — 補登次數選單列表化＋介面文字溢出修整</a>
     <a href="#progress-2026-05-09"><span class="toc-date">2026-05-09</span>進度 1 — 螢幕升級到 2.8 吋並修整體美觀</a>
+  </div>
+</div>
+
+<!-- ========== 進度 10 ========== -->
+<div class="progress-entry" id="progress-2026-08-24">
+  <div class="progress-entry-title">
+    <span class="num">進度 10</span>電量顯示做出來了（讀數／圖示／低電量提示），但一次都還沒在實機上看過<span class="date">2026-08-24</span>
+  </div>
+
+  <div class="one-liner">
+    <strong>一句話：</strong>裝置終於<strong>知道自己還剩多少電</strong>了：換上專用電量計晶片（走 I2C，不佔用已經用光的類比腳位），右上角會顯示四格電量圖示、低電量時會閃爍，救護中電量掉到 20% 以下會跳一次「低電量／建議接上行動電源」的提示。<strong>但這批全部是在沒有實機的情況下寫的</strong>——手上沒有硬體，所有驗收累積了 11 條還沒跑，這是目前最大的風險。
+  </div>
+
+  <div class="card">
+    <div class="section-title">你會看到什麼差異（等有實機時）</div>
+    <table>
+      <thead>
+        <tr><th style="width:30%">功能</th><th>行為</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>右上角電量圖示</strong></td><td>四格顯示（75% 以上滿格、50-74% 三格、25-49% 兩格、24% 以下一格）。電量計沒接上時<strong>不畫</strong>——不是畫空電池，避免被誤讀成沒電</td></tr>
+        <tr><td><strong>低電量閃爍</strong></td><td>掉到 20% 以下，圖示每秒閃一次；回充到 25% 以上才解除（中間留一段緩衝，避免在 20% 上下抖動時一直閃）</td></tr>
+        <tr><td><strong>救護中低電量提示</strong></td><td>案件進行中第一次掉到 20% 以下，畫面中央跳一次「低電量／建議接上行動電源」，<strong>3 秒自動消失、不發出聲音</strong>（規格明訂不發聲，避免干擾急救）</td></tr>
+        <tr><td><strong>充完電再用會再提醒</strong></td><td>接上行動電源充過 25% 再拔掉、又掉到 20%，會重新提醒一次（不是一輩子只提醒一次）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="section-title">這批最值得說的一件事：字型缺字的坑，又踩了兩次</div>
+    <p>PM 應該還記得<strong>進度 8 的 B1</strong>——畫面上中文字顯示成 □ 方塊。那次的原因是「補了字但裝置上還是舊字型」。</p>
+    <p>這次同一類問題<strong>又出現兩次</strong>，而且是我們自己修出來的：</p>
+    <div class="check-list">
+      <li class="warn">新加的「低電量」「建議接上行動電源」這 11 個字，其中<strong>「低」「議」「行」「源」4 個字不在裝置的字型裡</strong> → 實機會顯示「▯電量」「建▯接上▯動電▯」</li>
+      <li class="warn">補上那 4 個字之後，重新產生字型的工具<strong>反而把「設」字弄丟了</strong> → 主選單的「系統設定」會變成「系統▯定」，<strong>開機第一眼就看得到</strong></li>
+    </div>
+    <p>兩次都在上機前被抓出來修掉了，順帶把<strong>設定畫面長期缺的 38 個字</strong>一起補齊——也就是說 Phase G 的設定選單其實一直有缺字方塊，這次才發現。</p>
+    <div class="note note-red">
+      <strong>為什麼這種問題特別難抓：</strong>裝置的字型不是完整中文字庫，是從程式碼裡掃出「有用到哪些字」再打包進去的。少一個字，程式照樣編譯成功、自動測試照樣全綠、看程式碼也看不出來——<strong>只有插上實機才看得到方塊</strong>。這次是靠人工逐字比對字型檔內容才發現的，不是靠工具。
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">工程數字</div>
+    <div class="stat-grid">
+      <div class="stat-cell blue"><div class="stat-num">599</div><div class="stat-label">自動測試項<br>（435 → 599，淨增 164）</div></div>
+      <div class="stat-cell green"><div class="stat-num">598</div><div class="stat-label">通過<br>（未過的 1 項是既有硬體測試）</div></div>
+      <div class="stat-cell amber"><div class="stat-num">71.4%</div><div class="stat-label">韌體容量占用<br>（68.6% → 71.4%，字型 +21.8KB）</div></div>
+      <div class="stat-cell purple"><div class="stat-num">1%</div><div class="stat-label">電壓讀數誤差<br>（3.844V vs 電表 3.88V）</div></div>
+    </div>
+    <p style="margin-top:12px">這一批的最後一個功能（低電量提示）<strong>改了 6 輪</strong>才收工，過程中抓到 4 個會讓功能實際失效的嚴重問題。</p>
+  </div>
+
+  <div class="card">
+    <div class="section-title">⚠️ 目前最大的風險：全部沒上機驗過</div>
+    <div class="note note-red">
+      這一批<strong>從頭到尾沒有實體硬體</strong>，所有「做好了」的結論都建立在自動測試和程式碼推理上。累積了 <strong>11 條上機驗收</strong>還沒跑。
+    </div>
+    <p>其中最可能出問題的三處：</p>
+    <div class="check-list">
+      <li class="todo"><strong>提示的白底框可能包不住文字</strong>，或框比畫面上原本的大字窄、四周露出殘影（文字寬度是程式當場量的，實際數值只有真機才知道）</li>
+      <li class="todo">3 秒的實際體感是否合適</li>
+      <li class="todo">低電量區間的電壓讀數準不準——目前只在 3.84V 中段跟電表比對過，而<strong>接近 3.0V 才是低電量警告最需要準的區間</strong></li>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">後續工作</div>
+    <div class="check-list">
+      <li class="todo"><strong>上機驗收 11 條</strong>（需要實體裝置，這是目前唯一的阻塞）</li>
+      <li class="todo">電源管理剩餘功能：低電量開案確認框、電池資訊畫面、裝置資訊頁接真實資料</li>
+      <li class="todo">低電量區電壓精度校正（接近 3.0V 時與電表比對）</li>
+      <li class="todo">放電曲線實測（要拔 USB 跑，得先做「把讀數寫進裝置儲存空間、事後回收」的環境）</li>
+    </div>
+  </div>
+
+  <div class="note note-blue">
+    💬 這一筆把「裝置不知道自己剩多少電」這個量產前的硬缺口補起來了。功能面已經寫完，<strong>但在插上實機驗過之前，都還不能算數</strong>。
   </div>
 </div>
 
@@ -223,6 +302,9 @@
     </table>
     <div class="note-blue" style="margin-top:12px">
       💡 <strong>還差多少</strong>：臨床救護核心 100% 完成。剩 <strong>D + G 純韌體可自主推進</strong>（做完裝置端 5 個主選單全部可用，目前訓練 / 設定 2 項還是佔位畫面）；<strong>H 卡硬體</strong>。粗估裝置端主功能完成度約 70-75%，差的都是輔助功能、非急救核心。
+    </div>
+    <div class="note note-green" style="margin-top:12px">
+      📌 <strong>2026-08-24 更新（見進度 10）</strong>：上表 D / G / H 三列已過時。<strong>D（訓練模式）與 G（系統設定）都已完成</strong>，主選單五項（OHCA／6 秒通氣／訓練模式／歷史紀錄／系統設定）<strong>全部可用，沒有佔位畫面了</strong>。<strong>H（電源管理）</strong>改用 I2C 電量計後原「卡硬體」已解，電量讀數／圖示／低電量提示已完成、<strong>待上機驗收</strong>。
     </div>
   </div>
 
