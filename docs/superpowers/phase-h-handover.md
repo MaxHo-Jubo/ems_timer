@@ -217,6 +217,30 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 四個機制同時確認：`low=` 全程維持 1（不清鎖存）、失敗 log 節流、`trend.reset()` 生效、
 失敗期間不輸出假讀數。
 
+### Task 10 上機驗收（需要硬體，fix round 1 後，尚未執行）
+
+§13.16 低電量一次性提示的程式碼已寫完、native test 與韌體編譯皆通過，但全程無實體裝置，
+以下項目待有硬體時執行。觸發判斷已改由 `tryStartLowBatteryNotice()` 在 `loop()` 每輪檢查
+（2026-08-23 fix round 1 A2），不再掛在 `pollBattery()` 的 10 秒節流內：
+
+| 檢查 | 通過條件 | 沒過代表什麼 |
+|---|---|---|
+| 提示出現 | 進 OHCA 案件後首次跨進低電量，畫面中央出現一次帶不透明背景 panel 的「低電量」／「建議接上行動電源」兩行文字 | flag 未傳到 `presentFrame()`，或 `tryStartLowBatteryNotice()` 判斷條件錯誤 |
+| **提示兩行文字無缺字** | 「低電量」與「建議接上行動電源」11 個字完整顯示，不出現 ▯ 或空白缺字方塊 | `ems_zh_24_vlw` 字集缺字（`5953893` 之前缺「低議行源」四字，2026-08-23 fix round 3 G1 CRITICAL 已重生字型修復；若又出現需重跑 `bash scripts/regen_vlw.sh` 並比照 fix round 3 report 驗證 glyph 表） |
+| **panel 不與其他文字重疊** | panel 背景確實蓋住 OHCA 倒數大字（y≈100）／通氣大數字（y=136），兩層文字不互相覆寫、可讀 | `drawLowBatteryNotice()` 的 `display.textWidth()`/`fontHeight()` 動態量測算錯尺寸，或 panel 畫在文字之後而非之前（fix round 1 A1） |
+| **開案當下立即提示** | 已在主選單等非適用情境跨進低電量（latch 已 pending）後才進 OHCA/VENT，提示應在進入後的下一個 loop 週期內立即出現，不需等待 10 秒電量輪詢 | 觸發邏輯仍掛在 `pollBattery()` 節流內，或 `is_low_battery_notice_context()` 短路求值失效（fix round 1 A2） |
+| 提示消失 | 顯示約 3 秒後自動消失，且過程**不發聲**（依 SoT §13.16 明文） | `LOW_BATTERY_NOTICE_MS` 計時或 `is_low_battery_notice_visible()` 判斷有誤；若有聲響，代表誤接了蜂鳴器邏輯 |
+| 消失後續閃爍 | 提示消失後電量圖示依 Task 9/11 節奏持續閃爍，不受提示影響 | `presentFrame()` STEP 01/02 順序或 snapshot flag 互相干擾 |
+| per-boot 一次 | 提示顯示過一次後，離開案件再重新進 OHCA，同一次開機不再重複顯示 | `entry_pending_` 或 `g_low_battery_notice.active` 被意外重置（欄位已於 fix round 3 G4 收斂為單一 `ems::LowBatteryNoticeState` struct） |
+| Training 同樣觸發 | Training 開案後同樣會在首次跨進低電量時顯示提示 | `is_low_battery_notice_context()` 判斷漏掉 Training（`globalState` 應同為 `GLOBAL_OHCA`） |
+| VENT_PRE 不觸發 | 通氣尚未真正開始（VENT_PRE 準備畫面）時跨進低電量不顯示提示，真正開始通氣後才顯示 | `is_low_battery_notice_context()` 未排除 `ventPreShown`（fix round 1 A3） |
+| **主選單五個標籤零缺字** | 「OHCA 案件」「6 秒通氣節奏」「訓練模式」「歷史紀錄」「系統設定」五個標籤逐字顯示完整，不出現 ▯ 缺字方塊 | `regen_vlw.sh` 的 `SRC_FILES` allowlist 又漏掉某個含 UI 字串的檔案——本輪曾漏掉 `.h`，`MAIN_MENU_LABELS`（定義在 `app_globals.h`）的「設」字被字型重生 union 重算掃出字集，實機「系統設定」顯示成「系統▯定」 |
+| **設定選單各頁與恢復預設確認框文字零缺字** | 系統設定選單各子頁面（含「螢幕亮度」「系統音量」「通氣音量」「裝置名稱」「請連接 App 設定裝置名稱」）、恢復預設確認框「是否恢復預設設定？」、預設裝置名「未命名」逐字顯示完整，不出現缺字方塊 | `lib/ui_settings/ui_settings.cpp` 與 `lib/ems_settings/ems_settings.h` 這兩個檔案的中文不受 `regen_vlw.sh` 的 `src/` glob 涵蓋，過去長期缺「恢、預、命」三字；fix round 3 G1 那輪的字型重生修復的是另一批字（提示文字的「低議行源」），這兩個 lib/ 檔案當時未被納入掃描，缺字延續到本輪才補上；若又出現代表 `SRC_FILES` 手動列舉的 lib/ 條目被移除 |
+
+觸發手法與上方 Task 6 相同：暫時把 `LowBatteryLatch::LOW_BATTERY_ENTER_PERCENT`
+（`fuel_gauge_logic.h`，目前 20）改成高於當前實測電量的值（例如 90）後燒錄驗證，
+驗完**務必改回 20 並重新燒錄**，不可留在量產設定上。
+
 ### ⏳ 待做：失敗不造警示（與靜置擷取一起做）
 
 需要 `low=0` 的前置狀態，但目前電池只有 2%，永遠 `low=1`。做法：把
