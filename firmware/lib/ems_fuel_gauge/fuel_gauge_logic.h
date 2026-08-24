@@ -213,6 +213,107 @@ bool compute_low_battery_blink_on(uint8_t percent, bool low, uint32_t now_ms);
  */
 bool should_draw_battery_icon(uint8_t percent, bool low, bool lowBlinkOn);
 
+/** 低電量提示顯示時長（ms）：SoT §13.16 顯示一次後自動消失
+ *  與 is_low_battery_notice_visible() 同檔——常數與唯一使用它的邏輯不分處兩地 */
+constexpr uint32_t LOW_BATTERY_NOTICE_MS = 3000;
+
+/**
+ * §13.16 低電量提示的顯示計時器狀態。
+ *
+ * `active` 為 false 時 `start_ms` 無意義——不拿它兼作「未觸發」哨兵，理由同
+ * is_low_battery_notice_visible() 的 doc：0 是 millis() 的合法回傳值。
+ *
+ * 收斂為單一 struct（而非呼叫端各自維護 active/start_ms 兩個獨立全域）：內部一律
+ * 整包替換兩個欄位，不像兩個分開的 extern 全域那樣容易誤寫成只改其中一個而讓另一個
+ * 沿用舊值。但這只是**約定**，不是型別保證——兩個欄位仍是 public（保持
+ * aggregate-like 用法），任何人仍可寫 `g_low_battery_notice.active = true;` 單獨改
+ * 一欄，繞過這個約定（2026-08-23 fix round 4 H2：修正上一輪誤寫成「型別上讓兩個
+ * 欄位只能一起被賦予新值」，那是型別根本沒提供的保證；三處同樣的錯誤描述——本檔、
+ * app_globals.h、main.cpp——一併修正）。
+ *
+ * 唯一的生產寫入點是 `low_battery_notice_tick()`——該函式吃 `LowBatteryNoticeState&`
+ * 並原地改寫，呼叫端傳入 `g_low_battery_notice` 後函式回傳時它已是新狀態。不用回傳值
+ * 交付新狀態的理由見該函式 JSDoc：回傳值需要呼叫端自己記得寫回，漏寫不會編譯錯誤，
+ * 只會讓低電量閂鎖的一次性事件被消費掉卻沒有任何轉換生效。
+ */
+struct LowBatteryNoticeState {
+    bool     active;
+    uint32_t start_ms;
+
+    /**
+     * 預設建構：從未觸發過的初始狀態。
+     *
+     * 與下方雙參數 constructor 分開宣告，不共用一個「兩個參數皆有預設值」的
+     * constructor——`LowBatteryNoticeState(bool a = false, uint32_t ms = 0)` 會讓
+     * `LowBatteryNoticeState(true)` 變成合法寫法，得到 `active=true, start_ms=0`
+     * 的狀態：裝置開機超過 LOW_BATTERY_NOTICE_MS 後 is_low_battery_notice_visible()
+     * 會立刻判它已過期，提示完全不出現且沒有任何錯誤訊號——這是把「漏傳觸發時間」
+     * 靜默轉成合法狀態的 silent fallback，違反 CLAUDE.md no-fallback-after-root-cause
+     * （2026-08-23 fix round 4 H1，CRITICAL）。拆成兩個 constructor 後
+     * `LowBatteryNoticeState(true)` 這種單參數呼叫直接編譯失敗，不會再有機會產生
+     * 這個非法狀態。現行所有呼叫點皆為零參數（`{}`）或雙參數，拆分前已逐一核對過。
+     */
+    constexpr LowBatteryNoticeState() : active(false), start_ms(0) {}
+
+    /**
+     * @param a  提示計時器目前是否有效
+     * @param ms 觸發當下的時間戳（毫秒），僅在 a 為 true 時有意義
+     *
+     * 用 constructor 而非 default member initializer：比照同 lib `ems_fuel_gauge.h`
+     * 的 `FuelReading` 既有教訓（2026-08-23 fix round 3 G7：修正原本誤寫成「同檔」，
+     * FuelReading 實際定義在 lib/ems_fuel_gauge/ems_fuel_gauge.h:26，是同一個 lib
+     * 但不同 header，指路錯了下一個人會照著找不到）——ESP32 目標以 gnu++11 編譯，
+     * 帶 NSDMI 的 struct 在 C++11 不是 aggregate，`{false, 0}` 這種列表初始化會
+     * 編譯失敗（native 是 gnu++17 所以看不出來，2026-08-23 fix round 2 上機驗證前
+     * 才在 esp32-s3-devkitc-1 環境編譯時抓到）。
+     */
+    constexpr LowBatteryNoticeState(bool a, uint32_t ms)
+        : active(a), start_ms(ms) {}
+};
+
+/**
+ * §13.16 低電量提示目前是否應該顯示。
+ *
+ * 以「起始時間 + 經過時長」判斷而非「截止時間 + 大小比較」：絕對截止時間（`until_ms
+ * = state.start_ms + LOW_BATTERY_NOTICE_MS`）本身也會 wrap，一旦 `until_ms` 先回繞
+ * 成一個很小的值、而 `now_ms` 尚未回繞，`now_ms > until_ms` 這種大小比較就會把
+ * 「其實還在顯示視窗內」的時間點誤判成已過期——`until_ms` 與 `now_ms` 各自 wrap
+ * 的時機不同步，兩者已經不能用普通大小比較可靠排序。無號經過時間差
+ * `now_ms - state.start_ms` 不受這個影響：只要顯示視窗（3 秒）遠小於 `uint32_t`
+ * 的計數週期（約 49.7 天），這個差值在跨越回繞邊界前後都恆正確，與 pollBattery()
+ * 的節流寫法同一個慣例。
+ *
+ * @param state  提示顯示計時器目前狀態。`state.active` 為 false 有兩種來源——
+ *               「從未觸發」或「曾經顯示過但已復歸（逾期，或離開適用情境）」，
+ *               本函式不區分兩者，對呼叫端而言意義相同：一律不顯示（2026-08-23
+ *               fix round 2 E4：三處舊註解曾誤寫成「是否已被觸發過」，未涵蓋
+ *               復歸後的 false；fix round 3 G4：改吃單一 state 而非分開的
+ *               active/start_ms 兩個參數，避免呼叫端各自維護兩個全域造成不同步）
+ * @param now_ms 目前時間戳（毫秒），呼叫端傳入 millis()
+ * @return true = 仍在 LOW_BATTERY_NOTICE_MS 的顯示期間內
+ */
+bool is_low_battery_notice_visible(const LowBatteryNoticeState& state, uint32_t now_ms);
+
+/**
+ * §13.16 低電量提示的適用情境判斷：目前是否算「案件進行中」。
+ *
+ * 刻意不接收 app 層的 `GlobalState` enum 當參數——`ems_fuel_gauge` 對 app 層狀態機
+ * 一無所知，呼叫端（main.cpp）把三個布林先轉譯好再傳入，維持 lib 純度（2026-08-23
+ * fix round 1 A4 裁決：reviewer 原提議把 enum 搬進 lib，未採納）。
+ *
+ * VENT 模式排除 `vent_pre_shown`（通氣尚未真正開始的準備畫面）：spec §5 只排除
+ * 「純選單瀏覽」，但 VENT_PRE 連通氣都還沒開始，不該算「案件進行中」。OHCA 的
+ * END_CHECK／LOCKED／SUMMARY 等子狀態刻意不比照排除——案件總覽與結束檢查仍在案件
+ * 流程內，救護員同樣需要知道電量（同一裁決）。
+ *
+ * @param in_ohca        呼叫端傳入 `globalState == GLOBAL_OHCA`（含 Training：
+ *                       Training 開案後 globalState 同為 GLOBAL_OHCA，此參數已涵蓋）
+ * @param in_vent        呼叫端傳入 `globalState == GLOBAL_VENT`
+ * @param vent_pre_shown 呼叫端傳入 `ventPreShown`（VENT 模式下通氣尚未真正開始）
+ * @return true = 適用情境，呼叫端可消費低電量閂鎖的首次進入事件
+ */
+bool is_low_battery_notice_context(bool in_ohca, bool in_vent, bool vent_pre_shown);
+
 /**
  * 充電狀態。硬體沒有充電訊號腳，本列舉由電壓趨勢推導而來。
  */
@@ -317,6 +418,61 @@ private:
     bool is_low_          = false;  // 當前低電量狀態（帶遲滯）
     bool entry_pending_   = false;  // 尚未被消費的「首次進入」事件
 };
+
+/**
+ * §13.16 低電量提示狀態機一次 tick：判斷是否該啟動、是否該復歸，並消費低電量閂鎖的
+ * 首次進入事件。
+ *
+ * 守衛（是否適用情境）收斂在本函式內，不留給呼叫端。`LowBatteryLatch::consume_first_entry()`
+ * 是公開 API，任何未來呼叫端若忘記在非適用情境下跳過呼叫，會**不可逆地**把 pending
+ * 事件消費掉且沒有任何錯誤訊號——之後真正進案件時 `consume_first_entry()` 只會一直
+ * 回 false，提示靜默消失，不會有人發現（2026-08-23 fix round 2 E1，CRITICAL；比照
+ * CLAUDE.md guard-placement 原則：守衛加在共用層，不是加在呼叫端的記憶力上）。
+ * `consume_first_entry()` 本身維持 public——Task 3 既有測試直接測 latch 自身的契約
+ * （rearm 語意、失敗不清警示），收斂的目的只是讓「生產路徑」只剩本函式一個入口。
+ *
+ * ⚠️ **本函式不是純函式，帶副作用**：適用情境內且有待消費事件時，會呼叫
+ * `latch.consume_first_entry()` **原地修改**呼叫端傳入的 `latch`（2026-08-23
+ * fix round 4 H3：舊版 JSDoc 完全沒提這件事，回傳新狀態的外觀加上隱藏副作用是
+ * 會誤導人的組合）。這是刻意的取捨，不是疏漏：守衛（是否該消費事件）必須放在
+ * 本函式內才能防住上方說的 CRITICAL，若改成讓本函式維持純函式、吃一個外部算好的
+ * `bool first_entry_consumed` 參數，等於把「要不要消費」的決策推回呼叫端，
+ * fix round 2 E1 那個 CRITICAL 會原樣回來。
+ *
+ * `state` 參數同樣原地改寫，不再以回傳值交付新狀態。舊簽名回傳
+ * `LowBatteryNoticeState`，呼叫端必須自己把回傳值寫回全域；這個寫回動作本身可以
+ * 被漏接——編譯照樣過，但 `latch` 的一次性事件已經在函式內被消費掉，往後每輪 tick
+ * 都拿不到新事件，提示永久靜默消失，且沒有任何錯誤訊號可循。改成與 `latch` 同樣
+ * 原地修改後，呼叫端沒有機會漏接這個轉換：只要傳了同一個 `state` 變數進來，函式
+ * 回傳時它已經是新狀態，不存在「事件已消費、但轉換沒有生效」的中間態。
+ *
+ * 內部依序判斷：
+ *   1. 離開適用情境 → 立即復歸為 inactive，不等顯示視窗到期（fix round 2 E2：
+ *      提示期間結束通氣回主選單、或切到 GLOBAL_SYNC，不透明 panel 不該蓋在新頁面上）
+ *   2. 仍在情境內但已逾期 → 復歸為 inactive 並結束本次 tick（fix round 1 A5，
+ *      現收斂進本函式）。逾期復歸這條分支會直接 return，本次 tick 不會走到 STEP 3；
+ *      若 latch 此時剛好也有待消費事件，要等下一輪 tick 才會被消費——延遲一個
+ *      loop 週期，可忽略（2026-08-23 fix round 3 G2：修正原本誤寫成「或剛復歸」
+ *      暗示同一輪會接著消費的說法，時序上不成立）
+ *   3. 仍在情境內、未逾期，且 latch 有待消費事件 → 消費並啟動
+ *   4. 以上皆非 → 維持現狀，不修改 `state`（可能是「已啟動且仍在顯示視窗內」，
+ *      也可能是「inactive 且無新事件」）
+ *
+ * @param state          [in/out] 傳入時為上一次 tick 後的狀態，函式內會被原地改寫為
+ *                       本次 tick 後的新狀態——呼叫端不需要、也不應該另外把回傳值
+ *                       寫回全域，因為沒有回傳值可寫，寫回動作已在函式內完成
+ * @param latch          低電量閂鎖，本函式可能呼叫其 consume_first_entry()（僅在
+ *                       適用情境內才會呼叫，見上方守衛說明）
+ * @param in_ohca        呼叫端傳入 `globalState == GLOBAL_OHCA`
+ * @param in_vent        呼叫端傳入 `globalState == GLOBAL_VENT`
+ * @param vent_pre_shown 呼叫端傳入 `ventPreShown`
+ * @param now_ms         目前時間戳（毫秒），呼叫端傳入 millis()
+ */
+void low_battery_notice_tick(LowBatteryNoticeState& state,
+                             LowBatteryLatch& latch,
+                             bool in_ohca, bool in_vent,
+                             bool vent_pre_shown,
+                             uint32_t now_ms);
 
 /**
  * 一次輪詢的結果。呼叫端（main.cpp 的 pollBattery()）把這四個值寫進對應全域即可，

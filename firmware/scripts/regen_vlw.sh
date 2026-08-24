@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # regen_vlw.sh — 重新生成 ems_zh_24 字型（.vlw binary + .h PROGMEM header）
 #
-# 用途：掃描所有 UI 字串散落檔（main.cpp / ui_*.cpp / *_handler.cpp / *_logic.cpp），
-#       union 字集後重生 vlw，避免單檔掃描漏字（如「至 剩 餘 配 對 碼」缺字 bug）。
+# 用途：掃描所有 UI 字串散落檔（src/ 底下 glob 自動涵蓋 .cpp／.h，lib/ 底下手動列舉
+#       實際上 TFT 的檔案，詳細清單見 STEP 03），union 字集後重生 vlw，避免單檔掃描
+#       漏字（如「至 剩 餘 配 對 碼」缺字 bug）。
 #
 # ⚠️ 實機載入路徑：firmware 用 `display.loadFont(ems_zh_24_vlw)` 載入嵌進 binary
 #    的 PROGMEM array（src/ems_zh_24_vlw.h），不是 LittleFS 的 .vlw 檔。所以重生
@@ -49,17 +50,38 @@ trap 'rc=$?;
 
 # STEP 03: 蒐集所有可能含 UI 中文字串的檔案
 #         glob 可能無 match，用 nullglob 避免展開成字面值
+#
+#         ⚠️ 這份清單的涵蓋策略分兩半：
+#         - src/ 底下的 .cpp／.h 用 glob 自動掃描（排除生成物 ems_zh_24_vlw.h），
+#           新增符合既有 glob 模式的檔案會自動涵蓋，不必手動加
+#         - lib/ 底下**手動列舉**，判準是「字串會不會實際上 TFT」——只納入會被畫在
+#           螢幕上的檔案；Serial.printf／static_assert 訊息不上 TFT，不納入以省 Flash
+#         新增含 UI 字串的檔案（尤其是 lib/ 底下、不受 glob 涵蓋的）時必須同步加進本
+#         清單，否則字會被 union 靜默排除在字集外（不是報錯，是悄悄漏掉）。2026-08-24
+#         踩坑：MAIN_MENU_LABELS 定義在 src/app_globals.h，這份清單當時只列 .cpp，
+#         字型重生 union 重算時把「設」字掃出字集，實機「系統設定」顯示成「系統▯定」。
 shopt -s nullglob
 SRC_FILES=(
     src/main.cpp
     src/ui_*.cpp
     src/*_handler.cpp
     src/*_logic.cpp
+    lib/ui_settings/ui_settings.cpp
+    lib/ems_settings/ems_settings.h
 )
+# .h 另外處理：排除 ems_zh_24_vlw.h（vlw2header.py 生成的 PROGMEM binary array，
+# 無雙引號字串字面值，體積大（1 萬+行）納入只會拖慢掃描且無意義）
+for f in src/*.h; do
+    if [ "$f" != "src/ems_zh_24_vlw.h" ]; then
+        SRC_FILES+=("$f")
+    fi
+done
 shopt -u nullglob
 
 if [ ${#SRC_FILES[@]} -eq 0 ]; then
-    echo "[error] 沒找到任何來源檔（src/main.cpp / src/ui_*.cpp / src/*_handler.cpp / src/*_logic.cpp）" >&2
+    echo "[error] 沒找到任何來源檔（src/main.cpp / src/ui_*.cpp / src/*_handler.cpp /" >&2
+    echo "        src/*_logic.cpp / src/*.h / lib/ui_settings/ui_settings.cpp /" >&2
+    echo "        lib/ems_settings/ems_settings.h）" >&2
     exit 1
 fi
 

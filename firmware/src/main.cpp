@@ -175,6 +175,13 @@ uint8_t                 g_battery_percent      = ems::BATTERY_PERCENT_ABSENT;
 uint16_t                g_battery_millivolts   = 0;  // 僅在 g_battery_percent != 255 時有意義
 ems::ChargeState        g_battery_charge_state = ems::ChargeState::Unknown;
 bool                    g_battery_low          = false;
+// §13.16 提示計時器狀態，由 tryStartLowBatteryNotice() 每輪 loop() 更新（不掛在
+// pollBattery() 的 10 秒節流內，見 2026-08-23 fix round 1 A2 裁決），UI 端唯讀。
+// 收斂為單一 struct 而非 active/start_ms 兩個獨立全域，寫入約定是整包替換；
+// 型別本身不強制（欄位仍是 public），唯一的生產寫入點是 low_battery_notice_tick()
+// ——該函式吃 LowBatteryNoticeState& 並原地改寫（見 ems::LowBatteryNoticeState 的
+// doc；2026-08-23 fix round 3 G4 / fix round 4 H2）
+ems::LowBatteryNoticeState g_low_battery_notice;
 static ems::ChargeTrendTracker g_battery_trend;
 static ems::LowBatteryLatch    g_battery_latch;
 
@@ -630,6 +637,36 @@ static void pollBattery() {
 }
 
 /**
+ * §13.16 低電量一次性提示：由 loop() 每輪呼叫一次，觸發狀態機 tick。
+ * 不掛在 pollBattery() 的 10 秒節流內，也不掛在 OHCA／Training／VENT 各自的開案
+ * 轉換點——守衛、觸發、逾期復歸、離開情境復歸全部收斂進
+ * ems::low_battery_notice_tick()（2026-08-23 fix round 2 E1/E2/E3），該函式直接
+ * 原地改寫 `g_low_battery_notice`，本函式只負責判斷 rising edge 印 log，不重複
+ * 任何決策邏輯，也不需要自己把回傳值另外寫回全域。
+ *
+ * 每輪呼叫的理由：`g_battery_latch` 進入低電量區間會 pending 一次事件，事件被消費
+ * 後須先回升到解除門檻（25%）並再次跨入才會重新 pending——同一次開機可能 pending
+ * 多次（例如充電中斷又再掉回門檻以下），不是只有一次（2026-08-23 fix round 2 E5：
+ * 修正 fix round 1 這裡原本寫錯的「每次開機只會 pending 一次」）。高頻呼叫 tick 是
+ * 安全的，因為守衛已收斂進 lib，還能把「開案後才提示」的延遲壓到一個 loop 週期，
+ * 不必像掛在三個開案轉換點那樣各補一次同樣的判斷（EXTRACT-SHARED-HELPER 要避免的
+ * 複製點；2026-08-23 fix round 1 A2 裁決）。
+ *
+ * @param now_ms 目前時間戳（毫秒），呼叫端傳入 loop() 已算好的 millis()，避免重複呼叫
+ */
+static void tryStartLowBatteryNotice(uint32_t now_ms) {
+    const bool was_active = g_low_battery_notice.active;  // tick 前的狀態，用於偵測新觸發的邊緣
+    ems::low_battery_notice_tick(  // 原地改寫 g_low_battery_notice，決策邏輯全在 low_battery_notice_tick() 內
+        g_low_battery_notice, g_battery_latch,
+        globalState == GLOBAL_OHCA, globalState == GLOBAL_VENT, ventPreShown,
+        now_ms);
+
+    if (g_low_battery_notice.active && !was_active) {
+        Serial.println("[FUEL] 低電量提示觸發（§13.16，不發聲）");
+    }
+}
+
+/**
  * Arduino 主迴圈：每輪排空 BLE RX、推進 sync dispatcher、處理按鍵與
  * OHCA/通氣/兩段確認等 tick，到期清提示，最後依固定間隔刷新顯示。
  */
@@ -786,6 +823,9 @@ void loop() {
     // Impl-Phase H：電量輪詢（內部依 BATTERY_POLL_INTERVAL_MS 自行節流，不需外部 interval 判斷）
     pollBattery();
 
+    // §13.16：低電量提示觸發與逾期復歸，每輪檢查（不掛在 pollBattery() 的 10 秒節流內）
+    tryStartLowBatteryNotice(now);
+
     if (now - lastDisplayUpdateMs >= DISPLAY_UPDATE_INTERVAL_MS) {
         lastDisplayUpdateMs = now;
         updateDisplay();
@@ -877,6 +917,8 @@ static DisplaySnapshot captureDisplaySnapshot() {
     // 低電量閃爍相位：純函式決策放 ems_fuel_gauge lib（native 可測），燃料計不在線時
     // 一律回 false，避免失聯後每 BATTERY_BLINK_HALF_PERIOD_MS 翻轉一次造成無效全螢幕重繪
     in.batteryLowBlinkOn  = ems::compute_low_battery_blink_on(g_battery_percent, g_battery_low, millis());
+    // §13.16 提示是否顯示中：與閃爍相位同樣由 lib 純函式決策，繪製端不自算 millis()
+    in.lowBatteryNoticeVisible = ems::is_low_battery_notice_visible(g_low_battery_notice, millis());
 
     return captureSnapshot(in);
 }
@@ -894,13 +936,18 @@ static DisplaySnapshot captureDisplaySnapshot() {
  *             取樣，跨越 500ms 相位邊界時會不同步（snapshot 記亮、畫面畫暗）：
  *             同一個半週期內 flag 值不變、memcmp 相等就不會觸發重繪，該亮的
  *             那個半週期會整段看不到圖示，直到下一次相位翻轉、snapshot 出現
- *             新的 flag 值才恢復。
+ *             新的 flag 值才恢復。SNAP_FLAG_LOW_BATTERY_NOTICE bit 同理傳給
+ *             drawLowBatteryNotice()，「顯示中」的 3 秒視窗判斷同樣不在繪製端
+ *             自算 millis()。
  */
 static void presentFrame(const DisplaySnapshot& snap) {
     // STEP 01: 全域 overlay（電量圖示；相位單一真相來自 snapshot，不在此處重算）
     drawBatteryIcon((snap.flags & SNAP_FLAG_BATTERY_LOW_BLINK) != 0);
 
-    // STEP 02: DMA 整片推送
+    // STEP 02: §13.16 低電量提示（顯示期間蓋在畫面最上層，畫在電量圖示之後）
+    drawLowBatteryNotice((snap.flags & SNAP_FLAG_LOW_BATTERY_NOTICE) != 0);
+
+    // STEP 03: DMA 整片推送
     display.pushSprite(0, 0);
 }
 

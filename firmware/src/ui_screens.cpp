@@ -893,3 +893,78 @@ void drawBatteryIcon(bool lowBlinkOn) {
                              COLOR_ACCENT_OK);
     }
 }
+
+/** §13.16 低電量提示 panel 左右內距（px）：文字包絡與 panel 邊框之間的留白 */
+constexpr int16_t NOTICE_PANEL_PADDING_X = 20;
+/** §13.16 低電量提示 panel 上下內距（px），與 NOTICE_PANEL_PADDING_X 分開命名，
+ *  方便未來上下/左右各自微調排版而不互相牽動 */
+constexpr int16_t NOTICE_PANEL_PADDING_Y = 16;
+/** §13.16 低電量提示兩行文字之間的垂直間距（px）：與量測出的 line_h 相加即兩行中心距。
+ *  不把「兩行中心距」寫死成單一定值（例如 28~32px）——那個總距離取決於實際字高，
+ *  字高已用 display.fontHeight() 動態量測，這裡只需再加一段最小留白，
+ *  字型或縮放改變時兩行仍不會咬到（2026-08-23 fix round 1 D1 裁決） */
+constexpr int16_t NOTICE_LINE_GAP_PX = 8;
+
+/**
+ * §13.16 低電量提示：首次低電量事件會被保留，並在案件進行中的下一次 tick 被消費後
+ * 顯示 3 秒——不要求「跨進門檻」與「進入案件」是同一個當下：低電量事件可能在純
+ * 選單瀏覽等非適用情境下先發生並被 latch 記住，之後才進 OHCA/VENT，此時會在進入
+ * 後的下一輪 tick 立即消費並顯示（見 ems::low_battery_notice_tick() 的守衛說明）。
+ *
+ * 依規格不發聲。是否仍在顯示期間由 captureDisplaySnapshot() 經
+ * ems::is_low_battery_notice_visible() 算好並存進 snapshot flag，本函式不自行呼叫
+ * millis()——理由與 drawBatteryIcon() 的相位處理相同：擷取時間點與繪製時間點若各自
+ * 取樣，跨越邊界時 snapshot 與畫面會不同步，且「顯示中」這個狀態不進 snapshot 就
+ * 不會觸發重繪（DisplaySnapshot 漏欄位已連踩 5 次）。
+ *
+ * 文字前先畫不透明背景 panel，不能只用透明文字疊在既有畫面上——OHCA 的 96px 大倒數
+ * （y≈100，字塊縱向約 y=52~148）與獨立通氣大數字（y=136）都與提示原本的 y=110/130
+ * 重疊，不只兩層字互相覆寫讀不出來，更嚴重的是會把案件進行中的主要臨床讀數整段遮掉
+ * 3 秒（2026-08-23 fix round 1 A1 裁決；嚴重度由第二輪 review 補充）。此處沿用同檔
+ * drawConfirmDialog()（`:776-782`）既有的 fillRect(COLOR_BG) + drawRect(COLOR_ACCENT_WARN)
+ * 背景填充與警示邊框模式，不另造一套視覺模式。panel 尺寸用
+ * display.textWidth()/fontHeight() 動態量測兩行文字，不硬編字寬字高——
+ * 文字內容或字型改變時 panel 仍會正確包住文字，兩行本身也不會咬到（見 NOTICE_LINE_GAP_PX
+ * 註解）。panel 置中於畫面中央，與右上角電量圖示（y < BATTERY_ICON_Y +
+ * BATTERY_ICON_BODY_H，遠小於畫面中央）不會重疊。
+ *
+ * @param visible 本次是否要畫（來自 snapshot 的 SNAP_FLAG_LOW_BATTERY_NOTICE bit，
+ *                由 captureDisplaySnapshot() 經 ems::is_low_battery_notice_visible()
+ *                算好；本函式不可自行判斷「該不該顯示」）
+ */
+void drawLowBatteryNotice(bool visible) {
+    // STEP 01: 不在顯示期間就不畫
+    if (!visible) {
+        return;
+    }
+
+    // STEP 02: 先設字型與大小，textWidth()/fontHeight() 才能量出正確的縮放後尺寸
+    useZhFont();
+    display.setTextSize(1);
+    display.setTextDatum(textdatum_t::middle_center);
+
+    // STEP 03: 動態量測兩行文字寬度，取較寬者決定 panel 寬度
+    const char* line1 = "低電量";
+    const char* line2 = "建議接上行動電源";
+    const int16_t line1_w = static_cast<int16_t>(display.textWidth(line1));
+    const int16_t line2_w = static_cast<int16_t>(display.textWidth(line2));
+    const int16_t line_w  = (line1_w > line2_w) ? line1_w : line2_w;
+    const int16_t line_h  = static_cast<int16_t>(display.fontHeight());
+
+    // STEP 04: panel 尺寸 = 文字包絡 + 內距，置中於畫面中央
+    const int16_t panel_w = line_w + NOTICE_PANEL_PADDING_X * 2;
+    const int16_t panel_h = line_h * 2 + NOTICE_LINE_GAP_PX + NOTICE_PANEL_PADDING_Y * 2;
+    const int16_t panel_x = (SCREEN_W - panel_w) / 2;
+    const int16_t panel_y = (SCREEN_H - panel_h) / 2;
+
+    // STEP 05: 不透明背景 + 警示色外框，蓋住畫面上原本可能重疊的大字
+    display.fillRect(panel_x, panel_y, panel_w, panel_h, COLOR_BG);
+    display.drawRect(panel_x, panel_y, panel_w, panel_h, COLOR_ACCENT_WARN);
+
+    // STEP 06: 置中兩行提示文字，垂直位置依量測出的 line_h 排版（非硬編偏移量）
+    display.setTextColor(COLOR_ACCENT_WARN);
+    const int16_t line1_center_y = panel_y + NOTICE_PANEL_PADDING_Y + line_h / 2;
+    const int16_t line2_center_y = line1_center_y + line_h + NOTICE_LINE_GAP_PX;
+    display.drawString(line1, SCREEN_W / 2, line1_center_y);
+    display.drawString(line2, SCREEN_W / 2, line2_center_y);
+}

@@ -601,6 +601,274 @@ static void test_should_draw_present_low_and_blink_off_is_false() {
     TEST_ASSERT_FALSE(ems::should_draw_battery_icon(15, true, false));
 }
 
+// ============================================================
+//  Group 7C: is_low_battery_notice_visible() —— §13.16 低電量提示顯示期間判斷
+//  （2026-08-23 handover §3-A3 重寫：此狀態必須是純函式而非留在 UI 層用 millis()
+//    現算，否則不進 DisplaySnapshot、memcmp 判定不重繪，提示既不會出現也不會消失）
+// ============================================================
+
+/// 測試用的固定觸發時間戳（ms）：與 ems::LOW_BATTERY_NOTICE_MS 搭配推導邊界值，
+/// 避免各測試各自硬編寫死的時間常數（2026-08-23 fix round 1 B8）
+constexpr uint32_t NOTICE_TEST_START_MS = 1000;
+/// 顯示視窗內最後一毫秒的經過時間，由 LOW_BATTERY_NOTICE_MS 推導——常數改動時邊界自動跟著走
+constexpr uint32_t NOTICE_LAST_VISIBLE_MS = ems::LOW_BATTERY_NOTICE_MS - 1;
+/// 溢位案例的起始時間戳：刻意選接近 uint32_t 上限的值，用於驗證溢位前後行為
+constexpr uint32_t NOTICE_OVERFLOW_START_MS = 0xFFFFFF00;
+/// 溢位「前」案例的實際經過時間（ms）：遠小於顯示視窗，是本設計唯一有鑑別力的案例（見 B7）
+constexpr uint32_t NOTICE_OVERFLOW_ELAPSED_MS = 80;
+/// 溢位「後」案例的實際經過時間（ms）：now_ms 已回繞成一個很小的值
+constexpr uint32_t NOTICE_WRAPPED_ELAPSED_MS = 512;
+
+/// SoT §13.16 明文鎖定的顯示時長（ms）。刻意獨立於 ems::LOW_BATTERY_NOTICE_MS、
+/// 不從實作常數推導——理由見下方 test_notice_duration_matches_sot_spec()
+constexpr uint32_t EXPECTED_SOT_LOW_BATTERY_NOTICE_MS = 3000;
+
+static void test_notice_duration_matches_sot_spec() {
+    // 鎖規格：SoT §13.16 明文要求顯示 3000ms，這是規格常數本身，不是實作細節。
+    // 下面幾條邊界測試的期望值全部由 ems::LOW_BATTERY_NOTICE_MS 推導（2026-08-23
+    // fix round 1 B8），常數改動時邊界會自動跟著走，但這也表示那些測試只證明了
+    // 「函式用了自己的常數」，證明不了 §13.16 要求的具體數值——把
+    // LOW_BATTERY_NOTICE_MS 從 3000 改成 5000，那些測試依然全過。
+    // EXPECTED_SOT_LOW_BATTERY_NOTICE_MS 這個獨立常數就是刻意要鎖住規格本身，
+    // 不能跟著實作常數一起漂移（2026-08-23 fix round 3 G3）。
+    TEST_ASSERT_EQUAL_UINT32(EXPECTED_SOT_LOW_BATTERY_NOTICE_MS, ems::LOW_BATTERY_NOTICE_MS);
+}
+
+static void test_notice_inactive_is_never_visible() {
+    // 從未觸發過 → 一律不顯示，即使 now == start
+    TEST_ASSERT_FALSE(ems::is_low_battery_notice_visible(
+        ems::LowBatteryNoticeState(false, NOTICE_TEST_START_MS), NOTICE_TEST_START_MS));
+}
+
+static void test_notice_at_start_is_visible() {
+    // 觸發當下（經過時間 0ms）即應顯示
+    TEST_ASSERT_TRUE(ems::is_low_battery_notice_visible(
+        ems::LowBatteryNoticeState(true, NOTICE_TEST_START_MS), NOTICE_TEST_START_MS));
+}
+
+static void test_notice_boundary_last_visible_ms_is_visible() {
+    // 邊界的寬鬆方向：經過 LOW_BATTERY_NOTICE_MS - 1（< 顯示視窗）仍在顯示期間內
+    TEST_ASSERT_TRUE(ems::is_low_battery_notice_visible(
+        ems::LowBatteryNoticeState(true, NOTICE_TEST_START_MS),
+        NOTICE_TEST_START_MS + NOTICE_LAST_VISIBLE_MS));
+}
+
+static void test_notice_boundary_exact_duration_is_hidden() {
+    // 邊界的嚴格方向：經過恰好 LOW_BATTERY_NOTICE_MS → 已過期，不再顯示
+    TEST_ASSERT_FALSE(ems::is_low_battery_notice_visible(
+        ems::LowBatteryNoticeState(true, NOTICE_TEST_START_MS),
+        NOTICE_TEST_START_MS + ems::LOW_BATTERY_NOTICE_MS));
+}
+
+static void test_notice_boundary_before_millis_overflow_is_visible() {
+    // 本設計唯一有鑑別力的溢位案例（2026-08-23 fix round 1 B7 修正）：
+    // start=0xFFFFFF00、now=start+80（尚未回繞），實際經過 80ms（遠小於顯示視窗）。
+    // 若誤寫成「截止時間 + 大小比較」（`now_ms > until_ms`）：until_ms = start_ms +
+    // LOW_BATTERY_NOTICE_MS 已先回繞成一個很小的值（0x00000AB8），
+    // `0xFFFFFF50 > 0x00000AB8` 為 true → 誤判成已過期 → 回 false，與正確答案 true
+    // 不同——這條測試才真正證明「無號經過時間差」寫法的必要性；下一條溢位「後」的案例
+    // 本身沒有這個鑑別力（見該測試註解）。
+    const uint32_t now_ms = NOTICE_OVERFLOW_START_MS + NOTICE_OVERFLOW_ELAPSED_MS;
+    TEST_ASSERT_TRUE(ems::is_low_battery_notice_visible(
+        ems::LowBatteryNoticeState(true, NOTICE_OVERFLOW_START_MS), now_ms));
+}
+
+static void test_notice_survives_millis_overflow() {
+    // 溢位「後」：now 已回繞到一個很小的值，實際經過時間仍是 NOTICE_WRAPPED_ELAPSED_MS
+    // （< 顯示視窗）。這個案例本身沒有鑑別力——`now_ms > until_ms` 的錯誤寫法在此剛好
+    // 也算出「未過期」，兩種實作都會通過（2026-08-23 fix round 1 B7：原本這是本設計
+    // 唯一的溢位測試，但它證明不了任何事；鑑別力由上一條案例提供），保留做為
+    // 「回繞前後都要正確」的完整性檢查。
+    const uint32_t now_ms = NOTICE_OVERFLOW_START_MS + NOTICE_WRAPPED_ELAPSED_MS;
+    TEST_ASSERT_TRUE(ems::is_low_battery_notice_visible(
+        ems::LowBatteryNoticeState(true, NOTICE_OVERFLOW_START_MS), now_ms));
+}
+
+// ============================================================
+//  Group 7D: is_low_battery_notice_context() —— §13.16 提示適用情境判斷
+//  （2026-08-23 fix round 1 A4：抽出前留在 main.cpp pollBattery() 內用裸 if 判斷，
+//    ui_screens.cpp 不進 native build，main.cpp 同樣不進 native build，
+//    這個決策原本完全沒有測試涵蓋）
+// ============================================================
+
+static void test_notice_context_ohca_is_applicable() {
+    // OHCA 案件進行中（含 Training：呼叫端傳入的 in_ohca 已涵蓋）一律適用
+    TEST_ASSERT_TRUE(ems::is_low_battery_notice_context(true, false, false));
+}
+
+static void test_notice_context_vent_without_pre_is_applicable() {
+    // VENT 進行中且已離開 VENT_PRE 準備畫面 → 適用
+    TEST_ASSERT_TRUE(ems::is_low_battery_notice_context(false, true, false));
+}
+
+static void test_notice_context_vent_with_pre_is_not_applicable() {
+    // 通氣尚未真正開始（VENT_PRE 準備畫面）不算「案件進行中」（A3 裁決）
+    TEST_ASSERT_FALSE(ems::is_low_battery_notice_context(false, true, true));
+}
+
+static void test_notice_context_neither_ohca_nor_vent_is_not_applicable() {
+    // 純選單瀏覽等情境：兩者皆非 → 不適用
+    TEST_ASSERT_FALSE(ems::is_low_battery_notice_context(false, false, false));
+}
+
+// ============================================================
+//  Group 7E: low_battery_notice_tick() —— §13.16 提示狀態機（2026-08-23 fix round 2
+//  E1 CRITICAL/E2/E3：守衛、觸發、逾期復歸、離開情境復歸原本分散在 main.cpp 的
+//  tryStartLowBatteryNotice() 與呼叫端的短路求值裡，main.cpp 不進 native build，
+//  這些狀態轉換原本完全沒有真實序列測試涵蓋——舊測試
+//  test_notice_hidden_after_reset_ignores_wrapped_window 只是把 active=false 傳進
+//  is_low_battery_notice_visible()，驗證的是該純函式既有契約，刪掉 main.cpp 裡的
+//  復歸邏輯它照樣通過，現已移除並由本組真正驗證狀態轉換的測試取代。
+// ============================================================
+
+/// tick 測試共用的低電量觸發百分比：只要低於 ems::LowBatteryLatch::LOW_BATTERY_ENTER_PERCENT
+/// 即可掛起 pending 事件，具體差距不影響測試意圖，由門檻常數推導（2026-08-23 fix round 3 G6）
+constexpr uint8_t TICK_TEST_LOW_PERCENT = ems::LowBatteryLatch::LOW_BATTERY_ENTER_PERCENT - 2;
+/// tick 測試共用的「觸發後、遠未逾期」時間偏移（ms），用於驗證離開情境立即復歸。
+/// 由 LOW_BATTERY_NOTICE_MS 推導（顯示視窗的 1/6）而非硬編字面值——硬編值若未來
+/// 剛好不再遠小於顯示視窗，本該測「離開情境復歸」的測試會改成測到「逾期復歸」，
+/// 依然通過但鑑別力悄悄流失
+constexpr uint32_t TICK_TEST_SHORT_OFFSET_MS = ems::LOW_BATTERY_NOTICE_MS / 6;
+/// tick 測試共用的重複 tick 間隔（ms），用於驗證多輪 tick 不重複觸發
+constexpr uint32_t TICK_TEST_REPEAT_STEP_MS = 100;
+
+static void test_tick_out_of_context_does_not_consume_pending_event() {
+    // CRITICAL E1：守衛必須收斂在 tick 內——非適用情境時即使 latch 有 pending 事件
+    // 也不可消費。若守衛只靠呼叫端記得檢查，任何未來 caller 漏掉就會不可逆地把
+    // pending 事件清掉且沒有任何錯誤訊號。
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);  // 進入低電量，掛起 pending 事件
+
+    ems::LowBatteryNoticeState state{};
+    ems::low_battery_notice_tick(
+        state, latch,
+        /*in_ohca=*/false, /*in_vent=*/false, /*vent_pre_shown=*/false,
+        /*now_ms=*/NOTICE_TEST_START_MS);
+
+    TEST_ASSERT_FALSE(state.active);
+    // 事件必須仍然 pending——tick 不得在非適用情境下把它消費掉
+    TEST_ASSERT_TRUE(latch.consume_first_entry());
+}
+
+static void test_tick_entering_ohca_consumes_and_activates() {
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+
+    ems::LowBatteryNoticeState state{};
+    ems::low_battery_notice_tick(
+        state, latch,
+        /*in_ohca=*/true, /*in_vent=*/false, /*vent_pre_shown=*/false,
+        /*now_ms=*/NOTICE_TEST_START_MS);
+
+    TEST_ASSERT_TRUE(state.active);
+    TEST_ASSERT_EQUAL_UINT32(NOTICE_TEST_START_MS, state.start_ms);
+    // 事件已被消費，之後同一輪不會再觸發第二次
+    TEST_ASSERT_FALSE(latch.consume_first_entry());
+}
+
+static void test_tick_vent_pre_shown_does_not_consume() {
+    // VENT_PRE 準備畫面不算「案件進行中」（A3 裁決），守衛仍要擋住消費
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+
+    ems::LowBatteryNoticeState state{};
+    ems::low_battery_notice_tick(
+        state, latch,
+        /*in_ohca=*/false, /*in_vent=*/true, /*vent_pre_shown=*/true,
+        /*now_ms=*/NOTICE_TEST_START_MS);
+
+    TEST_ASSERT_FALSE(state.active);
+    TEST_ASSERT_TRUE(latch.consume_first_entry());  // 事件未被消費
+}
+
+static void test_tick_leaving_context_deactivates_immediately() {
+    // E2：提示顯示期間（遠未逾期）離開適用情境 → 下一 tick 立即復歸，不等 3 秒到期，
+    // 否則不透明 panel 會整塊蓋在已切換的新頁面上（例如通氣結束回主選單）。
+    // 鑑別力自檢：刪掉 tick 內「離開情境復歸」那段（STEP 01）會讓本測試變紅——
+    // 少了 STEP 01，流程會落到 STEP 02（未逾期，TICK_TEST_SHORT_OFFSET_MS <
+    // LOW_BATTERY_NOTICE_MS，跳過）與 STEP 03（latch 事件已消費，
+    // consume_first_entry() 回 false），最終 STEP 04 對 state 不做任何寫入
+    // （state.active 仍是 true），與本測試的期望 false 不同。
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+    ems::LowBatteryNoticeState state{};
+    ems::low_battery_notice_tick(state, latch, true, false, false, NOTICE_TEST_START_MS);
+    TEST_ASSERT_TRUE(state.active);
+
+    // TICK_TEST_SHORT_OFFSET_MS 後離開情境（遠在 LOW_BATTERY_NOTICE_MS 之前）
+    ems::low_battery_notice_tick(
+        state, latch, false, false, false,
+        NOTICE_TEST_START_MS + TICK_TEST_SHORT_OFFSET_MS);
+    TEST_ASSERT_FALSE(state.active);
+}
+
+static void test_tick_expiry_deactivates() {
+    // 鑑別力自檢：刪掉 tick 內「逾期復歸」那段（STEP 02）會讓本測試變紅——少了
+    // STEP 02，流程會落到 STEP 03（latch 事件已消費，consume_first_entry() 回
+    // false），最終 STEP 04 對 state 不做任何寫入（state.active 仍是 true），
+    // 與本測試的期望 false 不同。與上一條測試互斥情境（本條仍在情境內），確認
+    // 兩段復歸邏輯各自獨立、缺一不可。
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+    ems::LowBatteryNoticeState state{};
+    ems::low_battery_notice_tick(state, latch, true, false, false, NOTICE_TEST_START_MS);
+    TEST_ASSERT_TRUE(state.active);
+
+    // 仍在情境內，但已過顯示視窗（恰好 LOW_BATTERY_NOTICE_MS）
+    ems::low_battery_notice_tick(
+        state, latch, true, false, false,
+        NOTICE_TEST_START_MS + ems::LOW_BATTERY_NOTICE_MS);
+    TEST_ASSERT_FALSE(state.active);
+}
+
+static void test_tick_recovery_survives_millis_wraparound() {
+    // 逾期復歸後，即使後續 tick 傳入「數值上看起來像落回顯示視窗內」的 now_ms
+    // （模擬 millis() 完整繞回一輪後湊巧落在舊 start_ms 附近），也必須維持隱藏——
+    // 一旦 active 復歸為 false 且 latch 沒有新的 pending 事件，後續 tick 無論
+    // now_ms 為何都會維持 inactive，不需要額外的溢位判斷。
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+    ems::LowBatteryNoticeState state{};
+    ems::low_battery_notice_tick(state, latch, true, false, false, NOTICE_OVERFLOW_START_MS);
+    TEST_ASSERT_TRUE(state.active);
+
+    // 逾期，復歸為 inactive
+    ems::low_battery_notice_tick(
+        state, latch, true, false, false,
+        NOTICE_OVERFLOW_START_MS + ems::LOW_BATTERY_NOTICE_MS);
+    TEST_ASSERT_FALSE(state.active);
+
+    // 模擬 millis() 完整繞回後又落回「看起來像視窗內」的時間點——維持隱藏
+    ems::low_battery_notice_tick(
+        state, latch, true, false, false,
+        NOTICE_OVERFLOW_START_MS + NOTICE_WRAPPED_ELAPSED_MS);
+    TEST_ASSERT_FALSE(state.active);
+}
+
+static void test_tick_repeated_ticks_do_not_retrigger() {
+    // 觸發一次後，後續多輪 tick（仍在情境內、仍在顯示視窗內）不應重新消費事件或
+    // 改變 start_ms——latch 冪等（事件已於第一次 tick 消費，之後 consume_first_entry()
+    // 恆回 false），重複呼叫是安全的。
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+    ems::LowBatteryNoticeState state{};
+    ems::low_battery_notice_tick(state, latch, true, false, false, NOTICE_TEST_START_MS);
+    TEST_ASSERT_TRUE(state.active);
+    TEST_ASSERT_EQUAL_UINT32(NOTICE_TEST_START_MS, state.start_ms);
+
+    ems::low_battery_notice_tick(
+        state, latch, true, false, false,
+        NOTICE_TEST_START_MS + TICK_TEST_REPEAT_STEP_MS);
+    TEST_ASSERT_TRUE(state.active);
+    TEST_ASSERT_EQUAL_UINT32(NOTICE_TEST_START_MS, state.start_ms);
+
+    ems::low_battery_notice_tick(
+        state, latch, true, false, false,
+        NOTICE_TEST_START_MS + TICK_TEST_REPEAT_STEP_MS * 2);
+    TEST_ASSERT_TRUE(state.active);
+    TEST_ASSERT_EQUAL_UINT32(NOTICE_TEST_START_MS, state.start_ms);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_vcell_golden_value_from_hardware_acceptance);
@@ -672,5 +940,23 @@ int main(int, char**) {
     RUN_TEST(test_should_draw_present_not_low_is_true_even_when_blink_off);
     RUN_TEST(test_should_draw_present_low_and_blink_on_is_true);
     RUN_TEST(test_should_draw_present_low_and_blink_off_is_false);
+    RUN_TEST(test_notice_duration_matches_sot_spec);
+    RUN_TEST(test_notice_inactive_is_never_visible);
+    RUN_TEST(test_notice_at_start_is_visible);
+    RUN_TEST(test_notice_boundary_last_visible_ms_is_visible);
+    RUN_TEST(test_notice_boundary_exact_duration_is_hidden);
+    RUN_TEST(test_notice_boundary_before_millis_overflow_is_visible);
+    RUN_TEST(test_notice_survives_millis_overflow);
+    RUN_TEST(test_notice_context_ohca_is_applicable);
+    RUN_TEST(test_notice_context_vent_without_pre_is_applicable);
+    RUN_TEST(test_notice_context_vent_with_pre_is_not_applicable);
+    RUN_TEST(test_notice_context_neither_ohca_nor_vent_is_not_applicable);
+    RUN_TEST(test_tick_out_of_context_does_not_consume_pending_event);
+    RUN_TEST(test_tick_entering_ohca_consumes_and_activates);
+    RUN_TEST(test_tick_vent_pre_shown_does_not_consume);
+    RUN_TEST(test_tick_leaving_context_deactivates_immediately);
+    RUN_TEST(test_tick_expiry_deactivates);
+    RUN_TEST(test_tick_recovery_survives_millis_wraparound);
+    RUN_TEST(test_tick_repeated_ticks_do_not_retrigger);
     return UNITY_END();
 }

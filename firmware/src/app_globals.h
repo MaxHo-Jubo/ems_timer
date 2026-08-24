@@ -451,6 +451,11 @@ extern uint8_t                 g_battery_percent;       // Phase H：電量 0~10
 extern uint16_t                g_battery_millivolts;    // Phase H：電壓 mV
 extern ems::ChargeState        g_battery_charge_state;  // Phase H：充電狀態
 extern bool                    g_battery_low;           // Phase H：低電量（含遲滯）
+// §13.16 提示計時器狀態，由 tryStartLowBatteryNotice() 每輪 loop() 更新，UI 端唯讀。
+// 單一 struct，寫入約定是整包替換；型別本身不強制（欄位仍是 public），
+// 唯一的生產寫入點是 low_battery_notice_tick()——該函式吃 LowBatteryNoticeState&
+// 並原地改寫（見 ems::LowBatteryNoticeState 的 doc）
+extern ems::LowBatteryNoticeState g_low_battery_notice;
 
 // Phase F 同步
 extern ems::SyncContext   g_sync_ctx;
@@ -663,6 +668,12 @@ void drawMainMenu();
 //                    DisplaySnapshot 的 SNAP_FLAG_BATTERY_LOW_BLINK bit 傳入，
 //                    本函式不自行重算 millis()，避免與 snapshot 擷取時間不同步。
 void drawBatteryIcon(bool lowBlinkOn);
+// Phase H：§13.16 低電量一次性提示（3 秒不透明 panel + 兩行文字），由 presentFrame() 統一呼叫。
+// @param visible 本次是否要畫，來自 DisplaySnapshot 的 SNAP_FLAG_LOW_BATTERY_NOTICE bit——
+//                 「顯示中」這個判斷由 captureDisplaySnapshot() 經
+//                 ems::is_low_battery_notice_visible() 算好才存進 snapshot，本函式不可
+//                 自行呼叫 millis() 重算，理由同上方 drawBatteryIcon() 的相位處理。
+void drawLowBatteryNotice(bool visible);
 void drawSyncScreen();
 void drawHistoryList();
 void drawPlaceholder(const char* title, const char* phase);

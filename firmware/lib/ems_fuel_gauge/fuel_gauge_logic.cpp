@@ -85,6 +85,26 @@ bool should_draw_battery_icon(uint8_t percent, bool low, bool lowBlinkOn) {
     return lowBlinkOn;
 }
 
+bool is_low_battery_notice_visible(const LowBatteryNoticeState& state, uint32_t now_ms) {
+    // STEP 01: 計時器目前無效就不顯示——無論是從未觸發，還是曾經顯示過但已復歸
+    if (!state.active) {
+        return false;
+    }
+
+    // STEP 02: 無號減法取經過時間，跨 millis() 溢位仍正確
+    return (now_ms - state.start_ms) < LOW_BATTERY_NOTICE_MS;
+}
+
+bool is_low_battery_notice_context(bool in_ohca, bool in_vent, bool vent_pre_shown) {
+    // STEP 01: OHCA 案件進行中（含 Training）一律適用，不受子狀態影響
+    if (in_ohca) {
+        return true;
+    }
+
+    // STEP 02: VENT 模式排除尚未真正開始的準備畫面（vent_pre_shown）
+    return in_vent && !vent_pre_shown;
+}
+
 void ChargeTrendTracker::push(uint16_t millivolts) {
     // STEP 01: 寫入環形緩衝並前進 head
     samples_[head_] = millivolts;
@@ -160,6 +180,35 @@ bool LowBatteryLatch::consume_first_entry() {
     // STEP 02: 消費掉事件，下次呼叫回 false，直到解除後再次跨入才重新掛起
     entry_pending_ = false;
     return true;
+}
+
+void low_battery_notice_tick(LowBatteryNoticeState& state,
+                             LowBatteryLatch& latch,
+                             bool in_ohca, bool in_vent,
+                             bool vent_pre_shown,
+                             uint32_t now_ms) {
+    // STEP 01: 離開適用情境 → 立即復歸，不等顯示視窗到期。守衛在此，不留給呼叫端
+    //          （consume_first_entry() 是公開 API，見本函式 JSDoc 的 CRITICAL 說明）
+    if (!is_low_battery_notice_context(in_ohca, in_vent, vent_pre_shown)) {
+        state = LowBatteryNoticeState{false, state.start_ms};
+        return;
+    }
+
+    // STEP 02: 逾期復歸——復用 is_low_battery_notice_visible()，不另寫一次時間比較
+    if (state.active && !is_low_battery_notice_visible(state, now_ms)) {
+        state = LowBatteryNoticeState{false, state.start_ms};
+        return;
+    }
+
+    // STEP 03: 適用情境內，嘗試消費首次進入事件——latch 冪等：已消費過或尚未
+    //          重新武裝時恆回 false，重複呼叫（每輪 loop 都呼叫）是安全的
+    if (latch.consume_first_entry()) {
+        state = LowBatteryNoticeState{true, now_ms};
+        return;
+    }
+
+    // STEP 04: 無新事件——維持現狀，不修改 state（可能是「仍在顯示視窗內」，
+    //          也可能是「本就 inactive」）
 }
 
 FuelReading make_reading(uint16_t raw_vcell, uint16_t raw_soc) {

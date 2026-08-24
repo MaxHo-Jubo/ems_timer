@@ -81,6 +81,7 @@ enum DisplaySnapshotFlag : uint32_t {
     SNAP_FLAG_SETTINGS_EDITOR = 0x00010000,  // Phase G：設定值編輯畫面顯示中
     SNAP_FLAG_SETTINGS_RESTORE_CONFIRM = 0x00020000,  // Phase G：恢復預設確認對話框顯示中
     SNAP_FLAG_BATTERY_LOW_BLINK = 0x00040000,  // Phase H：低電量 1Hz 閃爍的當前相位（每 500ms 由呼叫端翻轉）
+    SNAP_FLAG_LOW_BATTERY_NOTICE = 0x00080000,  // Phase H：§13.16 低電量提示顯示中（3 秒）
 };
 
 
@@ -139,6 +140,7 @@ struct DisplaySnapshotInputs {
     uint8_t  batteryPercent     = 255;    // Phase H：預設 255 = 不在線
     uint8_t  batteryChargeState = 0;      // Phase H：預設 Unknown
     bool     batteryLowBlinkOn  = false;  // Phase H：低電量閃爍當前相位
+    bool     lowBatteryNoticeVisible = false;  // Phase H：§13.16 提示顯示中
 };
 
 
@@ -194,6 +196,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.settingsEditorMode)     s.flags |= SNAP_FLAG_SETTINGS_EDITOR;
     if (in.settingsRestoreConfirm) s.flags |= SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
     if (in.batteryLowBlinkOn)      s.flags |= SNAP_FLAG_BATTERY_LOW_BLINK;
+    if (in.lowBatteryNoticeVisible) s.flags |= SNAP_FLAG_LOW_BATTERY_NOTICE;
 
     return s;
 }

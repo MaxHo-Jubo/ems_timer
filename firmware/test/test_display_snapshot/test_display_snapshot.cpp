@@ -254,7 +254,7 @@ static void test_flag_settings_restore_confirm_sets_bit_0x20000() {
 }
 
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 19 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 20 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -278,6 +278,7 @@ static void test_all_flags_on_combine_all_bits() {
     in.settingsEditorMode     = true;
     in.settingsRestoreConfirm = true;
     in.batteryLowBlinkOn      = true;
+    in.lowBatteryNoticeVisible = true;
 
     const uint32_t expected = SNAP_FLAG_EPI_ARMED
                             | SNAP_FLAG_SHOCK_ARMED
@@ -297,14 +298,15 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_RESET_CONFIRM
                             | SNAP_FLAG_SETTINGS_EDITOR
                             | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
-                            | SNAP_FLAG_BATTERY_LOW_BLINK;
+                            | SNAP_FLAG_BATTERY_LOW_BLINK
+                            | SNAP_FLAG_LOW_BATTERY_NOTICE;
     TEST_ASSERT_EQUAL_UINT32(expected, captureSnapshot(in).flags);
 }
 
 static void test_all_flags_bit_masks_are_unique() {
-    // 確保 19 個 mask 沒有撞號（OR 全部應等於 set bit count = 19）
+    // 確保 20 個 mask 沒有撞號（OR 全部應等於 set bit count = 20）
     // Phase G：原 uint16_t 的 16 bit 於 W8 用罄，flags 擴為 uint32_t 容納設定 UI 兩個新 flag
-    // Phase H：新增電池低電量閃爍 flag，第 19 個 bit
+    // Phase H：新增電池低電量閃爍 flag（第 19 個 bit）與 §13.16 低電量提示 flag（第 20 個 bit）
     const uint32_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
@@ -314,7 +316,7 @@ static void test_all_flags_bit_masks_are_unique() {
                        | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM
                        | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM
                        | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
-                       | SNAP_FLAG_BATTERY_LOW_BLINK;
+                       | SNAP_FLAG_BATTERY_LOW_BLINK | SNAP_FLAG_LOW_BATTERY_NOTICE;
     // popcount
     int bits = 0;
     for (uint32_t m = all; m; m >>= 1) {
@@ -322,7 +324,7 @@ static void test_all_flags_bit_masks_are_unique() {
             bits++;
         }
     }
-    TEST_ASSERT_EQUAL_INT(19, bits);
+    TEST_ASSERT_EQUAL_INT(20, bits);
 }
 
 // ============================================================
@@ -383,6 +385,13 @@ static void test_flag_battery_low_blink_sets_bit_0x40000() {
     DisplaySnapshotInputs in;
     in.batteryLowBlinkOn = true;
     TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_BATTERY_LOW_BLINK, captureSnapshot(in).flags);
+}
+
+static void test_flag_low_battery_notice_sets_bit_0x80000() {
+    // §13.16：低電量提示顯示中的第 20 個 flag bit
+    DisplaySnapshotInputs in;
+    in.lowBatteryNoticeVisible = true;
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_LOW_BATTERY_NOTICE, captureSnapshot(in).flags);
 }
 
 // ============================================================
@@ -461,6 +470,17 @@ static void test_countdown_plus_low_blink_forces_full_redraw() {
     ASSERT_COUNTDOWN_PLUS_FIELD_FORCES_FULL_REDRAW(batteryLowBlinkOn, false, true);
 }
 
+/**
+ * countdownSec 與 §13.16 低電量提示顯示狀態同一 frame 變化 → 必須走完整重繪。
+ *
+ * 機制上沒有漏洞——snapshotsEqualExceptCountdown() 是整包 memcmp，flags 欄位必然涵蓋
+ * 新 flag——但比照上一條 batteryLowBlinkOn 的先例補上對應案例，避免斷了先例讓下一個
+ * 新增的 flag 誤以為不需要補（2026-08-23 fix round 1 D3）。
+ */
+static void test_countdown_plus_low_battery_notice_forces_full_redraw() {
+    ASSERT_COUNTDOWN_PLUS_FIELD_FORCES_FULL_REDRAW(lowBatteryNoticeVisible, false, true);
+}
+
 int main(int /*argc*/, char ** /*argv*/) {
     UNITY_BEGIN();
 
@@ -524,12 +544,14 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_battery_absent_differs_from_zero_percent);
     RUN_TEST(test_default_battery_percent_is_absent_sentinel);
     RUN_TEST(test_flag_battery_low_blink_sets_bit_0x40000);
+    RUN_TEST(test_flag_low_battery_notice_sets_bit_0x80000);
 
     // Group 6: partial update 判斷（漏欄位會吞掉重繪）
     RUN_TEST(test_only_countdown_differs_allows_partial_update);
     RUN_TEST(test_countdown_plus_battery_percent_forces_full_redraw);
     RUN_TEST(test_countdown_plus_charge_state_forces_full_redraw);
     RUN_TEST(test_countdown_plus_low_blink_forces_full_redraw);
+    RUN_TEST(test_countdown_plus_low_battery_notice_forces_full_redraw);
 
     return UNITY_END();
 }
