@@ -1,19 +1,23 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
-- **最後更新**：2026-08-23（W2 完成收工）
-- **狀態**：W1 完成（Task 1–6，review clean）。**W2 完成**：Task 7（review 已補跑，修掉 1 Critical）、Task 8、Task 9（各 review clean）。**Task 10 已完成 pre-flight 查證但尚未 dispatch**（見 §3-A3）。所有上機驗收累積待硬體；Task 11–14 未開工
+- **最後更新**：2026-08-24（Task 10 完成收工）
+- **狀態**：W1 完成（Task 1–6）。W2 完成（Task 7–9）。**W3 的 Task 10 完成**——經 6 輪 fix、4 個 CRITICAL 全修（見 §3-A4）。**下一個是 Task 11，但計畫有一條會讓它畫不出畫面的缺陷，dispatch 前必讀 §3-A5。** 所有上機驗收累積待硬體；Task 12–14 未開工
 - **branch**：`feat/phase-g-system-settings`（未推送）
 
 > 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-23 收工時實測過。
 >
-> ⚠️ **2026-08-23 補跑 Task 7 review 時 rebase 過，Phase H 的 commit hash 全部變了。**
-> 舊文件與舊對話紀錄裡的 `df33d97`（Task 7）已不存在，現為 `94bc3fb`。
+> ⚠️ **commit hash 變過兩次。** 2026-08-23 補跑 Task 7 review 時 rebase，`df33d97` → `94bc3fb`。
+> 2026-08-24 Task 10 經 6 輪 fix，每輪都把修正折回同一個 feat commit，中間產生的
+> `e81f9b7` / `fffc27f` / `8cfb2f1` / `98b6983` / `5953893` / `2216bd4` **全部已脫離分支**
+> （`git gc` 後會消失）。Task 10 現行是 `dc4aaf1`（feat）+ `0905947`（docs）。
 
 ---
 
 ## 1. 三十秒看懂現況
 
-MAX17043 燃料計硬體驗收通過，主韌體每 10 秒輪詢一次寫進四個全域。**W2 顯示層已完成——程式碼上右上角四格電量圖示與低電量閃爍都寫好了，但一次都沒在實機上看過**（本階段全程無硬體，所有上機驗收累積到最後）。W3（低電量提示與開案確認框）與 W4（電池資訊畫面）未開工。
+MAX17043 燃料計硬體驗收通過，主韌體每 10 秒輪詢一次寫進四個全域。W2 顯示層（電量圖示、低電量閃爍）與 W3 的 Task 10（§13.16 低電量一次性提示）都已完成。
+
+**但整個 Phase H 一次都沒在實機上跑過**——本階段全程無硬體，§3-B 累積了 11 條上機驗收全部未執行。所有「已完成」的結論都建立在 native test 加靜態推理上。這是本階段第一號殘餘風險，見 §8。
 
 | 項目 | 狀態 |
 |---|---|
@@ -22,10 +26,10 @@ MAX17043 燃料計硬體驗收通過，主韌體每 10 秒輪詢一次寫進四�
 | 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
 | W1 讀取層 | ✅ Task 1–6 review clean；**上機驗收剩兩項待硬體** |
 | W2 顯示層 | ✅ 完成：Task 7（`94bc3fb`）、Task 8（`3333235`）、Task 9（`5634b52`）review clean |
-| W3 低電量行為 | 🔄 Task 10 pre-flight 查證完成、未 dispatch（見 §3-A3）；Task 11 未開工 |
+| W3 低電量行為 | 🔄 Task 10 ✅ 完成（`dc4aaf1`，6 輪 fix，見 §3-A4）；**Task 11 未開工，計畫有缺陷見 §3-A5** |
 | W4 電池資訊畫面 | ⬜ Task 12–14 |
 
-**實測數字**：`firmware/lib/ems_fuel_gauge/` 69 個、`test_display_snapshot` 50 個 native test 全綠；全套 579 cases / 578 通過。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS。
+**實測數字**（2026-08-24 Task 10 收工時）：全套 **599 cases / 598 通過**（Task 10 淨增 20 條）。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS，**Flash 71.4%**（字型兩次重生共 +21.8KB）。
 
 ---
 
@@ -43,7 +47,7 @@ cd firmware && pio run -e esp32-s3-devkitc-1                 # 應為 SUCCESS
 git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部 commit
 ```
 
-**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 1–9 全部 complete，下一個是 Task 10**——但 §3-A3 有四條 dispatch 前必須處理的計畫缺陷，先讀完再派工。
+**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 1–10 全部 complete，下一個是 Task 11**——但 §3-A5 有一條會讓確認框畫不出來的計畫缺陷，還有一條 Task 10/11 的互動需要裁決，先讀完再派工。
 
 > ⚠️ `.superpowers/` 是 git-ignored 的本機工作區，換機器就沒有了。本文件是它的持久化摘要；ledger 內的逐輪細節（每個 review 面向的原始 findings、48 條 ruling 的完整上下文）只在本機。
 
@@ -125,7 +129,7 @@ fix round 1 修掉兩條 Important。
 pushSprite 前恰好執行一次」、各早退分支是否漏呼叫）。要測得把呈現流程抽成可注入的協調層，
 屬計畫層架構決策。日後新增畫面若漏呼叫 `presentFrame()`，native 測試不會發現，只能靠 grep 與 review。
 
-### 3-A3. Task 9 完成；Task 10 的 pre-flight 已做完但**還沒 dispatch**（2026-08-23 收工點）
+### 3-A3. Task 9 完成（2026-08-23）
 
 **Task 9（`5634b52`）**：四格電量圖示、低電量閃爍、幾何閃電符號。經 2 輪 fix。
 新增到 lib 的純函式：`should_draw_battery_icon(percent, low, lowBlinkOn)`、
@@ -137,45 +141,86 @@ pushSprite 前恰好執行一次」、各早退分支是否漏呼叫）。要測
 > 這個缺陷編譯會過、native 抓不到（`ui_screens.cpp` 不進 native build）、也沒有硬體可上機發現，
 > 三層觀測全部涵蓋不到。修法是抽出 `should_draw_battery_icon()` 三分支純函式並加測試。
 
-#### Task 10 接手包：查證結論（不必重查）
+**給 Task 10–14 的一條約定（仍然有效）**：呼叫 `ems::battery_segments_for_percent()` 前必須先用
+`ems::is_battery_absent()` 擋掉哨兵——該函式對 255 會回滿格。Task 9 review 時 codex 要求在函式內
+加 guard，implementer 論證「呼叫端本來就得先做不在線的早退判斷」，controller 採納（不可達的
+guard 是死碼＋誤導註解）。**代價已知**：正確性押在呼叫端記憶力上。若 Task 12–14 出現第二個
+呼叫點，應改採 `enum class BatteryIconState { Absent, Normal, LowOn, LowOff }`。
 
-- `COLOR_ACCENT_WARN = 0xFDE0`（`app_globals.h:114`）、`SCREEN_H = 240`（`:99`）
-- `LowBatteryLatch::consume_first_entry()` 在 `fuel_gauge_logic.h:314`
-- **Training 進行中的 `globalState` 也是 `GLOBAL_OHCA`**（`input_handler.cpp:485` 開案時設定，
-  模式用 `g_case_mode == CASE_MODE_TRAINING` 區分）。所以計畫寫的
-  `in_active_case = (globalState == GLOBAL_OHCA) || (globalState == GLOBAL_VENT)`
-  **已經涵蓋 Training**，不需要再加條件；`GLOBAL_TRAINING_SETUP` 是開案前的設定畫面，不該觸發（正確）。
-- 下一個可用 flag bit 是 **`0x00080000`**（第 20 個；`SNAP_FLAG_BATTERY_LOW_BLINK = 0x00040000` 是目前最高位）
+---
 
-#### Task 10 接手包：dispatch 前必須處理的四條計畫缺陷
+### 3-A4. Task 10 完成（2026-08-24）——§13.16 執行中低電量一次性提示
 
-1. 🔴 **提示狀態沒有進 `DisplaySnapshot`——這會是同型 bug 的第 6 次。**
-   計畫的 `drawLowBatteryNotice()` 用 `millis() > g_low_battery_notice_until_ms` 在**繪製時**
-   判斷是否還在顯示期間，但「提示顯示中」這個狀態不在 snapshot 裡 → `memcmp` 相等 → 不重繪
-   → 提示不會出現、3 秒到期也不會消失。
-   目前「碰巧」會動的唯一原因是低電量時 `SNAP_FLAG_BATTERY_LOW_BLINK` 每 500ms 翻轉、
-   順帶提供了重繪節奏——**這是依賴巧合**，出現／消失時機有最多 500ms 誤差，且 Task 11
-   一改閃爍邏輯就會卡住。
-   **裁決方向**（與 Task 9 的相位處理一致）：`captureDisplaySnapshot()` 算好
-   `lowBatteryNoticeVisible` → `DisplaySnapshotInputs` → 新 flag bit `0x00080000` →
-   `presentFrame(snap)` 取 bit 傳給 `drawLowBatteryNotice(bool visible)`，繪製函式不自算 `millis()`。
-   spec §4.4 的 5 步驟 checklist 全部要跑。
-2. 「是否在顯示期間」是純邏輯（輸入 `until_ms`、`now_ms`），比照 `compute_low_battery_blink_on()`
-   抽進 `ems_fuel_gauge` lib 加 native test，否則又是 `ui_screens.cpp` 的 0 覆蓋率。
-3. `presentFrame()` 簽名已是 `presentFrame(const DisplaySnapshot& snap)`（Task 9 改的），
-   計畫寫的「在 STEP 01 之後、STEP 02 之前插入」STEP 編號已漂移，插入後要整段重排。
-4. Step 4 上機驗證降級（無硬體）。計畫提到的「暫時把 `LOW_BATTERY_ENTER_PERCENT` 改成 90
-   驗證後改回」與 §3-B Task 6 的做法相同，上機時一併安排。
+**commits**：`dc4aaf1`（feat）+ `0905947`（docs）。**經 6 輪 fix、4 個 CRITICAL**。
+全套 599 cases / 598 通過（Task 10 淨增 20 條），韌體編譯 SUCCESS，Flash 71.4%。
 
-#### Task 10–14 的 dispatch 都要帶的一條約定
+#### 最終長什麼樣
 
-**呼叫 `ems::battery_segments_for_percent()` 前必須先用 `ems::is_battery_absent()` 擋掉哨兵。**
-該函式對 255 會回滿格（255 ≥ 75）。Task 9 review 時 codex 要求在函式內加 guard，
-但 implementer 論證「呼叫端本來就得先做不在線的早退判斷，加第二個判斷點不消除第一個」，
-controller 採納該論證（不可達的 guard 是死碼＋誤導註解）。
-**代價已知**：這是把正確性押在呼叫端記憶力上，正是 `guard-placement` 原則反對的模式。
-**若 Task 12–14 出現第二個呼叫點，應改採 `enum class BatteryIconState { Absent, Normal, LowOn, LowOff }`**
-（見 §9 的 park 條目）。
+| 層 | 內容 |
+|---|---|
+| lib 純邏輯 | `LowBatteryNoticeState{active, start_ms}`、`is_low_battery_notice_visible(state, now)`、`is_low_battery_notice_context(in_ohca, in_vent, vent_pre)`、`low_battery_notice_tick(state&, latch&, ...)` |
+| 狀態機 | tick 一次做四件事：①非適用情境→復歸 ②逾期→復歸 ③適用且 latch 有事件→啟動 ④維持。**回傳 void、原地改寫**，caller 無法漏接 |
+| main.cpp | `tryStartLowBatteryNotice(now)` 每輪 `loop()` 呼叫（不掛在 10 秒輪詢內），`g_low_battery_notice` 單一全域 |
+| snapshot | `SNAP_FLAG_LOW_BATTERY_NOTICE = 0x00080000`，五步驟 checklist 全跑 |
+| UI | `drawLowBatteryNotice(bool visible)`，`textWidth()`/`fontHeight()` 動態量測的不透明 panel + 警示框，鏡像 `drawConfirmDialog()` |
+
+#### 四個 CRITICAL（都只有讀程式碼或讀二進位資產才發現得了）
+
+1. **守衛在呼叫端**（`consume_first_entry()` 是公開 API）→ 收斂成 `low_battery_notice_tick()`，生產路徑只剩一個入口
+2. **提示文字缺 4 個字**（「低議行源」不在 `ems_zh_24_vlw` 字集）→ 重生字型
+3. **重生把「設」union 掉**（`regen_vlw.sh` 掃描清單不含 `.h`，而 `MAIN_MENU_LABELS` 在 `app_globals.h`）→ 主選單「系統設定」會顯示「系統▯定」。**修上一條的動作本身引入的**
+4. **tick 回傳值可被漏接**（消費了 latch 但狀態寫回在呼叫端）→ 改吃 reference、回傳 void
+
+第 2、3 條合計讓字型從 282 → 325 glyph，順帶補上 Phase G 設定 UI 長期缺的 38 個字
+（**設定畫面一直在顯示缺字方塊，這輪才修掉**）。
+
+#### 三處錯誤源自 controller 寫的計畫或 fix 指示
+
+- 「`millis() > until_ms` 溢位後永久判成已過期」——不成立，取決於 `until` 是否也繞回；連帶讓溢位測試失去鑑別力
+- 「latch 每次開機只 pending 一次」——錯，回升 25% 再降 20% 會重新 pending
+- 要求「測試邊界由 `LOW_BATTERY_NOTICE_MS` 推導」——副作用是常數改成 5000 測試仍全過，§13.16 的 3 秒規格反而失去保護（後補一條硬編 3000 的獨立斷言）
+
+#### 驗證方法上值得複製的三件事
+
+- **鑑別力用變異測試證明，不用推理**：刪掉 tick 的 STEP 01 → 3 條紅、刪掉 STEP 02 → 2 條紅，三次獨立驗證數字一致
+- **字型驗證對已 commit 的 git blob 做，不是工作目錄**（這條線上發生過「讀工作目錄以為改好了，其實還沒 commit」的誤判）
+- **雙標準編譯驗證**：`gnu++11`（ESP32）與 `gnu++17`（native）行為不同，NSDMI 那個坑就是這樣抓到的
+
+---
+
+### 3-A5. Task 11 接手包（dispatch 前必讀）
+
+**Task 11 是 §20.3 低電量開案確認框**：低電量狀態下按 OHCA 入口 → 確認框「低電量／建議接上行動電源／是否開始？」→ 選「是」進案；選「否」**回主選單，不建立案件**。
+
+#### 🔴 計畫有一條會讓它畫不出畫面的缺陷
+
+計畫要新增 `SUBSTATE_LOW_BATTERY_CONFIRM` 列舉、用 sub-state 驅動確認框。**但 `main.cpp` 的
+`GLOBAL_MAIN_MENU` 分支只呼叫 `drawMainMenu()`，完全不看 `ohcaSubState`**——所有 `SUBSTATE_*`
+分派都在 `globalState == GLOBAL_OHCA` 分支內。而 §20.3 的確認框必須在**開案前**顯示
+（選「否」要回主選單且不建案）。照計畫寫，確認框畫不出來。
+
+**建議改法**：用獨立 bool 旗標，比照既有的 `resyncConfirmShown` / `trainingDeleteConfirm` /
+`settingsRestoreConfirm`。這條路徑**必須跑 DisplaySnapshot 五步驟 checklist**——
+下一個可用 flag bit 是 **`0x00100000`**（Task 10 用掉 `0x00080000`）。
+
+#### 已查證的介面（不必重查）
+
+- `SUBSTATE_*` 列舉最大值是 **13**（`SUBSTATE_RESET_CONFIRM`），若仍要加列舉則為 14
+- `drawConfirmDialog(const char* title, const char* body)` 在 `ui_screens.cpp:776`，宣告在 `app_globals.h:683`
+- 主選單建案的 `case 0:` 在 `input_handler.cpp:212`；Training 開案在 `:485` 附近
+- 計畫 Step 2 要把建案流程抽成 `startOhcaCase()` helper——**這個方向是對的**，確認後進案與
+  主選單直接進案是同一流程的兩個呼叫點，依 EXTRACT-SHARED-HELPER 該抽
+
+#### Task 10 與 Task 11 的互動（需要裁決）
+
+確認框選「是」→ 進案 → 下一次 tick 消費 latch → §13.16 的 3 秒提示跳出來。
+**使用者會連續看到兩次低電量告知。** spec §20.3 與 §13.16 是獨立兩條規格，各自都要求顯示，
+但 UX 上是否冗餘需要 Task 11 明確裁決（可能的處理：確認框顯示後就消費掉 latch 事件）。
+
+#### 新增中文字串的話
+
+**一定要重跑 `bash scripts/regen_vlw.sh` 並驗字集。** 確認框的文案若含目前字集沒有的字，
+實機會顯示 ▯ 而編譯與 native test 都不會報錯——這個坑在 Task 10 咬了兩次。驗法見 §8 第 ② 條。
 
 ### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
@@ -226,7 +271,7 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 檢查 | 通過條件 | 沒過代表什麼 |
 |---|---|---|
 | 提示出現 | 進 OHCA 案件後首次跨進低電量，畫面中央出現一次帶不透明背景 panel 的「低電量」／「建議接上行動電源」兩行文字 | flag 未傳到 `presentFrame()`，或 `tryStartLowBatteryNotice()` 判斷條件錯誤 |
-| **提示兩行文字無缺字** | 「低電量」與「建議接上行動電源」11 個字完整顯示，不出現 ▯ 或空白缺字方塊 | `ems_zh_24_vlw` 字集缺字（`5953893` 之前缺「低議行源」四字，2026-08-23 fix round 3 G1 CRITICAL 已重生字型修復；若又出現需重跑 `bash scripts/regen_vlw.sh` 並比照 fix round 3 report 驗證 glyph 表） |
+| **提示兩行文字無缺字** | 「低電量」與「建議接上行動電源」11 個字完整顯示，不出現 ▯ 或空白缺字方塊 | `ems_zh_24_vlw` 字集缺字（Task 10 fix round 3 之前缺「低議行源」四字，G1 CRITICAL 已重生字型修復；若又出現需重跑 `bash scripts/regen_vlw.sh` 並比照 fix round 3 report 驗證 glyph 表） |
 | **panel 不與其他文字重疊** | panel 背景確實蓋住 OHCA 倒數大字（y≈100）／通氣大數字（y=136），兩層文字不互相覆寫、可讀 | `drawLowBatteryNotice()` 的 `display.textWidth()`/`fontHeight()` 動態量測算錯尺寸，或 panel 畫在文字之後而非之前（fix round 1 A1） |
 | **開案當下立即提示** | 已在主選單等非適用情境跨進低電量（latch 已 pending）後才進 OHCA/VENT，提示應在進入後的下一個 loop 週期內立即出現，不需等待 10 秒電量輪詢 | 觸發邏輯仍掛在 `pollBattery()` 節流內，或 `is_low_battery_notice_context()` 短路求值失效（fix round 1 A2） |
 | 提示消失 | 顯示約 3 秒後自動消失，且過程**不發聲**（依 SoT §13.16 明文） | `LOW_BATTERY_NOTICE_MS` 計時或 `is_low_battery_notice_visible()` 判斷有誤；若有聲響，代表誤接了蜂鳴器邏輯 |
@@ -270,8 +315,13 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 7 | `94bc3fb` | `DisplaySnapshot` 電池欄位、`SNAP_FLAG_BATTERY_LOW_BLINK`、`snapshotsEqualExceptCountdown()` | 1（2026-08-23 補跑） | clean |
 | 8 | `3333235` | `presentFrame()` 統一重繪出口（15 處收斂）、snapshot 電池填值、`compute_low_battery_blink_on()` | 1 | clean |
 | 9 | `5634b52` | 四格電量圖示繪製、幾何閃電、`should_draw_battery_icon()`、`battery_segments_for_percent()` | 2 | clean |
+| 10 | `dc4aaf1` | §13.16 提示：`LowBatteryNoticeState`、`low_battery_notice_tick()`、`is_low_battery_notice_visible/context()`、`SNAP_FLAG_LOW_BATTERY_NOTICE`、`drawLowBatteryNotice()`、字型 282→325 glyph | **6**（4 CRITICAL） | clean |
 
 > Task 1–6 的 hash 不受 2026-08-23 那次 rebase 影響（rebase 基底是 `c180cb3`，都在它之前）。
+>
+> Task 10 跑了 6 輪 fix，每輪把修正折回同一個 feat commit，所以中間版本的 hash 全部脫離分支。
+> 它的 4 個 CRITICAL 見 §3-A4——共同點是**都只有讀程式碼或讀二進位資產才發現得了**，
+> 編譯、native test、上機（無硬體）三層觀測全部涵蓋不到。
 
 每個 task 都跑 SDD task review + 專案 Tier 3 六面向（共 7 個 reviewer），全部 findings 已處理或 parked。
 Task 1–6 的 pending-review 閘門正常解鎖（`--aspects-done=6`）；Task 7 當下用 `--force` 放行、
@@ -367,6 +417,54 @@ Task 1–6 的 pending-review 閘門正常解鎖（`--aspects-done=6`）；Task 
 ---
 
 ## 8. 殘餘風險（未解決，刻意記錄）
+
+### Task 10 收工時的前五名（2026-08-24，依「會不會咬到人」排序）
+
+**① 整個 Phase H 一次都沒在實機跑過。** §3-B 累積 11 條上機驗收全部未執行，所有結論都建立在
+native test 加靜態推理上。最可能出事的三處：panel 幾何（`textWidth()`/`fontHeight()` 的實際
+回傳值只有真機才知道，目前只驗到「代數上必然包住」）、3 秒計時的實際觀感、以及 panel 只有
+約 232×88 而 OHCA 大時間約 290×96，**四周會露出巨大數字的殘片**（與既有 `drawConfirmDialog()`
+同類但更明顯）。**這一條比其他四條加起來都重。**
+
+**② 字型字集沒有任何自動守門，同一類 bug 已經咬過兩次。** Task 10 fix round 3 缺「低議行源」
+（提示文字）、round 5/6 缺「恢預命」（設定 UI）。兩次都是靠人工審查在上機前攔下，不是靠工具。
+現在的防線只有 `regen_vlw.sh` 裡的一段註解——而註解 enforce 不了任何事。**下一個在新檔案加
+中文標籤的人會靜默出 ▯，要到上機才看得到。**
+
+驗法（新增任何會上 TFT 的中文字串後都該跑，對**已 commit 的 blob**）：
+
+```bash
+python3 - <<'EOF'
+import struct, subprocess, re
+blob = subprocess.run(['git','show','HEAD:firmware/data/fonts/ems_zh_24.vlw'],capture_output=True).stdout
+n = struct.unpack('>i', blob[:4])[0]
+cps = {struct.unpack('>i', blob[24+i*28:28+i*28])[0] for i in range(n)}
+for s in ["系統設定", "低電量", "你新增的字串"]:          # ← 填要驗的 UI 字串
+    print(s, [c for c in s if ord(c) > 0x2000 and ord(c) not in cps] or "零缺字")
+h = subprocess.run(['git','show','HEAD:firmware/src/ems_zh_24_vlw.h'],capture_output=True).stdout.decode('utf-8','replace')
+print("_len 一致:", str(len(blob)) == re.search(r'_len\s*=\s*(\d+)', h).group(1))
+EOF
+```
+
+該補而未補的是「字型流程 fixture-based 回歸測試」（在 `.h` 與 `.cpp` 各放唯一中文字，跑掃描
+邏輯確認兩者都被納入、生成物被排除）。park 的理由是它屬新增能力而非修缺陷，且 Task 10 已跑六輪。
+
+**③ `consume_first_entry()` 仍是 public 的一次性消費 API。** 守衛已移進 lib、寫回缺口也補了，
+但「公開 API 被誤呼叫一次就不可逆丟事件、且無錯誤訊號」這個底層危險還在。目前生產路徑只有
+`low_battery_notice_tick()` 一個入口且有測試鎖住，但**沒有編譯期強制**。若未來有人為別的功能
+直接呼叫它，Phase H 的提示會靜默失效。改 private + friend 需要動 Task 3 已完成的 9 個測試，
+因此 park。
+
+**④ `LowBatteryNoticeState` 的「整包替換」只是約定。** 欄位仍 public，任何人都能寫
+`g_low_battery_notice.active = true;` 繞過。註解已如實說明這一點（不再宣稱「型別上保證」）。
+與 ③ 同源：**兩者都是用約定與註解取代型別保證，而這條線上已經證明過註解攔不住人。**
+
+**⑤ 程式碼裡累積了 review 過程的考古式註解。** `（fix round N XX 裁決）`、`原本誤寫成…`
+這類描述**已不存在的舊程式碼**。判準：「為什麼是這個設計」留（那是知識），「前一版寫錯什麼」
+刪（那屬於 commit message）。排定在 Phase H 收尾一次掃：
+`grep -rn "fix round\|原本誤寫" firmware/`。不會咬到功能，純維護性。
+
+### W1 讀取層的既有項目
 
 - **`PLAUSIBLE_SOC_WHOLE_MAX = 110` 與趨勢死區 `±3mV` 都是推導初值**，需要 Step 6.4 的實測資料校正。
 - **低電量區精度未驗**：只在 3.84V 中段比對過電表，而接近 3.0V 正是低電量警告最需要準的區間。W3（Task 10–11）動工前建議補驗。

@@ -89,15 +89,22 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 
 ⏳ **待實作**：見 `docs/pm-dev-spec.md §四 Phase B~H`
 
-🔋 **Impl-Phase H（電量顯示）進行中**（2026-08-23）：W1 讀取層 Task 1–6 完成、review 皆 clean，
-主韌體已每 10 秒讀取 MAX17043 並寫進全域。**W2 顯示層完成**：Task 7（DisplaySnapshot 欄位，
-`94bc3fb`）、Task 8（`presentFrame()` 統一重繪出口，`3333235`）、Task 9（四格電量圖示與低電量閃爍，
-`5634b52`）皆 review clean。**程式碼上圖示已經會畫，但一次都沒在實機看過**——本階段全程無硬體，
-上機驗收累積到最後一次做完。Task 10 已完成 pre-flight 查證但尚未 dispatch；Task 11–14 未開工。
-全套 579 cases / 578 通過（唯一未過的 `test_storage_hw` 是既有編譯錯誤，與 Phase H 無關）。
+🔋 **Impl-Phase H（電量顯示）進行中**（2026-08-24）：W1 讀取層 Task 1–6、W2 顯示層 Task 7–9
+（`94bc3fb` / `3333235` / `5634b52`）皆完成且 review clean。**W3 的 Task 10 完成**
+（§13.16 執行中低電量一次性提示，`dc4aaf1`）——經 6 輪 fix、4 個 CRITICAL，詳見 handover §3-A4。
+Task 11–14 未開工。全套 599 cases / 598 通過（唯一未過的 `test_storage_hw` 是既有編譯錯誤，
+與 Phase H 無關），韌體 Flash 71.4%。
 
-> ⚠️ 2026-08-23 補跑 review 時 rebase 過，**Phase H 的 Task 7 之後 commit hash 全變**
-> （`df33d97` → `94bc3fb`）。Task 1–6 的 hash 不受影響。分支尚未推送。
+**整個 Phase H 一次都沒在實機跑過**——本階段全程無硬體，handover §3-B 累積了 11 條上機驗收
+全部未執行，所有「已完成」的結論都建立在 native test 加靜態推理上。
+
+> ⚠️ commit hash 變過兩次。2026-08-23 rebase：`df33d97` → `94bc3fb`（Task 1–6 不受影響）。
+> 2026-08-24 Task 10 六輪 fix 每輪折回同一個 feat commit，中間版本的 hash 全部脫離分支。
+> 分支尚未推送。
+
+> 🔤 **新增任何會上 TFT 的中文字串後，必須重跑 `bash scripts/regen_vlw.sh` 並驗字集**——
+> 字型是從原始碼掃出來的子集，新字沒重生就會在實機顯示 ▯，而編譯與 native test 都不會報錯。
+> 這個坑在 Task 10 咬了兩次（缺新字、以及重生時把舊字 union 掉）。驗法見 handover §8 第 ② 條。
 
 > **接手前必讀** [`docs/superpowers/phase-h-handover.md`](docs/superpowers/phase-h-handover.md)。
 > **下一步是 Task 10**，但 §3-A3 列了四條 dispatch 前必須處理的計畫缺陷（最重要的一條：低電量提示
