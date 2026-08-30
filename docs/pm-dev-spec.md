@@ -607,10 +607,14 @@ V1 §18.3。
 
 ### Phase G — 系統設定 + Type-C 工具
 
-- 螢幕亮度 / 系統音量 / 通氣音量 NVS
-- 裝置名稱由 App 寫入
-- 韌體版本 read-only
-- Type-C 管理工具 MVP（列案件 / 匯出 / 清除）
+- 螢幕亮度 / 系統音量 / 通氣音量 NVS ✅ 已完成
+- 裝置名稱由 App 寫入 ✅ 已完成
+- **裝置資訊畫面**（2026-08-30 擴充，原「韌體版本 read-only」升級為完整畫面，並併入原 Impl-Phase H
+  Task 14 的電池／充電狀態接線）：名稱 / 型號 / 序號 / 韌體版本 / 電池 % / 充電狀態，
+  SoT V1 §19.7。未開工——詳見 `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`
+  Task 14 段落（電池／充電狀態接線的起點參考）與
+  `docs/superpowers/phase-h-handover.md §3-A7`
+- Type-C 管理工具 MVP（列案件 / 匯出 / 清除）未開工
 
 **驗收**：恢復預設不影響案件 / Training / 裝置名稱。
 

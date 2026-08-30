@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
-- **最後更新**：2026-08-30（Task 11 進行中，fix round 3）
-- **狀態**：W1 完成（Task 1–6）。W2 完成（Task 7–9）。W3 的 Task 10 完成（見 §3-A4）。**Task 11（§20.3 低電量開案確認框）進行中**——range 從計畫原定的 OHCA-only 擴大到 OHCA/VENT/Training 三入口（round 1 修正，見 §3-A6），round 2/3 陸續修 guard-placement 類 CRITICAL（latch 消費守衛、同輪按鍵穿透 modal），round 3 正在跑，尚未收工。**若此 session 中斷，下個 session 先讀 §3-A6 接續，不要重新 dispatch Task 11。** 所有上機驗收累積待硬體；Task 12–14 未開工
+- **最後更新**：2026-08-30 22:10（**Task 11 收工，pending-review 閘門已解鎖**）
+- **狀態**：W1 完成（Task 1–6）。W2 完成（Task 7–9）。W3 全部完成——Task 10（見 §3-A4）、**Task 11（§20.3 低電量開案確認框，見 §3-A6）**皆已收工。Task 11 range 從計畫原定的 OHCA-only 擴大到 OHCA/VENT/Training 三入口，經 5 輪 implementer fix + 最終 controller 直接補的 3 處 STEP 註解，共 6 次 codex Tier 3 六面向 confirmatory review，2026-08-30 22:xx 最後一次 6/6 通過並解鎖閘門（`clear-pending-review.ts --aspects-done=6`，commit `e7ff60d`）。native test 615/616（唯一 ERRORED 是既有的 `test_storage_hw`，與 Phase H 無關），韌體編譯 SUCCESS，Flash 71.5%。**下一個 task 是 Task 12**（§3-A7 已完成前置調查，可直接 dispatch）。所有上機驗收累積待硬體；Phase H 計畫為 13 個 task（Task 14 已移出併入 Impl-Phase G，見 §3-A7）
 - **branch**：`feat/phase-g-system-settings`（未推送）
 
 > 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-23 收工時實測過。
@@ -15,21 +15,23 @@
 
 ## 1. 三十秒看懂現況
 
-MAX17043 燃料計硬體驗收通過，主韌體每 10 秒輪詢一次寫進四個全域。W2 顯示層（電量圖示、低電量閃爍）與 W3 的 Task 10（§13.16 低電量一次性提示）都已完成。
+MAX17043 燃料計硬體驗收通過，主韌體每 10 秒輪詢一次寫進四個全域。W2 顯示層（電量圖示、低電量閃爍）與 W3（Task 10 §13.16 低電量一次性提示、Task 11 §20.3 低電量開案確認框）都已完成。
 
-**但整個 Phase H 一次都沒在實機上跑過**——本階段全程無硬體，§3-B 累積了 11 條上機驗收全部未執行。所有「已完成」的結論都建立在 native test 加靜態推理上。這是本階段第一號殘餘風險，見 §8。
+**但整個 Phase H 一次都沒在實機上跑過**——本階段全程無硬體，§3-B 累積的整套上機驗收全部未執行（僅 Task 6 的「失敗不清警示」一項已在 2026-08-22 首次上機時通過）。所有其餘「已完成」的結論都建立在 native test 加靜態推理上。這是本階段第一號殘餘風險，見 §8。
 
 | 項目 | 狀態 |
 |---|---|
 | 硬體 | ✅ 驗收通過（I2C `0x36`、3.844V vs 電表 3.88V） |
 | spec | ✅ `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md` |
-| 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（14 task） |
+| 實作計畫 | ✅ `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md`（13 task，Task 14 已移出見 §3-A7） |
 | W1 讀取層 | ✅ Task 1–6 review clean；**上機驗收剩兩項待硬體** |
 | W2 顯示層 | ✅ 完成：Task 7（`94bc3fb`）、Task 8（`3333235`）、Task 9（`5634b52`）review clean |
-| W3 低電量行為 | 🔄 Task 10 ✅ 完成（`dc4aaf1`，6 輪 fix，見 §3-A4）；**Task 11 未開工，計畫有缺陷見 §3-A5** |
-| W4 電池資訊畫面 | ⬜ Task 12–14 |
+| W3 低電量行為 | ✅ 完成：Task 10（`dc4aaf1`，6 輪 fix，見 §3-A4）、Task 11（`58efa0e` + 3 處 STEP 註解補丁，5 輪 fix，見 §3-A6） |
+| W4 電池資訊畫面 | ⬜ Task 12–13 未開工，前置調查已完成可直接 dispatch（原 Task 14 已移出併入 Impl-Phase G，見 §3-A7） |
 
 **實測數字**（2026-08-24 Task 10 收工時）：全套 **599 cases / 598 通過**（Task 10 淨增 20 條）。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS，**Flash 71.4%**（字型兩次重生共 +21.8KB）。
+
+**實測數字**（2026-08-30 Task 11 收工時）：全套 **616 cases / 615 通過**（Task 11 淨增 17 條，唯一未過者同上、與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS，**Flash 71.5%**。
 
 ---
 
@@ -47,7 +49,7 @@ cd firmware && pio run -e esp32-s3-devkitc-1                 # 應為 SUCCESS
 git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部 commit
 ```
 
-**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 1–10 全部 complete，下一個是 Task 11**——但 §3-A5 有一條會讓確認框畫不出來的計畫缺陷，還有一條 Task 10/11 的互動需要裁決，先讀完再派工。
+**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 1–11 全部 complete，下一個是 Task 12**——§3-A7 已完成前置調查（游標常數、選單分派現況都與計畫假設一致），可直接 dispatch，不需要再查證。
 
 > ⚠️ `.superpowers/` 是 git-ignored 的本機工作區，換機器就沒有了。本文件是它的持久化摘要；ledger 內的逐輪細節（每個 review 面向的原始 findings、48 條 ruling 的完整上下文）只在本機。
 
@@ -211,51 +213,121 @@ guard 是死碼＋誤導註解）。**代價已知**：正確性押在呼叫端�
 - 計畫 Step 2 要把建案流程抽成 `startOhcaCase()` helper——**這個方向是對的**，確認後進案與
   主選單直接進案是同一流程的兩個呼叫點，依 EXTRACT-SHARED-HELPER 該抽
 
-#### Task 10 與 Task 11 的互動（需要裁決）
+#### Task 10 與 Task 11 的互動（✅ round 1 已解決）
 
-確認框選「是」→ 進案 → 下一次 tick 消費 latch → §13.16 的 3 秒提示跳出來。
-**使用者會連續看到兩次低電量告知。** spec §20.3 與 §13.16 是獨立兩條規格，各自都要求顯示，
-但 UX 上是否冗餘需要 Task 11 明確裁決（可能的處理：確認框顯示後就消費掉 latch 事件）。
+擔心的是「確認框選『是』→ 進案 → 下一次 tick 消費 latch → §13.16 的 3 秒提示又跳出來，
+使用者連續看到兩次低電量告知」。round 1 把 `latch` 消費綁進
+`try_request_low_battery_start_confirm()`（確認框開啟當下即消費），**不是靠 UX 裁決去抑制
+其中一邊，而是靠情境守衛天然互斥**：`low_battery_notice_tick()` 的適用情境判斷
+（`is_low_battery_notice_context()`）在確認框顯示期間，三個目標（OHCA／VENT/`ventPreShown`／
+Training 尚未切到 `GLOBAL_OHCA`）全部落在「不適用」，不會走到它自己的
+`consume_first_entry()`。兩個消費點因此不會搶同一次事件，兩段提示不會重疊或搶跑。
+完整推導見 `fuel_gauge_logic.h` `low_battery_notice_tick()` 的 JSDoc（2026-08-30 Task 11
+fix round 1 之後補上）。
 
 #### 新增中文字串的話
 
 **一定要重跑 `bash scripts/regen_vlw.sh` 並驗字集。** 確認框的文案若含目前字集沒有的字，
 實機會顯示 ▯ 而編譯與 native test 都不會報錯——這個坑在 Task 10 咬了兩次。驗法見 §8 第 ② 條。
 
-### 3-A6. Task 11 進行中（2026-08-30，fix round 3 執行中，尚未收工）
+### 3-A6. Task 11 完成（2026-08-30）——§20.3 低電量開案確認框
 
-**若接手時 session 已中斷，讀完這節直接查 SDD ledger
-（`.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md`）與三份 fix round brief
-（`task-11-fix-round-{1,2,3}-brief.md`）接續，不要重新 dispatch Task 11。**
+**commits**：`58efa0e`（feat，round 1–5）+ 3 處純 STEP 註解補丁（controller 直接補，未另立 commit，隨本輪 docs commit 一併收）。**經 5 輪 implementer fix + 1 次最終 controller confirmatory review**。
+native test 615/616（唯一 ERRORED 是既有的 `test_storage_hw`，與 Phase H 無關），韌體編譯 SUCCESS，Flash 71.5%。
 
 **範圍比計畫原定的大**：§3-A5 只寫了 OHCA 一個入口，dispatch 後才發現 spec §5（line 24／198）
 明文 §20.3 要蓋三個入口——OHCA／VENT（6 秒通氣節奏獨立模式）／Training，round 1 已補齊。
 
-**三輪 fix 都是同一個根因的漸進收斂**（guard-placement：低電量守衛该放在共用核心，不是
-呼叫端記憶力）：
+**五輪 fix 都是同一個根因的漸進收斂**（guard-placement：低電量守衛該放在共用核心，不是
+呼叫端記憶力；按鍵穿透 modal 則是同一種「跨迴圈狀態要在轉換當下就處理乾淨」的問題）：
 
 | 輪次 | commit | CRITICAL | 修法 |
 |---|---|---|---|
 | round 1 | `e915798` | VENT/Training 入口缺確認框；`consumePendingLowBatteryEntry()` 裸 passthrough | 三入口共用一個 target-aware 攔截區；latch 消費綁進 `requestLowBatteryStartConfirm()` |
 | round 2 | `2e40400` | 該函式參數仍能合法收到 `None`；`handleButtons()` 同輪多按鍵可能穿透 modal | 拆 `LowBatteryStartTarget`（不含 None）跟 `LowBatteryConfirmTarget`（含 None）兩個型別；`handleButtons()` snapshot 判斷+`break` |
-| round 3（進行中）| `2e40400`（再次 amend）| `handleButtons()` 的修法是「延後」不是「吞掉」，下一 tick 一樣穿透；低電量判斷仍在呼叫端 | 同輪其餘按鍵直接同步物理狀態吞掉，不延後；`latch.is_low()` 檢查收進 `try_request_low_battery_start_confirm()`，回傳 bool 取代呼叫端自查 |
+| round 3 | `2e40400`（再次 amend）| `handleButtons()` 的修法是「延後」不是「吞掉」，下一 tick 一樣穿透；低電量判斷仍在呼叫端 | 同輪其餘按鍵直接同步物理狀態吞掉，不延後；`latch.is_low()` 檢查收進 `try_request_low_battery_start_confirm()`，回傳 bool 取代呼叫端自查 |
+| round 4（換新 implementer + opus） | `6fba0dc` | 吞鍵邏輯只處理 modal「關閉」方向，沒處理「開啟」方向；仍按住的按鍵被誤設成新按壓而非清空 | 判斷式改成比對前後「任何」轉換（`!=` 取代單向 `&&!`）；仍按住的鍵一律清 `btnPressStartMs=0` 不寫 `now`；抽出 `isBlockingModalActive()` 共用；`startTrainingCase()` 週期改明確參數 |
+| round 5（SDD 上限，implementer 自己提出三個疑慮並各自裁決） | `58efa0e` | 無新 CRITICAL——implementer 主動指出 `lastPressMs[j]` 未同步（防抖繞過窗口）與 `j<i` swallow 索引缺口 | 前者一行修正併入 swallow 迴圈；後者 park 並寫入殘餘風險 ⑦ |
 
-**每輪都有 codex Tier 3 六面向 + SDD task/re-review 雙軌驗證**，SDD reviewer 對 round 1 的
-Training 缺口是獨立於 codex 發現的（兩邊各自抓到不同的缺口：codex 抓 VENT、SDD reviewer 抓
-Training，controller 對照 spec 原文都驗證屬實）。
+**每輪都有 codex Tier 3 六面向 + SDD task/re-review 雙軌驗證**，多次出現雙邊各自獨立抓到
+不同缺口再互相印證的情況（round 1：codex 抓 VENT、SDD reviewer 抓 Training；round 3→4：
+SDD re-review 獨立發現跟 codex round 4 同源的按鍵計時器問題，分析角度不同但結論收斂）。
 
-**已 park 的項目**（詳細理由見 ledger，不要重新開 fix round 討論）：
+#### 最終 confirmatory review（2026-08-30 22:xx，對 `58efa0e`）
+
+2026-08-30 18:31 的重跑因 codex CLI 額度用完失敗（非 review 找到問題），依使用者裁示等到
+21:56 CST 後重試，同一 target 6/6 面向全數通過（`rules`/`code-review`/`silent-failure`/
+`comments`/`tests`/`types`，effort=high）。完整報告：
+`~/.claude/state/codex-review/-Users-maxhero-Documents-MaxHero-Projects-ems_timer/58efa0e`。
+
+出現 1 個新 CRITICAL + 20 個 IMPORTANT，逐條裁決如下（不開 round 6，比照 handover 既定指示）：
+
+- **CRITICAL（`input_handler.cpp:206`，modal 按鍵穿透）**——逐行核對後確認就是 §8 殘餘風險 ⑦
+  本人（`handleButtons()` swallow loop `j = i+1 .. BTN_COUNT-1` 不含 `j < i`）。這是本輪 codex
+  獨立再次抓到同一個已知、已 park 的缺口，非新問題。維持 park，§8 已補註「二次獨立確認」。
+- **3 個「函式缺 STEP 註解」**（`to_confirm_target()`／`isBlockingModalActive()`／
+  `requestLowBatteryStartConfirm()`）——機械式合規、零邏輯風險，controller 直接補上單行
+  STEP 01 註解（不算開新 fix round，純註解不影響行為），已跑 native test + ESP32 編譯驗證無異常。
+- **if-brace／不可變性（`ems_display_snapshot.h:202`）**——新增行沿用該檔 19/19 既有單行 `if`
+  + POD 逐欄位賦值慣例，Task 7 §3-A 已駁回同型 finding，維持駁回。
+- **reference-mutation（`try_request_low_battery_start_confirm()` 用 non-const ref 回寫）**——
+  round 3 的刻意設計（回傳 bool + 原地寫回，讓呼叫端無法漏接，見 §3-A4 Task 10 同型裁決的
+  姊妹決策），非退化，維持現狀。
+- **`LowBatteryConfirmDecision` 型別可表示非法狀態、`to_confirm_target()` 窮舉後仍需
+  `return None`**——round 4/5 已裁決 park（12 條窮舉測試鎖住行為、唯一呼叫點結構上不可達、
+  C++11 tagged union 成本不成比例），本輪 `types`／`silent-failure` 兩面向重複同一 finding，
+  維持既有裁決。
+- **`input_handler.cpp`／`main.cpp` 整合層測試缺口**（`tests` 面向兩條）——即 §8 殘餘風險 ⑥，
+  維持既有 park 理由（native 環境不編譯 `src/`，需抽 coordinator 層）。
+- **docs 一致性（handover 狀態過期、簡體字「该」）**——codex 審查的是 commit `58efa0e` 當下
+  的文件內容（仍寫 round 3）；本 session 稍早已把本節更新到 round 5 狀態、「该」也已隨改寫
+  訂正為「該」，本次 confirmatory review 一併把本節重寫為此定稿版本，無需額外動作。
+- **`isLowBatteryStartConfirmActive()` 判斷式重複於 5 處呼叫點**（`input_handler.cpp:143/
+  391/1376`、`main.cpp:945/1057`，`code-review` 面向新發現，非前五輪已知項目）——符合
+  `EXTRACT-SHARED-HELPER` 該抽共用 helper 的判準，但這 5 個呼叫點橫跨 `input_handler.cpp`／
+  `main.cpp` 兩個檔案，且正是這一整個 wave 反覆出包的同一塊 modal 狀態表面。在剛結束
+  round 5 之後，為了收斂一個純語法重複而立刻再動這塊程式碼，risk/reward 不成比例——
+  已 park 並寫入 §8 殘餘風險 ⑧，留給 §8 ⑥ 的 coordinator 層重構一併評估。
+
+**已 park 的項目彙總**（詳細理由見 ledger，不要重新開 fix round 討論）：
 - if-brace／不可變性兩類 codex `rules` finding：沿用 Task 7 對 `ems_display_snapshot.h` 同一模式的既有裁決。
-- `onShortPress()`／`onLongPress()` 的 STEP 編號：前者是跨整個函式的既有「每分支各自 STEP 01 起算」慣例（已 grep 驗證 10 處），後者 codex 誤報（跟既有 `resyncConfirmShown` sibling 寫法一致）。
-- `LowBatteryConfirmDecision` 的 `next_target`+`proceed` 可表示非法組合：12 條窮舉測試已鎖住實際行為，C++11 環境做 tagged union 的樣板成本與風險不成比例。
-- **`input_handler.cpp`/`main.cpp` 整合層接線缺回歸測試**（按鍵到啟動流程的完整路徑、snapshot 映射、`updateDisplay()` 畫面路由優先序）——native 環境不編譯 `src/`，要測需要抽 coordinator 層，屬更大架構決策。**這個缺口已連續三輪被 codex 點名**，是目前最大的已知殘餘風險，比照 Task 10 的模式：先池 park，仰賴 code review + 上機驗收把關，之後若上機驗收也顧不到（例如同輪多按鍵穿透這種毫秒級 race 很難用手動上機測試觸發），才需要重新評估要不要投資 coordinator 層重構。
+- `onShortPress()`／`onLongPress()` 的 STEP 編號：前者是跨整個函式的既有「每分支各自 STEP 01 起算」慣例（已 grep 驗證 10 處），後者 codex 誤報。
+- `LowBatteryConfirmDecision` 的 `next_target`+`proceed` 可表示非法組合、`to_confirm_target()` 窮舉 switch 後的必要 `return None`：12 條窮舉測試已鎖住實際行為，唯一呼叫點結構上保證不可達，C++11 環境做 tagged union 的樣板成本與風險不成比例。
+- **`input_handler.cpp`/`main.cpp` 整合層接線缺回歸測試**——native 環境不編譯 `src/`，要測需要抽 coordinator 層，屬更大架構決策。已寫入 §8 殘餘風險 ⑥。
+- **`handleButtons()` 的 swallow 是索引順序、不是時間順序**——`j<i` 且同輪被 debounce 跳過的按鍵仍有窄縫未覆蓋。已寫入 §8 殘餘風險 ⑦，2026-08-30 最終 review 二次獨立確認，建議與 ⑥ 的 coordinator 層重構一併評估。
+- **Training 案件週期值跨 modal 邊界仍靠 ambient global**——目前唯一入口，實際風險為零；完整修法等第二個使用情境出現再評估。
+- **`isLowBatteryStartConfirmActive()` 判斷式重複 5 處呼叫點**——新寫入 §8 殘餘風險 ⑧，理由同上。
 
-**下一步**：等 round 3 implementer 回報 → 產生 diff package → codex Tier 3 重跑 + SDD scoped
-re-review 雙軌驗證 → 若只剩 Minor/已知 park 項目，直接收工（不開 round 4）；若又有新 CRITICAL，
-按 SDD 規則 round 4 起改用更強模型換新 implementer。收工後要做：①上機驗收清單併入 §3-B 同類
-表格 ②本節精簡成類似 §3-A4 的定稿摘要 ③清掉三份 fix-round-brief 暫存檔（SDD workspace 收尾慣例）
-④ `.superpowers/sdd/.../progress.md` 全部 `Ruling:` 收進「給 W2（Task 7–14）的硬性約定」或
-§8 殘餘風險（依性質分流）。
+### 3-A7. Task 12–14 前置調查與範圍裁決（2026-08-30，等 Task 11 收工後再 dispatch，先讀這節）
+
+趁 Task 11 卡在 codex 額度等待期間做的前置調查，**沒有實際開發**，純確認計畫是否還跟現況程式碼一致（比照 Task 11 dispatch 前抓到 VENT/Training 缺口的做法）。
+
+**Task 12（系統設定選單新增「電池資訊」第 5 項）：驗證通過，計畫可直接照做。**
+現況程式碼與計畫假設完全一致，沒有漂移：
+- `SETTINGS_CURSOR_DEVICE_NAME 0` ~ `SETTINGS_CURSOR_VENT_VOL 3`（`firmware/lib/ui_settings/ui_settings.h:17-20`）
+- `SETTINGS_ITEM4_Y 150`（`firmware/lib/ui_settings/ui_settings.cpp:43`）
+- `SETTINGS_MENU_COUNT` 仍在 `firmware/src/input_handler.cpp:13`，值為 4
+- `input_handler.cpp:758-771` 的 `BTN_PRIMARY` 分派對游標值 4（未來的 `SETTINGS_CURSOR_BATTERY_INFO`）目前沒有任何分支處理（falls through 到 `default: break;`），這正是計畫把「加選單項」（Task 12）與「加畫面/按鍵行為」（Task 13）拆開兩個 task 的原因——Task 12 做完後第 5 項會顯示但按主鍵沒反應，屬預期中的過渡狀態，Task 13 才會接上。
+
+**Task 13（電池資訊畫面）：沒發現明顯缺口。** 依賴 Task 12 的游標常數與既有的 `settingsEditorMode` 旗標 pattern、DisplaySnapshot 五步驟（Task 7–11 已操練多次，pattern 成熟）。
+
+**Task 14（原題：裝置資訊畫面接上真實電池資料）——⚠️ 已從本計畫移出，改併入 Impl-Phase G。**
+
+計畫 Step 1 寫「搜尋裝置資訊畫面中『電池』與『充電狀態』兩列目前的資料來源」，前提是**這個畫面已經存在**（寫死字串或留白）。已查證**完全不成立**：
+- `grep -rn "裝置資訊" firmware/src/ firmware/lib/` 零筆結果。
+- `main.cpp` 的畫面分派只有 `GLOBAL_SETTINGS_PLACEHOLDER` → `drawSettingsMenu()`，沒有任何「裝置資訊」子畫面的分派分支。
+- 「裝置資訊」目前只存在於兩個地方：`docs/demo/index.html`（網頁 mockup）與 SoT V1 spec `docs/EMS_DoseSync_Pro_Prototype_V1.md §19.7`（文字描述，6 欄：名稱／型號／序號／韌體／電池／充電狀態）。
+
+**根本原因**：對照 §19.1 完整設定選單清單（9 項：裝置名稱／螢幕亮度／系統音量／通氣音量／**電池資訊**／App 連線設定／Type-C 連線／**裝置資訊**／韌體版本），「電池資訊」（Task 12 加的第 5 項）跟「裝置資訊」（清單第 8 項）是**兩個不同畫面**。Phase H 這份計畫只規劃了前者的完整實作（Task 12/13），後者連骨架都不在 Phase H 範圍內——Task 14 卻假設它已經存在，只差接資料。
+
+進一步查證發現：**Impl-Phase G 原計畫**（`docs/pm-dev-spec.md §四`）本來就含「韌體版本 read-only」一項，同樣**從未落地成 UI**（只有內部常數 `SYNC_FW_VERSION` 供 BLE 同步協定用）。也就是說「裝置資訊」的韌體欄位其實是 Phase G 自己欠的債，不是憑空冒出的新範圍。
+
+**裁決**（使用者 2026-08-30）：**擴大 Impl-Phase G 範圍**，把完整的「裝置資訊」畫面（名稱／型號／序號／韌體／電池／充電狀態）連同本 Task 14 原本要做的電池／充電狀態接線，一次併入 Phase G 做掉——不是新開一個 Phase，也不是留在 Phase H。已更新：
+- `docs/pm-dev-spec.md §四 Phase G` — 範圍描述改成完整裝置資訊畫面
+- `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md §6/§9` — 移出電池顯示 spec 範圍
+- `docs/superpowers/plans/2026-08-22-phase-h-battery-display.md` — Task 14 段落改成移出說明，本計畫**到 Task 13 為止結束**（不再有 14）
+
+Phase G 目前沒有獨立的 spec/plan 檔，只有 `pm-dev-spec.md` 的高層描述 + git commit 記錄。日後要 dispatch 這塊時，需要先幫 Phase G 補一份 spec/plan（比照 Phase H 的做法），本 Task 14 的原始 Step 1-5（已保留在計畫檔的 git 歷史裡）可以當作「電池／充電狀態接線」那部分的起點參考，但名稱／型號／序號／韌體四個新欄位需要另外設計（序號、型號等的資料來源目前也未定案）。
 
 ### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
@@ -335,6 +407,21 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 1. **VERSION 暫存器實際值** —— 決定要不要加 MAX17043 型號校驗。目前 probe 只驗 ACK 不驗值，因為合理值域需要實機觀測才能定，**猜錯會把好晶片判成不在線**。記進 `docs/power-module-purchase.md §10.8`。
 2. **靜置 10 分鐘的 VCELL 抖動幅度** —— 校正趨勢死區 `±3mV` 與 `PLAUSIBLE_SOC_WHOLE_MAX = 110`，兩者都是推導初值不是量測值。
 
+### Task 11 上機驗收（需要硬體，五輪 fix 後，尚未執行）
+
+§20.3 低電量開案確認框的程式碼已寫完、native test 與韌體編譯皆通過，但全程無實體裝置，
+以下項目待有硬體時執行。觸發手法比照 Task 6/10：暫時把 `LOW_BATTERY_ENTER_PERCENT`
+（`fuel_gauge_logic.h`，目前 20）改成高於當前實測電量的值後燒錄驗證，**驗完務必改回 20**。
+
+| 檢查 | 通過條件 | 沒過代表什麼 |
+|---|---|---|
+| 三入口皆攔截 | 低電量狀態下分別從主選單按 OHCA、按「6 秒通氣節奏」（VENT_PRE 按主鍵才觸發，不是一進 VENT_PRE 就攔）、Training 設定完週期後按確認，三者都先跳出「低電量／建議接上行動電源／是否開始？」確認框，不直接進案 | `is_blocking modal` 判斷或某入口的 `requestLowBatteryStartConfirm()` 呼叫漏接 |
+| 選「否」不進案 | 按 BTN_BACK 取消 → 回到觸發前的畫面（主選單／VENT_PRE／Training 設定），**不建立任何案件**，`eventCount`/`caseStartMs` 等案件狀態不變 | `LowBatteryConfirmDecision` 的 `proceed` 分支判斷錯誤 |
+| 選「是」正常進案 | 按 BTN_PRIMARY 確認 → 依原入口啟動對應案件（OHCA/VENT/Training），行為與電量正常時直接進案一致 | `startOhcaCase()`/`startVentActive()`/`startTrainingCase()` 呼叫點錯接 |
+| 確認框顯示期間按鍵穿透 | 確認框開啟／關閉的**同一輪** `loop()` 內，若同時有其他按鍵處於按下或防抖窗內，該按鍵**不得**被底層畫面（進案後的 OHCA 畫面、或關閉後的主選單）接收到；使用者需要重新按一次才會生效 | `handleButtons()` 的吞鍵邏輯未涵蓋到；已知窄縫見 §8 殘餘風險 ⑦（`j<i` 索引），機率低但若復現先查是否命中該縫 |
+| 提示文字零缺字 | 「低電量」「建議接上行動電源」「是否開始？」逐字顯示完整，不出現 ▯ | 字型字集缺字，重跑 `regen_vlw.sh` 並驗字集（見 §8 第 ② 條） |
+| 與 §13.16 提示不重疊 | 選「是」進案後，不會立即再跳出一次 Task 10 的低電量一次性提示（兩者互斥，見 §3-A5「Task 10 與 Task 11 的互動」的守衛推導） | `is_low_battery_notice_context()` 的守衛判斷失效，兩個 `consume_first_entry()` 呼叫點搶到同一次事件 |
+
 ---
 
 ## 4. 已完成的 task
@@ -351,6 +438,7 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 8 | `3333235` | `presentFrame()` 統一重繪出口（15 處收斂）、snapshot 電池填值、`compute_low_battery_blink_on()` | 1 | clean |
 | 9 | `5634b52` | 四格電量圖示繪製、幾何閃電、`should_draw_battery_icon()`、`battery_segments_for_percent()` | 2 | clean |
 | 10 | `dc4aaf1` | §13.16 提示：`LowBatteryNoticeState`、`low_battery_notice_tick()`、`is_low_battery_notice_visible/context()`、`SNAP_FLAG_LOW_BATTERY_NOTICE`、`drawLowBatteryNotice()`、字型 282→325 glyph | **6**（4 CRITICAL） | clean |
+| 11 | `58efa0e` | §20.3 確認框：三入口（OHCA/VENT/Training）低電量攔截、`LowBatteryStartTarget`/`LowBatteryConfirmTarget`、`try_request_low_battery_start_confirm()`、`isBlockingModalActive()`、`handleButtons()` 同輪多鍵吞鍵 | **5**（3 CRITICAL）+ 最終 confirmatory review 補 3 處 STEP 註解 | clean |
 
 > Task 1–6 的 hash 不受 2026-08-23 那次 rebase 影響（rebase 基底是 `c180cb3`，都在它之前）。
 >
@@ -543,6 +631,26 @@ coordinator 層（依賴注入 `globalState`/`g_battery_low` 等全域，讓決�
 
 相關：round 5 已補上吞鍵迴圈同步 `lastPressMs[j] = now`，關掉的是另一個更窄的縫（被吞按鍵
 之後若發生機械彈跳，舊時戳會讓彈跳邊緣繞過防抖）。那條已修，這條沒修，兩者不要混淆。
+
+> 🔁 **2026-08-30 最終 confirmatory review 二次獨立確認**：codex `code-review` 面向不知情
+> 於本項已 park 的情況下，重新描述了完全同一個缺口（以 `BTN_BACK`=5 取消 modal 為具體案例），
+> 佐證了「觸發需要三條件同時成立」的判斷路徑是真實存在、可被獨立觀測到的，不是理論假設。
+> 裁決不變：仍 park，理由同上。
+
+**⑧ 低電量確認框「是否顯示中」的判斷式重複散落在 5 個呼叫點。** `g_lowBatteryConfirmTarget
+!= ems::LowBatteryConfirmTarget::None`（或其鏡像 `isBlockingModalActive()` 內的同一子運算式）
+分別出現在 `input_handler.cpp:143`（modal 聚合判斷）、`:391`（`onShortPress()` 分派）、
+`:1376`（`onLongPress()` guard）、`main.cpp:945`（`captureSnapshot` 映射）、`:1057`
+（`updateDisplay()` 早退路由）。依 `EXTRACT-SHARED-HELPER` 判準，同一概念判斷出現在 2+
+呼叫點就該抽共用 helper——2026-08-30 最終 confirmatory review 的 `code-review` 面向新抓到，
+非前五輪已知項目。
+
+**刻意 park，不在收工當下動手**：這 5 個呼叫點橫跨 `input_handler.cpp`／`main.cpp` 兩個檔案，
+且正是 Task 11 五輪 fix 反覆出包的同一塊 modal 狀態表面（guard-placement 類 CRITICAL 出現
+過 3 次）。剛結束 round 5、韌體已編譯驗證通過的當下，為了收斂一個純語法重複而立刻再碰這塊
+程式碼，regression 風險高於現狀的維護成本——5 處都是同一句子面等值判斷，語意不會分歧
+（不像過去幾次「兩處各自演化出不同守衛」的教訓）。與 ⑥ 的 coordinator 層重構屬同一量級
+決策，建議兩者一起評估，不要單獨為這條動手。
 
 ### W1 讀取層的既有項目
 

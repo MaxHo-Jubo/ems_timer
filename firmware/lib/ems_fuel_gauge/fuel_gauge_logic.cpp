@@ -242,6 +242,7 @@ LowBatteryConfirmDecision low_battery_confirm_decide(LowBatteryConfirmTarget cur
  * @return 對應的確認框顯示狀態；switch 已窮舉三個合法值，正常呼叫路徑不會回 None
  */
 static LowBatteryConfirmTarget to_confirm_target(LowBatteryStartTarget target) {
+    // STEP 01: 窮舉三個合法值逐一對應；漏改新增列舉時 -Wswitch 會提示
     switch (target) {
         case LowBatteryStartTarget::Ohca:     return LowBatteryConfirmTarget::Ohca;
         case LowBatteryStartTarget::Vent:     return LowBatteryConfirmTarget::Vent;

@@ -140,6 +140,7 @@ static void refreshDeviceNameLock() {
  * @return 是否有 modal 顯示中
  */
 static bool isBlockingModalActive() {
+    // STEP 01: 聚合目前所有「攔截全部按鍵」的 modal 顯示狀態
     return resyncConfirmShown || (g_lowBatteryConfirmTarget != ems::LowBatteryConfirmTarget::None);
 }
 

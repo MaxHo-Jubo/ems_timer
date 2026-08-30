@@ -692,6 +692,7 @@ static void tryStartLowBatteryNotice(uint32_t now_ms) {
  * @return 是否已攔截（true=已設定確認框，呼叫端不要啟動；false=非低電量，呼叫端照常啟動）
  */
 bool requestLowBatteryStartConfirm(ems::LowBatteryStartTarget target) {
+    // STEP 01: 薄 wrapper——把全域 target/latch 注入 lib 層核心判斷，守衛與消費都收斂在該處
     return ems::try_request_low_battery_start_confirm(g_lowBatteryConfirmTarget, g_battery_latch, target);
 }
 

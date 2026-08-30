@@ -2328,55 +2328,26 @@ settingsBatteryInfoMode 同步進 DisplaySnapshot（新 flag bit 0x80000）：�
 
 ---
 
-## Task 14：裝置資訊畫面接上真實電池資料
+## Task 14：已移出本計畫（2026-08-30）
 
-**Files:**
-- Modify: `firmware/src/ui_screens.cpp`（裝置資訊畫面）
+**原標題**：裝置資訊畫面接上真實電池資料。
 
-**Interfaces:**
-- Consumes: Task 6 / Task 13 的電池全域
-- Produces: 無新介面
+**移出原因**：計畫前提是「裝置資訊畫面已存在（寫死字串或留白），只要接上真實資料」——2026-08-30 前置調查發現這個前提不成立，`docs/EMS_DoseSync_Pro_Prototype_V1.md §19.7` 描述的「裝置資訊」畫面（名稱／型號／序號／韌體／電池／充電狀態六欄）**從未實作進韌體**（`grep -rn "裝置資訊" firmware/src/ firmware/lib/` 零筆），只存在於 SoT 願景清單與 `docs/demo/index.html` mockup。
 
-- [ ] **Step 1: 定位並替換**
+同時查明：Impl-Phase G 原計畫（`docs/pm-dev-spec.md §四`）就含「韌體版本 read-only」一項，同樣從未落地成 UI（只有內部常數 `SYNC_FW_VERSION` 供 BLE 同步協定用）。
 
-搜尋裝置資訊畫面中「電池」與「充電狀態」兩列目前的資料來源：
+**裁決**（使用者 2026-08-30）：不在 Phase H 補這個畫面。改為**把完整的「裝置資訊」畫面（含本 Task 原本要做的電池／充電狀態接線）併入 Impl-Phase G 的擴充範圍**一次做掉——順便補上 Phase G 原本就欠的「韌體版本」欄位。Phase G 目前沒有獨立的 spec/plan 檔（只有 `docs/pm-dev-spec.md §四` 的高層描述 + git commit 記錄），日後要 dispatch 這塊時，本 Task 14 原文（上面這段歷史，可用 `git log -p` 或本檔案的 git blame 查到刪除前版本）可以當作「電池／充電狀態接線」那部分的起點參考，但名稱／型號／序號／韌體四個新欄位需要另外規劃。
 
-```bash
-cd firmware && grep -n "電池\|充電狀態" src/ui_screens.cpp
-```
+詳見 `docs/superpowers/specs/2026-08-22-phase-h-battery-display-design.md §6/§9` 與
+`docs/superpowers/phase-h-handover.md §3-A7`。
 
-若為寫死字串或留白，替換為與 Task 13 相同的取值邏輯（電量顯示 `%`、不在線顯示 `—`）。
-
-- [ ] **Step 2: 上機驗證**
-
-Expected: 設定 → 裝置資訊，電池欄位與電池資訊畫面顯示一致
-
-- [ ] **Step 3: 跑完整測試**
-
-Run: `cd firmware && pio test -e native`
-Expected: 全部通過
-
-- [ ] **Step 4: 韌體編譯確認**
-
-Run: `cd firmware && pio run -e esp32-s3-devkitc-1`
-Expected: SUCCESS
-
-- [ ] **Step 5: Commit**
-
-```bash
-cd firmware
-git add src/ui_screens.cpp
-git commit -m "[PHASE-H] feat: 裝置資訊畫面接上真實電池資料
-
-SoT §19.7 的「電池：86%」「充電狀態」原為靜態內容，接上燃料計實際讀數。
-不在線時顯示「—」而非 0%，與電池資訊畫面的處理一致。"
-```
+**Phase H 這份計畫到 Task 13 為止結束**——完成後的收尾與未涵蓋事項見下方，不再有 Task 14。
 
 ---
 
 ## 完成後的收尾
 
-全部 14 個 task 完成後：
+全部 13 個 task（原計畫 14 個，Task 14 已移出見上方）完成後：
 
 - [ ] 更新 `docs/pm-dev-spec.md §四 Phase H`，標記「低電量警告」已完成，其餘三項（螢幕常亮、邊充邊用、Type-C 插拔）仍未做
 - [ ] 更新 `docs/power-module-purchase.md §10.6` 的 checklist：「韌體讀取邏輯尚未實作」該項改為已完成
@@ -2387,6 +2358,7 @@ SoT §19.7 的「電池：86%」「充電狀態」原為靜態內容，接上燃
 以下**不在**本計畫範圍，完成後仍為待辦：
 
 - Impl-Phase H 其餘三項：螢幕常亮（§13.18）、邊充邊用測試、Type-C 插拔不中斷案件
+- **§19.7 裝置資訊畫面**（原 Task 14）：併入 Impl-Phase G 擴充範圍，見上方 Task 14 段落與 `docs/pm-dev-spec.md §四 Phase G`
 - 通氣 overlay 與 Training 浮水印互撞的既有 bug
 - 低電量區（接近 3.0V）的燃料計精度驗證——**這會影響 Task 3 的門檻準確度**，spec §10 已記錄
 - 局部重繪優化（低電量閃爍期間每 500ms 全片重繪）
