@@ -429,7 +429,23 @@ private:
  * 回 false，提示靜默消失，不會有人發現（2026-08-23 fix round 2 E1，CRITICAL；比照
  * CLAUDE.md guard-placement 原則：守衛加在共用層，不是加在呼叫端的記憶力上）。
  * `consume_first_entry()` 本身維持 public——Task 3 既有測試直接測 latch 自身的契約
- * （rearm 語意、失敗不清警示），收斂的目的只是讓「生產路徑」只剩本函式一個入口。
+ * （rearm 語意、失敗不清警示）。
+ *
+ * ⚠️ **`consume_first_entry()` 現在有兩個合法生產呼叫點**（2026-08-30 Task 11 fix
+ * round 1 之後不再只有本函式一個入口）：本函式（§13.16 執行中一次性提示）與
+ * `try_request_low_battery_start_confirm()`（§20.3 低電量開案確認框核心進場判斷，
+ * fuel_gauge_logic.h/.cpp；`main.cpp` 的 `requestLowBatteryStartConfirm()` 是它在
+ * app 層唯一的呼叫端，本身不直接碰 latch）。兩者不會搶同一次事件，理由是確認框顯示
+ * 期間三個目標（OHCA／VENT／Training）在本函式的守衛判斷下都必然落在「不適用情境」：
+ *   - OHCA：確認框顯示全程 `globalState` 停在 `GLOBAL_MAIN_MENU`，`in_ohca` 為 false。
+ *   - VENT：確認框顯示時 `globalState == GLOBAL_VENT` 但 `ventPreShown == true`，
+ *     `is_low_battery_notice_context()` 的 `vent_pre_shown` 參數本來就會把這個情境
+ *     判為不適用，`in_vent && !vent_pre_shown` 為 false。
+ *   - Training：確認框顯示於 `GLOBAL_TRAINING_SETUP` 設定畫面內，案件尚未開始，
+ *     `globalState` 還沒切到 `GLOBAL_OHCA`，`in_ohca` 同樣為 false。
+ * 三種情況下本函式的 STEP 01 都會判定不適用情境並提前 return，不會走到 STEP 03 去
+ * 呼叫 `latch.consume_first_entry()`，因此與 `try_request_low_battery_start_confirm()`
+ * 在確認框顯示當下的消費不會搶同一次事件。
  *
  * ⚠️ **本函式不是純函式，帶副作用**：適用情境內且有待消費事件時，會呼叫
  * `latch.consume_first_entry()` **原地修改**呼叫端傳入的 `latch`（2026-08-23
@@ -473,6 +489,80 @@ void low_battery_notice_tick(LowBatteryNoticeState& state,
                              bool in_ohca, bool in_vent,
                              bool vent_pre_shown,
                              uint32_t now_ms);
+
+/** §20.3 低電量開案的可啟動目標——不含哨兵值，requestLowBatteryStartConfirm() 只接受
+ *  這個型別，誤傳「未顯示確認框」狀態在編譯期就不可能發生（2026-08-30 fix round 2 G，
+ *  CRITICAL：原本 requestLowBatteryStartConfirm() 吃 LowBatteryConfirmTarget，該型別含
+ *  None，介面上仍「能」被誤傳 None——一旦誤傳，函式會讓確認框保持關閉，卻仍不可逆消費
+ *  latch，這正是本函式原本要避免的那個 bug，只是換了個位置）。數值刻意與
+ *  LowBatteryConfirmTarget 對齊（Ohca=1／Vent=2／Training=3），兩者互轉不會失真。 */
+enum class LowBatteryStartTarget : uint8_t {
+    Ohca     = 1,
+    Vent     = 2,
+    Training = 3,
+};
+
+/** §20.3 低電量開案確認框目前的顯示狀態。None = 確認框未顯示。
+ *  只用於 UI 狀態追蹤（g_lowBatteryConfirmTarget、LowBatteryConfirmDecision.next_target）。
+ *  不作為 §20.3 開啟確認框請求的輸入型別（那是 LowBatteryStartTarget 的職責，見上方），
+ *  但仍是 low_battery_confirm_decide() 的目前 UI 狀態輸入（`current` 參數）。 */
+enum class LowBatteryConfirmTarget : uint8_t {
+    None     = 0,
+    Ohca     = 1,
+    Vent     = 2,
+    Training = 3,
+};
+
+/** 確認框收到的按鍵語意——呼叫端已把硬體按鍵索引（BTN_PRIMARY/BTN_BACK/其他）映射成這三種之一，
+ *  純函式不依賴 app_globals.h 的硬體常數。 */
+enum class ConfirmDialogAction : uint8_t { Primary, Back, Other };
+
+/** low_battery_confirm_decide() 的決策結果。 */
+struct LowBatteryConfirmDecision {
+    LowBatteryConfirmTarget next_target;  // 決策後的新狀態；None = 確認框應關閉
+    bool                    proceed;      // true = 呼叫端現在應執行「current 對應目標」的啟動動作
+};
+
+/**
+ * §20.3 低電量開案確認框的按鍵決策：純函式，不碰任何全域、不觸發任何副作用。
+ *
+ * 真值表：
+ *   current=None            → 恆回 {None, false}（確認框未顯示，任何按鍵都無意義；呼叫端不應該在
+ *                              這個狀態下呼叫本函式，但呼叫仍是安全的 no-op）
+ *   current!=None, Primary  → {None, true}——呼叫端接下來要執行「current 對應目標」的啟動動作
+ *                              （本函式只回報決策，不知道也不需要知道啟動動作長什麼樣）
+ *   current!=None, Back     → {None, false}——取消，不啟動
+ *   current!=None, Other    → {current, false}——忽略，維持原確認框顯示，不啟動
+ *
+ * @param current 目前待確認的目標
+ * @param action  觸發的按鍵語意
+ * @return 決策結果
+ */
+LowBatteryConfirmDecision low_battery_confirm_decide(LowBatteryConfirmTarget current,
+                                                       ConfirmDialogAction action);
+
+/**
+ * §20.3 低電量開案確認框的核心進場判斷：只有 latch.is_low() 為真時才設定待啟動目標
+ * 並消費 latch 的 pending 事件；否則什麼都不做、回傳 false。守衛完全收斂在這裡，
+ * 呼叫端不需要、也不應該自己先判斷是否低電量——這樣任何未來呼叫點都不可能誤呼叫
+ * 進而不可逆消費事件（2026-08-30 fix round 3 P：round 1/2 都把「設 target+消費 latch」
+ * 綁成一次呼叫，但「要不要攔截」的判斷仍留在呼叫端，這次收尾）。
+ *
+ * 取代 round 2 的 `apply_low_battery_start_confirm_request()`（無條件執行版本，已整個
+ * 移除，不留舊名字並存造成混淆）。原本 native 環境不編譯 `src/`，這個核心契約完全沒有
+ * 測試鎖住；抽進 lib 才能被 native test 涵蓋，比照本 repo 既有的 apply_fuel_reading() 抽法。
+ * 不是純函式（`latch` 會被原地修改），但不碰 Arduino/全域，可 native test。
+ *
+ * @param target_out [out]    需要攔截時寫入待啟動目標；不需要攔截時不動
+ * @param latch      [in/out] 低電量閂鎖。讀 `latch.is_low()` 決定是否攔截；攔截時會呼叫
+ *                            `latch.consume_first_entry()` **原地消費**它的 pending 事件
+ *                            （§13.16 的一次性提示），這是不可逆的副作用，不是唯讀輸入
+ * @param target     使用者原本想啟動的目標
+ * @return 是否已攔截（true=已設定確認框，呼叫端不要啟動；false=非低電量，呼叫端照常啟動）
+ */
+bool try_request_low_battery_start_confirm(LowBatteryConfirmTarget& target_out,
+                                             LowBatteryLatch& latch,
+                                             LowBatteryStartTarget target);
 
 /**
  * 一次輪詢的結果。呼叫端（main.cpp 的 pollBattery()）把這四個值寫進對應全域即可，

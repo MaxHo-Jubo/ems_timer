@@ -869,6 +869,305 @@ static void test_tick_repeated_ticks_do_not_retrigger() {
     TEST_ASSERT_EQUAL_UINT32(NOTICE_TEST_START_MS, state.start_ms);
 }
 
+// ============================================================
+//  Group 7F: low_battery_confirm_decide() —— §20.3 低電量開案確認框按鍵決策
+//  （2026-08-30 Task 11 fix round 1：純函式決策核心，窮舉
+//  {None, Ohca, Vent, Training} × {Primary, Back, Other} 全部 12 種組合，
+//  確保三個目標（OHCA/VENT/Training）互不串線，不能只挑代表值讓覆蓋率看似齊全
+//  實則有洞。⚠️ 本組只鎖住 low_battery_confirm_decide() 這個純函式自身的真值表，
+//  不涵蓋 input_handler.cpp onShortPress() 的整合接線（那段活在 src/，native
+//  環境不編譯）——整合層的覆蓋率缺口記在 handover §8 殘餘風險⑥（fix round 3 T 段）。
+// ============================================================
+
+/**
+ * current=None, action=Primary → 確認框未顯示時任何按鍵都無意義，主鍵也不例外，
+ * 不應誤判成「有東西可以啟動」。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_none_primary_stays_none_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::None,
+                                         ems::ConfirmDialogAction::Primary);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=None, action=Back → 同上，維持 None 且不啟動。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_none_back_stays_none_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::None,
+                                         ems::ConfirmDialogAction::Back);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=None, action=Other → 同上，維持 None 且不啟動。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_none_other_stays_none_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::None,
+                                         ems::ConfirmDialogAction::Other);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=Ohca, action=Primary → 主鍵確認：關閉確認框（next_target=None）且要求
+ * 呼叫端啟動 Ohca。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_ohca_primary_closes_and_proceeds() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Ohca,
+                                         ems::ConfirmDialogAction::Primary);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_TRUE(d.proceed);
+}
+
+/**
+ * current=Ohca, action=Back → 返回鍵取消：關閉確認框，不啟動。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_ohca_back_closes_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Ohca,
+                                         ems::ConfirmDialogAction::Back);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=Ohca, action=Other → 其餘按鍵忽略：確認框維持顯示（next_target 仍是
+ * Ohca），不啟動。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_ohca_other_keeps_ohca_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Ohca,
+                                         ems::ConfirmDialogAction::Other);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Ohca, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=Vent, action=Primary → 同 Ohca，關閉確認框並要求啟動 Vent。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_vent_primary_closes_and_proceeds() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Vent,
+                                         ems::ConfirmDialogAction::Primary);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_TRUE(d.proceed);
+}
+
+/**
+ * current=Vent, action=Back → 返回鍵取消：關閉確認框，不啟動。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_vent_back_closes_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Vent,
+                                         ems::ConfirmDialogAction::Back);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=Vent, action=Other → Vent 情境下維持顯示必須回 Vent，不可誤回其他
+ * 目標——鎖住三個目標互不串線。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_vent_other_keeps_vent_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Vent,
+                                         ems::ConfirmDialogAction::Other);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Vent, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=Training, action=Primary → 同 Ohca/Vent，關閉確認框並要求啟動 Training。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_training_primary_closes_and_proceeds() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Training,
+                                         ems::ConfirmDialogAction::Primary);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_TRUE(d.proceed);
+}
+
+/**
+ * current=Training, action=Back → 返回鍵取消：關閉確認框，不啟動。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_training_back_closes_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Training,
+                                         ems::ConfirmDialogAction::Back);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::None, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+/**
+ * current=Training, action=Other → Training 情境下維持顯示必須回 Training，
+ * 不可誤回其他目標——鎖住三個目標互不串線。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_confirm_decide_training_other_keeps_training_no_proceed() {
+    // STEP 01: 呼叫決策函式，取得本次決策結果
+    const ems::LowBatteryConfirmDecision d =
+        ems::low_battery_confirm_decide(ems::LowBatteryConfirmTarget::Training,
+                                         ems::ConfirmDialogAction::Other);
+    // STEP 02: 斷言 d.next_target／d.proceed 兩個欄位皆符合真值表
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Training, d.next_target);
+    TEST_ASSERT_FALSE(d.proceed);
+}
+
+// ============================================================
+//  Group 7G: try_request_low_battery_start_confirm() —— §20.3 確認請求核心進場判斷
+//  （2026-08-30 Task 11 fix round 3 P：取代 round 2 的 apply_low_battery_start_confirm_
+//  request()——舊版無條件執行，「是否真的低電量」的守衛仍留在呼叫端；這輪把守衛也收
+//  進本函式，唯一權威是 latch.is_low()。本組鎖住：低電量時攔截並正確設定/消費、非低
+//  電量時完全不攔截（不動 target_out、不消費 latch）、三個 target 互不串線；不窮舉
+//  （不像 Group 7F 的按鍵決策真值表），只需覆蓋代表情境。
+// ============================================================
+
+/**
+ * latch.is_low() 為真（含 pending 事件）時呼叫 → 回傳 true，target_out 等於傳入的
+ * target，且 pending 事件已被消費（呼叫端接著呼叫 consume_first_entry() 應回 false）。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_try_request_confirm_when_low_with_pending_returns_true_and_consumes() {
+    // STEP 01: 準備一個剛跌破門檻、is_low()=true 且有 pending 低電量事件的 latch
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);  // 進入低電量，is_low()=true 且掛起 pending 事件
+
+    // STEP 02: 呼叫核心進場判斷
+    ems::LowBatteryConfirmTarget target_out = ems::LowBatteryConfirmTarget::None;
+    const bool intercepted = ems::try_request_low_battery_start_confirm(
+        target_out, latch, ems::LowBatteryStartTarget::Ohca);
+
+    // STEP 03: 斷言已攔截、target_out 正確設定，且 pending 事件已被消費
+    TEST_ASSERT_TRUE(intercepted);
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Ohca, target_out);
+    TEST_ASSERT_FALSE(latch.consume_first_entry());
+}
+
+/**
+ * latch.is_low() 為真但 pending 事件已被別處消費過（例如 §13.16 提示已先觸發）時呼叫
+ * → 守衛只看 is_low()，不看 pending 事件，仍應回傳 true 並正確設定 target_out。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_try_request_confirm_when_low_without_pending_still_returns_true() {
+    // STEP 01: 準備一個 is_low()=true 但 pending 事件已被消費過的 latch
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+    TEST_ASSERT_TRUE(latch.consume_first_entry());  // 模擬 pending 事件已被別處（§13.16）消費
+
+    // STEP 02: 呼叫核心進場判斷
+    ems::LowBatteryConfirmTarget target_out = ems::LowBatteryConfirmTarget::None;
+    const bool intercepted = ems::try_request_low_battery_start_confirm(
+        target_out, latch, ems::LowBatteryStartTarget::Vent);
+
+    // STEP 03: 斷言仍已攔截、target_out 正確設定，consume_first_entry() 呼叫後依然 false
+    TEST_ASSERT_TRUE(intercepted);
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Vent, target_out);
+    TEST_ASSERT_FALSE(latch.consume_first_entry());
+}
+
+/**
+ * latch.is_low() 為假（非低電量）時呼叫 → 回傳 false，且完全不攔截：不動 target_out、
+ * 不消費 latch。這是本輪要鎖住的核心契約——round 2 的測試完全沒驗到這件事。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_try_request_confirm_when_not_low_returns_false_and_untouched() {
+    // STEP 01: 準備一個從未進入低電量的乾淨 latch，target_out 先設一個可辨識的哨兵值
+    ems::LowBatteryLatch latch;
+    ems::LowBatteryConfirmTarget target_out = ems::LowBatteryConfirmTarget::Training;  // 哨兵值
+
+    // STEP 02: 呼叫核心進場判斷
+    const bool intercepted = ems::try_request_low_battery_start_confirm(
+        target_out, latch, ems::LowBatteryStartTarget::Ohca);
+
+    // STEP 03: 斷言未攔截、target_out 維持哨兵值不變、latch 完全沒被消費
+    TEST_ASSERT_FALSE(intercepted);
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Training, target_out);
+    TEST_ASSERT_FALSE(latch.consume_first_entry());
+}
+
+/**
+ * 三個 target 值各測一次，確認 target_out 沒有互相串線（例如誤把 Training 寫成 Ohca）。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_try_request_confirm_three_targets_do_not_cross_wire() {
+    // STEP 01: 準備一個 is_low()=true 的 latch，逐一呼叫三個 target，各自用一個獨立的
+    //          target_out 變數承接
+    ems::LowBatteryLatch latch;
+    latch.update(TICK_TEST_LOW_PERCENT);
+    ems::LowBatteryConfirmTarget ohca_out     = ems::LowBatteryConfirmTarget::None;
+    ems::LowBatteryConfirmTarget vent_out     = ems::LowBatteryConfirmTarget::None;
+    ems::LowBatteryConfirmTarget training_out = ems::LowBatteryConfirmTarget::None;
+    const bool ohca_intercepted =
+        ems::try_request_low_battery_start_confirm(ohca_out, latch, ems::LowBatteryStartTarget::Ohca);
+    const bool vent_intercepted =
+        ems::try_request_low_battery_start_confirm(vent_out, latch, ems::LowBatteryStartTarget::Vent);
+    const bool training_intercepted =
+        ems::try_request_low_battery_start_confirm(training_out, latch, ems::LowBatteryStartTarget::Training);
+
+    // STEP 02: 逐一斷言，確認三次呼叫皆已攔截且互不影響彼此的 target_out
+    TEST_ASSERT_TRUE(ohca_intercepted);
+    TEST_ASSERT_TRUE(vent_intercepted);
+    TEST_ASSERT_TRUE(training_intercepted);
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Ohca, ohca_out);
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Vent, vent_out);
+    TEST_ASSERT_EQUAL(ems::LowBatteryConfirmTarget::Training, training_out);
+}
+
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_vcell_golden_value_from_hardware_acceptance);
@@ -958,5 +1257,21 @@ int main(int, char**) {
     RUN_TEST(test_tick_expiry_deactivates);
     RUN_TEST(test_tick_recovery_survives_millis_wraparound);
     RUN_TEST(test_tick_repeated_ticks_do_not_retrigger);
+    RUN_TEST(test_confirm_decide_none_primary_stays_none_no_proceed);
+    RUN_TEST(test_confirm_decide_none_back_stays_none_no_proceed);
+    RUN_TEST(test_confirm_decide_none_other_stays_none_no_proceed);
+    RUN_TEST(test_confirm_decide_ohca_primary_closes_and_proceeds);
+    RUN_TEST(test_confirm_decide_ohca_back_closes_no_proceed);
+    RUN_TEST(test_confirm_decide_ohca_other_keeps_ohca_no_proceed);
+    RUN_TEST(test_confirm_decide_vent_primary_closes_and_proceeds);
+    RUN_TEST(test_confirm_decide_vent_back_closes_no_proceed);
+    RUN_TEST(test_confirm_decide_vent_other_keeps_vent_no_proceed);
+    RUN_TEST(test_confirm_decide_training_primary_closes_and_proceeds);
+    RUN_TEST(test_confirm_decide_training_back_closes_no_proceed);
+    RUN_TEST(test_confirm_decide_training_other_keeps_training_no_proceed);
+    RUN_TEST(test_try_request_confirm_when_low_with_pending_returns_true_and_consumes);
+    RUN_TEST(test_try_request_confirm_when_low_without_pending_still_returns_true);
+    RUN_TEST(test_try_request_confirm_when_not_low_returns_false_and_untouched);
+    RUN_TEST(test_try_request_confirm_three_targets_do_not_cross_wire);
     return UNITY_END();
 }

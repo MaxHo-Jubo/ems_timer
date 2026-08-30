@@ -254,7 +254,7 @@ static void test_flag_settings_restore_confirm_sets_bit_0x20000() {
 }
 
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 20 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 21 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -279,6 +279,7 @@ static void test_all_flags_on_combine_all_bits() {
     in.settingsRestoreConfirm = true;
     in.batteryLowBlinkOn      = true;
     in.lowBatteryNoticeVisible = true;
+    in.lowBatteryStartConfirmShown = true;
 
     const uint32_t expected = SNAP_FLAG_EPI_ARMED
                             | SNAP_FLAG_SHOCK_ARMED
@@ -299,14 +300,19 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_SETTINGS_EDITOR
                             | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
                             | SNAP_FLAG_BATTERY_LOW_BLINK
-                            | SNAP_FLAG_LOW_BATTERY_NOTICE;
+                            | SNAP_FLAG_LOW_BATTERY_NOTICE
+                            | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
     TEST_ASSERT_EQUAL_UINT32(expected, captureSnapshot(in).flags);
 }
 
+/// Task 7-11 累計新增的 flag bit 數，改動時同步更新（新增/移除 flag 記得改這裡）
+constexpr uint32_t EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT = 21;
+
 static void test_all_flags_bit_masks_are_unique() {
-    // 確保 20 個 mask 沒有撞號（OR 全部應等於 set bit count = 20）
+    // 確保 EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT 個 mask 沒有撞號（OR 全部應等於 set bit count）
     // Phase G：原 uint16_t 的 16 bit 於 W8 用罄，flags 擴為 uint32_t 容納設定 UI 兩個新 flag
-    // Phase H：新增電池低電量閃爍 flag（第 19 個 bit）與 §13.16 低電量提示 flag（第 20 個 bit）
+    // Phase H：新增電池低電量閃爍 flag（第 19 個 bit）、§13.16 低電量提示 flag（第 20 個 bit）
+    //          與 §20.3 低電量開案確認框 flag（第 21 個 bit）
     const uint32_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
@@ -316,7 +322,8 @@ static void test_all_flags_bit_masks_are_unique() {
                        | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM
                        | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM
                        | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
-                       | SNAP_FLAG_BATTERY_LOW_BLINK | SNAP_FLAG_LOW_BATTERY_NOTICE;
+                       | SNAP_FLAG_BATTERY_LOW_BLINK | SNAP_FLAG_LOW_BATTERY_NOTICE
+                       | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
     // popcount
     int bits = 0;
     for (uint32_t m = all; m; m >>= 1) {
@@ -324,7 +331,7 @@ static void test_all_flags_bit_masks_are_unique() {
             bits++;
         }
     }
-    TEST_ASSERT_EQUAL_INT(20, bits);
+    TEST_ASSERT_EQUAL_INT(EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT, bits);
 }
 
 // ============================================================
@@ -392,6 +399,19 @@ static void test_flag_low_battery_notice_sets_bit_0x80000() {
     DisplaySnapshotInputs in;
     in.lowBatteryNoticeVisible = true;
     TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_LOW_BATTERY_NOTICE, captureSnapshot(in).flags);
+}
+
+/**
+ * §20.3：低電量開案確認框顯示中必須設起 SNAP_FLAG_LOW_BATTERY_START_CONFIRM
+ * （第 21 個 flag bit），且不得連帶設起任何其他 bit。
+ * @param  無參數
+ * @return void（斷言，無回傳值）
+ */
+static void test_flag_low_battery_start_confirm_sets_bit_0x100000() {
+    // STEP 01: 只開 lowBatteryStartConfirmShown 這一個旗標的測試輸入，其餘全預設 false
+    DisplaySnapshotInputs in;
+    in.lowBatteryStartConfirmShown = true;
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_LOW_BATTERY_START_CONFIRM, captureSnapshot(in).flags);
 }
 
 // ============================================================
@@ -545,6 +565,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_default_battery_percent_is_absent_sentinel);
     RUN_TEST(test_flag_battery_low_blink_sets_bit_0x40000);
     RUN_TEST(test_flag_low_battery_notice_sets_bit_0x80000);
+    RUN_TEST(test_flag_low_battery_start_confirm_sets_bit_0x100000);
 
     // Group 6: partial update 判斷（漏欄位會吞掉重繪）
     RUN_TEST(test_only_countdown_differs_allows_partial_update);

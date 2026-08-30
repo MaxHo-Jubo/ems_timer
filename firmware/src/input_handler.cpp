@@ -23,6 +23,20 @@ settings_state_t g_settings_state;
 // 前置宣告：進入 BLE 同步流程（START_SYNC 與 §16.7 resync 確認後共用，定義見下方）
 static void enterSyncFlow();
 
+// 前置宣告：建立並啟動一筆 OHCA 案件（主選單直接進案與 §20.3 低電量確認後進案共用，定義見下方）
+static void startOhcaCase();
+
+// 前置宣告：進入 VENT_PRE 預覽畫面（主選單「6 秒通氣節奏」入口呼叫，定義見下方）
+static void startVentPreview();
+
+// 前置宣告：建立並啟動一筆 Training 案件（Training 設定畫面選定週期後直接進案與 §20.3
+// 低電量確認後進案共用，定義見下方）
+static void startTrainingCase(uint32_t cycle_ms);
+
+// 前置宣告：真正啟動 6 秒通氣節奏（VENT_PRE → running），直接啟動與 §20.3 低電量
+// 確認後啟動兩處共用，定義見下方
+static void startVentActive();
+
 /**
  * 一個可調設定的完整描述：游標索引、NVS 鍵、值域、存取函式。
  *
@@ -112,6 +126,24 @@ static void refreshDeviceNameLock() {
 
 
 /**
+ * 是否有全域攔截型 modal（攔截所有按鍵）顯示中。handleButtons() 用來比對
+ * onShortPress() 呼叫前後 modal 狀態是否改變；未來新增同類全域 modal（攔截所有按鍵、
+ * 不看 globalState 就在 onShortPress() 開頭全域判斷的那種），只需要在這裡加一項 OR 條件。
+ *
+ * 已查證的前提：目前這兩個 modal 都只能由 onShortPress() 開啟或關閉——
+ * onLongPress() 開頭就對兩者各有一段 early return，且函式內沒有任何
+ * requestLowBatteryStartConfirm() 呼叫或 resyncConfirmShown 賦值。因此 handleButtons()
+ * 只在 onShortPress() 前後比對即可涵蓋全部轉換。若未來有長按路徑會開啟同類 modal，
+ * STEP 02 的長按分派也必須比照 STEP 01.03.01 加上前後比對，否則同輪後續按鍵會漏吞。
+ *
+ * @param  無參數
+ * @return 是否有 modal 顯示中
+ */
+static bool isBlockingModalActive() {
+    return resyncConfirmShown || (g_lowBatteryConfirmTarget != ems::LowBatteryConfirmTarget::None);
+}
+
+/**
  * 掃描所有實體按鍵並分派短按 / 長按事件。
  *
  * 每輪 loop 呼叫一次：逐顆讀取 GPIO 狀態，press 與 release 邊緣共用
@@ -121,12 +153,13 @@ static void refreshDeviceNameLock() {
  */
 void handleButtons() {
     uint32_t now = millis();
+
     for (uint8_t i = 0; i < BTN_COUNT; i++) {
         uint8_t cur = digitalRead(BTN_PINS[i]);
 
         if (cur != lastBtnState[i]) {
             // STEP 01: 邊緣事件
-            // STEP 01.00: 統一 debounce — press 與 release 邊緣共用同一個門檻，
+            // STEP 01.01: 統一 debounce — press 與 release 邊緣共用同一個門檻，
             //   避免 TFT 慢渲染拉長時間窗時 bounce 邊緣穿過原本只擋 press 的防抖造成 double-fire
             if (now - lastPressMs[i] < DEBOUNCE_MS) {
                 continue;
@@ -134,15 +167,51 @@ void handleButtons() {
             lastPressMs[i] = now;
 
             if (cur == LOW) {
-                // STEP 01.01: 按下（press start）
+                // STEP 01.02: 按下（press start）
                 btnPressStartMs[i] = now;
                 btnLongFired[i]    = false;
             } else {
-                // STEP 01.02: 放開（release）
+                // STEP 01.03: 放開（release）
                 if (btnPressStartMs[i] > 0 && !btnLongFired[i]) {
                     uint32_t held = now - btnPressStartMs[i];
                     if (held < SHORT_PRESS_MAX_MS) {
+                        // STEP 01.03.01: 呼叫前後比對全域 modal 狀態，涵蓋開啟與關閉
+                        //   兩個方向的轉換——不是只有關閉。兩個方向都會讓「本輪後續按鍵
+                        //   該落在哪個畫面」的答案在迴圈中途改變：關閉方向會穿透到 modal
+                        //   關閉後的新畫面；開啟方向會穿透進一個剛開啟、連畫都還沒畫出來
+                        //   的 modal（BTN_PRIMARY=0 開啟確認框、同輪 BTN_BACK=5 直接取消）。
+                        //   modal 狀態不變時（原本就沒 modal、或按到 modal 內會被忽略的鍵）
+                        //   後續按鍵照常逐一分派，不受影響。
+                        const bool modalActiveBefore = isBlockingModalActive();
                         onShortPress(i);
+                        const bool modalActiveAfter = isBlockingModalActive();
+                        if (modalActiveBefore != modalActiveAfter) {
+                            // STEP 01.03.01.01: 這次呼叫剛好讓 modal 開啟或關閉——本輪
+                            //   其餘尚未掃描的按鍵直接同步物理狀態並清空追蹤，徹底吞掉，
+                            //   不是延後（延後到下一輪一樣會穿透到轉換後的新畫面）。
+                            //   仍按住的鍵也要把 btnPressStartMs 清為 0（不能寫 now）：
+                            //   寫 now 等於幫它登記一次全新按壓，之後放開時 held 很小仍會
+                            //   觸發短按、持續按住也可能觸發長按。清 0 後 STEP 01.03 與
+                            //   STEP 02 的 `btnPressStartMs[j] > 0` 檢查都不成立，該鍵在
+                            //   放開與持續按住兩種情況下都不產生任何事件，直到使用者真正
+                            //   放開再重新按下（一次全新的 LOW 邊緣）才重新開始追蹤。
+                            btnPressStartMs[i] = 0;
+                            lastBtnState[i]    = cur;
+                            //   `lastPressMs[j]` 也要一併同步成 now：吞鍵不更新它的話，
+                            //   它會停留在該鍵上一次真正邊緣事件的舊時戳，之後若發生機械
+                            //   彈跳，`now - lastPressMs[j]` 用過期時戳算出來的差值可能遠
+                            //   超過 DEBOUNCE_MS，讓本該被防抖擋掉的彈跳邊緣被當成合法邊緣
+                            //   （取到與穩態相反的電位時，會被誤認為一次全新按下而恢復追蹤，
+                            //   吞鍵就在這條路徑上失效）。同步後防抖窗從吞鍵當下重新起算。
+                            for (uint8_t j = i + 1; j < BTN_COUNT; j++) {
+                                uint8_t curJ = digitalRead(BTN_PINS[j]);
+                                lastBtnState[j]    = curJ;
+                                btnPressStartMs[j] = 0;
+                                btnLongFired[j]    = false;
+                                lastPressMs[j]     = now;
+                            }
+                            return;
+                        }
                     }
                 }
                 btnPressStartMs[i] = 0;
@@ -160,6 +229,124 @@ void handleButtons() {
             }
         }
     }
+}
+
+/** 案件剛開始（START_FLASH/開案瞬間）dispatchOhcaEvent() 的 since_ms 參數：沒有「距上次
+ *  事件」的時間可算，固定傳 0。startOhcaCase()／startTrainingCase() 共用。 */
+constexpr uint32_t OHCA_EVENT_SINCE_MS_AT_CASE_START = 0;
+
+/**
+ * 建立並啟動一筆 OHCA 案件。
+ * 由主選單直接進案與 §20.3 低電量確認後進案兩處共用，避免兩份初始化邏輯分歧。
+ * @param  無參數
+ * @return void（原地寫入全域，無回傳值）
+ */
+static void startOhcaCase() {
+    // STEP 01: 切換全域狀態與案件模式（訓練後不殘留 TRAINING）
+    globalState = GLOBAL_OHCA;
+    g_case_mode = CASE_MODE_OHCA;
+    dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, OHCA_EVENT_SINCE_MS_AT_CASE_START);
+
+    // STEP 02: 案件時間基準
+    startFlashStartMs = millis();
+    caseStartMs       = millis();
+    caseStartEpochMs  = ems::time_sync_current_epoch_ms(&g_ts_state, caseStartMs);  // 對時前 = 0
+
+    // STEP 03: 事件與計數歸零
+    eventCount      = 0;
+    nextEventId     = 1;
+    ohcaLastEpiMs   = 0;
+    ohcaPrevSinceMs = 0;
+    alarmMuted      = false;
+
+    // STEP 04: SoT §16.6 新 case 起始為「App未同步」
+    g_ohca_live_synced_at_ms = 0;
+    resetSubState();
+    Serial.println("[OHCA] Case start (START_FLASH)");
+}
+
+/**
+ * 進入 VENT_PRE 預覽畫面（可調音量，尚未真正開始通氣）。
+ * 由主選單「6 秒通氣節奏」入口呼叫。預覽畫面本身不耗電，不需 §20.3 低電量確認——
+ * 真正開始通氣（耗電）是 VENT_PRE 內按主鍵那一刻，該處呼叫
+ * requestLowBatteryStartConfirm() 由共用 helper 依 latch 狀態決定是否攔截
+ * （呼叫端不自己判斷 g_battery_low，守衛收斂在 lib 內，見該函式 doc）。
+ * @param  無參數
+ * @return void（原地寫入全域，無回傳值）
+ */
+static void startVentPreview() {
+    // STEP 01: 準備 preview 狀態，等使用者在 VENT_PRE 按主鍵才真正啟動（A8）
+    globalState        = GLOBAL_VENT;
+    ventStartMs        = 0;            // 尚未啟動
+    ventPrevSinceMs    = 0;
+    ventEndCheckShown  = false;
+    ventBackHintShown  = false;
+    ventPaused         = false;
+    ventPreShown       = true;          // A8：等使用者按主鍵
+    Serial.println("[VENT] enter PRE (preview)");
+}
+
+/**
+ * 建立並啟動一筆 Training 案件（沿用 OHCA 狀態機，額外重置 ohcaState 起點）。
+ * 由 Training 設定畫面選定週期後直接進案與 §20.3 低電量確認後進案兩處共用，避免
+ * 兩份初始化邏輯分歧。
+ *
+ * 週期是明確參數而非函式內部偷讀 `g_training_epi_cycle_ms`：讓「呼叫前必須先設好那個
+ * 全域」這個原本只靠註解要求的維護義務，變成看得見的函式簽名（2026-08-30 fix round 4 X）。
+ * 兩個呼叫點都在呼叫當下傳 `g_training_epi_cycle_ms`，與原行為等價。
+ *
+ * 這只是文件化程度的改善，不是完整修法：週期值仍未被「捕捉」進 §20.3 確認框狀態、
+ * 跨過確認框顯示期間安全攜帶。要做到那樣得在 `g_lowBatteryConfirmTarget` 之外再帶一份
+ * payload，屬於更大的架構決策，且目前唯一使用者就是這一個入口，成本換不到對應的風險
+ * 下降，故 park；待低電量確認框需要攜帶其他情境資料的第二個案例出現時再一併重新設計。
+ *
+ * @param cycle_ms 使用者已選定的 EPI 倒數週期（毫秒），呼叫端在 STEP 選擇畫面決定
+ * @return void（原地寫入全域，無回傳值）
+ */
+static void startTrainingCase(uint32_t cycle_ms) {
+    // STEP 01: 案件模式與週期
+    g_training_epi_cycle_ms = cycle_ms;
+    g_case_mode = CASE_MODE_TRAINING;
+    Serial.printf("[TRAINING] cycle=%u mode=TRAINING\n", g_training_epi_cycle_ms);
+
+    // STEP 02: case-start 初始化，與 startOhcaCase() 共用下列欄位（該函式 STEP 02/03 變更
+    //          時需手動同步此處，欄位清單：ohcaLastEpiMs／ohcaPrevSinceMs／alarmMuted／
+    //          eventCount／nextEventId／caseStartMs／caseStartEpochMs／
+    //          g_ohca_live_synced_at_ms／globalState／dispatchOhcaEvent 呼叫／
+    //          startFlashStartMs／resetSubState()）。額外多一行 ohcaState 重置——
+    //          startOhcaCase() 沒有這行，靠 dispatchOhcaEvent() 自身的狀態機轉換；
+    //          Training 需要明確重置起點，理由見 §L1 parked：合併成單一帶參數 helper
+    //          可徹底解決兩份定義分歧的風險，屬於比本輪其他修正更大的架構決策，本輪不做。
+    ohcaState         = OHCA_STATE_MAIN_MENU;
+    ohcaLastEpiMs     = 0;
+    ohcaPrevSinceMs   = 0;
+    alarmMuted        = false;
+    eventCount        = 0;
+    nextEventId       = 1;
+    caseStartMs       = millis();
+    caseStartEpochMs  = ems::time_sync_current_epoch_ms(&g_ts_state, caseStartMs);  // 對時前 = 0；不補會帶入前次案件殘留 epoch
+    g_ohca_live_synced_at_ms = 0;  // SoT §16.6 新 case 起始為「App未同步」
+
+    // STEP 03: 切到 GLOBAL_OHCA（中段完全複用 OHCA 狀態機）
+    globalState       = GLOBAL_OHCA;
+    dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, OHCA_EVENT_SINCE_MS_AT_CASE_START);
+    startFlashStartMs = millis();
+    resetSubState();  // 清子狀態游標/prompt，避免帶入前次案件殘值
+    Serial.println("[TRAINING] enter GLOBAL_OHCA (START_FLASH)");
+}
+
+/**
+ * 真正啟動 6 秒通氣節奏（VENT_PRE → running）。由一般直接啟動與 §20.3 低電量確認後
+ * 啟動兩處共用，避免兩份轉換邏輯分歧。
+ * @param  無參數
+ * @return void（原地寫入全域，無回傳值）
+ */
+static void startVentActive() {
+    // STEP 01: V1 §13.5 啟動規則：秒數從 1 開始
+    ventPreShown    = false;
+    ventStartMs     = millis();
+    ventPrevSinceMs = 0;
+    Serial.println("[VENT] PRE -> running");
 }
 
 // ============================================================
@@ -197,6 +384,54 @@ void onShortPress(uint8_t btnIdx) {
         return;
     }
 
+    // ===== SoT §20.3：低電量開案確認框（攔截所有按鍵，OHCA/VENT/Training 三個入口共用） =====
+    //   g_lowBatteryConfirmTarget 依慣例只由 requestLowBatteryStartConfirm() 設起
+    //   （型別上不強制，見 app_globals.h 宣告處註解），故此處全域攔截不會誤食
+    //   其他畫面的按鍵。
+    if (g_lowBatteryConfirmTarget != ems::LowBatteryConfirmTarget::None) {
+        // STEP 01: 硬體按鍵索引映射成純函式看得懂的按鍵語意（純函式不依賴 app_globals.h 的硬體常數）
+        const ems::ConfirmDialogAction action =
+            (btnIdx == BTN_PRIMARY) ? ems::ConfirmDialogAction::Primary :
+            (btnIdx == BTN_BACK)    ? ems::ConfirmDialogAction::Back :
+                                       ems::ConfirmDialogAction::Other;
+
+        // STEP 02: 呼叫純函式決策並套用新狀態——decide 前先存 target，因為套用
+        //          decision.next_target 後 g_lowBatteryConfirmTarget 可能已變成 None，
+        //          STEP 03 的 proceed 分支仍需要原本待啟動的目標
+        const ems::LowBatteryConfirmTarget target = g_lowBatteryConfirmTarget;
+        const ems::LowBatteryConfirmDecision decision =
+            ems::low_battery_confirm_decide(target, action);
+        g_lowBatteryConfirmTarget = decision.next_target;
+
+        // STEP 03: 確認通過 → 依原目標啟動對應案件/通氣，三個目標都複用各自的直接啟動
+        //          helper（另一個呼叫點是各自的直接啟動路徑，兩處共用避免轉換邏輯分歧）
+        if (decision.proceed) {
+            switch (target) {
+                case ems::LowBatteryConfirmTarget::Ohca:
+                    startOhcaCase();
+                    break;
+                case ems::LowBatteryConfirmTarget::Vent:
+                    startVentActive();
+                    break;
+                case ems::LowBatteryConfirmTarget::Training:
+                    startTrainingCase(g_training_epi_cycle_ms);
+                    break;
+                case ems::LowBatteryConfirmTarget::None:
+                    break;  // 不可達（外層 if 已排除 None），滿足 switch 完整性
+            }
+        } else if (action == ems::ConfirmDialogAction::Back) {
+            // STEP 04: 取消——維持原地不動。三個目標的取消行為都是「維持原地不動」
+            //          （OHCA 是例外：它原本就沒進 GLOBAL_OHCA，本來就停在主選單，
+            //          「不動」剛好等於「回主選單」；VENT/Training 則是留在
+            //          VENT_PRE／Training 設定畫面，不可在此改動 globalState）
+            Serial.printf("[BATTERY] low battery start confirm cancelled (target=%u)\n", (unsigned)target);
+        } else if (action == ems::ConfirmDialogAction::Other) {
+            // STEP 05: 其餘按鍵忽略，留 trace 避免「按了沒反應」被誤判為裝置死當
+            Serial.printf("[BATTERY] low battery confirm ignored btn=%u\n", btnIdx);
+        }
+        return;
+    }
+
     // ===== 主功能表 =====
     if (globalState == GLOBAL_MAIN_MENU) {
         switch (btnIdx) {
@@ -210,31 +445,14 @@ void onShortPress(uint8_t btnIdx) {
                 // STEP 01: 進入對應子模組
                 switch (mainMenuCursor) {
                     case 0:  // OHCA Case
-                        globalState = GLOBAL_OHCA;
-                        g_case_mode = CASE_MODE_OHCA;  // 還原真實案件模式（訓練後不殘留 TRAINING）
-                        dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, 0);
-                        startFlashStartMs = millis();
-                        caseStartMs       = millis();
-                        caseStartEpochMs  = ems::time_sync_current_epoch_ms(&g_ts_state, caseStartMs);  // 對時前 = 0
-                        eventCount        = 0;
-                        nextEventId       = 1;
-                        ohcaLastEpiMs     = 0;
-                        ohcaPrevSinceMs   = 0;
-                        alarmMuted        = false;
-                        g_ohca_live_synced_at_ms = 0;  // SoT §16.6 新 case 起始為「App未同步」
-                        resetSubState();
-                        Serial.println("[OHCA] Case start (START_FLASH)");
+                        // STEP 01.01: §20.3 — 低電量下開案需先確認，確認前不建立案件、不動 globalState
+                        if (requestLowBatteryStartConfirm(ems::LowBatteryStartTarget::Ohca)) {
+                            break;
+                        }
+                        startOhcaCase();
                         break;
-                    case 1:  // 6 秒通氣節奏（獨立模式）
-                        // A8：先進 VENT_PRE「按主鍵開始」preview，主鍵按下後才正式啟動
-                        globalState        = GLOBAL_VENT;
-                        ventStartMs        = 0;            // 尚未啟動
-                        ventPrevSinceMs    = 0;
-                        ventEndCheckShown  = false;
-                        ventBackHintShown  = false;
-                        ventPaused         = false;
-                        ventPreShown       = true;          // A8：等使用者按主鍵
-                        Serial.println("[VENT] enter PRE (preview)");
+                    case 1:  // 6 秒通氣節奏（獨立模式）— 預覽/調音量不耗電，不需低電量確認
+                        startVentPreview();
                         break;
                     case 2: globalState = GLOBAL_TRAINING_SETUP; break;
                     case 3:  // 歷史紀錄（Phase E + W6 分類）
@@ -280,11 +498,12 @@ void onShortPress(uint8_t btnIdx) {
                 return;
             }
             if (btnIdx == BTN_PRIMARY) {
-                // 主鍵 → 正式啟動（V1 §13.5 啟動規則：秒數從 1 開始）
-                ventPreShown = false;
-                ventStartMs  = now;
-                ventPrevSinceMs = 0;
-                Serial.println("[VENT] PRE -> running");
+                // §20.3：低電量下真正啟動通氣（開始耗電）需先確認，確認前維持 VENT_PRE
+                //        原地不動（不像 OHCA 全程停在主選單，這裡本來就還在顯示 VENT_PRE）
+                if (requestLowBatteryStartConfirm(ems::LowBatteryStartTarget::Vent)) {
+                    return;
+                }
+                startVentActive();
                 return;
             }
             return;
@@ -463,30 +682,19 @@ void onShortPress(uint8_t btnIdx) {
                 enterMainMenu();
                 break;
             case BTN_PRIMARY: {
-                // STEP 01: 依 cursor 設定倒數週期 + 模式
+                // STEP 01: 依 cursor 設定倒數週期——使用者已經選過了，週期值要在低電量
+                //          攔截之前先存好，不受確認框影響（取消時週期值留著沒關係，
+                //          下次重選會覆蓋，或使用者退出設定畫面）
                 switch (trainingSetupCursor) {
                     case 0: g_training_epi_cycle_ms = TRAINING_CYCLE_30S;  break;  // 30 秒
                     case 1: g_training_epi_cycle_ms = TRAINING_CYCLE_60S;  break;  // 60 秒
                     case 2: g_training_epi_cycle_ms = TRAINING_CYCLE_240S; break;  // 240 秒
                 }
-                g_case_mode = CASE_MODE_TRAINING;
-                Serial.printf("[TRAINING] cycle=%u mode=TRAINING\n", g_training_epi_cycle_ms);
-                // STEP 02: case-start 初始化（複製自 case 0 並額外重置 ohcaState；case 0 變更時需手動同步此處）
-                ohcaState         = OHCA_STATE_MAIN_MENU;
-                ohcaLastEpiMs     = 0;
-                ohcaPrevSinceMs   = 0;
-                alarmMuted        = false;
-                eventCount        = 0;
-                nextEventId       = 1;
-                caseStartMs       = millis();
-                caseStartEpochMs  = ems::time_sync_current_epoch_ms(&g_ts_state, caseStartMs);  // 對時前 = 0；不補會帶入前次案件殘留 epoch
-                g_ohca_live_synced_at_ms = 0;  // SoT §16.6 新 case 起始為「App未同步」
-                // STEP 03: 切到 GLOBAL_OHCA（中段完全複用 OHCA 狀態機）
-                globalState       = GLOBAL_OHCA;
-                dispatchOhcaEvent(OHCA_EVT_MAIN_BTN_SHORT, 0);
-                startFlashStartMs = millis();
-                resetSubState();  // 清子狀態游標/prompt，避免帶入前次案件殘值
-                Serial.println("[TRAINING] enter GLOBAL_OHCA (START_FLASH)");
+                // STEP 02: §20.3 — 低電量下開案需先確認，確認前不建立案件、不動 globalState
+                if (requestLowBatteryStartConfirm(ems::LowBatteryStartTarget::Training)) {
+                    break;
+                }
+                startTrainingCase(g_training_epi_cycle_ms);
                 break;
             }
             default:
@@ -1156,6 +1364,17 @@ void onLongPress(uint8_t btnIdx) {
     // （dialog 無長按操作，故長按全忽略），確保「modal 期間攔截所有按鍵」不變式成立
     if (resyncConfirmShown) {
         Serial.printf("[SYNC] resync modal ignored long btn=%u\n", btnIdx);
+        return;
+    }
+
+    // SoT §20.3 低電量開案確認框顯示中：長按一律忽略，與 onShortPress 開頭攔截相呼應
+    // （dialog 無長按操作，故長按全忽略）。已查證具體壞情境：VENT 確認框顯示期間
+    // globalState 仍是 GLOBAL_VENT 且 ventPreShown 仍是 true（round 1 設計故意不離開
+    // VENT_PRE 畫面），若不攔截，下方 STEP 01.01 只看 globalState==GLOBAL_VENT &&
+    // !ventEndCheckShown 就會把 ventEndCheckShown 設成 true——使用者在確認框顯示期間
+    // 長按主鍵，之後短按「是」啟動通氣，畫面卻立刻進結束確認、updateVentTick() 停止輸出。
+    if (g_lowBatteryConfirmTarget != ems::LowBatteryConfirmTarget::None) {
+        Serial.printf("[BATTERY] low battery confirm ignored long btn=%u\n", btnIdx);
         return;
     }
 

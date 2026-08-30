@@ -211,6 +211,59 @@ void low_battery_notice_tick(LowBatteryNoticeState& state,
     //          也可能是「本就 inactive」）
 }
 
+LowBatteryConfirmDecision low_battery_confirm_decide(LowBatteryConfirmTarget current,
+                                                       ConfirmDialogAction action) {
+    // STEP 01: 確認框未顯示——任何按鍵都無意義，維持 None 且不啟動（呼叫端不應在此狀態
+    //          下呼叫本函式，但這裡仍回安全值，讓誤呼叫不會產生副作用）
+    if (current == LowBatteryConfirmTarget::None) {
+        return {LowBatteryConfirmTarget::None, false};
+    }
+
+    // STEP 02: 主鍵確認——關閉確認框並要求呼叫端啟動 current 對應的目標
+    if (action == ConfirmDialogAction::Primary) {
+        return {LowBatteryConfirmTarget::None, true};
+    }
+
+    // STEP 03: 返回鍵取消——關閉確認框，不啟動
+    if (action == ConfirmDialogAction::Back) {
+        return {LowBatteryConfirmTarget::None, false};
+    }
+
+    // STEP 04: 其餘按鍵——忽略，維持原確認框顯示，不啟動
+    return {current, false};
+}
+
+/**
+ * LowBatteryStartTarget → LowBatteryConfirmTarget 的明確轉換（不用 static_cast）。
+ * 兩個 enum 是各自獨立宣告，static_cast 假設數值永遠對齊，編譯器不會在任一方新增/
+ * 改值時驗證這個假設；改成窮舉 switch，新增列舉值時 -Wswitch 至少有機會提示漏掉的分支。
+ *
+ * @param target 要轉換的開案目標（Ohca／Vent／Training，型別上不含 None）
+ * @return 對應的確認框顯示狀態；switch 已窮舉三個合法值，正常呼叫路徑不會回 None
+ */
+static LowBatteryConfirmTarget to_confirm_target(LowBatteryStartTarget target) {
+    switch (target) {
+        case LowBatteryStartTarget::Ohca:     return LowBatteryConfirmTarget::Ohca;
+        case LowBatteryStartTarget::Vent:     return LowBatteryConfirmTarget::Vent;
+        case LowBatteryStartTarget::Training: return LowBatteryConfirmTarget::Training;
+    }
+    return LowBatteryConfirmTarget::None;  // 滿足所有路徑回傳值要求；switch 已窮舉三個合法值
+}
+
+bool try_request_low_battery_start_confirm(LowBatteryConfirmTarget& target_out,
+                                             LowBatteryLatch& latch,
+                                             LowBatteryStartTarget target) {
+    // STEP 01: 守衛收斂在此——只有真的低電量才攔截，呼叫端不需要自己先判斷
+    if (!latch.is_low()) {
+        return false;
+    }
+
+    // STEP 02: 設定待啟動目標並消費 pending 事件（原子操作，呼叫端無法只做一半）
+    target_out = to_confirm_target(target);
+    latch.consume_first_entry();
+    return true;
+}
+
 FuelReading make_reading(uint16_t raw_vcell, uint16_t raw_soc) {
     // STEP 01: SOC 合理性必須判定 raw_soc 本身，不可判定 soc_raw_to_percent() 轉換／夾值
     //          後的結果——夾值後 >=100 的垃圾值與剛充飽的合法超衝已無法區分。

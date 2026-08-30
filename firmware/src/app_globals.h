@@ -456,6 +456,26 @@ extern bool                    g_battery_low;           // Phase H：低電量�
 // 唯一的生產寫入點是 low_battery_notice_tick()——該函式吃 LowBatteryNoticeState&
 // 並原地改寫（見 ems::LowBatteryNoticeState 的 doc）
 extern ems::LowBatteryNoticeState g_low_battery_notice;
+// §20.3 低電量開案確認框目前待啟動的目標（None = 確認框未顯示）。三個入口
+// （OHCA/VENT/Training）共用同一個變數。慣例上只由 requestLowBatteryStartConfirm()
+// （開啟）與 input_handler.cpp 的 onShortPress() 攔截區（依 low_battery_confirm_decide()
+// 的決策關閉）寫入，其餘地方不應直接賦值——但這是慣例，型別上不強制：它仍是可變
+// extern，任何 include 本標頭的程式碼都能直接賦值，編譯器不會攔。
+extern ems::LowBatteryConfirmTarget g_lowBatteryConfirmTarget;
+
+/**
+ * Impl-Phase H：嘗試進入 §20.3 低電量開案確認——只有真的低電量時才記錄待啟動目標並
+ * 消費 §13.16 的 latch pending 事件，回傳是否已攔截。守衛（是否低電量）與設定/消費
+ * 動作全部收斂進 `ems::try_request_low_battery_start_confirm()`（native test 鎖住），
+ * 呼叫端不需要、也不應該自己先判斷 g_battery_low（2026-08-30 fix round 3 P：round 1/2
+ * 都只把「設 target+消費 latch」綁成一次呼叫，「要不要攔截」的判斷仍留在呼叫端，這輪
+ * 收尾）。參數型別 `ems::LowBatteryStartTarget` 不含 None（2026-08-30 fix round 2 G
+ * CRITICAL：舊簽名吃含 None 的 `LowBatteryConfirmTarget`，誤傳 None 會讓確認框保持
+ * 關閉卻仍不可逆消費 latch；改用不含 None 的型別後編譯期就排除這個誤用）。
+ * @param target 使用者原本想啟動的目標（Ohca／Vent／Training，不含 None）
+ * @return 是否已攔截（true=已設定確認框，呼叫端不要啟動；false=非低電量，呼叫端照常啟動）
+ */
+bool requestLowBatteryStartConfirm(ems::LowBatteryStartTarget target);
 
 // Phase F 同步
 extern ems::SyncContext   g_sync_ctx;
@@ -674,6 +694,8 @@ void drawBatteryIcon(bool lowBlinkOn);
 //                 ems::is_low_battery_notice_visible() 算好才存進 snapshot，本函式不可
 //                 自行呼叫 millis() 重算，理由同上方 drawBatteryIcon() 的相位處理。
 void drawLowBatteryNotice(bool visible);
+// Phase H：§20.3 低電量開案確認框（複用 drawConfirmDialog()），由 updateDisplay() 早退路徑呼叫。
+void drawLowBatteryStartConfirm();
 void drawSyncScreen();
 void drawHistoryList();
 void drawPlaceholder(const char* title, const char* phase);

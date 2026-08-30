@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
-- **最後更新**：2026-08-24（Task 10 完成收工）
-- **狀態**：W1 完成（Task 1–6）。W2 完成（Task 7–9）。**W3 的 Task 10 完成**——經 6 輪 fix、4 個 CRITICAL 全修（見 §3-A4）。**下一個是 Task 11，但計畫有一條會讓它畫不出畫面的缺陷，dispatch 前必讀 §3-A5。** 所有上機驗收累積待硬體；Task 12–14 未開工
+- **最後更新**：2026-08-30（Task 11 進行中，fix round 3）
+- **狀態**：W1 完成（Task 1–6）。W2 完成（Task 7–9）。W3 的 Task 10 完成（見 §3-A4）。**Task 11（§20.3 低電量開案確認框）進行中**——range 從計畫原定的 OHCA-only 擴大到 OHCA/VENT/Training 三入口（round 1 修正，見 §3-A6），round 2/3 陸續修 guard-placement 類 CRITICAL（latch 消費守衛、同輪按鍵穿透 modal），round 3 正在跑，尚未收工。**若此 session 中斷，下個 session 先讀 §3-A6 接續，不要重新 dispatch Task 11。** 所有上機驗收累積待硬體；Task 12–14 未開工
 - **branch**：`feat/phase-g-system-settings`（未推送）
 
 > 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-23 收工時實測過。
@@ -221,6 +221,41 @@ guard 是死碼＋誤導註解）。**代價已知**：正確性押在呼叫端�
 
 **一定要重跑 `bash scripts/regen_vlw.sh` 並驗字集。** 確認框的文案若含目前字集沒有的字，
 實機會顯示 ▯ 而編譯與 native test 都不會報錯——這個坑在 Task 10 咬了兩次。驗法見 §8 第 ② 條。
+
+### 3-A6. Task 11 進行中（2026-08-30，fix round 3 執行中，尚未收工）
+
+**若接手時 session 已中斷，讀完這節直接查 SDD ledger
+（`.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md`）與三份 fix round brief
+（`task-11-fix-round-{1,2,3}-brief.md`）接續，不要重新 dispatch Task 11。**
+
+**範圍比計畫原定的大**：§3-A5 只寫了 OHCA 一個入口，dispatch 後才發現 spec §5（line 24／198）
+明文 §20.3 要蓋三個入口——OHCA／VENT（6 秒通氣節奏獨立模式）／Training，round 1 已補齊。
+
+**三輪 fix 都是同一個根因的漸進收斂**（guard-placement：低電量守衛该放在共用核心，不是
+呼叫端記憶力）：
+
+| 輪次 | commit | CRITICAL | 修法 |
+|---|---|---|---|
+| round 1 | `e915798` | VENT/Training 入口缺確認框；`consumePendingLowBatteryEntry()` 裸 passthrough | 三入口共用一個 target-aware 攔截區；latch 消費綁進 `requestLowBatteryStartConfirm()` |
+| round 2 | `2e40400` | 該函式參數仍能合法收到 `None`；`handleButtons()` 同輪多按鍵可能穿透 modal | 拆 `LowBatteryStartTarget`（不含 None）跟 `LowBatteryConfirmTarget`（含 None）兩個型別；`handleButtons()` snapshot 判斷+`break` |
+| round 3（進行中）| `2e40400`（再次 amend）| `handleButtons()` 的修法是「延後」不是「吞掉」，下一 tick 一樣穿透；低電量判斷仍在呼叫端 | 同輪其餘按鍵直接同步物理狀態吞掉，不延後；`latch.is_low()` 檢查收進 `try_request_low_battery_start_confirm()`，回傳 bool 取代呼叫端自查 |
+
+**每輪都有 codex Tier 3 六面向 + SDD task/re-review 雙軌驗證**，SDD reviewer 對 round 1 的
+Training 缺口是獨立於 codex 發現的（兩邊各自抓到不同的缺口：codex 抓 VENT、SDD reviewer 抓
+Training，controller 對照 spec 原文都驗證屬實）。
+
+**已 park 的項目**（詳細理由見 ledger，不要重新開 fix round 討論）：
+- if-brace／不可變性兩類 codex `rules` finding：沿用 Task 7 對 `ems_display_snapshot.h` 同一模式的既有裁決。
+- `onShortPress()`／`onLongPress()` 的 STEP 編號：前者是跨整個函式的既有「每分支各自 STEP 01 起算」慣例（已 grep 驗證 10 處），後者 codex 誤報（跟既有 `resyncConfirmShown` sibling 寫法一致）。
+- `LowBatteryConfirmDecision` 的 `next_target`+`proceed` 可表示非法組合：12 條窮舉測試已鎖住實際行為，C++11 環境做 tagged union 的樣板成本與風險不成比例。
+- **`input_handler.cpp`/`main.cpp` 整合層接線缺回歸測試**（按鍵到啟動流程的完整路徑、snapshot 映射、`updateDisplay()` 畫面路由優先序）——native 環境不編譯 `src/`，要測需要抽 coordinator 層，屬更大架構決策。**這個缺口已連續三輪被 codex 點名**，是目前最大的已知殘餘風險，比照 Task 10 的模式：先池 park，仰賴 code review + 上機驗收把關，之後若上機驗收也顧不到（例如同輪多按鍵穿透這種毫秒級 race 很難用手動上機測試觸發），才需要重新評估要不要投資 coordinator 層重構。
+
+**下一步**：等 round 3 implementer 回報 → 產生 diff package → codex Tier 3 重跑 + SDD scoped
+re-review 雙軌驗證 → 若只剩 Minor/已知 park 項目，直接收工（不開 round 4）；若又有新 CRITICAL，
+按 SDD 規則 round 4 起改用更強模型換新 implementer。收工後要做：①上機驗收清單併入 §3-B 同類
+表格 ②本節精簡成類似 §3-A4 的定稿摘要 ③清掉三份 fix-round-brief 暫存檔（SDD workspace 收尾慣例）
+④ `.superpowers/sdd/.../progress.md` 全部 `Ruling:` 收進「給 W2（Task 7–14）的硬性約定」或
+§8 殘餘風險（依性質分流）。
 
 ### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
@@ -450,10 +485,21 @@ EOF
 邏輯確認兩者都被納入、生成物被排除）。park 的理由是它屬新增能力而非修缺陷，且 Task 10 已跑六輪。
 
 **③ `consume_first_entry()` 仍是 public 的一次性消費 API。** 守衛已移進 lib、寫回缺口也補了，
-但「公開 API 被誤呼叫一次就不可逆丟事件、且無錯誤訊號」這個底層危險還在。目前生產路徑只有
-`low_battery_notice_tick()` 一個入口且有測試鎖住，但**沒有編譯期強制**。若未來有人為別的功能
-直接呼叫它，Phase H 的提示會靜默失效。改 private + friend 需要動 Task 3 已完成的 9 個測試，
-因此 park。
+但「公開 API 被誤呼叫一次就不可逆丟事件、且無錯誤訊號」這個底層危險還在。目前生產路徑有
+兩個入口：`low_battery_notice_tick()`（§13.16 執行中一次性提示）與
+`ems::try_request_low_battery_start_confirm()`（§20.3 低電量開案確認框核心進場判斷，
+`fuel_gauge_logic.h/.cpp`；2026-08-30 Task 11 fix round 3 P 取代 round 2 的
+`apply_low_battery_start_confirm_request()`——舊版無條件執行、「是否真的低電量」的判斷
+仍留在呼叫端；新版把這個守衛也收進函式本身，唯一權威是 `latch.is_low()`，回傳 `bool`
+告知呼叫端有沒有攔截，native test 鎖住「低電量時攔截並正確設定/消費」「非低電量時完全
+不攔截（不動 target_out、不消費 latch）」兩種情境）。`main.cpp` 的
+`requestLowBatteryStartConfirm()` 現在只是薄 wrapper（同樣回傳 `bool`），且參數型別是不含
+`None` 的 `LowBatteryStartTarget`（round 2 CRITICAL 修正），編譯期排除「誤傳未顯示狀態」
+這個曾經存在的漏洞。兩個入口各自把「是否該消費」的守衛完全收斂在函式內部——前者的守衛
+是情境判斷（`is_low_battery_notice_context()`），後者的守衛是 `latch.is_low()`。但仍然
+**沒有編譯期強制**兩個入口以外不會有第三方直接呼叫 `consume_first_entry()`。若未來有人
+為別的功能直接呼叫它，Phase H 的提示會靜默失效。改 private + friend 需要動 Task 3 已完成
+的 9 個測試，因此 park。
 
 **④ `LowBatteryNoticeState` 的「整包替換」只是約定。** 欄位仍 public，任何人都能寫
 `g_low_battery_notice.active = true;` 繞過。註解已如實說明這一點（不再宣稱「型別上保證」）。
@@ -463,6 +509,40 @@ EOF
 這類描述**已不存在的舊程式碼**。判準：「為什麼是這個設計」留（那是知識），「前一版寫錯什麼」
 刪（那屬於 commit message）。排定在 Phase H 收尾一次掃：
 `grep -rn "fix round\|原本誤寫" firmware/`。不會咬到功能，純維護性。
+
+**⑥ `input_handler.cpp`／`main.cpp` 的整合層完全沒有回歸測試覆蓋。** §20.3 低電量開案
+確認框從按鍵到啟動流程的完整接線（`onShortPress()` 三個入口攔截、`handleButtons()` 的
+modal 吞按鍵邏輯）、`g_lowBatteryConfirmTarget` → `DisplaySnapshotInputs.
+lowBatteryStartConfirmShown` 的映射、`updateDisplay()` 確認框早退分支相對於各
+`globalState` 分派的優先序——這些全部活在 `input_handler.cpp`／`main.cpp`，而 native
+測試環境的 `build_src_filter` 不編譯 `src/`（只編譯 `lib/` 底下抽出的純邏輯）。Task 11
+的三輪 fix round（round 1 M、round 2 tests finding、round 3 這次）codex 每輪重跑都會
+點名這個缺口——這不是巧合，是這個架構下的結構性限制：只要修改留在 `src/`，就不會有
+native test 鎖住。要徹底解決需要把三個啟動入口與 modal controller 抽成可注入的
+coordinator 層（依賴注入 `globalState`/`g_battery_low` 等全域，讓決策邏輯能在 native
+環境重放），屬於比 Task 11 任何一輪修正都大的架構決策，目前 park——依此 repo 對
+`main.cpp` wiring 缺口的既定做法，留給 code review + 上機驗收把關（見 §3-B 累積清單）。
+
+**⑦ `handleButtons()` 的吞鍵是「以掃描索引為界」，不是「以時間為界」的完整鎖定。**
+（承接 ⑥，同一個整合層、同一段程式碼的另一個面向。）modal 開啟或關閉時，吞鍵迴圈只掃
+`j = i+1 .. BTN_COUNT-1`——也就是**本輪尚未掃到**的按鍵。索引小於轉換鍵（`j < i`）的按鍵
+在轉換發生前就已經掃過，若它這輪剛好因 `now - lastPressMs[j] < DEBOUNCE_MS` 被 `continue`
+跳過（`continue` 刻意不更新 `lastBtnState[j]`，把邊緣留到下一輪重驗），那個邊緣會在下一輪
+被當成新事件處理，穿透到 modal 轉換後的新畫面。
+
+已知未覆蓋，**刻意 park**。觸發需要三個條件同時成立：轉換由較高索引的按鍵觸發（實務上是
+`BTN_BACK`=5 取消 modal）、**且**某個較低索引的按鍵同輪落在防抖窗內、**且**該按鍵確實有
+待處理的邊緣。機率遠低於 round 3/4 修掉的那兩條（「兩鍵幾乎同時放開」是救護人員在緊急
+狀況下完全做得出來的動作，這條不是）。
+
+**若之後要徹底解決，方向不是繼續擴大吞鍵迴圈的索引範圍**（那還會多出「`j < i` 已經分派過
+事件、清掉它的追蹤是否正確」這個新問題），而是在 modal 轉換當下另開一個獨立的「輸入鎖定
+至 X ms 後」計時器，讓 `handleButtons()` 在函式開頭就跳過整輪處理，完全不依賴掃描順序。
+那需要一個新的全域計時器狀態與到期判斷，屬於比 Task 11 任何一輪修正都大的架構決策——
+與 ⑥ 的 coordinator 層重構是同一個量級，建議兩者一起評估，不要單獨為這條動手。
+
+相關：round 5 已補上吞鍵迴圈同步 `lastPressMs[j] = now`，關掉的是另一個更窄的縫（被吞按鍵
+之後若發生機械彈跳，舊時戳會讓彈跳邊緣繞過防抖）。那條已修，這條沒修，兩者不要混淆。
 
 ### W1 讀取層的既有項目
 

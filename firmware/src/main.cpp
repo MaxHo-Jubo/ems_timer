@@ -244,6 +244,8 @@ bool    settingsEditorMode = false;
 bool    settingsRestoreConfirm = false;
 bool    g_device_name_locked = false;  // 進入設定選單時由 refreshDeviceNameLock() 更新
 
+ems::LowBatteryConfirmTarget g_lowBatteryConfirmTarget = ems::LowBatteryConfirmTarget::None;  // Phase H：§20.3
+
 // 按鈕狀態
 uint8_t  lastBtnState[BTN_COUNT];
 uint32_t lastPressMs[BTN_COUNT]      = { 0 };
@@ -667,6 +669,33 @@ static void tryStartLowBatteryNotice(uint32_t now_ms) {
 }
 
 /**
+ * §20.3：嘗試進入低電量開案確認——只有真的低電量時才記錄待啟動目標並消費 §13.16 的
+ * latch pending 事件，回傳是否已攔截。
+ *
+ * 由 input_handler.cpp 的三個入口（OHCA/VENT/Training）在按下啟動鍵時各呼叫一次，
+ * 呼叫端不需要、也不應該自己先判斷 g_battery_low——「是否低電量」與「設定目標／消費
+ * latch」全部收斂在 `ems::try_request_low_battery_start_confirm()`（fuel_gauge_logic.h/
+ * .cpp，native test 鎖住），本函式只是窄接口 wrapper：`g_battery_latch` 是本檔案作用域
+ * static，本函式是唯一出口（不整包 extern 出去，見 handover §8 殘餘風險③）。
+ *
+ * 2026-08-30 fix round 3 P：round 1/2 都只把「設 target+消費 latch」綁成一次呼叫，但
+ * 「要不要攔截」的判斷仍留在呼叫端（round 2 的 `interceptForLowBatteryConfirm()` 自己
+ * 檢查 g_battery_low）——任何未來新呼叫點若忘記外部檢查，一樣會不可逆消費事件。這輪
+ * 把守衛也收進 lib 函式內部，呼叫端不再維護任何低電量判斷，`interceptForLowBatteryConfirm()`
+ * 因此完全沒用了，已整個移除。
+ *
+ * 參數型別是 `ems::LowBatteryStartTarget`（不含 None）而非 `ems::LowBatteryConfirmTarget`
+ * ——2026-08-30 fix round 2 G CRITICAL：舊簽名吃含 None 的型別，介面上仍「能」被誤傳
+ * None。改用不含 None 的型別後，誤傳「未顯示」狀態在編譯期就不可能發生。
+ *
+ * @param target 使用者原本想啟動的目標（Ohca／Vent／Training，不含 None）
+ * @return 是否已攔截（true=已設定確認框，呼叫端不要啟動；false=非低電量，呼叫端照常啟動）
+ */
+bool requestLowBatteryStartConfirm(ems::LowBatteryStartTarget target) {
+    return ems::try_request_low_battery_start_confirm(g_lowBatteryConfirmTarget, g_battery_latch, target);
+}
+
+/**
  * Arduino 主迴圈：每輪排空 BLE RX、推進 sync dispatcher、處理按鍵與
  * OHCA/通氣/兩段確認等 tick，到期清提示，最後依固定間隔刷新顯示。
  */
@@ -910,6 +939,10 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.settingsCursor         = settingsCursor;         // Phase G：漏此三項會使設定選單完全不重繪
     in.settingsEditorMode     = settingsEditorMode;     // Phase G
     in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
+    // §20.3：snapshot 只需要知道「該不該畫」，不需要知道畫給誰看——三個目標的確認框
+    // 文字完全一樣（spec 沒有分別措辭），型別維持 bool，不隨 g_lowBatteryConfirmTarget
+    // 改成三選一型別而順手重構（B6 裁決：round 1 這部分已 review 過沒問題）。
+    in.lowBatteryStartConfirmShown = (g_lowBatteryConfirmTarget != ems::LowBatteryConfirmTarget::None);  // Phase H：§20.3
 
     // STEP 06: Phase H 電池欄位
     in.batteryPercent     = g_battery_percent;
@@ -1009,6 +1042,20 @@ void updateDisplay() {
     //   SUMMARY 時亦會重置，故此處早退安全（不會蓋掉非 SUMMARY 畫面）。
     if (resyncConfirmShown) {
         drawResyncConfirmDialog();
+        presentFrame(now);
+        return;
+    }
+
+    // STEP 03: SoT §20.3 低電量開案確認框（OHCA/VENT/Training 三個入口共用）——
+    //   display.clearDisplay() 已在上方清空畫面，此早退只畫確認框，是取代目前畫面，
+    //   不是疊加（比照 resyncConfirmShown 早退分支的既有行為）。
+    //   g_lowBatteryConfirmTarget 依慣例只由 requestLowBatteryStartConfirm() 設起
+    //   （型別上不強制）。此早退必須在所有 globalState 分派之前執行到，否則 VENT_PRE 期間
+    //   （globalState 已是 GLOBAL_VENT）確認框會被下方 GLOBAL_VENT 分支的畫面蓋掉——
+    //   已讀過 updateDisplay() 目前完整結構確認：本區塊在函式中的實際位置早於下方
+    //   GLOBAL_VENT 與 GLOBAL_TRAINING_SETUP 兩個 globalState 分派，此不變式成立。
+    if (g_lowBatteryConfirmTarget != ems::LowBatteryConfirmTarget::None) {
+        drawLowBatteryStartConfirm();
         presentFrame(now);
         return;
     }
@@ -1140,7 +1187,7 @@ void updateDisplay() {
         drawFlashOverlay();
     }
 
-    // STEP 03: presentFrame() 統一重繪出口 — 呼叫 drawBatteryIcon() 畫電量圖示後
+    // STEP 04: presentFrame() 統一重繪出口 — 呼叫 drawBatteryIcon() 畫電量圖示後
     // pushSprite DMA 一次推到實體 TFT，消除「fillScreen → 慢慢出文字」中間態
     presentFrame(now);
 }

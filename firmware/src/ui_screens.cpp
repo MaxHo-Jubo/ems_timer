@@ -968,3 +968,15 @@ void drawLowBatteryNotice(bool visible) {
     display.drawString(line1, SCREEN_W / 2, line1_center_y);
     display.drawString(line2, SCREEN_W / 2, line2_center_y);
 }
+
+/**
+ * §20.3 低電量開案確認：低電量仍允許開始 OHCA／通氣／Training，但需明確確認。
+ * 選「是」啟動、選「否」取消，三個目標顯示完全相同文字（spec 沒有分別措辭），
+ * 呼叫端不需要傳入目標——畫面本身不需要知道畫給誰看。
+ * @param  無參數
+ * @return void（純繪製，無回傳值）
+ */
+void drawLowBatteryStartConfirm() {
+    // STEP 01: 複用既有二次確認對話框 widget，三個目標共用同一組文字
+    drawConfirmDialog("低電量", "建議接上行動電源\n是否開始？");
+}
