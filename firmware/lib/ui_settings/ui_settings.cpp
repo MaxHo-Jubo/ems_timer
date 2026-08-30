@@ -3,7 +3,7 @@
 // 對應規格：docs/phase-g-system-settings-plan.md §2.1.2
 //
 // 設計：
-//   - drawSettingsMenu：繪製 4 項目設定選單
+//   - drawSettingsMenu：繪製 5 項目設定選單
 //   - drawSettingEditor：繪製設定值編輯器
 //   - 使用 Display 抽象層，ESP32 端換成真實 display 物件
 
@@ -36,11 +36,12 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 // Y 座標：標題位置
 #define SETTINGS_TITLE_Y         10
 
-// Y 座標：設定項目位置（4 項目等間距）
+// Y 座標：設定項目位置（5 項目等間距）
 #define SETTINGS_ITEM1_Y         30   // 裝置名稱
 #define SETTINGS_ITEM2_Y         70   // 螢幕亮度
 #define SETTINGS_ITEM3_Y        110   // 系統音量
 #define SETTINGS_ITEM4_Y        150   // 通氣音量
+#define SETTINGS_ITEM5_Y        190   // 電池資訊
 
 // Y 座標：編輯器位置
 #define SETTINGS_VALUE_Y         50   // 數值顯示
@@ -69,7 +70,13 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 //  drawSettingsMenu：設定主選單
 // ============================================================
 
-/** 一個可調設定項目的版面資料（游標索引 / Y 座標 / 顯示標籤） */
+/**
+ * 一個選單項目的版面資料（游標索引 / Y 座標 / 顯示標籤）。
+ *
+ * 只描述「畫在哪、畫什麼字」，不帶「可調值 vs 導覽」的語意——那個差異是
+ * input_handler.cpp 按鍵分派邏輯的事（BTN_PRIMARY 依 cursor 範圍決定要不要進
+ * 編輯模式），與這份版面資料無關，故意不放進這個 struct。
+ */
 typedef struct {
     uint8_t     cursor;
     int16_t     y;
@@ -77,23 +84,50 @@ typedef struct {
 } settings_menu_item_t;
 
 /**
- * 3 個可調項目的版面表。
+ * 除裝置名稱外，其餘選單項目的共用版面表。
  *
  * 裝置名稱（cursor 0）不在此表：它有置灰與顯示當前值的特殊行為，單獨繪製。
- * 其餘三項版面與行為完全一致，查表繪製即可，新增設定只需加一列。
+ * 其餘四項（3 個可調值 + 1 個導覽項）版面與繪製行為一致（電池資訊在確認對話框
+ * 顯示中除外，見 STEP 04.01）。游標高亮框（SETTINGS_CURSOR_WIDTH×HEIGHT = 80×20）
+ * 比 ems_zh_24（24px vlw 字型）在 SETTINGS_FONT_SIZE=2 下實際渲染的文字小很多
+ * （4 字約 192×48，框只蓋到約 17% 面積），選取時仍有一小塊「白底白字」看不清楚——
+ * 既有三個可調項目（螢幕亮度／系統音量／通氣音量）與裝置名稱（STEP 03）原本就有此
+ * 問題；本次新增的電池資訊列沿用相同繪製方式，同樣受影響——本 task 沒有引入新的渲染
+ * 機制，只是新增的這一列繼承了既有繪製方式的既有限制。正確修法是
+ * 仿 ui_screens.cpp drawMainMenu() 改成整列 fillRect 高亮，牽動共用的
+ * _settings_text_fn/_settings_fill_rect_fn 與全部 5 個項目的繪製，超出本 task
+ * （新增一個選單項目）範圍，殘留風險見 handover §3-A8。
+ *
+ * 新增設定或導覽項要加一列到這張表，同時記得同步 ui_settings.h 的
+ * SETTINGS_MENU_COUNT（wrap-around 用）——漏改會被下方 static_assert 擋下來。
  */
 static const settings_menu_item_t kSettingsAdjustableItems[] = {
-    { SETTINGS_CURSOR_BRIGHTNESS, SETTINGS_ITEM2_Y, "螢幕亮度" },
-    { SETTINGS_CURSOR_SYSTEM_VOL, SETTINGS_ITEM3_Y, "系統音量" },
-    { SETTINGS_CURSOR_VENT_VOL,   SETTINGS_ITEM4_Y, "通氣音量" },
+    { SETTINGS_CURSOR_BRIGHTNESS,   SETTINGS_ITEM2_Y, "螢幕亮度" },
+    { SETTINGS_CURSOR_SYSTEM_VOL,   SETTINGS_ITEM3_Y, "系統音量" },
+    { SETTINGS_CURSOR_VENT_VOL,     SETTINGS_ITEM4_Y, "通氣音量" },
+    { SETTINGS_CURSOR_BATTERY_INFO, SETTINGS_ITEM5_Y, "電池資訊" },
 };
 
-#define SETTINGS_ADJUSTABLE_ITEM_COUNT \
+// drawSettingsMenu() 內 STEP 04 查表迴圈所用的邊界常數：kSettingsAdjustableItems[] 的
+// 實際列數，表格加/減列時自動跟著改，不必手動同步一個裸數字。
+#define SETTINGS_TABLE_ITEM_COUNT \
     (sizeof(kSettingsAdjustableItems) / sizeof(kSettingsAdjustableItems[0]))
+
+// 設定選單裡不在 kSettingsAdjustableItems[] 查表迴圈內的項目數（裝置名稱，游標值 0，
+// 走獨立的 STEP 03 分支繪製）。
+#define SETTINGS_NON_TABLE_ITEM_COUNT 1
+
+// 編譯期鎖住「表格列數 + 裝置名稱 1 項 = 選單總項目數」這個不變量。SETTINGS_MENU_COUNT
+// 是 wrapSettingsCursor() 讀的手動維護常數，跟這張表各自獨立寫死，兩邊沒有自動同步；
+// 未來只改表格忘了同步 SETTINGS_MENU_COUNT 會讓 wrap-around 邊界悄悄錯位且沒有任何
+// 錯誤訊號。同型態既有寫法見 input_handler.cpp:1501 的
+// `static_assert(SUMMARY_SUBMENU_COUNT == 2, ...)`。
+static_assert(SETTINGS_TABLE_ITEM_COUNT + SETTINGS_NON_TABLE_ITEM_COUNT == SETTINGS_MENU_COUNT,
+    "kSettingsAdjustableItems 列數變動時要同步更新 SETTINGS_MENU_COUNT（wrap-around 用）");
 
 /**
   * 設定主選單畫面
-  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量
+  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量 / 電池資訊
   *
   * 預設參數宣告於 ui_settings.h，此處不重複。
   *
@@ -131,10 +165,29 @@ static const settings_menu_item_t kSettingsAdjustableItems[] = {
          disp.text(s_device_name, SETTINGS_MENU_X + SETTINGS_VALUE_X_OFFSET, SETTINGS_ITEM1_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
      }
 
-     // STEP 04: 其餘 3 個可調項目 — 版面與行為一致，查表繪製
-     for (size_t i = 0; i < SETTINGS_ADJUSTABLE_ITEM_COUNT; i++) {
+     // STEP 04: 其餘 4 個項目（3 個可調值 + 1 個導覽項）— 版面與行為一致，查表繪製
+     //   （電池資訊在確認對話框顯示中除外，見 STEP 04.01）
+     for (size_t i = 0; i < SETTINGS_TABLE_ITEM_COUNT; i++) {
          const settings_menu_item_t& item = kSettingsAdjustableItems[i];
-         if (cursor == item.cursor) {
+
+         // STEP 04.01: 電池資訊列（Y=190）與下方 STEP 05 確認對話框文字（Y=180）只
+         //   差 10px，兩段文字會疊在一起看不清楚。對話框顯示中時跳過這一列——高亮
+         //   fill_rect 與文字都不畫，不是只跳過文字。若當下 cursor=4，這段期間畫面
+         //   上會暫時沒有任何游標高亮，這是良性的：對話框是攔截所有按鍵輸入的
+         //   modal，不依賴 settingsCursor 判斷去留。其餘 3 個可調項目與對話框的
+         //   既有間距不受影響、維持 Phase G 原行為。
+         if (item.cursor == SETTINGS_CURSOR_BATTERY_INFO && restore_confirm) {
+             continue;
+         }
+
+         // STEP 04.02: selected — 這一列是否為目前游標所在項目，是則額外畫高亮
+         //   fill_rect。文字一律用 SETTINGS_COLOR_WHITE（不分選取與否）——曾在
+         //   fix round 1 改成選取時用黑字想解決「白底白字」，但高亮框（80×20）比
+         //   實際渲染文字小很多，那個修法讓文字其餘 83% 面積變成黑字疊黑底
+         //   背景，比原本更看不清楚，fix round 3 已撤銷，詳見本檔上方
+         //   kSettingsAdjustableItems 的 doc comment 與 handover §3-A8。
+         bool selected = (cursor == item.cursor);
+         if (selected) {
              disp.fill_rect(SETTINGS_MENU_X, item.y, SETTINGS_CURSOR_WIDTH, SETTINGS_CURSOR_HEIGHT, SETTINGS_COLOR_WHITE);
          }
          disp.text(item.label, SETTINGS_MENU_X, item.y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);

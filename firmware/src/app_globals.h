@@ -530,7 +530,7 @@ extern uint16_t summaryScrollOffset;
 extern FlashState flashState;
 
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp，操作於 input_handler.cpp）
-extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 

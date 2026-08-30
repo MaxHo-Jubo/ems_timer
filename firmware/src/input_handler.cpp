@@ -10,10 +10,12 @@
 #include "ems_storage_logic.h"
 
 // Wave 1：系統設定選單狀態（settingsCursor / editor / confirm）
-#define SETTINGS_MENU_COUNT    4   // 裝置名稱 / 亮度 / 系統音量 / 通氣音量
+// UP/DOWN 捲動的 wrap-around 交給 ui_settings.h 的 wrapSettingsCursor() 處理
+// （項目總數 SETTINGS_MENU_COUNT 是它內部讀的不變量，呼叫端不必也不能傳），
+// 這裡只在 BTN_UP/BTN_DOWN 分支呼叫它，不在此另外複製一份算式或常數。
 
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp）
-extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量）
+extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 
@@ -748,10 +750,10 @@ void onShortPress(uint8_t btnIdx) {
         // STEP 03: 主選單模式
         switch (btnIdx) {
             case BTN_UP:
-                settingsCursor = (settingsCursor + SETTINGS_MENU_COUNT - 1) % SETTINGS_MENU_COUNT;
+                settingsCursor = wrapSettingsCursor(settingsCursor, SETTINGS_CURSOR_DELTA_UP);
                 break;
             case BTN_DOWN:
-                settingsCursor = (settingsCursor + 1) % SETTINGS_MENU_COUNT;
+                settingsCursor = wrapSettingsCursor(settingsCursor, SETTINGS_CURSOR_DELTA_DOWN);
                 break;
             case BTN_BACK:
                 enterMainMenu();
