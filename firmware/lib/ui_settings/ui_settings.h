@@ -22,8 +22,9 @@
 #define SETTINGS_CURSOR_BRIGHTNESS   1
 #define SETTINGS_CURSOR_SYSTEM_VOL   2
 #define SETTINGS_CURSOR_VENT_VOL     3
-// Phase H：電池資訊（導覽項）。本 task（Task 12）只新增選單顯示與 UP/DOWN 捲動；
-// 子畫面與按主鍵進入的行為尚未接線，目前按主鍵是 no-op，由 Task 13 接線。
+// Phase H：電池資訊（唯讀導覽項，非可調值）。游標停在此項時按主鍵
+// （input_handler.cpp）進入 drawBatteryInfo() 子畫面，按返回鍵離開，
+// 見 settingsBatteryInfoMode（Task 13 接線，Task 12 只新增選單顯示與 UP/DOWN 捲動）。
 #define SETTINGS_CURSOR_BATTERY_INFO 4
 
 // 設定選單項目總數。UP/DOWN 捲動 wrap-around 用（見 wrapSettingsCursor()）。

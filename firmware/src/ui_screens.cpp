@@ -210,6 +210,65 @@ void drawSyncScreen() {
 }
 
 
+/**
+ * 電池資訊畫面（SoT §19.1 設定選單第 5 項，Task 13）。
+ * 顯示電量百分比、電壓與充電狀態；燃料計不在線時明確標示，不顯示假數值。
+ */
+void drawBatteryInfo() {
+    // 版面常數：左邊界、電量列 Y 座標、行距（電壓／充電狀態列由前者推導，避免三個
+    // 獨立字面值各自維護、改一個忘改另兩個時無聲破壞等距排版 — fix round 1 簡化）
+    constexpr int16_t BATTERY_INFO_TEXT_X       = 24;
+    constexpr int16_t BATTERY_INFO_LINE1_Y      = 70;   // 電量列
+    constexpr int16_t BATTERY_INFO_LINE_SPACING = 30;   // 每列間距（px）
+    constexpr int16_t BATTERY_INFO_LINE2_Y = BATTERY_INFO_LINE1_Y + BATTERY_INFO_LINE_SPACING;      // 電壓列
+    constexpr int16_t BATTERY_INFO_LINE3_Y = BATTERY_INFO_LINE1_Y + BATTERY_INFO_LINE_SPACING * 2;  // 充電狀態列
+    // 電壓 mV → V 換算基數：整數位（/）與小數三位（%）共用同一個具名常數
+    constexpr uint16_t MILLIVOLTS_PER_VOLT = 1000;
+
+    // STEP 01: 文字樣式設定（字型／大小／顏色／對齊基準）——函式進入後第一段實際執行的邏輯
+    useZhFont();
+    display.setTextSize(1);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::top_left);
+
+    // STEP 02: 標題
+    drawCenteredText("電池資訊", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // STEP 03: 不在線時只顯示狀態，不編造數值（0% 會被誤讀成沒電）。透過 lib 的
+    // is_battery_absent() 判斷而非自行比對 255 哨兵——main.cpp:589-590 的既有指示
+    // 明白要求 Task 7-14 UI 端一律經此函式，不在各自 render 程式碼裡各自比對。
+    if (ems::is_battery_absent(g_battery_percent)) {
+        // STEP 03.01: 不在線分支——顯示提示後直接返回，不繪製下方數值列
+        drawCenteredText("燃料計未偵測到", SCREEN_H / 2, COLOR_TEXT_MUTED);
+        return;
+    }
+
+    // STEP 04: 電量與電壓
+    char buf[32];  // 最長行「充電狀態：放電中」UTF-8 約 24 bytes，留餘裕
+    snprintf(buf, sizeof(buf), "電量：%u%%", g_battery_percent);
+    display.drawString(buf, BATTERY_INFO_TEXT_X, BATTERY_INFO_LINE1_Y);
+
+    snprintf(buf, sizeof(buf), "電壓：%u.%03u V",
+             g_battery_millivolts / MILLIVOLTS_PER_VOLT, g_battery_millivolts % MILLIVOLTS_PER_VOLT);
+    display.drawString(buf, BATTERY_INFO_TEXT_X, BATTERY_INFO_LINE2_Y);
+
+    // STEP 05: 充電狀態；Unknown 顯示「判斷中」而非猜一個狀態（趨勢窗未滿時本來就不知道）
+    const char* state_text = "判斷中";
+    if (g_battery_charge_state == ems::ChargeState::Charging) {
+        // STEP 05.01: 充電中
+        state_text = "充電中";
+    } else if (g_battery_charge_state == ems::ChargeState::Discharging) {
+        // STEP 05.02: 放電中
+        state_text = "放電中";
+    } else if (g_battery_charge_state == ems::ChargeState::Idle) {
+        // STEP 05.03: 靜置
+        state_text = "靜置";
+    }
+    snprintf(buf, sizeof(buf), "充電狀態：%s", state_text);
+    display.drawString(buf, BATTERY_INFO_TEXT_X, BATTERY_INFO_LINE3_Y);
+}
+
+
 /** OHCA 歷史案件列表：標題附總數，無資料顯示提示，否則列出最多 5 筆（id 後 5 位／EPI／電擊／同步狀態），cursor 列高亮。 */
 void drawHistoryList() {
     useZhFont();

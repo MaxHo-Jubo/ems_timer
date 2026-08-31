@@ -18,6 +18,7 @@
 extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
+extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
 
 // 系統設定 NVS state（開機由 main.cpp settings_init 載入，調值時 settings_write 寫回）
 settings_state_t g_settings_state;
@@ -747,7 +748,17 @@ void onShortPress(uint8_t btnIdx) {
             return;
         }
 
-        // STEP 03: 主選單模式
+        // STEP 03: 電池資訊子畫面中（唯讀導覽頁，無可調值 — 只有返回鍵離開）
+        if (settingsBatteryInfoMode) {
+            // STEP 03.01: 返回鍵離開子畫面，其餘按鍵在此唯讀畫面上一律忽略
+            if (btnIdx == BTN_BACK) {
+                settingsBatteryInfoMode = false;
+                Serial.println("[SETTINGS] battery info — back to menu");
+            }
+            return;
+        }
+
+        // STEP 04: 主選單模式
         switch (btnIdx) {
             case BTN_UP:
                 settingsCursor = wrapSettingsCursor(settingsCursor, SETTINGS_CURSOR_DELTA_UP);
@@ -770,6 +781,10 @@ void onShortPress(uint8_t btnIdx) {
                            settingsCursor <= SETTINGS_CURSOR_VENT_VOL) {
                     // 三個可調項目行為一致：進入編輯模式
                     settingsEditorMode = true;
+                } else if (settingsCursor == SETTINGS_CURSOR_BATTERY_INFO) {
+                    // Task 13：進入電池資訊子畫面
+                    settingsBatteryInfoMode = true;
+                    Serial.println("[SETTINGS] battery info — show sub");
                 }
                 break;
             default:
@@ -1382,8 +1397,12 @@ void onLongPress(uint8_t btnIdx) {
     }
 
     // STEP 01.5: 系統設定選單 → 主鍵長按彈出恢復預設確認對話框
+    //   Task 13：電池資訊子畫面顯示中也要排除，否則在該唯讀子畫面長按主鍵會意外
+    //   開啟一個與此畫面無關的恢復預設確認框。單純是「不要讓長按開啟它」，不是
+    //   「開啟後沒有按鍵能關掉它」——若真的被開啟，onShortPress() 開頭的
+    //   settingsRestoreConfirm 分支本來就會處理 BTN_PRIMARY／BTN_BACK 兩鍵關閉它。
     if (btnIdx == BTN_PRIMARY && globalState == GLOBAL_SETTINGS_PLACEHOLDER &&
-        !settingsEditorMode && !settingsRestoreConfirm) {
+        !settingsEditorMode && !settingsRestoreConfirm && !settingsBatteryInfoMode) {
         settingsRestoreConfirm = true;
         Serial.println("[SETTINGS] restore confirm dialog");
         return;

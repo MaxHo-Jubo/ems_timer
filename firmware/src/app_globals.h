@@ -533,6 +533,7 @@ extern FlashState flashState;
 extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
+extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
 
 // true = 裝置名稱不可修改（storage 內有未同步案件）。
 // 進入設定選單時掃描一次即可：lock 狀態只由「儲存新案件」或「同步完成」改變，
@@ -697,6 +698,7 @@ void drawLowBatteryNotice(bool visible);
 // Phase H：§20.3 低電量開案確認框（複用 drawConfirmDialog()），由 updateDisplay() 早退路徑呼叫。
 void drawLowBatteryStartConfirm();
 void drawSyncScreen();
+void drawBatteryInfo();
 void drawHistoryList();
 void drawPlaceholder(const char* title, const char* phase);
 void drawTrainingSetup();

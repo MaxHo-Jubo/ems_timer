@@ -242,6 +242,7 @@ FlashState flashState = {};
 uint8_t settingsCursor = 1;
 bool    settingsEditorMode = false;
 bool    settingsRestoreConfirm = false;
+bool    settingsBatteryInfoMode = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
 bool    g_device_name_locked = false;  // 進入設定選單時由 refreshDeviceNameLock() 更新
 
 ems::LowBatteryConfirmTarget g_lowBatteryConfirmTarget = ems::LowBatteryConfirmTarget::None;  // Phase H：§20.3
@@ -940,6 +941,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.settingsCursor         = settingsCursor;         // Phase G：漏此三項會使設定選單完全不重繪
     in.settingsEditorMode     = settingsEditorMode;     // Phase G
     in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
+    in.settingsBatteryInfo    = settingsBatteryInfoMode; // Phase H：Task 13，漏此項會使電池資訊子畫面進出不重繪
     // §20.3：snapshot 只需要知道「該不該畫」，不需要知道畫給誰看——三個目標的確認框
     // 文字完全一樣（spec 沒有分別措辭），型別維持 bool，不隨 g_lowBatteryConfirmTarget
     // 改成三選一型別而順手重構（B6 裁決：round 1 這部分已 review 過沒問題）。
@@ -948,6 +950,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     // STEP 06: Phase H 電池欄位
     in.batteryPercent     = g_battery_percent;
     in.batteryChargeState = static_cast<uint8_t>(g_battery_charge_state);
+    in.batteryMillivolts  = g_battery_millivolts;  // Task 13 fix round 1：電壓連續變化，漏此項畫面顯示過期電壓且不重繪
     // 低電量閃爍相位：純函式決策放 ems_fuel_gauge lib（native 可測），燃料計不在線時
     // 一律回 false，避免失聯後每 BATTERY_BLINK_HALF_PERIOD_MS 翻轉一次造成無效全螢幕重繪
     in.batteryLowBlinkOn  = ems::compute_low_battery_blink_on(g_battery_percent, g_battery_low, millis());
@@ -1157,7 +1160,12 @@ void updateDisplay() {
         }
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
         Display settingsDisp = getSettingsDisplay();
-        if (settingsEditorMode) {
+        if (settingsBatteryInfoMode) {
+            // STEP 01（Task 13）：電池資訊子畫面，無需 Display 參數（畫面直接寫 display
+            // sprite，沿用其他全螢幕 draw 函式的慣例）。不在此呼叫 presentFrame() 或提前
+            // return——讓流程照常往下走到本函式 STEP 04 統一出口，理由見下方 STEP 04 註解。
+            drawBatteryInfo();
+        } else if (settingsEditorMode) {
             // 編輯模式：依游標索引繪製對應設定項目的數值調整畫面
             if (settingsCursor == SETTINGS_CURSOR_BRIGHTNESS) {
                 drawSettingEditor(settingsDisp, "螢幕亮度", getBrightness(), SETTINGS_BRIGHTNESS_MIN, SETTINGS_BRIGHTNESS_MAX);

@@ -253,8 +253,16 @@ static void test_flag_settings_restore_confirm_sets_bit_0x20000() {
     TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_SETTINGS_RESTORE_CONFIRM, captureSnapshot(in).flags);
 }
 
+// Phase H Task 13：電池資訊子畫面顯示中的 flag bit
+static void test_flag_settings_battery_info_sets_bit_0x200000() {
+    // 只開 settingsBatteryInfo 這一個旗標的測試輸入，其餘全預設 false
+    DisplaySnapshotInputs in;
+    in.settingsBatteryInfo = true;
+    TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_SETTINGS_BATTERY_INFO, captureSnapshot(in).flags);
+}
+
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 21 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 22 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -277,6 +285,7 @@ static void test_all_flags_on_combine_all_bits() {
     in.trainingResetConfirm  = true;
     in.settingsEditorMode     = true;
     in.settingsRestoreConfirm = true;
+    in.settingsBatteryInfo    = true;
     in.batteryLowBlinkOn      = true;
     in.lowBatteryNoticeVisible = true;
     in.lowBatteryStartConfirmShown = true;
@@ -299,20 +308,22 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_RESET_CONFIRM
                             | SNAP_FLAG_SETTINGS_EDITOR
                             | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
+                            | SNAP_FLAG_SETTINGS_BATTERY_INFO
                             | SNAP_FLAG_BATTERY_LOW_BLINK
                             | SNAP_FLAG_LOW_BATTERY_NOTICE
                             | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
     TEST_ASSERT_EQUAL_UINT32(expected, captureSnapshot(in).flags);
 }
 
-/// Task 7-11 累計新增的 flag bit 數，改動時同步更新（新增/移除 flag 記得改這裡）
-constexpr uint32_t EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT = 21;
+/// 截至 Task 13 的 DisplaySnapshot flag bit 總數（不是「Task 7-13 新增了幾個」——
+/// 是全案自 flags 欄位存在以來累計的總數），改動時同步更新（新增/移除 flag 記得改這裡）
+constexpr uint32_t EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT = 22;
 
 static void test_all_flags_bit_masks_are_unique() {
     // 確保 EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT 個 mask 沒有撞號（OR 全部應等於 set bit count）
     // Phase G：原 uint16_t 的 16 bit 於 W8 用罄，flags 擴為 uint32_t 容納設定 UI 兩個新 flag
-    // Phase H：新增電池低電量閃爍 flag（第 19 個 bit）、§13.16 低電量提示 flag（第 20 個 bit）
-    //          與 §20.3 低電量開案確認框 flag（第 21 個 bit）
+    // Phase H：新增電池低電量閃爍 flag（第 19 個 bit）、§13.16 低電量提示 flag（第 20 個 bit）、
+    //          §20.3 低電量開案確認框 flag（第 21 個 bit）與 Task 13 電池資訊子畫面 flag（第 22 個 bit）
     const uint32_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
@@ -322,6 +333,7 @@ static void test_all_flags_bit_masks_are_unique() {
                        | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM
                        | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM
                        | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
+                       | SNAP_FLAG_SETTINGS_BATTERY_INFO
                        | SNAP_FLAG_BATTERY_LOW_BLINK | SNAP_FLAG_LOW_BATTERY_NOTICE
                        | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
     // popcount
@@ -362,6 +374,23 @@ static void test_battery_charge_state_change_triggers_redraw() {
     // 同上：確認值落在 batteryChargeState 而非鄰接欄位
     TEST_ASSERT_EQUAL_UINT8(1, captureSnapshot(a).batteryChargeState);
     TEST_ASSERT_EQUAL_UINT8(2, captureSnapshot(b).batteryChargeState);
+}
+
+/**
+ * Task 13 fix round 1 CRITICAL：電壓連續變化，percent／charge state 常常不動——
+ * 若 batteryMillivolts 沒進 DisplaySnapshot，電池資訊畫面會顯示過期電壓且沒有任何
+ * 錯誤訊號（這是 project 第 5 次踩「新 UI state 未同步進 snapshot」同型 bug）。
+ */
+static void test_battery_millivolts_change_triggers_redraw() {
+    DisplaySnapshotInputs a;   ///< 基準：3700mV，percent／charge state 保持預設不變
+    a.batteryMillivolts = 3700;
+    DisplaySnapshotInputs b;   ///< 對照：3712mV（僅電壓變化，percent/charge state 相同）
+    b.batteryMillivolts = 3712;
+    TEST_ASSERT_FALSE_MESSAGE(snapshotsEqual(captureSnapshot(a), captureSnapshot(b)),
+        "snapshot 未反映 input.batteryMillivolts 變化（percent/charge state 不變時電壓變化被吞掉）");
+    // 值必須落在 batteryMillivolts 這個具名欄位上，同上兩條的驗法
+    TEST_ASSERT_EQUAL_UINT16(3700, captureSnapshot(a).batteryMillivolts);
+    TEST_ASSERT_EQUAL_UINT16(3712, captureSnapshot(b).batteryMillivolts);
 }
 
 static void test_battery_absent_differs_from_zero_percent() {
@@ -482,6 +511,16 @@ static void test_countdown_plus_charge_state_forces_full_redraw() {
 }
 
 /**
+ * countdownSec 與 batteryMillivolts 同一 frame 變化 → 必須走完整重繪。
+ *
+ * Task 13 fix round 1 CRITICAL 的同一根因：電壓輪詢與每秒倒數 tick 必然週期性
+ * 重合，走 partial 會把該次電壓變化寫進 lastDisplaySnapshot 卻不重繪，永久遺失。
+ */
+static void test_countdown_plus_battery_millivolts_forces_full_redraw() {
+    ASSERT_COUNTDOWN_PLUS_FIELD_FORCES_FULL_REDRAW(batteryMillivolts, 3700, 3712);
+}
+
+/**
  * countdownSec 與低電量閃爍相位同一 frame 變化 → 必須走完整重繪。
  *
  * 閃爍相位每 500ms 翻轉、倒數每 1000ms 前進，兩者必然重合。
@@ -553,6 +592,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     // Phase G：flags 擴為 uint32_t 後的新 bit
     RUN_TEST(test_flag_settings_editor_sets_bit_0x10000);
     RUN_TEST(test_flag_settings_restore_confirm_sets_bit_0x20000);
+    RUN_TEST(test_flag_settings_battery_info_sets_bit_0x200000);
 
     // Group 4: combine + uniqueness
     RUN_TEST(test_all_flags_on_combine_all_bits);
@@ -561,6 +601,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     // Group 5: Impl-Phase H 電池欄位
     RUN_TEST(test_battery_percent_change_triggers_redraw);
     RUN_TEST(test_battery_charge_state_change_triggers_redraw);
+    RUN_TEST(test_battery_millivolts_change_triggers_redraw);  // Task 13 fix round 1 CRITICAL
     RUN_TEST(test_battery_absent_differs_from_zero_percent);
     RUN_TEST(test_default_battery_percent_is_absent_sentinel);
     RUN_TEST(test_flag_battery_low_blink_sets_bit_0x40000);
@@ -571,6 +612,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_only_countdown_differs_allows_partial_update);
     RUN_TEST(test_countdown_plus_battery_percent_forces_full_redraw);
     RUN_TEST(test_countdown_plus_charge_state_forces_full_redraw);
+    RUN_TEST(test_countdown_plus_battery_millivolts_forces_full_redraw);  // Task 13 fix round 1
     RUN_TEST(test_countdown_plus_low_blink_forces_full_redraw);
     RUN_TEST(test_countdown_plus_low_battery_notice_forces_full_redraw);
 

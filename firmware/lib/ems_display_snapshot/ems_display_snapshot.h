@@ -55,6 +55,8 @@ struct DisplaySnapshot {
     uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
     uint8_t  batteryPercent;     ///< Phase H：電量 0~100；255 = 燃料計不在線（0 是合法讀數，不可共用）
     uint8_t  batteryChargeState; ///< Phase H：ems::ChargeState 列舉值（0=Unknown 1=Charging 2=Discharging 3=Idle）
+    uint16_t batteryMillivolts;  ///< Phase H Task 13：電壓 mV。batteryPercent 只在整數百分比變動時才變，
+                                  ///< 電壓連續變化，漏掉此欄位會讓電池資訊畫面顯示過期電壓且不觸發重繪
     uint32_t flags;              ///< bit-packed prompt/overlay 狀態（W8 用滿 16 bit → Phase G 擴為 32）
 };
 
@@ -83,6 +85,7 @@ enum DisplaySnapshotFlag : uint32_t {
     SNAP_FLAG_BATTERY_LOW_BLINK = 0x00040000,  // Phase H：低電量 1Hz 閃爍的當前相位（每 500ms 由呼叫端翻轉）
     SNAP_FLAG_LOW_BATTERY_NOTICE = 0x00080000,  // Phase H：§13.16 低電量提示顯示中（3 秒）
     SNAP_FLAG_LOW_BATTERY_START_CONFIRM = 0x00100000,  // Phase H：§20.3 低電量開案確認框顯示中
+    SNAP_FLAG_SETTINGS_BATTERY_INFO = 0x00200000,  // Phase H：電池資訊子畫面顯示中（Task 13）
 };
 
 
@@ -136,10 +139,12 @@ struct DisplaySnapshotInputs {
     bool     trainingResetConfirm  = false;  // W8：重置訓練二次確認顯示中
     bool     settingsEditorMode     = false;  // Phase G：設定值編輯畫面顯示中
     bool     settingsRestoreConfirm = false;  // Phase G：恢復預設確認對話框顯示中
+    bool     settingsBatteryInfo    = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
 
     // STEP 04: Phase H 電池欄位
     uint8_t  batteryPercent     = 255;    // Phase H：預設 255 = 不在線
     uint8_t  batteryChargeState = 0;      // Phase H：預設 Unknown
+    uint16_t batteryMillivolts  = 0;      // Phase H Task 13：電壓 mV，預設 0（不在線時畫面不顯示此值）
     bool     batteryLowBlinkOn  = false;  // Phase H：低電量閃爍當前相位
     bool     lowBatteryNoticeVisible = false;  // Phase H：§13.16 提示顯示中
     bool     lowBatteryStartConfirmShown = false;  // Phase H：§20.3 低電量開案確認框顯示中
@@ -177,6 +182,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     s.settingsCursor      = in.settingsCursor;  // Phase G：系統設定選單游標
     s.batteryPercent      = in.batteryPercent;      // Phase H
     s.batteryChargeState  = in.batteryChargeState;  // Phase H
+    s.batteryMillivolts   = in.batteryMillivolts;   // Phase H Task 13
 
     // STEP 02: bool → bit-packed flags
     if (in.showEpiArmedPrompt)     s.flags |= SNAP_FLAG_EPI_ARMED;
@@ -197,6 +203,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.trainingResetConfirm)   s.flags |= SNAP_FLAG_RESET_CONFIRM;
     if (in.settingsEditorMode)     s.flags |= SNAP_FLAG_SETTINGS_EDITOR;
     if (in.settingsRestoreConfirm) s.flags |= SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
+    if (in.settingsBatteryInfo)    s.flags |= SNAP_FLAG_SETTINGS_BATTERY_INFO;
     if (in.batteryLowBlinkOn)      s.flags |= SNAP_FLAG_BATTERY_LOW_BLINK;
     if (in.lowBatteryNoticeVisible) s.flags |= SNAP_FLAG_LOW_BATTERY_NOTICE;
     if (in.lowBatteryStartConfirmShown) s.flags |= SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
