@@ -649,8 +649,7 @@ static void pollBattery() {
  *
  * 每輪呼叫的理由：`g_battery_latch` 進入低電量區間會 pending 一次事件，事件被消費
  * 後須先回升到解除門檻（25%）並再次跨入才會重新 pending——同一次開機可能 pending
- * 多次（例如充電中斷又再掉回門檻以下），不是只有一次（2026-08-23 fix round 2 E5：
- * 修正 fix round 1 這裡原本寫錯的「每次開機只會 pending 一次」）。高頻呼叫 tick 是
+ * 多次（例如充電中斷又再掉回門檻以下），不是只有一次。高頻呼叫 tick 是
  * 安全的，因為守衛已收斂進 lib，還能把「開案後才提示」的延遲壓到一個 loop 週期，
  * 不必像掛在三個開案轉換點那樣各補一次同樣的判斷（EXTRACT-SHARED-HELPER 要避免的
  * 複製點；2026-08-23 fix round 1 A2 裁決）。
@@ -1161,8 +1160,8 @@ void updateDisplay() {
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
         Display settingsDisp = getSettingsDisplay();
         if (settingsBatteryInfoMode) {
-            // STEP 01（Task 13）：電池資訊子畫面，無需 Display 參數（畫面直接寫 display
-            // sprite，沿用其他全螢幕 draw 函式的慣例）。不在此呼叫 presentFrame() 或提前
+            // 電池資訊子畫面，無需 Display 參數（畫面直接寫 display sprite，沿用
+            // 其他全螢幕 draw 函式的慣例）。不在此呼叫 presentFrame() 或提前
             // return——讓流程照常往下走到本函式 STEP 04 統一出口，理由見下方 STEP 04 註解。
             drawBatteryInfo();
         } else if (settingsEditorMode) {

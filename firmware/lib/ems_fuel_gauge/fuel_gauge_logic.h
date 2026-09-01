@@ -227,9 +227,7 @@ constexpr uint32_t LOW_BATTERY_NOTICE_MS = 3000;
  * 整包替換兩個欄位，不像兩個分開的 extern 全域那樣容易誤寫成只改其中一個而讓另一個
  * 沿用舊值。但這只是**約定**，不是型別保證——兩個欄位仍是 public（保持
  * aggregate-like 用法），任何人仍可寫 `g_low_battery_notice.active = true;` 單獨改
- * 一欄，繞過這個約定（2026-08-23 fix round 4 H2：修正上一輪誤寫成「型別上讓兩個
- * 欄位只能一起被賦予新值」，那是型別根本沒提供的保證；三處同樣的錯誤描述——本檔、
- * app_globals.h、main.cpp——一併修正）。
+ * 一欄，繞過這個約定。
  *
  * 唯一的生產寫入點是 `low_battery_notice_tick()`——該函式吃 `LowBatteryNoticeState&`
  * 並原地改寫，呼叫端傳入 `g_low_battery_notice` 後函式回傳時它已是新狀態。不用回傳值
@@ -259,10 +257,9 @@ struct LowBatteryNoticeState {
      * @param a  提示計時器目前是否有效
      * @param ms 觸發當下的時間戳（毫秒），僅在 a 為 true 時有意義
      *
-     * 用 constructor 而非 default member initializer：比照同 lib `ems_fuel_gauge.h`
-     * 的 `FuelReading` 既有教訓（2026-08-23 fix round 3 G7：修正原本誤寫成「同檔」，
-     * FuelReading 實際定義在 lib/ems_fuel_gauge/ems_fuel_gauge.h:26，是同一個 lib
-     * 但不同 header，指路錯了下一個人會照著找不到）——ESP32 目標以 gnu++11 編譯，
+     * 用 constructor 而非 default member initializer：比照同 lib 的 `FuelReading`
+     * 既有教訓（`FuelReading` 實際定義在 `lib/ems_fuel_gauge/ems_fuel_gauge.h:26`，
+     * 與本檔同一個 lib 但不同 header）——ESP32 目標以 gnu++11 編譯，
      * 帶 NSDMI 的 struct 在 C++11 不是 aggregate，`{false, 0}` 這種列表初始化會
      * 編譯失敗（native 是 gnu++17 所以看不出來，2026-08-23 fix round 2 上機驗證前
      * 才在 esp32-s3-devkitc-1 環境編譯時抓到）。
@@ -468,8 +465,7 @@ private:
  *   2. 仍在情境內但已逾期 → 復歸為 inactive 並結束本次 tick（fix round 1 A5，
  *      現收斂進本函式）。逾期復歸這條分支會直接 return，本次 tick 不會走到 STEP 3；
  *      若 latch 此時剛好也有待消費事件，要等下一輪 tick 才會被消費——延遲一個
- *      loop 週期，可忽略（2026-08-23 fix round 3 G2：修正原本誤寫成「或剛復歸」
- *      暗示同一輪會接著消費的說法，時序上不成立）
+ *      loop 週期，可忽略。
  *   3. 仍在情境內、未逾期，且 latch 有待消費事件 → 消費並啟動
  *   4. 以上皆非 → 維持現狀，不修改 `state`（可能是「已啟動且仍在顯示視窗內」，
  *      也可能是「inactive 且無新事件」）
