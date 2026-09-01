@@ -256,6 +256,42 @@ brief 必須明講這個機制存在並要求「收到 systemMessage 指派就�
 `feedback_sdd_dispatch_must_mention_commit_gate.md`，Task 3 起的 dispatch prompt 應該
 把這段提醒加進去。
 
+### ⏳ 待辦（2026-09-01 使用者確認記錄、留給下次接手）：amend round 從未跑過完整 codex Tier 3
+
+使用者事後追問「Task 1 跟 Task 2 是否都完整跑過 commit-review」時查出的落差，記錄於此、
+本次不補跑，留給下次接手或下次 whole-branch review 時決定是否要補。
+
+**事實**（查 `~/.claude/state/pending-review/unlock-audit.log` 逐筆核對，非憑印象）：兩個
+task 全程只有各自的**第一次** commit 真正跑過完整 6 面向 codex Tier 3 review 並解鎖——
+`016c9e0`（Task 1）與 `a750a5c`（Task 2），各自 `expected=6 done=6 result=OK`。之後**所有**
+修 bug 的 amend（Task 1 的 `6e0c144`／`e5bb45d`／`1f924b4` 三輪；Task 2 implementer 自我審查
+的 `815c8d8`、以及 team-lead 裁決 fix round 1 的 `c980927`）都沒有再跑過這套機制的第二輪。
+
+**根因**（讀 `~/.claude/scripts/post-commit-review.ts` 原始碼確認）：
+```ts
+const skipMarker = /\[skip-review\]/i.test(command) || /--amend/.test(command);
+```
+commit 指令只要含 `--amend`，hook 就不寫新的 pending-review marker——仍會印 systemMessage
+建議跑 `/commit-review`，但沒有 PreToolUse/Stop 兩層機械閘門背書，純軟性建議，跟
+`feedback_sdd_dispatch_must_mention_commit_gate.md` 記錄的那個「implementer 沒理會
+systemMessage」是同一種訊息、同一種沒人接住的落差——差別是這次連 team-lead 自己（我）
+在裁決並派 fix round 時也沒注意到 `git commit --amend` 這個動作本身會讓新一輪的修正完全
+繞過機械閘門。
+
+**這些 amend 實際上靠什麼把關**（不是機械閘門，是兩條獨立的替代驗證路徑）：
+1. Controller（我）自行逐行讀 diff——兩個 task 的每一輪 amend 我都有做，細節見上方各輪
+   fix round 摘要。
+2. SDD 流程自己的 task-reviewer／re-reviewer subagent（`phase-g-task1-review`／
+   `phase-g-task1-rereview`／`phase-g-task2-review`）——對 amend 後的最終 diff 給出
+   Approved，是跟 codex Tier 3 平行、獨立存在的第二套機制，不是同一套機制的重跑。
+
+**使用者裁示**：不現在補跑，先記錄到本文件，下次接手時再決定要不要對 Task 1／Task 2 的
+最終 commit（`1f924b4`/`77c5bba` 與 `c980927`/`f9982b6`）補一次完整 6 面向 codex Tier 3
+（`bun ~/.claude/scripts/codex-review.ts --tier=3 --target=<commit>`）。**風險評估**：兩層
+替代驗證都已跑過且都是 Approved，殘餘風險偏低，但 codex Tier 3 過去確實抓到過 SDD
+reviewer 沒抓到的 CRITICAL（Task 1 的整數下溢／溢位、Task 2 的 main.cpp 呼叫點錯位皆是
+codex 先抓到，SDD reviewer 對前者只標 Minor）——若要徹底排除疑慮，仍以補跑一次最省事。
+
 ---
 
 ## 5. 殘餘風險（延續自 Phase H whole-branch review，本次擴大範圍時需留意）
