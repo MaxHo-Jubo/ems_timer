@@ -1174,7 +1174,8 @@ void updateDisplay() {
                 drawSettingEditor(settingsDisp, "通氣音量", getVentVolume(), SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX);
             }
         } else {
-            drawSettingsMenu(settingsDisp, settingsCursor, g_device_name_locked, settingsRestoreConfirm);
+            drawSettingsMenu(settingsDisp, settingsCursor, /* scroll_offset= */ 0,
+                             g_device_name_locked, settingsRestoreConfirm);
         }
     }
 

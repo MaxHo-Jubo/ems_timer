@@ -52,7 +52,8 @@ struct DisplaySnapshot {
     uint8_t  trainingHistoryOptionsCursor; ///< W7：Training 歷史操作選單游標
     uint8_t  trainingSaveCursor;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
     uint8_t  storageFailure;    ///< W9：儲存失敗（0=無 / 1=OHCA 失敗 / 2=Training 失敗）
-    uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
+    uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，
+                                 ///< SoT §19.1 完整 8 項；cursor 5~7 尚未接線 BTN_PRIMARY 分派，見 Task 3）
     uint8_t  batteryPercent;     ///< Phase H：電量 0~100；255 = 燃料計不在線（0 是合法讀數，不可共用）
     uint8_t  batteryChargeState; ///< Phase H：ems::ChargeState 列舉值（0=Unknown 1=Charging 2=Discharging 3=Idle）
     uint16_t batteryMillivolts;  ///< Phase H Task 13：電壓 mV。batteryPercent 只在整數百分比變動時才變，
@@ -114,7 +115,8 @@ struct DisplaySnapshotInputs {
     uint8_t  trainingHistoryOptionsCursor = 0;  ///< W7：Training 歷史操作選單游標
     uint8_t  trainingSaveCursor = 0;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
     uint8_t  storageFailure     = 0;  ///< W9：儲存失敗狀態（0=無 / 1=OHCA / 2=Training）
-    uint8_t  settingsCursor     = 0;  ///< Phase G：系統設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
+    uint8_t  settingsCursor     = 0;  ///< Phase G：系統設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，
+                                       ///< SoT §19.1 完整 8 項；cursor 5~7 尚未接線 BTN_PRIMARY 分派，見 Task 3）
 
     // STEP 02: 衍生值（呼叫端先算）
     uint32_t countdownSec    = 0;

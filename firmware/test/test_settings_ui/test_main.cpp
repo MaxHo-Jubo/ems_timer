@@ -63,7 +63,8 @@ static void test_g11_draw_settings_menu_items() {
 // ----- G1.2: 游標位置 -----
 
 /** G1.2: 游標高亮 → fillRect 繪製於預設游標位置（Y=150, cursor=3 為向後相容預設值，
- *  非選單最後一項——新增電池資訊〔cursor=4〕後最後一項是它，不是通氣音量） */
+ *  不是預設捲動視窗〔scroll_offset=0〕內最後一個可見項——8 項化後視窗內最後一個
+ *  可見項是電池資訊〔cursor=4〕，選單真正的最後一項則是裝置資訊〔cursor=7〕） */
 static void test_g12_cursor_position_default() {
     drawSettingsMenu(g_disp);
 
@@ -93,8 +94,8 @@ static void test_g13_brightness_in_range() {
 
 /** G1.4: restore_confirm = true → 畫出確認對話框文字 */
 static void test_g14_confirm_dialog_shown_when_flag_set() {
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* device_name_locked= */ false,
-                     /* restore_confirm= */ true);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ true);
 
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("是否恢復預設設定？"),
         "G1.4: restore_confirm=true 時應畫出恢復預設確認對話框");
@@ -102,8 +103,8 @@ static void test_g14_confirm_dialog_shown_when_flag_set() {
 
 /** G1.4b: restore_confirm = false → 不得畫出確認對話框（原實作無條件畫出，此為 regression） */
 static void test_g14_confirm_dialog_hidden_when_flag_clear() {
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* device_name_locked= */ false,
-                     /* restore_confirm= */ false);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("是否恢復預設設定？"),
         "G1.4b: restore_confirm=false 時不應出現確認對話框，否則該旗標在畫面上毫無意義");
@@ -201,8 +202,9 @@ static void test_g17_cursor_4_highlights_battery_info() {
     drawSettingsMenu(g_disp, SETTINGS_CURSOR_BATTERY_INFO);
 
     // 確認電池資訊列本身有被正確高亮（Y=190）；不證明其他列沒有被誤觸發高亮——電池資訊
-    // 是查表迴圈的最後一項，較早的列即使也誤呼叫 fill_rect，最後一次記錄的 Y 仍會是 190，
-    // 這個斷言照樣會過。要涵蓋互斥性得記錄全部 fill_rect 呼叫並斷言呼叫次數為 1。
+    // 是預設捲動視窗（scroll_offset=0）內最後一個可見項（8 項化後選單真正的最後一項是
+    // 裝置資訊 cursor=7，捲出視窗外），較早的列即使也誤呼叫 fill_rect，最後一次記錄的
+    // Y 仍會是 190，這個斷言照樣會過。要涵蓋互斥性得記錄全部 fill_rect 呼叫並斷言呼叫次數為 1。
     TEST_ASSERT_EQUAL_INT16_MESSAGE(190, mock_get_last_fill_y(),
         "G1.7: cursor=4 時高亮應為電池資訊 Y=190");
 
@@ -216,16 +218,21 @@ static void test_g17_cursor_4_highlights_battery_info() {
  * 只差 10px，兩段文字若同時畫出會疊在一起看不清楚；長按 BTN_PRIMARY 觸發此對話框
  * 不受目前游標位置限制，cursor=4 時一樣可能觸發，須驗證。
  *
- * Fix round 3 補一個範圍精確性斷言：STEP 04.01 的 guard 條件是
+ * Fix round 3 補一個範圍精確性斷言：原本 STEP 04.01 的 guard 條件是
  * `item.cursor == SETTINGS_CURSOR_BATTERY_INFO && restore_confirm`，如果有人
- * 簡化成只剩 `restore_confirm`（拿掉 cursor 判斷、對話框顯示時整批 4 個項目
- * 都跳過），上面兩個既有斷言依然會過（它們只查電池資訊跟對話框本身）。加上
- * 驗證另一個表格項目（通氣音量）在對話框顯示中仍正常繪製，證明 guard 只影響
- * 電池資訊這一列。
+ * 簡化成只剩 `restore_confirm`（拿掉 cursor 判斷、對話框顯示時整批項目都跳過），
+ * 上面兩個既有斷言依然會過（它們只查電池資訊跟對話框本身）。加上驗證另一個
+ * 表格項目（通氣音量）在對話框顯示中仍正常繪製，證明 guard 只影響電池資訊這一列。
+ *
+ * Impl-Phase G 捲動重構後，guard 條件已改為 STEP 03.01 的
+ * `restore_confirm && is_last_visible_slot`（判準從「是不是電池資訊項」改為
+ * 「是不是視窗最後一格」，兩者在 scroll_offset=0 時等價，見 ui_settings.cpp
+ * STEP 03.01 doc comment）；本測試固定用 scroll_offset=0 呼叫，驗證的仍是這個
+ * guard 的行為，斷言內容不需變動。
  */
 static void test_g17_battery_info_hidden_when_confirm_dialog_shown() {
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_BATTERY_INFO, /* device_name_locked= */ false,
-                     /* restore_confirm= */ true);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_BATTERY_INFO, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ true);
 
     TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("電池資訊"),
         "cursor=4 且確認對話框顯示中時，電池資訊列應跳過繪製避免與對話框重疊");
@@ -247,41 +254,132 @@ static void test_g18_draw_setting_editor() {
     TEST_ASSERT_EQUAL_STRING_MESSAGE("1 ~ 5", text, "G1.8: 最後一項應為範圍提示");
 }
 
-// ----- G1.9: 選單游標 UP/DOWN wrap-around 邊界（Fix round 1 新增） -----
+// ----- G1.9: 選單游標 UP/DOWN wrap-around 邊界（Impl-Phase G：8 項化後邊界移至 cursor=7）-----
 
 /**
- * G1.9: wrapSettingsCursor() 邊界行為——涵蓋新增電池資訊項（cursor=4）後新出現／
- * 改變的三個邊界轉換：DOWN 3→4、DOWN 4→0、UP 0→4。cursor 1/2 的 UP/DOWN 轉換
- * 不受新增第 5 項影響（沿途經過、沒有 wrap），本組測試不重複涵蓋。
+ * G1.9: wrapSettingsCursor() 邊界行為——8 項化後新邊界：DOWN 7→0、UP 0→7。
+ * cursor=3→4（通氣音量→電池資訊）不再是邊界（8 項化前是，因為電池資訊曾是
+ * 最後一項），改成一般序列測試，涵蓋新增的 4 個項目也接進同一條 wrap 鏈。
  *
- * input_handler.cpp 屬於 src/，native build 用 `build_src_filter = -<*>` 整個排除
- * （platformio.ini `[env:native]`），UP/DOWN 按鍵分派本身無法被 native test 直接呼叫；
- * wrapSettingsCursor() 是把該處內嵌算式原地抽出的純函式（定義於 ui_settings.h），
- * input_handler.cpp 的 BTN_UP/BTN_DOWN 分支呼叫的就是這個函式本身，不是另外複製一份
- * 公式。但本組測試只涵蓋 wrapSettingsCursor() 本身的邊界數學，不涵蓋 input_handler.cpp
- * 的按鍵分派接線——delta 傳反、少呼叫這個 helper、接錯按鍵分支這幾類接線錯誤，本組測試
- * 都測不出來；該檔不進 native build，接線層 regression 靠 review/grep，見 handover §8
- * 殘餘風險 ⑥。
+ * 同既有註記：input_handler.cpp 屬 src/，native build 排除，此組測試只涵蓋
+ * wrapSettingsCursor() 本身的邊界數學，不涵蓋按鍵分派接線（見 handover §8 殘餘風險 ⑥）。
  */
-static void test_g19_wrap_down_from_vent_vol_to_battery_info() {
-    // DOWN：cursor=3（通氣音量，5 項化前的最後一項）→ 4（電池資訊，新的最後一項）
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_BATTERY_INFO,
-        wrapSettingsCursor(SETTINGS_CURSOR_VENT_VOL, SETTINGS_CURSOR_DELTA_DOWN),
-        "G1.9: DOWN cursor=3 應進到 4（電池資訊）");
+static void test_g19_sequential_no_wrap_through_new_items() {
+    // STEP 01: 初始游標設為通氣音量(3)，序列往下逐一驗證新增的 4 個項目不誤 wrap
+    uint8_t c = SETTINGS_CURSOR_VENT_VOL;
+
+    // STEP 02: 通氣音量(3) → 電池資訊(4)
+    c = wrapSettingsCursor(c, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_BATTERY_INFO, c, "G1.9: 3→4");
+
+    // STEP 03: 電池資訊(4) → App連線設定(5)
+    c = wrapSettingsCursor(c, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_APP_CONN, c, "G1.9: 4→5");
+
+    // STEP 04: App連線設定(5) → Type-C連線(6)
+    c = wrapSettingsCursor(c, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_TYPEC_CONN, c, "G1.9: 5→6");
+
+    // STEP 05: Type-C連線(6) → 裝置資訊(7)
+    c = wrapSettingsCursor(c, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_DEVICE_INFO, c, "G1.9: 6→7");
 }
 
-/** G1.9: DOWN cursor=4（電池資訊，新的最後一項）→ 0（裝置名稱，wrap 回第一項） */
-static void test_g19_wrap_down_from_battery_info_to_device_name() {
+/** G1.9: DOWN cursor=7（裝置資訊，新的最後一項）→ 0（裝置名稱，wrap 回第一項） */
+static void test_g19_wrap_down_from_device_info_to_device_name() {
+    // STEP 01: DOWN 從最後一項應 wrap 回第一項
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_DEVICE_NAME,
-        wrapSettingsCursor(SETTINGS_CURSOR_BATTERY_INFO, SETTINGS_CURSOR_DELTA_DOWN),
-        "G1.9: DOWN cursor=4 應 wrap 回 0（裝置名稱）");
+        wrapSettingsCursor(SETTINGS_CURSOR_DEVICE_INFO, SETTINGS_CURSOR_DELTA_DOWN),
+        "G1.9: DOWN cursor=7 應 wrap 回 0（裝置名稱）");
 }
 
-/** G1.9: UP cursor=0（裝置名稱）→ 4（電池資訊，wrap 到新的最後一項，不是舊的 3） */
-static void test_g19_wrap_up_from_device_name_to_battery_info() {
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_BATTERY_INFO,
+/** G1.9: UP cursor=0（裝置名稱）→ 7（裝置資訊，wrap 到新的最後一項） */
+static void test_g19_wrap_up_from_device_name_to_device_info() {
+    // STEP 01: UP 從第一項應 wrap 到新的最後一項（8 項化後是 cursor=7，不是舊的 4）
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_DEVICE_INFO,
         wrapSettingsCursor(SETTINGS_CURSOR_DEVICE_NAME, SETTINGS_CURSOR_DELTA_UP),
-        "G1.9: UP cursor=0 應 wrap 到 4（電池資訊）——項目數變成 5 之後的新邊界");
+        "G1.9: UP cursor=0 應 wrap 到 7（裝置資訊）——項目數變成 8 之後的新邊界");
+}
+
+// ----- G-Phase-G-Scroll: 8 項選單捲動渲染 -----
+
+/** 捲動視窗預設 0 時，只畫前 5 項（裝置名稱~電池資訊），不畫捲出視窗外的 3 項 */
+static void test_scroll_offset_zero_shows_first_five_items() {
+    // STEP 01: scroll_offset=0，游標停在裝置名稱，繪製選單
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* scroll_offset= */ 0);
+
+    // STEP 02: 視窗內第 5 項（電池資訊）應被畫出
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("電池資訊"),
+        "視窗內第 5 項（電池資訊）應被畫出");
+
+    // STEP 03: 視窗外的項目（第 6、8 項）不應被畫出
+    TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("App連線設定"),
+        "視窗外項目（App連線設定，第 6 項）不應被畫出");
+    TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("裝置資訊"),
+        "視窗外項目（裝置資訊，第 8 項）不應被畫出");
+}
+
+/**
+ * 捲動視窗 offset=3 時，畫第 4~8 項（通氣音量~裝置資訊），裝置名稱捲出視窗不畫。
+ *
+ * 除了「有沒有畫出來」，同時驗證視窗內 5 項各自的 Y 座標——通氣音量原本（offset=0
+ * 時）查表固定畫在 Y=150，捲動後它落在視窗第 1 格改畫在 Y=30，證明 Y 真的是依
+ * 「目前在視窗內第幾格」動態算出，不是查表存死值；並驗證游標高亮 fill_rect 的
+ * Y 與文字 Y 用同一份捲動位置計算，不會分裂成兩套算式（fix round 1 這裡曾只查
+ * 文字有無畫出，Y 座標算錯或高亮位置對不上文字都測不出來）。
+ */
+static void test_scroll_offset_three_shows_last_five_items() {
+    // STEP 01: scroll_offset=3，游標停在裝置資訊（視窗內第 5 格，會被高亮）
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_INFO, /* scroll_offset= */ 3);
+
+    // STEP 02: 捲出視窗的裝置名稱不應被畫出
+    TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("裝置名稱"),
+        "捲出視窗的裝置名稱不應被畫出");
+
+    // STEP 03: 視窗內 5 項應依序畫在 Y=30/70/110/150/190
+    const MockTextCall* vent = mock_text_log_find("通氣音量");
+    TEST_ASSERT_NOT_NULL_MESSAGE(vent, "視窗內第 1 項（通氣音量）應被畫出");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(30, vent->y,
+        "通氣音量在 offset=3 時應落於視窗第 1 格 Y=30（非其 offset=0 時的固定位置 Y=150）");
+
+    const MockTextCall* battery = mock_text_log_find("電池資訊");
+    TEST_ASSERT_NOT_NULL_MESSAGE(battery, "視窗內第 2 項（電池資訊）應被畫出");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(70, battery->y, "電池資訊在 offset=3 時應落於視窗第 2 格 Y=70");
+
+    const MockTextCall* app_conn = mock_text_log_find("App連線設定");
+    TEST_ASSERT_NOT_NULL_MESSAGE(app_conn, "視窗內第 3 項（App連線設定）應被畫出");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(110, app_conn->y, "App連線設定在 offset=3 時應落於視窗第 3 格 Y=110");
+
+    const MockTextCall* typec = mock_text_log_find("Type-C連線");
+    TEST_ASSERT_NOT_NULL_MESSAGE(typec, "視窗內第 4 項（Type-C連線）應被畫出");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(150, typec->y, "Type-C連線在 offset=3 時應落於視窗第 4 格 Y=150");
+
+    const MockTextCall* device_info = mock_text_log_find("裝置資訊");
+    TEST_ASSERT_NOT_NULL_MESSAGE(device_info, "視窗內最後一項（裝置資訊）應被畫出");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(190, device_info->y, "裝置資訊在 offset=3 時應落於視窗第 5 格 Y=190");
+
+    // STEP 04: cursor=7（裝置資訊）為視窗最後一格，游標高亮 fill_rect 應落在同一個 Y=190
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(190, mock_get_last_fill_y(),
+        "cursor=7（裝置資訊）的游標高亮在 offset=3 時應落於視窗第 5 格 Y=190，與文字 Y 一致");
+}
+
+/** 恢復預設確認對話框顯示中時，視窗最後一格讓給對話框——不論該格當下是哪個項目 */
+static void test_restore_confirm_hides_last_visible_slot_regardless_of_item() {
+    // STEP 01: scroll_offset=3 時視窗最後一格（第 5 格，shown=4）是裝置資訊（cursor 7）
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_TYPEC_CONN, /* scroll_offset= */ 3,
+                     /* device_name_locked= */ false, /* restore_confirm= */ true);
+
+    // STEP 02: 視窗最後一格（裝置資訊）顯示中應跳過繪製，不論它是哪一項
+    TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("裝置資訊"),
+        "視窗最後一格顯示中的項目在對話框顯示時應跳過繪製，不論它是哪一項");
+
+    // STEP 03: 視窗內非最後一格的項目（Type-C連線）仍應正常繪製
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("Type-C連線"),
+        "視窗內非最後一格的項目在對話框顯示時仍應正常繪製");
+
+    // STEP 04: 對話框本身應正常顯示
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("是否恢復預設設定？"),
+        "對話框本身應正常顯示");
 }
 
 // ----- G2.3: 案件中裝置名稱置灰 + 名稱顯示 -----
@@ -295,7 +393,8 @@ static void test_g19_wrap_up_from_device_name_to_battery_info() {
 static void test_g23_locked_renders_dim_and_hides_name() {
     mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
 
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* device_name_locked= */ true);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ true);
 
     const MockTextCall* label = mock_text_log_find("裝置名稱");
     TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3: 裝置名稱標籤應被繪製");
@@ -314,7 +413,8 @@ static void test_g23_locked_renders_dim_and_hides_name() {
 static void test_g23_unlocked_renders_white_and_shows_name() {
     mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
 
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* device_name_locked= */ false);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false);
 
     const MockTextCall* label = mock_text_log_find("裝置名稱");
     TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3b: 裝置名稱標籤應被繪製");
@@ -343,9 +443,13 @@ void run_all_tests() {
     RUN_TEST(test_g17_battery_info_hidden_when_confirm_dialog_shown);
     RUN_TEST(test_g18_draw_setting_editor);
     // G1.9: 選單游標 UP/DOWN wrap-around 邊界
-    RUN_TEST(test_g19_wrap_down_from_vent_vol_to_battery_info);
-    RUN_TEST(test_g19_wrap_down_from_battery_info_to_device_name);
-    RUN_TEST(test_g19_wrap_up_from_device_name_to_battery_info);
+    RUN_TEST(test_g19_sequential_no_wrap_through_new_items);
+    RUN_TEST(test_g19_wrap_down_from_device_info_to_device_name);
+    RUN_TEST(test_g19_wrap_up_from_device_name_to_device_info);
+    // G-Phase-G-Scroll: 8 項選單捲動渲染
+    RUN_TEST(test_scroll_offset_zero_shows_first_five_items);
+    RUN_TEST(test_scroll_offset_three_shows_last_five_items);
+    RUN_TEST(test_restore_confirm_hides_last_visible_slot_regardless_of_item);
     // G2.3: 案件中裝置名稱置灰 + 名稱顯示
     RUN_TEST(test_g23_locked_renders_dim_and_hides_name);
     RUN_TEST(test_g23_unlocked_renders_white_and_shows_name);

@@ -3,7 +3,7 @@
 // 對應規格：docs/phase-g-system-settings-plan.md §2.1.1 ~ §2.1.2
 //
 // 設計：
-//   - drawSettingsMenu(Display&)：繪製設定主選單（5 項目）
+//   - drawSettingsMenu(Display&)：繪製設定主選單（8 項目，捲動顯示一頁 5 項）
 //   - drawSettingEditor(Display&, ...)：繪製設定編輯器
 //   - 使用 Display 抽象層（display_abstraction.h），native test 可 mock
 
@@ -15,7 +15,7 @@
 // 設定選單項目索引。定義於此（而非 .cpp）供 input_handler / main.cpp 共用，
 // 避免游標語意退化成散落各處的裸數字（故意不在文字裡列一份數值範圍，這裡只是
 // 常數集中定義處，不是新增項目唯一要改的地方——加一項通常還要動：
-// kSettingsAdjustableItems[]／Y 座標常數〔ui_settings.cpp〕；下方的
+// kSettingsMenuItems[]〔ui_settings.cpp〕；下方的
 // SETTINGS_MENU_COUNT〔本檔，wrap-around 用，漏改會被 static_assert 擋下來〕；
 // 可調值項目還要動 BTN_PRIMARY 的判斷範圍〔input_handler.cpp〕）。
 #define SETTINGS_CURSOR_DEVICE_NAME  0
@@ -26,11 +26,22 @@
 // （input_handler.cpp）進入 drawBatteryInfo() 子畫面，按返回鍵離開，
 // 見 settingsBatteryInfoMode（Task 13 接線，Task 12 只新增選單顯示與 UP/DOWN 捲動）。
 #define SETTINGS_CURSOR_BATTERY_INFO 4
+// Impl-Phase G：App 連線設定／Type-C 連線（SoT §19.1 選單順序要求的 placeholder，
+// 未來規劃選到後顯示「尚未實作」〔drawPlaceholder()〕，接線在 input_handler.cpp
+// BTN_PRIMARY 分派，見 Task 3；本 task 只佔選單位置，主鍵目前對這兩項無反應）
+#define SETTINGS_CURSOR_APP_CONN     5
+#define SETTINGS_CURSOR_TYPEC_CONN   6
+// Impl-Phase G：裝置資訊（唯讀導覽項，比照電池資訊的既有 pattern）
+#define SETTINGS_CURSOR_DEVICE_INFO  7
 
 // 設定選單項目總數。UP/DOWN 捲動 wrap-around 用（見 wrapSettingsCursor()）。
 // 原本只在 input_handler.cpp 定義，搬到這裡與其他游標常數放一起，native test
 // 才能拿到跟正式路徑同一份常數值，不必在測試裡另外複製一份數字。
-#define SETTINGS_MENU_COUNT 5
+#define SETTINGS_MENU_COUNT 8
+
+// 選單一次可見列數（超過此數量需捲動）。與既有 HISTORY_VISIBLE_ROWS
+// （app_globals.h）同值，維持畫面資訊密度一致；8 項選單一頁顯示其中 5 項。
+#define SETTINGS_VISIBLE_ROWS 5
 
 // UP/DOWN 傳給 wrapSettingsCursor() 的方向增量。具名常數取代呼叫端裸寫 -1/+1，
 // 語意（往上一項 vs 往下一項）不必靠背下數字符號才看得懂。
@@ -70,16 +81,20 @@ inline uint8_t wrapSettingsCursor(uint8_t cursor, int8_t delta) {
 // 想解決游標高亮框（80×20）蓋不住整個渲染文字（約 192×48）造成的局部白底白字。
 // 但那個修法讓文字其餘 ~83% 面積變成黑字疊黑螢幕背景，比原本更看不清楚，
 // fix round 3 已撤銷並移除這個常數。正確修法是仿 ui_screens.cpp drawMainMenu()
-// 改成整列高亮，超出本 task 範圍，見 ui_settings.cpp 的 kSettingsAdjustableItems
+// 改成整列高亮，超出本 task 範圍，見 ui_settings.cpp 的 kSettingsMenuItems
 // doc comment 與 handover §3-A8。
 
 /**
   * 設定主選單畫面
-  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量 / 電池資訊
+  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量 / 電池資訊 / App連線設定 /
+  *       Type-C連線 / 裝置資訊（Impl-Phase G 擴充至 SoT §19.1 完整 8 項）
   *
   * @param disp   顯示抽象層（mock 或真實顯示）
-  * @param cursor 游標索引（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊），
-  *               預設 3 向後相容
+  * @param cursor 游標索引（SETTINGS_CURSOR_*），預設 3 向後相容
+  * @param scroll_offset 捲動視窗起點（顯示清單第幾項開始）。未來規劃由呼叫端以
+  *               clampScrollOffset() 算好再傳入（見 ui_scroll.h，接線在 Task 3）；
+  *               在此之前（含目前 main.cpp 呼叫點）一律傳字面值 0，選單尚不會捲動。
+  *               預設 0（不捲動）
   * @param device_name_locked 裝置名稱是否鎖定（true = 置灰且不顯示當前名稱）。
   *               由呼叫端以 storage_has_unsynced_case() 算好再傳入，對齊
   *               DisplaySnapshot「衍生值呼叫端先算，lib 不依賴 runtime 狀態」的原則。
@@ -88,6 +103,7 @@ inline uint8_t wrapSettingsCursor(uint8_t cursor, int8_t delta) {
   */
  void drawSettingsMenu(Display& disp,
                        uint8_t cursor = SETTINGS_CURSOR_VENT_VOL,
+                       uint8_t scroll_offset = 0,
                        bool device_name_locked = false,
                        bool restore_confirm = false);
 

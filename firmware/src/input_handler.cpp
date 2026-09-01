@@ -15,7 +15,9 @@
 // 這裡只在 BTN_UP/BTN_DOWN 分支呼叫它，不在此另外複製一份算式或常數。
 
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp）
-extern uint8_t settingsCursor;        // 設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊）
+extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，Impl-Phase G
+                                       //   擴充至 SoT §19.1 完整 8 項；本檔 BTN_PRIMARY 分派
+                                       //   目前僅處理到 cursor 4〔電池資訊〕，5~7 尚未接線，見 Task 3）
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
