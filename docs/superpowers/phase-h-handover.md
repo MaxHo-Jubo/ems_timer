@@ -1,7 +1,7 @@
 # Impl-Phase H 電量顯示 — 交接文件
 
-- **最後更新**：2026-08-30 22:10（**Task 11 收工，pending-review 閘門已解鎖**）
-- **狀態**：W1 完成（Task 1–6）。W2 完成（Task 7–9）。W3 全部完成——Task 10（見 §3-A4）、**Task 11（§20.3 低電量開案確認框，見 §3-A6）**皆已收工。Task 11 range 從計畫原定的 OHCA-only 擴大到 OHCA/VENT/Training 三入口，經 5 輪 implementer fix + 最終 controller 直接補的 3 處 STEP 註解，共 6 次 codex Tier 3 六面向 confirmatory review，2026-08-30 22:xx 最後一次 6/6 通過並解鎖閘門（`clear-pending-review.ts --aspects-done=6`，commit `e7ff60d`）。native test 615/616（唯一 ERRORED 是既有的 `test_storage_hw`，與 Phase H 無關），韌體編譯 SUCCESS，Flash 71.5%。**下一個 task 是 Task 12**（§3-A7 已完成前置調查，可直接 dispatch）。所有上機驗收累積待硬體；Phase H 計畫為 13 個 task（Task 14 已移出併入 Impl-Phase G，見 §3-A7）
+- **最後更新**：2026-09-01（**whole-branch review 完成並收尾**，見 §3-A10；下一步是 `finishing-a-development-branch`，尚未執行）
+- **狀態**：**Phase H 全部 13 個 task 完成**（Task 14 已移出併入 Impl-Phase G，見 §3-A7）。W1 完成（Task 1–6）。W2 完成（Task 7–9）。W3 全部完成（Task 10 見 §3-A4、Task 11 見 §3-A6）。W4 完成——Task 12（系統設定選單新增「電池資訊」第 5 項，4 輪 fix，最終 `e6bf46d`，見 §3-A8）與 Task 13（電池資訊畫面本體，1 輪 fix，最終 `5cffdae`，見 §3-A9）皆已收工。**Whole-branch review 已完成**（`7fdf1ee..5cffdae` 全範圍，見 §3-A10）：無新 Critical/Important，2 個 Minor 已修（commit `e45d855`）。native test 623/624（唯一 ERRORED 是既有的 `test_storage_hw`，與 Phase H 無關），韌體編譯 SUCCESS，Flash 72.4%。**尚未執行**：`superpowers:finishing-a-development-branch`——branch 仍未推送。所有上機驗收累積待硬體（§3-B，11 條，最大殘餘風險）。
 - **branch**：`feat/phase-g-system-settings`（未推送）
 
 > 本文件是單一時間線，取代先前三層疊加的版本。裡面所有數字與 commit 都在 2026-08-23 收工時實測過。
@@ -27,7 +27,7 @@ MAX17043 燃料計硬體驗收通過，主韌體每 10 秒輪詢一次寫進四�
 | W1 讀取層 | ✅ Task 1–6 review clean；**上機驗收剩兩項待硬體** |
 | W2 顯示層 | ✅ 完成：Task 7（`94bc3fb`）、Task 8（`3333235`）、Task 9（`5634b52`）review clean |
 | W3 低電量行為 | ✅ 完成：Task 10（`dc4aaf1`，6 輪 fix，見 §3-A4）、Task 11（`58efa0e` + 3 處 STEP 註解補丁，5 輪 fix，見 §3-A6） |
-| W4 電池資訊畫面 | ⬜ Task 12–13 未開工，前置調查已完成可直接 dispatch（原 Task 14 已移出併入 Impl-Phase G，見 §3-A7） |
+| W4 電池資訊畫面 | ✅ 完成：Task 12（4 輪 fix，最終 `e6bf46d`，見 §3-A8）、Task 13（1 輪 fix，最終 `5cffdae`，見 §3-A9）（原 Task 14 已移出併入 Impl-Phase G，見 §3-A7） |
 
 **實測數字**（2026-08-24 Task 10 收工時）：全套 **599 cases / 598 通過**（Task 10 淨增 20 條）。唯一未過的 `test_storage_hw` 是**既有**編譯錯誤（已用 worktree checkout 到本工作起點驗證過，與 Phase H 無關）。ESP32-S3 韌體編譯 SUCCESS，**Flash 71.4%**（字型兩次重生共 +21.8KB）。
 
@@ -44,12 +44,12 @@ docs/superpowers/plans/2026-08-22-phase-h-battery-display.md
 
 # 2. 確認目前狀態
 cd firmware && pio test -e native -f test_fuel_gauge_logic   # 應為 69/69
-cd firmware && pio test -e native                            # 應為 579/578，唯一 ERRORED = test_storage_hw
+cd firmware && pio test -e native                            # 應為 621/620，唯一 ERRORED = test_storage_hw
 cd firmware && pio run -e esp32-s3-devkitc-1                 # 應為 SUCCESS
 git log --oneline 7fdf1ee..HEAD                              # Phase H 的全部 commit
 ```
 
-**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 1–11 全部 complete，下一個是 Task 12**——§3-A7 已完成前置調查（游標常數、選單分派現況都與計畫假設一致），可直接 dispatch，不需要再查證。
+**續跑方式**：用 `superpowers:subagent-driven-development`。它會偵測 `.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md` 這個 ledger 並從第一個沒有 `complete` 記號的 task 接續。**Task 1–12 全部 complete，下一個是 Task 13**（電池資訊畫面本體）——ledger 內已有 Task 12 完整四輪 findings/ruling 可供參考，不需要重新查證。
 
 > ⚠️ `.superpowers/` 是 git-ignored 的本機工作區，換機器就沒有了。本文件是它的持久化摘要；ledger 內的逐輪細節（每個 review 面向的原始 findings、48 條 ruling 的完整上下文）只在本機。
 
@@ -329,6 +329,222 @@ SDD re-review 獨立發現跟 codex round 4 同源的按鍵計時器問題，分
 
 Phase G 目前沒有獨立的 spec/plan 檔，只有 `pm-dev-spec.md` 的高層描述 + git commit 記錄。日後要 dispatch 這塊時，需要先幫 Phase G 補一份 spec/plan（比照 Phase H 的做法），本 Task 14 的原始 Step 1-5（已保留在計畫檔的 git 歷史裡）可以當作「電池／充電狀態接線」那部分的起點參考，但名稱／型號／序號／韌體四個新欄位需要另外設計（序號、型號等的資料來源目前也未定案）。
 
+### 3-A8. Task 12 完成收工（2026-08-31）——系統設定選單新增「電池資訊」第 5 項
+
+**現況**：Task 12 程式碼與測試已完成 **4 輪 fix**，SDD scoped re-review 與本 repo 的
+codex Tier 3 六面向 gate 皆已通過，**正式收工**。commit 演進：`edfaead`（初版）→
+`6177bb9`（fix round 1，amend）→ `b3ca654`（fix round 2，amend）→ `a2d01f2`（fix
+round 3，amend）→ **`e6bf46d`（fix round 4，amend，目前 HEAD）**。30/30 focused
+test、620/621 全套（唯一 ERRORED 仍是既有的 `test_storage_hw`，與 Phase H 無關），
+ESP32-S3 編譯 SUCCESS，Flash 71.7%（全程未變）。
+
+**收尾驗證流程**（回應上一版 handover 留的三步驟交接）：
+
+1. ✅ 對 `a2d01f2` 跑 fix round 3 的 SDD scoped re-review（`b3ca654..a2d01f2`）——
+   6 項 findings 全 ADDRESSED，無新破壞。
+2. ✅ 對 `a2d01f2` 重跑一次 codex Tier 3（額度已於 2026-08-31 03:00 重置，`engine=codex`
+   成功跑滿 6/6 面向）——這是本 task 第一次對「真正最終狀態」跑通完整 codex Tier 3
+   （round 1/2 的 codex Tier 3 跑在中間 amend hash `6177bb9`/`b3ca654` 上，round 3
+   因額度用盡改走 agent 引擎替代）。結果 1 CRITICAL + 13 IMPORTANT + 2 MINOR，逐條
+   比對前三輪 findings 後：CRITICAL 與 8 條 IMPORTANT 是已裁決 park 的舊案第 4 次
+   重現（詳見下方 fix round 4 摘要），1 條 IMPORTANT 是新發現但裁決 park（real but
+   not load-bearing），真正該修的 5 條進了 fix round 4。
+3. ✅ fix round 4（依 SDD skill「round ≥4 換新 implementer + 更強模型」規則，改派
+   opus）修完 5 條小缺口，scoped re-review（`a2d01f2..e6bf46d`）5 項全 ADDRESSED、
+   無新破壞、無誤觸 parked 項目。
+4. ✅ 確認 repo 目前無 active pending-review marker（機械閘門本來就沒鎖，
+   `clear-pending-review.ts` 無需執行）。
+
+**接續 dispatch Task 13**（電池資訊畫面本體）——`superpowers:subagent-driven-development`
+會從 SDD ledger 自動接續（Task 12 已寫 `complete` 記號）。
+
+**四輪 fix 摘要**（完整 ruling 見本機 SDD ledger
+`.superpowers/sdd/2026-08-22-phase-h-battery-display/progress.md`，本節只留跨機器
+需要的結論）：
+
+- **Fix round 1**（回應 SDD task reviewer + 第一次 codex Tier 3）：修正 8 項，包含
+  一個**真正的 bug**——電池資訊列（Y=190）與恢復預設確認對話框文字（Y=180）只差
+  10px 會視覺重疊，這是 Task 12 新引入的問題（改用 STEP 04.01 內的 `continue` guard
+  在確認框顯示時跳過該列繪製，不搬動座標）；以及一次**後來被 round 3 推翻的誤判**
+  ——當時把電池資訊併入既有 `kSettingsAdjustableItems[]` 查表迴圈時，順手把選取態
+  文字色從白改黑，意圖修「選取時白底白字看不見」，controller 核准時沒核對實際渲染
+  幾何（見下方 fix round 3）。
+- **Fix round 2**（回應第二次 codex Tier 3，對象是 round 1 自己新增的程式碼）：修正
+  1 個 CRITICAL（`wrapSettingsCursor()` 的 `count` 參數由呼叫端傳入且無防護，改成
+  內部直接讀 `SETTINGS_MENU_COUNT`，消除呼叫端傳錯值的風險面）+ 11 項 STEP/註解/
+  Magic Number 規則補完。
+- **Fix round 3**（改跑 agent 引擎驗證，`code-reviewer` 面向抓到）：**推翻 round 1
+  的顏色修法**。經幾何計算證實：反白框只有 `SETTINGS_CURSOR_WIDTH`×`HEIGHT`＝
+  80×20px，而 `ems_zh_24` 是 24px vlw 字型、`SETTINGS_FONT_SIZE=2` 意味實際渲染的
+  4 字標籤約 192×48px——反白框只蓋到約 17% 面積。螢幕底色是黑（`main.cpp:483,490`
+  `fillScreen(0x0000)`）。round 1 之前：選取時白字，83% 面積白字黑底可見、17% 白字
+  白底看不見。round 1 之後：選取時全部改黑字，83% 面積變黑字黑底看不見，比原本
+  更糟——**是對已驗收 Phase G 範圍（螢幕亮度／系統音量／通氣音量）的視覺倒退**，
+  不是修好。implementer 在 fix round 3 自行核對過 `fillScreen`／`setTextSize` 兩個
+  前提屬實才動手，沒有照單全收 findings 檔。修法：撤銷回無條件白字（回到 round 1
+  之前的 83% 可見狀態，不完美但不是倒退），移除 `SETTINGS_COLOR_HIGHLIGHT_TEXT`
+  常數，拿掉兩個因此失去意義的顏色斷言，doc comment 改寫成誠實描述現況；另加
+  `static_assert(SETTINGS_TABLE_ITEM_COUNT + 1 == SETTINGS_MENU_COUNT, ...)`
+  （抄自 `input_handler.cpp:1501` 既有同型寫法，round 4 把裸數字 `1` 再抽成具名常數
+  `SETTINGS_NON_TABLE_ITEM_COUNT`，見下方）鎖住兩個手動維護常數的不變量、
+  訂正一處寫錯的 STEP 引用、補 checklist 缺項、補一個 guard 範圍精確性測試。
+
+- **Fix round 4**（2026-08-31，回應 codex Tier 3 對真正最終狀態 `a2d01f2` 的首次
+  真實重跑）：這是本 task 第一次對 amend 後的最終 commit 內容跑通完整 codex Tier 3
+  （round 1/2 的 codex Tier 3 都跑在中間 amend hash 上，round 3 因額度用盡改走 agent
+  引擎）。結果 1 CRITICAL + 13 IMPORTANT + 2 MINOR，逐條比對前三輪 findings 檔後：
+  CRITICAL（cursor 4「電池資訊」可選取但 `BTN_PRIMARY` 無分支、按下無反應）是第 4 次
+  重申既有裁決——round 1 就已明文 park 為刻意的 Task 12/13 範圍切分；8 條 IMPORTANT
+  是已 park 過的舊案重現（測試缺 STEP/@return——grep 驗證全檔 18 個測試函式 0 個有
+  STEP，非本 task 特有的不一致；Y=190 裸數字——round 2 已 park 同款；
+  `run_all_tests()` 缺 STEP 編號——grep 驗證整個函式 0 STEP，同一慣例缺口；
+  `input_handler.cpp` 整合測試缺口——即本節下方殘餘風險第 3 條；VLW glyph metadata
+  測試缺口——round 2 已 park 同款；`settings_menu_item_t` 缺 action-kind 欄位——
+  round 1/2/3 已 park 同款）；1 條 IMPORTANT 是新發現但裁決 park（`wrapSettingsCursor()`
+  的 `delta` 參數是裸 `int8_t`，型別沒鎖住只能 ±1 的不變量，但兩個生產呼叫點目前都
+  只傳具名常數、無外部輸入能觸發，改成 `enum class` 會動到公開函式簽章與全部呼叫點，
+  跟已 park 的 action-kind 欄位同量級，併入下方殘餘風險第 4 條，不修）。真正新增且
+  值得修的 5 條進了 fix round 4：`ui_settings.cpp:109` 一個檔案層級 `#define` 的
+  註解誤用 STEP 標籤格式（STEP 只能標在函式內）改寫成一般散文註解；上述
+  `static_assert` 的裸數字 `1` 抽成具名常數 `SETTINGS_NON_TABLE_ITEM_COUNT`；
+  `ui_settings.cpp:94` 的 doc comment 原本統稱「四項高亮問題皆非本 task 新增」，但
+  電池資訊列確實是本次新增，改寫成區分既有三項與新增列；`test_main.cpp` 兩處測試
+  comment 誇大宣稱（Y=190 斷言證明「無其他列被誤觸發高亮」其實不成立、
+  `wrapSettingsCursor()` 單元測試宣稱「等同測到生產路徑」但 `input_handler.cpp`
+  不進 native build）改寫為誠實描述涵蓋範圍。純 comment/常數層級改動，無邏輯變更，
+  static_assert 語意變更做過 sabotage 驗證（暫改常數值→編譯期報錯→改回→diff 位元組
+  相同）。30/30 focused、620/621 全套、ESP32 SUCCESS Flash 71.7% 皆與 round 3 後
+  一致。scoped re-review（`a2d01f2..e6bf46d`）確認 5 項全 ADDRESSED、無新破壞、
+  且未誤觸任何 PARKED/MINOR 項目。commit amend `a2d01f2` → `e6bf46d`。
+
+**本輪新增的殘餘風險**（併入 §8 清單，此處先記錄）：
+
+- **選單反白框（80×20px）遠小於實際渲染文字（約 192×48px，只蓋 ~17%），選取時
+  一律有小塊區域文字與背景同色看不清楚**——這是**全部 5 個選單項目共通**的既有
+  問題（round 3 撤銷顏色修法後，電池資訊/亮度/系統音量/通氣音量/裝置名稱都是同一
+  款「白字白底」現象，不再是「裝置名稱獨有」），根因是 `ui_settings.cpp` 用小方框
+  局部反白 + `setCursor`+`print`（baseline-relative，見 `ui_screens.cpp:36-38` 自己
+  的既有註解），而非本專案已驗證過的正確做法：`ui_screens.cpp` 的 `drawMainMenu()`
+  （約 29-49 行）用**整列** `fillRect(0, y, SCREEN_W, ROW_H, COLOR_TEXT_PRIMARY)` +
+  `setTextDatum(top_left)` + `drawString`。正確修法是把 `ui_settings.cpp` 的整個
+  反白機制改成比照 `drawMainMenu()`，但牽動 `_settings_text_fn`／
+  `_settings_fill_rect_fn`（`main.cpp`）共用層與全部 5 個項目的繪製，超出「加一個
+  選單項目」範圍，park 為獨立未來 task。**上機驗收清單應新增「選取狀態下選單文字
+  是否可讀」這個明確檢查項**（不只是「文字有沒有出現」）——round 1 的顏色 bug 正是
+  native mock 測不出視覺可讀性（只能斷言顏色數值，測不出相對背景是否看得見）的
+  直接案例，見 §6 `verify-the-observer`。
+- **`settings_menu_item_t` 沒有欄位區分「可調值」vs「導覽」語意**——這個行為只能靠
+  `input_handler.cpp` 另外用 cursor 數值範圍判斷，選單資料與按鍵分派因此是兩份真相
+  來源。codex 兩輪都提出改用 `enum class` + discriminated kind 的建議，因牽動全
+  firmware 所有 `SETTINGS_CURSOR_*` 使用點與 snapshot 序列化邊界，判定為 Phase G
+  全域型別設計決策，非「加一個選單項」範圍，維持 park。
+- **測試對「電池資訊」字串的字型字集完整性只驗證到 mock display 收到字串，沒有解析
+  實際 VLW glyph metadata**——這是這整個測試檔案（含所有既有測試）共通的驗證方法，
+  不是 Task 12 特有的缺口；本專案目前用的替代驗證法是手動解析已 commit 的 git blob
+  （見下方字型驗證段落），建自動化 VLW 解析測試是獨立的測試基礎建設投資，超出
+  「加一個選單項」的任務規模，park 為未來候選項目。
+- **`wrapSettingsCursor()` 的 `delta` 參數是裸 `int8_t`，型別沒鎖住「只能 ±1」這個
+  不變量**（round 4 codex `types` 面向新發現）——誤傳超出 ±1 的合法 `int8_t`（如
+  -128）會讓運算產生負餘數，下一行 `uint8_t` 強制轉型會把它變成 253~255，直接違反
+  函式宣告的回傳範圍。裁決 real but not load-bearing：兩個生產呼叫點
+  （`input_handler.cpp`）目前都只傳具名常數 `SETTINGS_CURSOR_DELTA_UP`/
+  `SETTINGS_CURSOR_DELTA_DOWN`，無外部輸入能觸發；改成 `enum class Direction`
+  會動到共用函式簽章與全部 5 個呼叫點（2 生產 + 3 測試），跟上面已 park 的
+  action-kind 欄位屬同一類「跟本 task 範圍不成比例」的架構層決策，併入同一個未來
+  候選項目一併評估。
+
+**字型驗證**：本次新標籤「電池資訊」新增 3 個字（池／資／訊，非原報告初判的 2 個——
+「資」原本只出現在 `main.cpp:512` 的 `//` 註解裡，regen 腳本剝除註解後掃描字面值，
+「資」其實從未真正進過字型來源；implementer 在 fix round 1 自行查出並訂正），字型
+`.vlw`／header 於 Task 12 初次提交時已重生並驗證零缺字，round 1–4 未再變動字型檔。
+
+### 3-A9. Task 13 完成收工（2026-08-31）——電池資訊畫面本體（Phase H 最後一個 task）
+
+**commits**：`e6bf46d..5cffdae`（1 輪 fix）。**經 1 輪 fix、1 個 CRITICAL**。
+86/86 focused test、623/624 全套 native（唯一 ERRORED 仍是既有的 `test_storage_hw`），
+ESP32-S3 編譯 SUCCESS，Flash 72.4%。
+
+**Dispatch 前 pre-flight 查核抓到計畫本身兩個缺陷**（比照 Task 11/12 既有慣例）：
+
+1. 計畫寫的 flag bit `SNAP_FLAG_SETTINGS_BATTERY_INFO = 0x00080000` 撞到 Task 10 已用掉的
+   `SNAP_FLAG_LOW_BATTERY_NOTICE`，改用 `0x00200000`（下一個可用值）。
+2. 計畫 Step 3 給的 `presentFrame(); return;` 早退寫法會建立第二個 `presentFrame()` 呼叫點、
+   跳過 STEP 04 的電量圖示繪製與 W9 儲存失敗覆蓋層——正是 Task 8 才清乾淨的同型問題。改成
+   併入既有 `if (settingsEditorMode) {...} else {...}` 鏈成為第三個分支，不早退。
+
+兩項修正已在 dispatch 前寫進 implementer context（不改 brief 本身），implementer 正確套用，
+且額外找到並修掉一個計畫沒提到的真 bug：長按「恢復預設」確認框的觸發 guard 原本沒排除
+`settingsBatteryInfoMode`，會在電池資訊畫面時意外跳出確認框。
+
+**Fix round 1 的 CRITICAL**：`g_battery_millivolts`（電壓）沒有同步進 `DisplaySnapshot`，
+電壓單獨變化不會觸發重繪——**這是同型 bug 第 5 次命中**（`feedback_display_snapshot_field_sync`）。
+SDD task reviewer 沒抓到這條（scope 是核對 brief，而電壓顯示不在 brief 明文要求範圍），
+codex Tier 3 靠 `code-review`/`silent-failure`/`tests` 三個角度各自獨立命中，與 Task 7
+SDD-vs-codex 分歧模式相同，採信 codex。修法：`batteryMillivolts` 加入
+`DisplaySnapshot`/`DisplaySnapshotInputs`，經 `captureSnapshot()`/`captureDisplaySnapshot()`
+映射，補兩條回歸測試並 sabotage 驗證過。
+
+**同輪修掉的其他 6 項**：`is_battery_absent()` reuse（`/simplify` 與 codex `code-review`
+兩管道獨立確認同一問題）、3 處過期/誇大 comment、3 處新分支的 STEP 編號補完、
+`MILLIVOLTS_PER_VOLT` 具名常數、測試變數用途註解、3 個 Y 座標常數改衍生
+（`/simplify` 發現）。
+
+**Park 的 6 項**（皆引用既有先例，未重新討論）：
+- `ems_display_snapshot.h:202` 的 if-brace／不可變性——Task 7 §3-A + Task 11 confirmatory
+  review 對同檔同款式已裁決兩次。
+- `main.cpp` 的 `in.xxx = ...` 不可變性——Task 7 §3-A「POD 逐欄位賦值慣例」同款先例。
+- `SettingsViewMode` enum 化建議——codex `types`、`/simplify` 的 simplification 與 altitude
+  三個獨立管道收斂到同一結論（`settingsEditorMode`/`settingsRestoreConfirm`/
+  `settingsBatteryInfoMode` 該併成一個 enum），但比照 Task 9/12 對同類建議的既有裁決，
+  超出「加一個畫面」範圍，park 為新殘餘風險（見 §8 ⑪）。
+- `input_handler.cpp`／`drawBatteryInfo()` 缺測試——既有殘餘風險 ⑥ 的重現（`src/` 不進
+  native build），非新缺口。
+- `ChargeState` 預設值遮蔽疑慮——查證 `g_battery_charge_state` 全 repo 僅 2 處寫入且皆
+  型別安全，無 cast-from-raw 路徑能產生非法值，屬 Task 9「不可達的 guard 是死碼＋誤導
+  註解」同款情境，不加防禦碼。
+
+**Scoped re-review 留下 2 個 Minor**（依 SDD 規則不進 fix loop，deferred 給未來
+whole-branch review 觸接）：`main.cpp:1164` 新的 `// STEP 01（Task 13）` 跟函式本身真正的
+STEP 01 撞號、且同層 sibling 分支都沒有 STEP 標籤（應改標 STEP 03.xx 延伸既有序列）；
+report 自報「57 cases」但實際檔案 56 個測試函式，off-by-one 純屬文字誤植非程式缺陷。
+
+**收工程序**：本 repo 的 pending-review marker 追蹤 amend 前的 `a8aaf24`（codex Tier 3
+已 6/6 面向跑滿，`stopBlockCounts` 達 `MAX_STOP_BLOCKS=3`），CRITICAL 已於 fix round 1
+修完並通過 scoped re-review，符合解鎖前置條件。Blast radius：本 session 未配置
+codebase-memory-mcp，標記「impact 未取得」跳過。已執行
+`clear-pending-review.ts --aspects-done=6` 解鎖。
+
+**Phase H 全部 13 個 task 至此完成。** 下一步是 SDD 流程的最終 whole-branch review
+（`superpowers:requesting-code-review`，最強模型）與 `superpowers:finishing-a-development-branch`
+——**皆尚未執行**，branch 仍未推送。
+
+### 3-A10. Whole-branch review 完成（2026-09-01）——Phase H 收工前最後一道關卡
+
+對 `7fdf1ee..5cffdae`（43 commits，4 個 wave、13 個 task 全範圍）跑了 SDD 流程最後
+一道 `superpowers:requesting-code-review`，獨立重跑 native test + 韌體編譯並逐一核對
+DisplaySnapshot 欄位同步、§13.16/§20.3 互斥性、`apply_fuel_reading()` 失敗路徑等跨 task
+一致性，**無新 Critical / Important**（§8 殘餘風險 ⑥⑦⑧⑨⑩⑪ 逐條核對後維持既有 park
+裁決，不重複列）。找到 2 個 Minor，兩者皆已當場修掉，不需要開新 fix round：
+
+1. `main.cpp:1164` 的 `// STEP 01（Task 13）` 標籤跟同層 `globalState` 分派鏈所有
+   sibling 分支（`GLOBAL_OHCA`/`GLOBAL_VENT`/`GLOBAL_TRAINING_SETUP` 等）都沒有 STEP
+   標籤，不只是撞號、是唯一一處局部加了標籤——改回散文註解，不補編號。
+2. Task 10 §8 殘餘風險 ⑤ 排定的收尾清掃（`grep -rn "fix round\|原本誤寫" firmware/`）
+   whole-branch review 才真正跑了一次：52 處命中中抽樣挑出 4 處純「描述前一版寫錯什麼」
+   的考古式描述（`fuel_gauge_logic.h:230,263,471`、`main.cpp:653`），違反本 repo
+   COMMENT-ACCURACY 判準（只留「為什麼是這個設計」，不留「前一版寫錯什麼」），已清除，
+   保留原本的設計理由文字。
+
+修復 commit：`e45d855`（純註解變更）。修復後重跑驗證：native test **623/624**、
+韌體編譯 **SUCCESS，Flash 72.4%**——與 whole-branch review 實測數字一致，無邏輯影響。
+
+**Reviewer verdict：Ready to merge / finish — With fixes（兩個 Minor，已處理，不阻塞）。**
+真正的風險不在程式碼品質，而在「整個 Phase H 從未上機驗證」（§3-B，11 條，reviewer
+重申這是殘餘風險第一位，沒有新資訊要補充）。
+
+**下一步**：`superpowers:finishing-a-development-branch`——決定 branch 如何整合
+（merge/PR/push）。
+
 ### 3-B. Task 6 的上機驗收剩兩項（需要硬體）
 
 程式碼寫完了，但計畫 Task 6 的 **Step 6.3 / 6.4 尚未執行**。步驟在計畫檔裡，重點如下。
@@ -439,6 +655,8 @@ Wire error                ← 第二次失敗，未再印 log（was_invalid 節�
 | 9 | `5634b52` | 四格電量圖示繪製、幾何閃電、`should_draw_battery_icon()`、`battery_segments_for_percent()` | 2 | clean |
 | 10 | `dc4aaf1` | §13.16 提示：`LowBatteryNoticeState`、`low_battery_notice_tick()`、`is_low_battery_notice_visible/context()`、`SNAP_FLAG_LOW_BATTERY_NOTICE`、`drawLowBatteryNotice()`、字型 282→325 glyph | **6**（4 CRITICAL） | clean |
 | 11 | `58efa0e` | §20.3 確認框：三入口（OHCA/VENT/Training）低電量攔截、`LowBatteryStartTarget`/`LowBatteryConfirmTarget`、`try_request_low_battery_start_confirm()`、`isBlockingModalActive()`、`handleButtons()` 同輪多鍵吞鍵 | **5**（3 CRITICAL）+ 最終 confirmatory review 補 3 處 STEP 註解 | clean |
+| 12 | `e6bf46d` | 設定選單第 5 項「電池資訊」：`SETTINGS_CURSOR_BATTERY_INFO`、`kSettingsAdjustableItems[]` 查表化、`wrapSettingsCursor()`、`SETTINGS_MENU_COUNT` static_assert、字型 325→328 glyph | **4**（2 CRITICAL，round 1 顏色修法 round 3 撤銷） | clean |
+| 13 | `5cffdae` | 電池資訊畫面本體：`drawBatteryInfo()`、`settingsBatteryInfoMode`、`SNAP_FLAG_SETTINGS_BATTERY_INFO`、`batteryMillivolts` 加入 DisplaySnapshot | **1**（1 CRITICAL：電壓未同步進 snapshot，同型 bug 第 5 次） | clean |
 
 > Task 1–6 的 hash 不受 2026-08-23 那次 rebase 影響（rebase 基底是 `c180cb3`，都在它之前）。
 >
@@ -651,6 +869,52 @@ coordinator 層（依賴注入 `globalState`/`g_battery_low` 等全域，讓決�
 程式碼，regression 風險高於現狀的維護成本——5 處都是同一句子面等值判斷，語意不會分歧
 （不像過去幾次「兩處各自演化出不同守衛」的教訓）。與 ⑥ 的 coordinator 層重構屬同一量級
 決策，建議兩者一起評估，不要單獨為這條動手。
+
+**⑨ 設定選單反白框覆蓋不足，全部 5 個項目共通。**（Task 12，2026-08-31）
+`ui_settings.cpp` 的游標高亮用小方框局部反白（`SETTINGS_CURSOR_WIDTH×HEIGHT` =
+80×20px）+ `setCursor`+`print`，但 `ems_zh_24`（24px vlw 字型）在 `SETTINGS_FONT_SIZE=2`
+下實際渲染的 4 字標籤約 192×48px，高亮框只蓋到約 17% 面積。螢幕底色黑
+（`main.cpp:483,490` `fillScreen(0x0000)`），選取時該項目仍有約 83% 面積是「白字黑底」
+（可見）、17% 是「白字白底」（看不見）——裝置名稱／螢幕亮度／系統音量／通氣音量／電池資訊
+五項全部同款。**這條在 Task 12 round 1 被誤修過一次**（改選取時黑字，經幾何驗證證實讓
+83% 可見面積反而變成「黑字黑底」看不見，比原本更糟，round 3 已撤銷回無條件白字，詳見
+§3-A8）。正確長期修法：比照 `ui_screens.cpp` 的 `drawMainMenu()`（約 29-49 行），改成
+**整列** `fillRect(0, y, SCREEN_W, ROW_H, COLOR_TEXT_PRIMARY)` + `setTextDatum(top_left)`
++ `drawString`（不是 baseline-relative 的 `setCursor`+`print`）。牽動共用的
+`_settings_text_fn`/`_settings_fill_rect_fn`（`main.cpp`）與全部 5 個項目的繪製，超出
+單一 task 範圍，park 為獨立未來 task。**上機驗收清單應新增「選取狀態下選單文字是否可讀」
+這個明確檢查項**（不只是「文字有沒有出現」）——這是 native mock 測不出視覺可讀性（只能斷言
+顏色數值，測不出相對背景是否看得見）的直接案例，見 §6 `verify-the-observer`。
+
+**⑩ 設定選單資料結構的型別設計債：`settings_menu_item_t` 缺 action-kind 欄位、
+`wrapSettingsCursor()` 的 delta 參數缺型別約束。**（Task 12，2026-08-31）兩個獨立但
+同源的缺口，皆屬 Phase G 全域型別設計決策層級，非「加一個選單項」範圍：
+- `settings_menu_item_t` 沒有欄位區分「可調值」vs「導覽」語意——電池資訊（導覽項）能否
+  被編輯，目前完全靠 `input_handler.cpp` 用 cursor 數值範圍（1~3）推斷，選單資料與按鍵
+  分派因此是兩份真相來源，日後重排或插入項目可能讓導覽項誤入編輯模式且編譯器無法檢出。
+  codex 在 Task 12 三輪（round 1/2/4）都提出改用 `enum class` + discriminated kind 的
+  建議，因牽動全 firmware 所有 `SETTINGS_CURSOR_*` 使用點與 snapshot 序列化邊界，維持 park。
+- `wrapSettingsCursor()` 的 `delta` 參數是裸 `int8_t`，但公式只對 ±1 成立——誤傳 -128
+  等合法 `int8_t` 會讓運算產生負餘數，下一行 `uint8_t` 強制轉型會把它變成 253~255，
+  直接違反函式宣告的回傳範圍。兩個生產呼叫點目前都只傳具名常數
+  （`SETTINGS_CURSOR_DELTA_UP`/`SETTINGS_CURSOR_DELTA_DOWN`），無外部輸入能觸發，
+  real but not load-bearing，park。
+  
+  改成 `enum class` 會動到公開函式簽章與全部 5 個呼叫點（2 生產 + 3 測試），建議與上一條
+  一起評估、一次重構。
+
+**⑪ 設定畫面子模式仍是平行布林值，不是 discriminated 狀態。**（Task 13，2026-08-31）
+`settingsEditorMode`／`settingsRestoreConfirm`／`settingsBatteryInfoMode` 三個全域 bool
+互斥表達「設定畫面目前顯示哪個子畫面」，但型別上允許同時為真——
+`updateDisplay()`（`main.cpp`）與 `onShortPress()`（`input_handler.cpp`）分別用各自的
+if/else-if 鏈判斷優先序，兩處優先序目前手動維持一致，沒有編譯器保證。三個獨立管道
+（codex Tier 3 `types` 面向、`/simplify` 的 simplification 與 altitude 兩個角度）在
+Task 13 review 時各自收斂到同一個結論：改用單一 `enum class SettingsViewMode { Menu,
+Editor, RestoreConfirm, BatteryInfo }`，輸入處理／繪製／snapshot 都依同一個 discriminant
+切換。這是與 ⑩ 同源的架構債（型別無法表達互斥不變量），但範圍更大——牽動三個既有全域
+（不只是新增的那一個），比照 Task 9/12 對同類建議的既有裁決，超出單一 task 範圍，park。
+與 ⑩ 建議一起評估、一次重構（`settingsCursor` 已用 `enum` + `wrapSettingsCursor()`
+妥善抽象，「選單項目」與「子畫面模式」是同一個 UI 層兩個對稱的問題，值得一起解）。
 
 ### W1 讀取層的既有項目
 
