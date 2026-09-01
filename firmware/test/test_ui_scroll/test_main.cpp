@@ -31,8 +31,11 @@ static const uint16_t OFFSET_MID = 2;               // 視窗起於第 2 項
 static const uint16_t OFFSET_ZERO = 0;              // 視窗起於第 0 項
 static const uint16_t OFFSET_HIGH = 3;              // 較高的起點
 
-// 期望的捲動結果
+// 期望的捲動結果與邊界值
 static const uint16_t EXPECTED_OFFSET_AFTER_SCROLL_DOWN = 3;  // 游標在位置 7 時視窗往下捲至起點 3，讓 cursor 成為新視窗最後一項
+static const uint8_t FIXTURE_VISIBLE_ROWS_FULL_LIST = 8;      // 涵蓋整個清單的可見列數，用來驗證「視窗足以容納所有項目」邊界情境
+static const uint8_t INVALID_VISIBLE_ROWS_ZERO = 0;           // 刻意傳入的無效值，驗證 visible_rows == 0 guard 行為
+static const uint16_t EXPECTED_OFFSET_NEAR_MAX = 65531;       // 接近 UINT16_MAX 時的期望 offset（cursor 65535 - (visible_rows 5 - 1) = 65531）
 
 /**
  * setUp — Unity framework 初始化（每個測試前執行）。
@@ -139,7 +142,7 @@ static void test_cursor_at_last_item_scrolls_to_show_it_last() {
  */
 static void test_visible_rows_covers_entire_list_offset_unchanged() {
     // STEP 01: 檢查當視窗大小涵蓋整個清單時 offset 保持不變
-    TEST_ASSERT_EQUAL_UINT16(OFFSET_ZERO, clampScrollOffset(CURSOR_MID_WINDOW, OFFSET_ZERO, 8));
+    TEST_ASSERT_EQUAL_UINT16(OFFSET_ZERO, clampScrollOffset(CURSOR_MID_WINDOW, OFFSET_ZERO, FIXTURE_VISIBLE_ROWS_FULL_LIST));
 }
 
 // ============================================================
@@ -154,7 +157,7 @@ static void test_visible_rows_covers_entire_list_offset_unchanged() {
  */
 static void test_visible_rows_zero_guard() {
     // STEP 01: 驗證無效輸入 visible_rows == 0 時函式不會下溢
-    TEST_ASSERT_EQUAL_UINT16(OFFSET_MID, clampScrollOffset(CURSOR_MID_WINDOW, OFFSET_MID, 0));
+    TEST_ASSERT_EQUAL_UINT16(OFFSET_MID, clampScrollOffset(CURSOR_MID_WINDOW, OFFSET_MID, INVALID_VISIBLE_ROWS_ZERO));
 }
 
 // ============================================================
@@ -174,7 +177,7 @@ static void test_cursor_offset_near_max_no_overflow() {
     uint16_t high_cursor = 65535;    // UINT16_MAX
     // cursor - offset = 5，而 visible_rows = 5，所以 cursor - offset >= visible_rows（5 >= 5）
     // 應觸發「下捲」邏輯，回傳 cursor - (visible_rows - 1) = 65535 - 4 = 65531
-    TEST_ASSERT_EQUAL_UINT16(65531, clampScrollOffset(high_cursor, high_offset, FIXTURE_VISIBLE_ROWS));
+    TEST_ASSERT_EQUAL_UINT16(EXPECTED_OFFSET_NEAR_MAX, clampScrollOffset(high_cursor, high_offset, FIXTURE_VISIBLE_ROWS));
 }
 
 /**
