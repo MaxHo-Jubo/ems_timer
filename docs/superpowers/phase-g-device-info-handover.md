@@ -1,8 +1,8 @@
 # Impl-Phase G 裝置資訊畫面 — 交接文件
 
-- **最後更新**：2026-09-01（Task 1 完成，等使用者確認後續跑 Task 2-6）
-- **狀態**：SDD（subagent-driven-development）流程進行中。**Task 1/6 完成**，其餘 5 個
-  task 未開工。依使用者要求，每完成一個 task 就停下讓使用者確認，本次先做完 Task 1。
+- **最後更新**：2026-09-01（Task 2 完成，等使用者確認後續跑 Task 3-6）
+- **狀態**：SDD（subagent-driven-development）流程進行中。**Task 1-2/6 完成**，其餘 4 個
+  task 未開工。依使用者要求，每完成一個 task 就停下讓使用者確認，本次做完 Task 2。
 - **branch**：`feat/phase-g-device-info`（git worktree，路徑
   `.worktrees/phase-g-device-info`，從本機 `main`（`a634ba9`）分支——**不是**
   `origin/main`，本機 main 領先 origin/main 99+ commit 未推送）
@@ -37,7 +37,17 @@ SoT V1 §19.7「裝置資訊」畫面（名稱／型號／序號／韌體／電�
 SDD task-reviewer + SDD scoped re-reviewer 三層驗證，共抓到 1 CRITICAL（整數下溢/溢位）
 + 14 IMPORTANT + re-review 額外抓到 3 個殘留 magic number，三輪 fix 後全部收斂，細節見 §4。
 
-**尚未開工**：Task 2-6。
+**Task 2 完成**（2026-09-01）：設定選單擴充至 SoT §19.1 完整 8 項並支援捲動，最終 commit
+`c980927`（1 輪 amend）。經 repo 自己的 Tier 3 codex review 抓到 5 CRITICAL（4 個同源於
+`main.cpp:1177` 舊呼叫點參數錯位——team-lead 覆蓋原「留給 Task 4」的裁決，當場修正）+
+12 IMPORTANT，全部處理後 SDD task-reviewer 給 Approved（0 Critical/Important，1 Minor
+延後）。細節見 §4。**過程中發現一個流程缺口**：implementer 第一次 commit 後，repo 的
+Tier 3 codex review 閘門從未被實際執行過（marker 卡在磁碟上、沒有背景 process、implementer
+沒有理會 hook 的 systemMessage 指派）——是 team-lead 後來想結束回合被 Stop hook 攔下才發現，
+手動補跑才解決，已存 feedback memory（`feedback_sdd_dispatch_must_mention_commit_gate.md`）
+供未來 dispatch brief 參考。
+
+**尚未開工**：Task 3-6。
 
 ---
 
@@ -47,10 +57,10 @@ SDD task-reviewer + SDD scoped re-reviewer 三層驗證，共抓到 1 CRITICAL�
 cat docs/superpowers/specs/2026-09-01-phase-g-device-info-design.md   # 先讀設計決策
 cat docs/superpowers/plans/2026-09-01-phase-g-device-info.md          # 再讀實作計畫
 
-# 開工前先確認測試基準線
-cd firmware && pio test -e native                            # 應為 623/624，唯一 ERRORED = test_storage_hw
-cd firmware && pio run -e esp32-s3-devkitc-1                  # 應為 SUCCESS
-git log --oneline -5                                          # 確認在 main 上，Phase H 已 merge
+# 開工前先確認測試基準線（Task 2 完成後現況）
+cd firmware && pio test -e native                            # 應為 636/637，唯一 ERRORED = test_storage_hw
+cd firmware && pio run -e esp32-s3-devkitc-1                  # 應為 SUCCESS，Flash 72.7%
+git log --oneline -5                                          # 確認在 feat/phase-g-device-info worktree 上
 ```
 
 **續跑方式**：用 `superpowers:subagent-driven-development`（已在跑，SDD ledger 見
@@ -179,6 +189,72 @@ task-notification 送達，補發訊息詢問也沒有立即回應，一度判�
 subagent 顯示 idle 但報告遲遲不到，除了補發訊息詢問，也該考慮再多等一段時間再改用
 備援驗證手段，避免像這次一樣兩條路徑分別跑（雖然最後互補、沒有造成錯誤結論，但多花了
 一輪不必要的 controller 自行核對）。
+
+### Task 2 完成（2026-09-01）——設定選單擴充至 SoT §19.1 完整 8 項並支援捲動
+
+**現況**：`firmware/lib/ui_settings/ui_settings.h`／`.cpp`（8 項 `kSettingsMenuItems[]`、
+捲動視窗迴圈、`scroll_offset` 參數）+ `firmware/test/test_settings_ui/test_main.cpp`
+（21 個 test case），commit `c980927`（1 輪 amend，最終版）。native test 637 cases /
+636 通過（唯一 ERRORED 仍是既有的 `test_storage_hw`，與本次無關），韌體編譯 SUCCESS，
+Flash 72.7%（較 Task 1 前 71.4% 微增）。
+
+**Repo 自己的 Tier 3 codex review 抓到的問題**（跟 SDD 流程平行的獨立閘門）：
+
+- **5 CRITICAL，其中 4 個同源**：`firmware/src/main.cpp:1177` 仍用舊 4-arg 呼叫
+  `drawSettingsMenu(settingsDisp, settingsCursor, g_device_name_locked,
+  settingsRestoreConfirm)`。新簽名插入 `scroll_offset` 於第 3 位，這個舊呼叫編譯通過
+  （bool→uint8_t 隱式轉換 + 尾端預設值）但靜默錯位：`g_device_name_locked`→
+  `scroll_offset`、`settingsRestoreConfirm`→`device_name_locked`、`restore_confirm`
+  永遠吃預設 `false`。實機上恢復預設對話框永遠不顯示、名稱鎖定狀態錯、選單不會捲動。
+  第 5 個 CRITICAL（silent-failure）是獨立問題：`drawSettingsMenu()` 的捲動迴圈信任
+  呼叫端已執行過 `clampScrollOffset()`，越界 `scroll_offset` 會靜默畫出空白選單。
+- **12 IMPORTANT**：多為 STEP 編號未跟著 Step 4 的迴圈重寫更新（STEP 04→03 殘留）、
+  多處註解過時（Y 座標常數說明、`drawPlaceholder()` 已接線的錯誤暗示、JSDoc 宣稱呼叫端
+  已算好 scroll_offset）、`SETTINGS_ITEM2/3/5_Y` 死碼未清、捲動測試斷言力度不足（只查
+  文字有無畫出，未驗證 Y 座標）。
+
+**Ruling（推翻我自己先前的裁決）**：main.cpp 那 4 個 CRITICAL 的根因（呼叫點錯位）**team-lead
+裁定必須當場修，不留給 Task 4**——這推翻了本文件先前版本、以及 Task 1 pre-flight scan 對
+「2→4」依賴關係下的「Clean」判斷。理由：(a) 本專案 GLOBAL-MUTATION 規則要求修改共用函式簽名
+時同一改動內搜尋並更新全部呼叫點，不能拖到兩個 task 之後；(b) 一個編譯過但實機行為全錯的
+commit 留在分支歷史裡是真實風險，這個 worktree 隨時可能被燒錄到硬體測試；(c) 修法不需要
+提前接 Task 3 的範圍（`settingsScrollOffset` 全域與按鍵驅動的更新邏輯仍歸 Task 3）——只需
+把兩個既有值重排到新位置，`scroll_offset` 傳字面值 `0`（跟目前尚不能捲動的行為完全等價，
+零迴歸，零 scope creep）。第 5 個 CRITICAL（呼叫端信任 clamp 過的 offset）**裁定接受、不修**，
+跟 Task 1 `clampScrollOffset()` 的 `visible_rows==0` guard 是同一種已核准的 trade-off——
+內部 helper、目前所有呼叫端不是編譯期常數就是走 `clampScrollOffset()`，迴圈邊界
+（`i < SETTINGS_MENU_ITEM_COUNT`）本身已避免真正的越界記憶體存取。12 個 IMPORTANT 全部
+授權修正（非 plan-mandated，是 implementer 自我審查真的漏掉的缺口）。
+
+**Fix round 1 摘要**：main.cpp 依裁定的字面順序修正；`input_handler.cpp`／`app_globals.h`／
+`ems_display_snapshot.h` 三處游標範圍註解更新為誠實描述現況（0~7，但 5~7 尚未接線）；
+`ui_settings.cpp` STEP 04→03 全部改回正確編號並補齊巢狀 STEP（03.02/03.03/03.03.01/
+03.03.02/03.04/03.04.01）；`SETTINGS_ITEM2/3/5_Y` 死碼移除（grep 全庫確認無殘留引用）；
+`drawPlaceholder()`／JSDoc 誇大現況的措辭改為誠實的「未來規劃」；6 個測試函式補 STEP 註解；
+`test_scroll_offset_three_shows_last_five_items` 強化為逐項斷言 5 個可見列的 Y 座標
+（30/70/110/150/190）與高亮 fill_rect 的 Y。修正後 focused 21/21、full suite 636/637、
+ESP32 build SUCCESS（Flash 大小不變，純參數順序 + 註解修正）。
+
+**SDD task-reviewer（`phase-g-task2-review`）**：Approved，0 Critical/Important，1 Minor
+（`STEP 03.03`／`03.04` 的 `if (selected) fill_rect(...)` 重複樣式——brief 原文就是這樣寫、
+不算本 task 缺陷，已知的未來清理項見 §5「⑨」）。獨立 grep 驗證 `drawSettingsMenu()` 全庫
+只剩這一個非測試呼叫點、零殘留舊符號引用；獨立核對新增中文字（連/線/設/定/裝/置/資/訊）
+確實已存在既有畫面字串中，佐證「VLW byte-identical、0 缺字」的說法不只是信implementer報告。
+
+**過程中發現的流程缺口（已記錄 feedback memory）**：implementer 第一次 commit（`a750a5c`）
+觸發 repo 的 Tier 3 codex-review 閘門（PostToolUse hook 寫 marker + 印 systemMessage 軟指派
+`Skill(commit-review)`），但 implementer 沒有執行這個 skill——它接著在自我審查時想疊第二個
+commit，撞上 `commit-gate-guard` 的 PreToolUse deny，正確地改用 `git commit --amend` 繞過，
+但從未真正跑過那輪 review。這個 marker 就這樣卡在磁碟上，直到 team-lead 自己想結束回合時
+被 `stop-review-guard`（Stop hook）攔下才發現（`~/.claude/state/pending-review/` 有一個
+未清的 marker，`ps`／codex-review state 目錄都查無任何背景 process 在跑）。team-lead 手動
+用 `commit-review` skill 補跑 `compute-tier.ts` + `codex-review.ts --tier=3`，找出上述 5
+CRITICAL + 12 IMPORTANT，裁決、派 fix round、驗證、`clear-pending-review.ts` 解鎖，才讓
+自己的回合能正常結束。**教訓**：dispatch 會在啟用此 gate 的 repo 內 commit 的 subagent 時，
+brief 必須明講這個機制存在並要求「收到 systemMessage 指派就要執行」，否則 marker 會安靜
+卡住直到某個 session 的 Stop 事件命中它——已存為
+`feedback_sdd_dispatch_must_mention_commit_gate.md`，Task 3 起的 dispatch prompt 應該
+把這段提醒加進去。
 
 ---
 
