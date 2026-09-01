@@ -41,7 +41,7 @@ SoT 沒有定義下列任何一項，以下為本 spec 拍板（皆經與使用�
 
 | # | 問題 | 決策 | 理由 |
 |---|---|---|---|
-| 1 | 序號資料來源 | ESP32 efuse MAC 衍生，開機時算一次 | 不需硬體改動、不需產線流程、每台裝置天然唯一 |
+| 1 | 序號資料來源 | ~~ESP32 efuse MAC 衍生~~ → **改用既有 `SYNC_DEVICE_ID` 常數**（見 §4.1.1 修正說明） | 原方案會與 `sync_send.cpp` 案件同步 metadata 送出的 `device_id` 產生兩套不同來源的序號，App 端與裝置螢幕會對不起來 |
 | 2 | 裝置資訊／韌體版本選單項目 | 合併成一個「裝置資訊」項，韌體版本是畫面內一列 | 沿用 pm-dev-spec.md 已記錄的裁決 |
 | 3 | 韌體版本字串本身 | 沿用 `SYNC_FW_VERSION`，內容不變 | 版號管理是獨立規範問題，不在本次畫面設計範圍 |
 | 4 | 型號欄位 | 字面常數 `"EMS DoseSync Pro"` | 沿用專案命名慣例，無需動態來源 |
@@ -138,7 +138,7 @@ actual_y = SETTINGS_ITEM1_Y + row_in_window * SETTINGS_ROW_SPACING
 |---|---|---|---|
 | 名稱 | `settings_get_device_name()` | 每次繪製重新讀 | 否（比照 `drawSettingsMenu()` 既有做法，非 snapshot 驅動） |
 | 型號 | 字面常數 `"EMS DoseSync Pro"` | 靜態 | 否 |
-| 序號 | ESP32 efuse MAC 衍生，`setup()` 時算一次快取 | 開機後不變 | 否 |
+| 序號 | 既有 `SYNC_DEVICE_ID` 常數（見 §4.1.1） | 靜態，內容不變 | 否 |
 | 韌體 | 既有 `SYNC_FW_VERSION` 常數 | 靜態，內容不變 | 否 |
 | 電池 % | `g_battery_percent`（既有全域） | 動態 | 是（已在，Task 7 起） |
 | 充電狀態 | `g_battery_charge_state`（既有全域） | 動態 | 是（已在，Task 7 起） |
@@ -148,18 +148,20 @@ diff 觸發重繪——若使用者停在裝置資訊畫面時 App 在背景改�
 （如電量變化）才會連帶顯示新名稱。這是既有設定選單本來就有的行為，本次不新增風險，也不在本次
 範圍內修。
 
-### 4.2 序號格式
+### 4.1.1 序號方案修正（brainstorming 後追加發現）
 
-`ESP.getEfuseMac()` 取後 2 bytes 轉 4 位大寫 hex，組成 `"DSP-XXXX"`（與 SoT mockup `DSP-0001`
-同樣長度）。純轉換邏輯抽成：
+原設計（見 §2 決策 #1 原案）打算用 ESP32 efuse MAC 衍生序號。寫計畫前查現有程式碼發現
+`app_globals.h:225-232` 已有 `SYNC_DEVICE_ID = "DSP-0001"` 常數，且**已經在案件同步流程裡實際
+使用**——`sync_send.cpp:152` 把它填進送給 App 的 `js_meta.device_id` 欄位。若裝置資訊畫面另外
+用 efuse 衍生一組序號，會產生兩套不同來源、互不一致的「裝置序號」：App 端看到的案件 metadata
+序號跟裝置螢幕上顯示的序號對不起來。
 
-```cpp
-// firmware/lib/ems_settings/ 或新檔，純函式不碰硬體
-void format_serial_from_mac(uint64_t mac, char* out, size_t out_size);
-```
+與使用者確認後**改為直接讀取 `SYNC_DEVICE_ID` 常數**，放棄 efuse 衍生方案。`SYNC_DEVICE_ID`
+現階段仍是全裝置寫死的 `"DSP-0001"`（`app_globals.h:229` 註解已註明「量產時由裝置配置流程寫入
+NVS」），量產序號制度是獨立於本次範圍的未來工作——見 §7 不在本 spec 範圍。
 
-native test 可直接餵固定 `uint64_t` 值驗證格式，不需要真的燒 ESP32 efuse（比照
-`fuel_gauge_logic.h` 把純邏輯與硬體 I/O 分離的既有慣例）。
+本次不需要 `format_serial_from_mac()` 或任何 MAC 衍生邏輯；序號欄位跟型號/韌體欄位一樣是讀
+既有字面常數，不需要額外的純邏輯 lib 或 native test。
 
 ### 4.3 畫面本體
 
@@ -188,17 +190,16 @@ native test 可直接餵固定 `uint64_t` 值驗證格式，不需要真的燒 E
 
 - `clampScrollOffset()`：上捲/下捲/窗內不動三種邊界，游標在 0 與 `SETTINGS_MENU_COUNT - 1`
   的邊界案例
-- `format_serial_from_mac()`：固定輸入值 → 固定輸出字串，含 MAC 低 2 bytes 為 `0x0000` 與
-  `0xFFFF` 的邊界案例
 - `drawDeviceInfo()` 在 native mock display 上的六列文字斷言（比照 `test_settings_ui`
-  既有 pattern）
+  既有 pattern），含序號欄位斷言顯示的是 `SYNC_DEVICE_ID` 常數值
 - 選單捲動後裝置名稱（游標 0）捲出可見窗時不繪製、捲回時正確恢復鎖定/置灰狀態
 - `SETTINGS_MENU_COUNT` 8 項的 wrap-around（`wrapSettingsCursor()`）回歸測試
 
 **on-target**
 
 - 實機驗證 8 項選單捲動流暢、裝置資訊畫面六欄數值與電池資訊畫面/App 端顯示的名稱一致
-- 序號欄位換機測試：不同 ESP32 板子（不同 MAC）顯示不同序號
+- 交叉驗證裝置資訊畫面「序號」與案件同步後 App 端看到的 `device_id` 是同一個值（§4.1.1
+  修正後兩者共用 `SYNC_DEVICE_ID`，理論上必然一致，實機驗收仍走一次確認無遺漏接線）
 
 ---
 
@@ -208,7 +209,7 @@ native test 可直接餵固定 `uint64_t` 值驗證格式，不需要真的燒 E
 |---|---|---|
 | **W1** | 選單捲動重構（`clampScrollOffset()` 抽出 + 8 項表格 + 裝置名稱納入捲動窗） | 選單能捲動到 8 項，既有 5 項行為不變（回歸測試通過） |
 | **W2** | Placeholder 兩項（App連線設定／Type-C連線） | 選到後顯示「尚未實作」，返回鍵可離開 |
-| **W3** | 裝置資訊畫面本體（含序號衍生邏輯） | 設定選單進得去，六欄數值正確 |
+| **W3** | 裝置資訊畫面本體（`drawDeviceInfo()`） | 設定選單進得去，六欄數值正確 |
 
 ---
 
@@ -228,5 +229,6 @@ native test 可直接餵固定 `uint64_t` 值驗證格式，不需要真的燒 E
 
 - 裝置名稱在裝置資訊畫面內不經 `DisplaySnapshot` 驅動重繪（見 §4.1），與既有 `drawSettingsMenu()`
   行為一致，非本次新增缺口
-- 序號僅在單一 ESP32 晶片上衍生，沒有跨裝置註冊/管理機制——量產階段若需要正式序號制度
-  （如追溯生產批次），現行方案需要重新設計，本 spec 僅涵蓋 V1 開發階段需求
+- `SYNC_DEVICE_ID` 目前全裝置寫死同一個值 `"DSP-0001"`，不是真正每台裝置唯一的序號——這是
+  既有的 Phase F MVP3 placeholder 限制（`app_globals.h:229` 註解已註明），本次沿用而非新增。
+  量產階段若需要每台裝置唯一序號，屬獨立的裝置配置流程設計問題，不在本 spec 範圍
