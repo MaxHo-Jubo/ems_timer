@@ -19,3 +19,6 @@ firmware/firmware-merged-*.bin
 
 # superpowers SDD 工作區（ledger / brief / review package 等 scratch，不進版控）
 .superpowers/
+
+# superpowers 隔離開發用 git worktree（scratch，不進版控）
+.worktrees/
