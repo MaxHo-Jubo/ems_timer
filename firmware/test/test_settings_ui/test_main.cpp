@@ -50,7 +50,8 @@ void tearDown() {}
  * 本 task 僅新增選單顯示與捲動，見 SETTINGS_CURSOR_BATTERY_INFO）。
  */
 static void test_g11_draw_settings_menu_items() {
-    drawSettingsMenu(g_disp);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("系統設定"), "G1.1: 應繪製選單標題");
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("裝置名稱"), "G1.1: 應繪製項目「裝置名稱」");
@@ -62,11 +63,13 @@ static void test_g11_draw_settings_menu_items() {
 
 // ----- G1.2: 游標位置 -----
 
-/** G1.2: 游標高亮 → fillRect 繪製於預設游標位置（Y=150, cursor=3 為向後相容預設值，
- *  不是預設捲動視窗〔scroll_offset=0〕內最後一個可見項——8 項化後視窗內最後一個
- *  可見項是電池資訊〔cursor=4〕，選單真正的最後一項則是裝置資訊〔cursor=7〕） */
-static void test_g12_cursor_position_default() {
-    drawSettingsMenu(g_disp);
+/** G1.2: 游標高亮 → fillRect 繪製於明確傳入的 cursor=3（通氣音量）位置（Y=150）。
+ *  cursor 已無預設值，本測試明確傳入 SETTINGS_CURSOR_VENT_VOL；驗證的 Y=150
+ *  不是捲動視窗〔scroll_offset=0〕內最後一個可見項——8 項化後視窗內最後一個
+ *  可見項是電池資訊〔cursor=4〕，選單真正的最後一項則是裝置資訊〔cursor=7〕 */
+static void test_g12_cursor_position_at_vent_vol() {
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // 游標高亮矩形應存在（fillRect 應被呼叫）
     TEST_ASSERT_EQUAL_INT16_MESSAGE(10, mock_get_last_fill_x(),
@@ -83,7 +86,8 @@ static void test_g12_cursor_position_default() {
 
 /** G1.3: 亮度值在 SETTINGS_BRIGHTNESS_MIN~MAX 範圍內 */
 static void test_g13_brightness_in_range() {
-    drawSettingsMenu(g_disp);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     uint8_t brightness = getBrightness();
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, brightness, "G1.3: 亮度應 > 0");
@@ -124,7 +128,8 @@ static void test_g15_redraw_preserves_adjusted_values() {
     setSystemVolume(SETTINGS_VOLUME_MAX);
     setVentVolume(SETTINGS_VENT_VOLUME_MIN);
 
-    drawSettingsMenu(g_disp);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(adjusted_brightness, getBrightness(),
         "G1.5: 重繪不得把亮度清回預設值");
@@ -138,7 +143,8 @@ static void test_g15_redraw_preserves_adjusted_values() {
 
 /** G1.6: 取消 → 設定值不變 */
 static void test_g16_cancel_preserves_values() {
-    drawSettingsMenu(g_disp);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // 先設為非預設值，再取消 → 應恢復非預設值
     setBrightness(5);
@@ -160,7 +166,8 @@ static void test_g16_cancel_preserves_values() {
 
 /** G1.7: cursor=0 → 高亮裝置名稱（Y=30） */
 static void test_g17_cursor_0_highlights_device_name() {
-    drawSettingsMenu(g_disp, 0);
+    drawSettingsMenu(g_disp, 0, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // 最後一次 fillRect 應為裝置名稱列（Y=30）
     TEST_ASSERT_EQUAL_INT16_MESSAGE(30, mock_get_last_fill_y(),
@@ -169,7 +176,8 @@ static void test_g17_cursor_0_highlights_device_name() {
 
 /** G1.7: cursor=1 → 高亮螢幕亮度（Y=70） */
 static void test_g17_cursor_1_highlights_brightness() {
-    drawSettingsMenu(g_disp, 1);
+    drawSettingsMenu(g_disp, 1, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // 最後一次 fillRect 應為螢幕亮度列（Y=70）
     TEST_ASSERT_EQUAL_INT16_MESSAGE(70, mock_get_last_fill_y(),
@@ -178,7 +186,8 @@ static void test_g17_cursor_1_highlights_brightness() {
 
 /** G1.7: cursor=2 → 高亮系統音量（Y=110） */
 static void test_g17_cursor_2_highlights_system_volume() {
-    drawSettingsMenu(g_disp, 2);
+    drawSettingsMenu(g_disp, 2, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // 最後一次 fillRect 應為系統音量列（Y=110）
     TEST_ASSERT_EQUAL_INT16_MESSAGE(110, mock_get_last_fill_y(),
@@ -199,7 +208,8 @@ static void test_g17_cursor_2_highlights_system_volume() {
  * （驗證「游標命中哪一列」邏輯本身沒壞），保留。
  */
 static void test_g17_cursor_4_highlights_battery_info() {
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_BATTERY_INFO);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_BATTERY_INFO, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // 確認電池資訊列本身有被正確高亮（Y=190）；不證明其他列沒有被誤觸發高亮——電池資訊
     // 是預設捲動視窗（scroll_offset=0）內最後一個可見項（8 項化後選單真正的最後一項是
@@ -362,7 +372,8 @@ static void test_pairing_wrap_up_scrolls_to_bottom() {
 /** 捲動視窗預設 0 時，只畫前 5 項（裝置名稱~電池資訊），不畫捲出視窗外的 3 項 */
 static void test_scroll_offset_zero_shows_first_five_items() {
     // STEP 01: scroll_offset=0，游標停在裝置名稱，繪製選單
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* scroll_offset= */ 0);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // STEP 02: 視窗內第 5 項（電池資訊）應被畫出
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("電池資訊"),
@@ -386,7 +397,8 @@ static void test_scroll_offset_zero_shows_first_five_items() {
  */
 static void test_scroll_offset_three_shows_last_five_items() {
     // STEP 01: scroll_offset=3，游標停在裝置資訊（視窗內第 5 格，會被高亮）
-    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_INFO, /* scroll_offset= */ 3);
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_INFO, /* scroll_offset= */ 3,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // STEP 02: 捲出視窗的裝置名稱不應被畫出
     TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("裝置名稱"),
@@ -450,7 +462,7 @@ static void test_g23_locked_renders_dim_and_hides_name() {
     mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
 
     drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* scroll_offset= */ 0,
-                     /* device_name_locked= */ true);
+                     /* device_name_locked= */ true, /* restore_confirm= */ false);
 
     const MockTextCall* label = mock_text_log_find("裝置名稱");
     TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3: 裝置名稱標籤應被繪製");
@@ -470,7 +482,7 @@ static void test_g23_unlocked_renders_white_and_shows_name() {
     mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
 
     drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_NAME, /* scroll_offset= */ 0,
-                     /* device_name_locked= */ false);
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     const MockTextCall* label = mock_text_log_find("裝置名稱");
     TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3b: 裝置名稱標籤應被繪製");
@@ -486,7 +498,7 @@ static void test_g23_unlocked_renders_white_and_shows_name() {
 
 void run_all_tests() {
     RUN_TEST(test_g11_draw_settings_menu_items);
-    RUN_TEST(test_g12_cursor_position_default);
+    RUN_TEST(test_g12_cursor_position_at_vent_vol);
     RUN_TEST(test_g13_brightness_in_range);
     RUN_TEST(test_g14_confirm_dialog_shown_when_flag_set);
     RUN_TEST(test_g14_confirm_dialog_hidden_when_flag_clear);

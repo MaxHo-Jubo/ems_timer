@@ -1,5 +1,6 @@
 #include "app_globals.h"
 #include "ems_settings.h"  // settings_get_device_name() / DEVICE_NAME_MAX_LEN（drawDeviceInfo() 用，Impl-Phase G）
+#include "ems_utf8.h"       // utf8PrevCharBoundary()（drawDeviceInfo() 裝置名稱截斷用，Impl-Phase G）
 
 
 /** 主功能表畫面：標題列（含 BLE 連線「BT」圖示）+ 分隔線 + 5 項可捲動選單（cursor 列白底黑字反白）。 */
@@ -50,11 +51,29 @@ void drawMainMenu() {
     }
 }
 
-/** 共用：水平置中文字（top_center datum，y = top 對齊） */
+/**
+ * 共用：水平置中文字（top_center datum，y = top 對齊）。
+ *
+ * 進入時記錄呼叫端目前的文字樣式（顏色／datum／字級等），畫完後原樣還原——
+ * 本函式會暫時把樣式切成置中繪製所需的設定，若不還原，呼叫端緊接著畫的內容
+ * 會沿用這裡留下的樣式而非呼叫端自己設定的樣式（Phase G 全分支整合 review
+ * 抓到的 CRITICAL：drawDeviceInfo()/drawBatteryInfo() 在標題呼叫本函式後，
+ * 後續六列/三列 drawString() 因此用錯顏色與對齊方式，畫面左半邊被裁掉）。
+ *
+ * @param text  要置中繪製的文字內容
+ * @param y     文字上緣的 Y 座標（top_center datum，x 固定為 SCREEN_W / 2）
+ * @param color 文字顏色
+ * @return      無（void）
+ */
 void drawCenteredText(const char* text, int16_t y, uint16_t color) {
+    // STEP 01: 記錄呼叫端目前的文字樣式，供繪製後還原
+    const auto saved_style = display.getTextStyle();
+    // STEP 02: 暫時切換成本函式需要的置中樣式並繪製
     display.setTextColor(color);
     display.setTextDatum(textdatum_t::top_center);
     display.drawString(text, SCREEN_W / 2, y);
+    // STEP 03: 還原呼叫端進入前的樣式，不留下副作用
+    display.setTextStyle(saved_style);
 }
 
 /** 共用垂直選單 widget：標題 + 分隔線 + 選項列 + 底部提示
@@ -334,18 +353,14 @@ void drawDeviceInfo() {
     // STEP 03.01: 裝置名稱最長可達 DEVICE_NAME_MAX_LEN-1（31）bytes，組出的字串在目前
     //   字級下可能超出螢幕可用寬度，尾端被裁到畫面外且無任何提示（使用者以為名稱就
     //   這麼短）。用 textWidth() 動態量測實際渲染寬度（同 drawLowBatteryNotice() 既有
-    //   手法），超出可用寬度才裁切 name 尾端並補「…」。每次只裁一個完整 UTF-8 字元：
-    //   先退一個 byte，若落在 continuation byte（高兩位 10，即 0x80-0xBF）上代表切在
-    //   多 byte 字元中間，繼續往前退，直到落在字元起始 byte，避免中文字被腰斬成亂碼。
+    //   手法），超出可用寬度才裁切 name 尾端並補「…」。每次只裁一個完整 UTF-8 字元，
+    //   邊界計算委派給 utf8PrevCharBoundary()（ems_utf8.h，見該檔案 native test），
+    //   避免中文字被腰斬成亂碼。
     if (static_cast<int16_t>(display.textWidth(buf)) > DEVICE_INFO_NAME_MAX_W) {
         size_t name_len = strlen(device_name);
         bool fits = false;
         while (!fits && name_len > 0) {
-            name_len--;
-            while (name_len > 0 &&
-                   (static_cast<unsigned char>(device_name[name_len]) & 0xC0) == 0x80) {
-                name_len--;
-            }
+            name_len = utf8PrevCharBoundary(device_name, name_len);
             snprintf(buf, sizeof(buf), "名稱：%.*s…", (int)name_len, device_name);
             fits = (static_cast<int16_t>(display.textWidth(buf)) <= DEVICE_INFO_NAME_MAX_W);
         }
@@ -487,19 +502,41 @@ void drawHistoryList() {
                      SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
-/** 未實作功能的佔位畫面：標題 + Phase 標記 + 「尚未實作」提示。 */
-void drawPlaceholder(const char* title, const char* phase) {
+/**
+ * 未實作功能的佔位畫面：標題 + Phase 標記（空字串則略過此列）+「尚未實作」
+ * 提示 + 呼叫端自訂的返回提示文字。
+ *
+ * @param title 畫面標題（如「App連線設定」）
+ * @param phase Phase 標記大字（如「Phase G」）；傳 NULL 或空字串 "" 略過不畫，
+ *              用於沒有明確未來 phase 可標示的情境（見 hint 參數說明的同一次
+ *              修正）
+ * @param hint  底部返回提示文字（如「返回　系統設定」）——呼叫端必須依實際
+ *              按鍵行為與返回目的地明確傳入，不提供預設值。修正動機：Phase G
+ *              全分支整合 review 抓到的 IMPORTANT——App連線設定／Type-C連線
+ *              兩個 placeholder 任意鍵返回的是系統設定選單，固定字串
+ *              「返回　主功能表」誤導使用者；同段 Phase 標記固定寫「Phase G」
+ *              也不對，這兩個 placeholder 正是 Phase G 出貨的功能，不是要等
+ *              更後面的 phase，且目前沒有明確排定的未來 phase 可標示，因此
+ *              改為呼叫端傳空字串略過此列，而非填寫另一個猜測值。
+ * @return      無（void）
+ */
+void drawPlaceholder(const char* title, const char* phase, const char* hint) {
+    // STEP 01: 標題列
     useZhFont();
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText(title, OHCA_BADGE_Y, COLOR_TEXT_PRIMARY);
 
-    display.setTextSize(2);
-    drawCenteredText(phase, SCREEN_H / 2 - 40, COLOR_ACCENT_OK);
+    // STEP 02: Phase 標記大字（NULL 或空字串都略過不畫）
+    if (phase != nullptr && phase[0] != '\0') {
+        // STEP 02.01: 有指定 phase 才切大字級繪製
+        display.setTextSize(2);
+        drawCenteredText(phase, SCREEN_H / 2 - 40, COLOR_ACCENT_OK);
+    }
 
+    // STEP 03:「尚未實作」提示 + 呼叫端自訂的返回提示
     display.setTextSize(1);
     drawCenteredText("尚未實作", SCREEN_H / 2 + 24, COLOR_TEXT_MUTED);
-    drawCenteredText("返回　主功能表",
-                     SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
+    drawCenteredText(hint, SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
 // ============================================================

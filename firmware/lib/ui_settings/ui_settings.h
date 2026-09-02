@@ -3,7 +3,9 @@
 // 對應規格：docs/phase-g-system-settings-plan.md §2.1.1 ~ §2.1.2
 //
 // 設計：
-//   - drawSettingsMenu(Display&)：繪製設定主選單（8 項目，捲動顯示一頁 5 項）
+//   - drawSettingsMenu(Display&, cursor, scroll_offset, device_name_locked,
+//     restore_confirm)：繪製設定主選單（8 項目，捲動顯示一頁 5 項）。五個
+//     參數皆無預設值、呼叫端必須明確傳入，理由見該函式宣告的 @param cursor。
 //   - drawSettingEditor(Display&, ...)：繪製設定編輯器
 //   - 使用 Display 抽象層（display_abstraction.h），native test 可 mock
 
@@ -127,23 +129,35 @@ inline SettingsCursorScroll advanceSettingsCursorAndScroll(uint8_t cursor, uint1
   *       Type-C連線 / 裝置資訊（Impl-Phase G 擴充至 SoT §19.1 完整 8 項）
   *
   * @param disp   顯示抽象層（mock 或真實顯示）
-  * @param cursor 游標索引（SETTINGS_CURSOR_*），預設 3 向後相容
+  * @param cursor 游標索引（SETTINGS_CURSOR_*）——不提供預設值，呼叫端必須明確
+  *               傳入。移除預設值前，main.cpp 曾有一個舊的 4 引數呼叫點
+  *               （disp/cursor/device_name_locked/restore_confirm）；插入
+  *               scroll_offset 成為新簽名第 3 位後，這個舊呼叫仍能編譯過
+  *               （bool→uint16_t 隱式轉換 + 尾端預設值），但實際靜默錯位：
+  *               device_name_locked 的值誤綁到 scroll_offset、restore_confirm
+  *               的值誤綁到 device_name_locked，新的 restore_confirm 則永遠
+  *               吃不到呼叫端的值、只會是預設 false（Task 2 codex Tier 3
+  *               review 抓到的 5 CRITICAL 之一）；拿掉預設值讓這類錯位在
+  *               編譯期就會因缺少必要引數而報錯，不會再靜默通過（Phase G
+  *               全分支整合 review 額外抓到的 IMPORTANT，同一個地雷機制，
+  *               趁還沒再插入新參數前先拆除）
   * @param scroll_offset 捲動視窗起點（顯示清單第幾項開始）。由呼叫端以
   *               clampScrollOffset() 算好再傳入（見 ui_scroll.h）；正式呼叫點
   *               （main.cpp）已接線，跟隨 settingsCursor 由 UP/DOWN 分派同步更新
-  *               （input_handler.cpp）。BTN_PRIMARY 對 cursor 5~7 的分派仍待 Task 3。
-  *               預設 0（不捲動）
+  *               （input_handler.cpp）。不提供預設值，理由同 cursor。
   * @param device_name_locked 裝置名稱是否鎖定（true = 置灰且不顯示當前名稱）。
   *               由呼叫端以 storage_has_unsynced_case() 算好再傳入，對齊
   *               DisplaySnapshot「衍生值呼叫端先算，lib 不依賴 runtime 狀態」的原則。
   *               判準與理由見 docs/phase-g-system-settings-plan.md §2.2.5。
-  * @param restore_confirm 恢復預設確認對話框是否顯示中（true 才畫出提示文字）
+  *               不提供預設值，理由同 cursor。
+  * @param restore_confirm 恢復預設確認對話框是否顯示中（true 才畫出提示文字）。
+  *               不提供預設值，理由同 cursor。
   */
  void drawSettingsMenu(Display& disp,
-                       uint8_t cursor = SETTINGS_CURSOR_VENT_VOL,
-                       uint16_t scroll_offset = 0,
-                       bool device_name_locked = false,
-                       bool restore_confirm = false);
+                       uint8_t cursor,
+                       uint16_t scroll_offset,
+                       bool device_name_locked,
+                       bool restore_confirm);
 
 /**
  * 設定子畫面（亮度/音量調整）

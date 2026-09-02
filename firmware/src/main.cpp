@@ -1191,9 +1191,9 @@ void updateDisplay() {
                              g_device_name_locked, settingsRestoreConfirm);
         }
     } else if (globalState == GLOBAL_SETTINGS_APP_CONN_PLACEHOLDER) {
-        drawPlaceholder("App連線設定", "Phase G");
+        drawPlaceholder("App連線設定", /* phase= */ "", "返回　系統設定");
     } else if (globalState == GLOBAL_SETTINGS_TYPEC_PLACEHOLDER) {
-        drawPlaceholder("Type-C連線", "Phase G");
+        drawPlaceholder("Type-C連線", /* phase= */ "", "返回　系統設定");
     }
 
     // W9：儲存失敗提示（紅字警告 + 重試按鈕，無聲音）

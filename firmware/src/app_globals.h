@@ -230,7 +230,7 @@ constexpr size_t BLE_ACK_BUF_MAX = 512;
 // vs 案件 metadata 裝置 ID）、量產可各自配置，故刻意不互相別名。
 constexpr const char* SYNC_DEVICE_ID   = "DSP-0001";       // 裝置硬體 ID
 constexpr const char* SYNC_DEVICE_NAME = SYNC_DEVICE_ID;   // 救護車編號（未配置，暫別名裝置 ID）
-constexpr const char* SYNC_FW_VERSION  = "v0.6-phaseF";    // 韌體版本
+constexpr const char* SYNC_FW_VERSION  = "v0.7-phaseG";    // 韌體版本
 
 // ════════════════════════════════════════════════════════════════
 // 案件模式（W2：Training = OHCA 訓練版，共用核心狀態機）
@@ -711,7 +711,7 @@ void drawSyncScreen();
 void drawBatteryInfo();
 void drawDeviceInfo();  // Impl-Phase G：裝置資訊子畫面（名稱/型號/序號/韌體/電池/充電狀態）
 void drawHistoryList();
-void drawPlaceholder(const char* title, const char* phase);
+void drawPlaceholder(const char* title, const char* phase, const char* hint);
 void drawTrainingSetup();
 void drawTrainingSave();
 void drawTrainingHistoryOptions();

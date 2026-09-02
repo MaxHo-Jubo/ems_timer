@@ -18,12 +18,11 @@
 #include <string>
 #include <cstring>
 
+#include "ems_utf8.h"  // utf8IsContinuationByte()（Impl-Phase G 抽出共用，見該檔案註解）
+
 // ============================================================
 //  裝置名稱淨化（純邏輯，ARDUINO 與 native 共用）
 // ============================================================
-
-/// UTF-8 continuation byte 判定：高 2 bit 為 10（0b10xxxxxx）
-#define UTF8_IS_CONTINUATION(b)  (((b) & 0xC0) == 0x80)
 
 bool device_name_sanitize(const char* raw, size_t raw_len, char* out, size_t out_size) {
     // STEP 01: 參數防護。out_size 為 0 時後續的 out_size-1 會下溢成 SIZE_MAX
@@ -52,7 +51,7 @@ bool device_name_sanitize(const char* raw, size_t raw_len, char* out, size_t out
         // STEP 03.01: 若切點落在 UTF-8 字元中間，往回退到字元起始邊界。
         //   raw[copy_len] 是第一個被丟棄的 byte；它若是 continuation byte，
         //   代表前一個字元被切成兩半，必須整個字元一起丟掉。
-        while (copy_len > 0 && UTF8_IS_CONTINUATION((unsigned char)raw[copy_len])) {
+        while (copy_len > 0 && utf8IsContinuationByte((unsigned char)raw[copy_len])) {
             copy_len--;
         }
         if (copy_len == 0) {
