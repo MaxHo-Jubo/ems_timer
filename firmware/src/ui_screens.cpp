@@ -1,4 +1,5 @@
 #include "app_globals.h"
+#include "ems_settings.h"  // settings_get_device_name() / DEVICE_NAME_MAX_LEN（drawDeviceInfo() 用，Impl-Phase G）
 
 
 /** 主功能表畫面：標題列（含 BLE 連線「BT」圖示）+ 分隔線 + 5 項可捲動選單（cursor 列白底黑字反白）。 */
@@ -211,6 +212,32 @@ void drawSyncScreen() {
 
 
 /**
+ * 充電狀態 → 顯示文字轉譯，由 drawBatteryInfo() 與 drawDeviceInfo() 共用
+ * （EXTRACT-SHARED-HELPER：兩個畫面原本各自維護一份逐字相同的 if/else-if 判斷，
+ * inline 重複容易日後改一處忘改另一處，導致同一個 ems::ChargeState 值在兩個畫面
+ * 顯示不同文字，使用者會誤以為代表不同狀態）。
+ *
+ * @param state 燃料計目前充電狀態（來自 g_battery_charge_state）
+ * @return      對應顯示文字（靜態字面值常數，呼叫端不需釋放）
+ */
+static const char* chargeStateText(ems::ChargeState state) {
+    // STEP 01: 依充電狀態四擇一；Unknown（含趨勢窗未滿）不落入任何分支，
+    //   直接沿用函式進入時的預設「判斷中」，不猜一個狀態
+    if (state == ems::ChargeState::Charging) {
+        // STEP 01.01: 充電中
+        return "充電中";
+    } else if (state == ems::ChargeState::Discharging) {
+        // STEP 01.02: 放電中
+        return "放電中";
+    } else if (state == ems::ChargeState::Idle) {
+        // STEP 01.03: 靜置
+        return "靜置";
+    }
+    // STEP 01.04: Unknown → 判斷中（趨勢窗未滿時本來就不知道，不編造狀態）
+    return "判斷中";
+}
+
+/**
  * 電池資訊畫面（SoT §19.1 設定選單第 5 項，Task 13）。
  * 顯示電量百分比、電壓與充電狀態；燃料計不在線時明確標示，不顯示假數值。
  */
@@ -252,20 +279,114 @@ void drawBatteryInfo() {
              g_battery_millivolts / MILLIVOLTS_PER_VOLT, g_battery_millivolts % MILLIVOLTS_PER_VOLT);
     display.drawString(buf, BATTERY_INFO_TEXT_X, BATTERY_INFO_LINE2_Y);
 
-    // STEP 05: 充電狀態；Unknown 顯示「判斷中」而非猜一個狀態（趨勢窗未滿時本來就不知道）
-    const char* state_text = "判斷中";
-    if (g_battery_charge_state == ems::ChargeState::Charging) {
-        // STEP 05.01: 充電中
-        state_text = "充電中";
-    } else if (g_battery_charge_state == ems::ChargeState::Discharging) {
-        // STEP 05.02: 放電中
-        state_text = "放電中";
-    } else if (g_battery_charge_state == ems::ChargeState::Idle) {
-        // STEP 05.03: 靜置
-        state_text = "靜置";
-    }
+    // STEP 05: 充電狀態文字——呼叫共用 chargeStateText()（見上方 helper 註解，避免本畫面
+    //   與 drawDeviceInfo() 各自維護一份逐字相同的判斷式）
+    const char* state_text = chargeStateText(g_battery_charge_state);
     snprintf(buf, sizeof(buf), "充電狀態：%s", state_text);
     display.drawString(buf, BATTERY_INFO_TEXT_X, BATTERY_INFO_LINE3_Y);
+}
+
+
+/**
+ * 裝置資訊子畫面（Impl-Phase G，SoT §19.7）：名稱／型號／序號／韌體／電池／
+ * 充電狀態六列。比照 drawBatteryInfo()（Task 13）的既有寫法：STEP 編號、
+ * 統一出口、不編造缺值。
+ *
+ * 與電池資訊畫面不同：本畫面沒有「不在線」整頁狀態——六個欄位啟動後必定都有
+ * 值（名稱有預設「未命名」、型號/序號/韌體是靜態常數，電池/充電狀態沿用既有
+ * is_battery_absent() 判斷只影響那兩列的顯示文字，不影響整個畫面可用性）。
+ */
+void drawDeviceInfo() {
+    // 版面常數：左邊界、每列 Y——沿用 drawBatteryInfo() 的既有版面慣例，六列個別
+    // 具名（而非呼叫端各自算 LINE1_Y + SPACING*N），改一個行距忘改某一列的風險
+    // 由此收斂到單一常數（同 drawBatteryInfo() BATTERY_INFO_LINE2_Y/LINE3_Y 既有模式）
+    constexpr int16_t DEVICE_INFO_TEXT_X       = 24;
+    constexpr int16_t DEVICE_INFO_LINE1_Y      = 50;   // 名稱列
+    constexpr int16_t DEVICE_INFO_LINE_SPACING = 28;   // 每列間距（px，六列需比電池資訊三列更密）
+    constexpr int16_t DEVICE_INFO_LINE2_Y = DEVICE_INFO_LINE1_Y + DEVICE_INFO_LINE_SPACING;      // 型號列
+    constexpr int16_t DEVICE_INFO_LINE3_Y = DEVICE_INFO_LINE1_Y + DEVICE_INFO_LINE_SPACING * 2;  // 序號列
+    constexpr int16_t DEVICE_INFO_LINE4_Y = DEVICE_INFO_LINE1_Y + DEVICE_INFO_LINE_SPACING * 3;  // 韌體列
+    constexpr int16_t DEVICE_INFO_LINE5_Y = DEVICE_INFO_LINE1_Y + DEVICE_INFO_LINE_SPACING * 4;  // 電池列
+    constexpr int16_t DEVICE_INFO_LINE6_Y = DEVICE_INFO_LINE1_Y + DEVICE_INFO_LINE_SPACING * 5;  // 充電狀態列
+    // 名稱列可用文字寬度：螢幕寬扣左邊界與右側留白（留白比照既有 BATTERY_ICON_RIGHT_MARGIN 慣例）
+    constexpr int16_t DEVICE_INFO_RIGHT_MARGIN = 8;
+    constexpr int16_t DEVICE_INFO_NAME_MAX_W   = SCREEN_W - DEVICE_INFO_TEXT_X - DEVICE_INFO_RIGHT_MARGIN;
+
+    // STEP 01: 文字樣式設定
+    useZhFont();
+    display.setTextSize(1);
+    display.setTextColor(COLOR_TEXT_PRIMARY);
+    display.setTextDatum(textdatum_t::top_left);
+
+    // STEP 02: 標題
+    drawCenteredText("裝置資訊", OHCA_BADGE_Y, COLOR_ACCENT_OK);
+
+    // STEP 03: 名稱（每次繪製重新讀，比照 drawSettingsMenu() 既有做法，非 snapshot 驅動）。
+    //   不像 ui_settings.cpp 的 drawSettingsMenu() 需要 #ifdef ARDUINO / mock_fs_read
+    //   雙軌分支——本檔 ui_screens.cpp 屬 src/，native build 排除整個檔案
+    //   （platformio.ini build_src_filter = -<*>），這個函式只會在 ESP32/Arduino
+    //   環境被編譯到，#else 分支永遠不可達，寫了也是死碼，直接呼叫即可。
+    char device_name[DEVICE_NAME_MAX_LEN];
+    settings_get_device_name(device_name, sizeof(device_name));
+    char buf[48];  // 最長行含中文標籤 + 裝置名稱 + 裁切用「…」，留餘裕
+    snprintf(buf, sizeof(buf), "名稱：%s", device_name);
+
+    // STEP 03.01: 裝置名稱最長可達 DEVICE_NAME_MAX_LEN-1（31）bytes，組出的字串在目前
+    //   字級下可能超出螢幕可用寬度，尾端被裁到畫面外且無任何提示（使用者以為名稱就
+    //   這麼短）。用 textWidth() 動態量測實際渲染寬度（同 drawLowBatteryNotice() 既有
+    //   手法），超出可用寬度才裁切 name 尾端並補「…」。每次只裁一個完整 UTF-8 字元：
+    //   先退一個 byte，若落在 continuation byte（高兩位 10，即 0x80-0xBF）上代表切在
+    //   多 byte 字元中間，繼續往前退，直到落在字元起始 byte，避免中文字被腰斬成亂碼。
+    if (static_cast<int16_t>(display.textWidth(buf)) > DEVICE_INFO_NAME_MAX_W) {
+        size_t name_len = strlen(device_name);
+        bool fits = false;
+        while (!fits && name_len > 0) {
+            name_len--;
+            while (name_len > 0 &&
+                   (static_cast<unsigned char>(device_name[name_len]) & 0xC0) == 0x80) {
+                name_len--;
+            }
+            snprintf(buf, sizeof(buf), "名稱：%.*s…", (int)name_len, device_name);
+            fits = (static_cast<int16_t>(display.textWidth(buf)) <= DEVICE_INFO_NAME_MAX_W);
+        }
+        // name_len 裁到 0 仍超寬：迴圈因 name_len==0 自然跳出，buf 停在最後一次組出的
+        // 字串（「名稱：…」）。理論上不會發生——320px 固定螢幕寬度遠大於純標籤+刪節號
+        // 的寬度——這裡只是避免 while 找不到收斂點時死迴圈，不是預期會走到的分支。
+    }
+    display.drawString(buf, DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE1_Y);
+
+    // STEP 04: 型號（固定字面常數）
+    snprintf(buf, sizeof(buf), "型號：%s", "EMS DoseSync Pro");
+    display.drawString(buf, DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE2_Y);
+
+    // STEP 05: 序號（既有 SYNC_DEVICE_ID 常數，與案件同步 metadata 的 device_id 同源，
+    //   見 spec §4.1.1——不可另外衍生一組不同來源的值）
+    snprintf(buf, sizeof(buf), "序號：%s", SYNC_DEVICE_ID);
+    display.drawString(buf, DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE3_Y);
+
+    // STEP 06: 韌體（既有 SYNC_FW_VERSION 常數）
+    snprintf(buf, sizeof(buf), "韌體：%s", SYNC_FW_VERSION);
+    display.drawString(buf, DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE4_Y);
+
+    // STEP 07: 電池／充電狀態——不在線時顯示「—」而非編造數值，經 is_battery_absent()
+    //   統一出口判斷，不自行比對 255 哨兵（同 drawBatteryInfo() 既有規範）
+    if (ems::is_battery_absent(g_battery_percent)) {
+        // STEP 07.01: 不在線分支——兩列都顯示「—」後直接返回，比照 drawBatteryInfo()
+        //   STEP 03.01 早退模式（該處是整頁提示；本畫面只有這兩列缺值，其餘四列仍要
+        //   顯示，故不整頁提早return，只在此分支內畫完這兩列再 return）
+        display.drawString("電池：—", DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE5_Y);
+        display.drawString("充電狀態：—", DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE6_Y);
+        return;
+    }
+
+    snprintf(buf, sizeof(buf), "電池：%u%%", g_battery_percent);
+    display.drawString(buf, DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE5_Y);
+
+    // STEP 08: 充電狀態文字——呼叫共用 chargeStateText()（見該 helper 上方註解），
+    //   避免本畫面與 drawBatteryInfo() 各自維護一份逐字相同的判斷式
+    const char* state_text = chargeStateText(g_battery_charge_state);
+    snprintf(buf, sizeof(buf), "充電狀態：%s", state_text);
+    display.drawString(buf, DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE6_Y);
 }
 
 

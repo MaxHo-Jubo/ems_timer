@@ -709,6 +709,7 @@ void drawLowBatteryNotice(bool visible);
 void drawLowBatteryStartConfirm();
 void drawSyncScreen();
 void drawBatteryInfo();
+void drawDeviceInfo();  // Impl-Phase G：裝置資訊子畫面（名稱/型號/序號/韌體/電池/充電狀態）
 void drawHistoryList();
 void drawPlaceholder(const char* title, const char* phase);
 void drawTrainingSetup();
