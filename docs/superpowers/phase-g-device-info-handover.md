@@ -1,10 +1,77 @@
 # Impl-Phase G 裝置資訊畫面 — 交接文件
 
-- **最後更新**：2026-09-02（**Task 1-5/6 全部完成**，Task 6 本身正在做——這份文件的更新
-  就是 Task 6 Step 2）
-- **狀態**：SDD（subagent-driven-development）流程完成 5 個實作 task，全部經 repo Tier
-  2/3 codex gate + SDD task-reviewer 雙重驗證通過。**尚未上機驗收**（見 §3-B），需要實體
-  硬體才能真正結案。
+- **最後更新**：2026-09-02（6 個 task 全部完成後，SDD 流程最後一步「全分支整合 review」
+  跑完，抓到 **1 個 CRITICAL 尚未修復**——見下方「🔴 未結」區塊，**下次接手第一件事就是
+  處理這個**，不要跳過直接去做上機驗收）
+- **狀態**：SDD（subagent-driven-development）流程完成 6 個 task，個別 task 全部經 repo
+  Tier 2/3 codex gate + SDD task-reviewer 雙重驗證通過。但**全分支整合 review**（跨
+  task 才看得出來的問題，個別 task review 抓不到）發現裝置資訊畫面的文字渲染實際上是壞的
+  ——**這個分支目前不是「可合併」狀態**，HEAD 停在 `cba8ce9`，程式碼未變動。
+
+## 🔴 未結：全分支整合 review 發現（2026-09-02，尚未處理，下次接手先做這個）
+
+**使用者裁示**：先記錄，不在本次 session 修。以下是完整發現，含 file:line 與修法建議，
+下次接手可以直接照著做，不需要重新跑一次 review。
+
+### CRITICAL：`drawDeviceInfo()` 與 `drawBatteryInfo()` 的文字渲染都是壞的
+
+**根因**：`drawCenteredText()`（`ui_screens.cpp:54-58`）會永久修改共用繪圖狀態
+（`setTextColor()` + `setTextDatum(top_center)`），不是純函式。`drawDeviceInfo()`
+（`ui_screens.cpp:318-322`）先設定 `setTextColor(COLOR_TEXT_PRIMARY)` +
+`setTextDatum(top_left)`，但緊接著呼叫 `drawCenteredText("裝置資訊", ...)` 畫標題，
+這一行把兩個設定都覆蓋掉了——後面六列 `display.drawString()`（`:356,360,365,369,377,
+378,383,389`）因此全部用**錯的顏色**（`COLOR_ACCENT_OK` 深綠，不是白色）跟**錯的對齊
+方式**（置中在 x=24，不是左靠）畫出來。一個約 200px 寬的字串置中在 x=24 會從 x≈-76
+畫到 x≈124，螢幕左半邊直接被裁掉。
+
+**同一個 bug 也存在於 `drawBatteryInfo()`**（`ui_screens.cpp:258-259` vs
+`:276,280,286`）——是 Phase H 既有的，從來沒人抓到過，因為這是純渲染邏輯，native test
+測不到（`src/` 排除）、編譯也不會報錯，只有上機才看得出來或像這次靠仔細追蹤程式碼邏輯
+抓到。
+
+**驗證依據**：這個 repo 自己的 `drawHistoryList()`（`:479-480`）跟 `drawSyncScreen()`
+（`:131`）都在畫完標題後**重新設定**顏色跟對齊方式才畫本文——這是既有的正確 pattern，
+`drawDeviceInfo()`/`drawBatteryInfo()` 兩個是例外，沒跟上。
+
+**建議修法**（review 建議的結構性修法，不是治標）：讓 `drawCenteredText()` 自己
+save/restore datum 跟 color，一次性關掉這整類問題，而不是在兩個呼叫點各自補
+`setTextColor`/`setTextDatum`。次選：在兩個函式的標題呼叫之後各補一行重新設定。
+
+**為什麼這個現在才被抓到**：5 個 task 各自的 review（repo Tier 2/3 gate + SDD
+task-reviewer）都沒抓到，因為每個 task 各自看到的 diff 都沒有理由去追蹤
+`drawCenteredText()` 的副作用；只有全分支整合 review 專門去讀了完整的
+`drawDeviceInfo()` 執行路徑才發現。這正是 SDD 流程最後一步「全分支 review」存在的
+理由。
+
+### Important（4 個，不影響核心可用性，建議一併處理）
+
+1. **placeholder 返回提示文字寫錯**（`main.cpp:1193-1196` → `ui_screens.cpp:501` →
+   `input_handler.cpp:840-844`）：`drawPlaceholder()` 固定顯示「返回　主功能表」，但
+   App連線設定／Type-C連線這兩個新 placeholder 是任意鍵返回**設定選單**（spec §3.4
+   明定），不是主功能表也不限定 BACK 鍵。同段的 Phase 標記寫「Phase G」也不對——
+   Phase G 就是正在出貨這兩個 placeholder 的階段，寫法暗示功能還要等更後面的 phase。
+   修法：`drawPlaceholder()` 加一個 `hint` 參數，預設值維持現有字串。
+2. **`SYNC_FW_VERSION` 過期**（`app_globals.h:233`，值 `"v0.6-phaseF"`）：本分支是
+   這個常數第一次會被使用者直接在畫面上看到（`ui_screens.cpp:367`），之前只出現在 BLE
+   同步 metadata。字串**格式**重新設計已由 spec §7 明列不在範圍（不重提），但**值本身
+   過期**是沒人問過的獨立問題——顯示這個版本號的畫面就是本分支的成果，卻報告一個
+   Phase F 的版本。一行修正。
+3. **UTF-8 截斷迴圈是純邏輯卻放在 `src/`，無測試覆蓋**（`ui_screens.cpp:344-355`）：
+   計畫 Global Constraints 明定「純邏輯一律先抽到 `lib/` 再由 `src/` 呼叫，native test
+   測 `lib/` 那份」——這正是 `clampScrollOffset()`/`advanceSettingsCursorAndScroll()`
+   遵循的原則，但這段 UTF-8 continuation-byte 判斷的巢狀迴圈沒有照做，只用一個沒進
+   repo 的獨立 g++ harness 驗證過。Review 追蹤過邏輯本身是對的，缺的只是回歸保護。
+   建議：抽出 `size_t utf8PrevCharBoundary(const char* s, size_t idx)` 到 `lib/`，
+   補 ASCII／3-byte CJK／邊界在 index 0／混合字串四種 native test case。
+4. **`drawSettingsMenu()` 尾端三個參數仍留預設值**（`ui_settings.h:142-145`）：Task 2
+   那次「`bool`→`uint16_t` 隱式轉換、參數全部錯位、恢復預設對話框永遠不顯示」的
+   CRITICAL，根因機制就是尾端預設值讓呼叫端漏傳參數也能編譯過。現在每個呼叫點都驗證
+   正確（1 個正式呼叫點 + 16 個測試呼叫點），但地雷本身沒拆——未來這個參數列表只要再
+   插入一個新參數，同樣的錯位風險會重新出現。建議拿掉預設值，改成每處呼叫都明確傳值
+   （測試檔已經有 8/16 處這樣寫，改剩下的是機械性工作）。
+
+完整報告（含 Minor 項目與 6 條 Strengths）在 SDD ledger：
+`.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md` 最後一段。
 - **branch**：`feat/phase-g-device-info`（git worktree，路徑
   `.worktrees/phase-g-device-info`，從本機 `main`（`a634ba9`）分支——**不是**
   `origin/main`，本機 main 領先 origin/main 99+ commit 未推送）
