@@ -95,18 +95,28 @@ wrangler login
 
 ## 🔧 開發階段（Phase A~H）
 
-對齊 `docs/pm-dev-spec.md §四`。**目前狀態：規格封版完成、Demo 完成；韌體尚未開工。**
+對齊 `docs/pm-dev-spec.md §四`。**目前狀態（2026-09-02 校準）：Phase A~F 韌體已實作完成；
+Phase G/H 部分完成，細節見下表。**
+
+⚠️ 下表「✅ 已完成」僅代表**韌體已實作 + native test 綠燈 + 編譯通過**，不代表已完整
+上機驗收——除 Dev-Phase 1 硬體原型（2026-04-17 驗收通過）與少數獨立驗證過的硬體元件
+（DS3231 RTC、電池供電拓樸）外，尚未見任何 Phase 等級的完整上機端到端驗收記錄，這是
+全專案累積至今的最大殘餘風險，詳見各 Phase 的 handover 文件「上機驗收清單」。
 
 | Phase | 範圍 | 狀態 |
 |-------|------|------|
-| **A** | OHCA 核心狀態機 + EPI 倒數 + 兩段確認 | ⏳ 下次工作起點 |
-| B | 補登 + Amiodarone + 案件總覽 + Timeline | ⏸ 待 A |
-| C | 6 秒通氣節奏（獨立 + OHCA 切入 + EPI 高優先打斷） | ⏸ 待 A |
-| D | Training 模式 | ⏸ 待 A |
-| E | LittleFS 持久化 + 歷史紀錄 | ⏸ 待 B |
-| F | App 配對碼同步 | ⏸ 待 E |
-| G | 系統設定 + Type-C 管理工具 | ⏸ 並行 |
-| H | 電源管理 | ⏸ 並行 |
+| A | OHCA 核心狀態機 + EPI 倒數 + 兩段確認 | ✅ 已完成 |
+| B | 補登 + Amiodarone + 案件總覽 + Timeline | ✅ 已完成 |
+| C | 6 秒通氣節奏（獨立 + OHCA 切入 + EPI 高優先打斷） | ✅ 已完成 |
+| D | Training 模式 | ✅ 已完成 |
+| E | LittleFS 持久化 + 歷史紀錄 | ✅ 已完成 |
+| F | App 配對碼同步（BLE NUS，MVP1~3 皆已實作） | ✅ 已完成 |
+| G | 系統設定 + Type-C 管理工具 | 🟡 系統設定／裝置名稱／裝置資訊畫面已完成（僅待上機驗收，見 `docs/superpowers/phase-g-device-info-handover.md`）；**Type-C 管理工具（列案件/匯出/清除）未開工** |
+| H | 電源管理 | 🟡 低電量警告已完成；**螢幕常亮／邊充邊用測試／Type-C 插拔不中斷案件未見專門實作或驗證**（注意：pm-dev-spec 定義的「電源管理」跟已完成的「電量顯示」UI 是不同範圍，只有低電量警告一項重疊，見 `docs/superpowers/phase-h-handover.md`） |
+
+**另外兩塊完全未開工、不在本表 Phase A~H 範圍內**（見 `docs/pm-dev-spec.md §二/§三`）：
+- **手機 App**（Dev-Phase 3）——repo 內無任何 RN/Flutter/native 專案，現有 `web/`/`docs/demo/` 僅為視覺參考 demo，不是真實 App
+- **Type-C 電腦端管理工具**——同上表 Phase G 內的同名項目，完全沒有對應程式碼
 
 **Phase A 開工時 throwaway 重寫**：既有韌體 `MED_PHASE` / `ems_countdown.cpp` / `vent_metronome.cpp` / 5 鍵 / 4 模式切換邏輯全砍。詳見 `docs/pm-dev-spec.md §五` 與 `tasks/todo.md`。
 

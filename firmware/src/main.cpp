@@ -1,5 +1,5 @@
 /**
- * EMS Timer 韌體：OHCA 核心 + Phase B 已落地
+ * EMS Timer 韌體：OHCA 核心 + Phase A~F 已落地，Phase G/H 部分完成
  *
  * SoT 對齊：
  *   - docs/EMS_DoseSync_Pro_Prototype_V1.md §3 主功能表 / §5~§13 OHCA + Vent
@@ -7,10 +7,16 @@
  *   - docs/pm-dev-spec.md §四 Phase A~H acceptance
  *   - docs/gpio-allocation.md（GPIO 分配 SSOT）
  *
- * 實作狀態（pm-dev-spec §四，2026-05-09 對齊）：
+ * 實作狀態（pm-dev-spec §四，2026-09-02 對齊）：
+ *
+ * ⚠️ 以下 ✅ 僅代表「韌體已實作 + native test 綠燈 + 編譯通過」，不代表已完整上機驗收
+ *    ——除 Dev-Phase 1 硬體原型（2026-04-17 驗收通過）與少數獨立驗證過的硬體元件
+ *    （DS3231 RTC／電池供電拓樸）外，尚未見任何 Phase 等級的完整上機端到端驗收記錄，
+ *    這是全專案累積至今的最大殘餘風險。
  *
  *   Phase A — OHCA 核心
- *     ✅ 主功能表 5 項（OHCA 入口可進；Training/History/Settings 顯示 placeholder）
+ *     ✅ 主功能表 5 項（OHCA / Vent / Training / History / Settings 皆為真實畫面，
+ *        非 placeholder；Impl-Phase G 起系統設定子選單再擴充至 8 項）
  *     ✅ OHCA 子狀態機（10 態，delegate 至 lib/ems_ohca）
  *     ✅ EPI 4 分鐘倒數引擎（純函式 lib，TIMER_TICK 驅動）
  *     ✅ EPI / 電擊兩段確認（5s timeout）
@@ -24,18 +30,27 @@
  *     ✅ END_CHECK 結束前檢查（V1 §10：完成並結束 / 前往補登 / 返回案件）
  *     ✅ 案件總覽（V1 §11，caseSummary_build）+ Timeline 子畫面
  *
- *   Phase C — 6 秒通氣節奏（程式碼已落地，待 PM 驗收）
- *     ❌ GLOBAL_VENT 獨立模式（從主功能表進入）
- *     ❌ 通氣音量 0~5 即時可調（音量持久化見 Phase G）
- *     ❌ OHCA 中快速功能進入（返回鍵 → SUBSTATE_QUICK_MENU）
- *     ❌ EPI 高優先打斷邏輯（OHCA_STATE_ALARMING → effectiveVol=0）
- *     ❌ EPI 完成後「返回通氣節奏？」詢問（V1 §13.13 待補）
+ *   Phase C — 6 秒通氣節奏
+ *     ✅ GLOBAL_VENT 獨立模式（從主功能表進入）
+ *     ✅ 通氣音量 0~5 即時可調（音量持久化見 Phase G）
+ *     ✅ OHCA 中快速功能進入（返回鍵 → SUBSTATE_QUICK_MENU）
+ *     ✅ EPI 高優先打斷邏輯（OHCA_STATE_ALARMING → effectiveVol=0）
+ *     ✅ EPI 完成後「返回通氣節奏？」詢問（V1 §13.13）
  *
- *   ❌ Phase D — Training 模式
- *   ❌ Phase E — 持久化 / 歷史紀錄（LittleFS partition + FIFO 覆蓋）
- *   🟡 Phase F — BLE 同步（NUS + JSON 過渡 / 配對碼）：MVP1 對時 + MVP2 dispatcher + Followup §11.1/§16.5 入口完成；MVP3 chunked data 真送待實機
- *   ❌ Phase G — 系統設定（亮度 / 系統音量 / 通氣音量 NVS）
- *   ❌ Phase H — 電源管理（螢幕常亮 / Deep Sleep）
+ *   ✅ Phase D — Training 模式
+ *   ✅ Phase E — 持久化 / 歷史紀錄（LittleFS partition + FIFO 覆蓋）
+ *   ✅ Phase F — BLE 同步（NUS + JSON 過渡 / 配對碼）：MVP1 對時 + MVP2 dispatcher +
+ *      MVP3 chunked case_sync 真送皆已實作
+ *   🟡 Phase G — 系統設定（亮度 / 系統音量 / 通氣音量 NVS）+ 裝置名稱 + 裝置資訊畫面
+ *      皆已完成，僅待上機驗收（見 docs/superpowers/phase-g-device-info-handover.md）；
+ *      Type-C 管理工具（列案件/匯出/清除）未開工
+ *   🟡 Phase H — 電源管理：低電量警告已完成；螢幕常亮 / 邊充邊用測試 / Type-C 插拔
+ *      不中斷案件未見專門實作或驗證（不要跟已完成的「電量顯示」UI 搞混，範圍不同，
+ *      見 docs/superpowers/phase-h-handover.md）
+ *
+ *   ❌ App（手機端，Dev-Phase 3）與 Type-C 電腦端管理工具（pm-dev-spec §二/§三）
+ *      完全未開工，不在上述 Phase A~H 範圍內——現有 web/、docs/demo/ 僅為視覺參考
+ *      demo，不是真實 App。
  *
  * 接線（完整 SSOT 見 docs/gpio-allocation.md）：
  *   主按鍵    → GPIO 4   返回鍵    → GPIO 16
