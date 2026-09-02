@@ -1,17 +1,22 @@
 # Impl-Phase G 裝置資訊畫面 — 交接文件
 
-- **最後更新**：2026-09-02（6 個 task 全部完成後，SDD 流程最後一步「全分支整合 review」
-  跑完，抓到 **1 個 CRITICAL 尚未修復**——見下方「🔴 未結」區塊，**下次接手第一件事就是
-  處理這個**，不要跳過直接去做上機驗收）
-- **狀態**：SDD（subagent-driven-development）流程完成 6 個 task，個別 task 全部經 repo
-  Tier 2/3 codex gate + SDD task-reviewer 雙重驗證通過。但**全分支整合 review**（跨
-  task 才看得出來的問題，個別 task review 抓不到）發現裝置資訊畫面的文字渲染實際上是壞的
-  ——**這個分支目前不是「可合併」狀態**，HEAD 停在 `cba8ce9`，程式碼未變動。
+- **最後更新**：2026-09-02（全分支整合 review 發現的 1 個 CRITICAL + 4 個 Important
+  已全部修復並通過 repo Tier 3 codex 兩輪 re-review〔6/6 面向、0 CRITICAL〕，commit
+  `62bf11f`，pending-review 閘門已解鎖——見下方「✅ 已解決」區塊。**下次接手可以直接
+  跳到 §3-B 上機驗收**，程式碼工作全部完成）
+- **狀態**：SDD（subagent-driven-development）流程完成 6 個 task + 1 輪全分支整合
+  review fix round，全部經 repo Tier 2/3 codex gate 驗證通過。**分支目前是「可合併」
+  狀態**（仍待上機驗收，見 §3-B），HEAD 在 `62bf11f`。
 
-## 🔴 未結：全分支整合 review 發現（2026-09-02，尚未處理，下次接手先做這個）
+## ✅ 已解決：全分支整合 review 發現（2026-09-02，修復並通過兩輪 re-review）
 
-**使用者裁示**：先記錄，不在本次 session 修。以下是完整發現，含 file:line 與修法建議，
-下次接手可以直接照著做，不需要重新跑一次 review。
+commit `62bf11f`（原始修復 `340fca7`，兩輪 codex Tier 3 fix round amend 到此）。
+native test 651 cases / 650 通過（唯一 ERRORED 仍是既有 `test_storage_hw`，與本次
+無關）；ESP32 build SUCCESS，Flash 73.0% / RAM 33.4%；VLW 字型重生 byte-identical
+（0 新字）。pending-review 閘門已用 `clear-pending-review.ts --aspects-done=6` 解鎖。
+
+以下保留原始發現記錄（file:line 對應修復前的 `cba8ce9`），供之後想知道「這個 bug
+當初長什麼樣」時查閱；每項後面補上**實際修法**（可能與原始建議不同，見下方說明）。
 
 ### CRITICAL：`drawDeviceInfo()` 與 `drawBatteryInfo()` 的文字渲染都是壞的
 
@@ -43,35 +48,72 @@ task-reviewer）都沒抓到，因為每個 task 各自看到的 diff 都沒有�
 `drawDeviceInfo()` 執行路徑才發現。這正是 SDD 流程最後一步「全分支 review」存在的
 理由。
 
-### Important（4 個，不影響核心可用性，建議一併處理）
+**✅ 實際修法**：採用建議的結構性修法——`drawCenteredText()` 進入時
+`display.getTextStyle()` 存下呼叫端目前樣式，畫完後 `display.setTextStyle()`
+還原，一次性關掉整類問題。收工前逐一 grep 全檔案所有 `drawCenteredText()` 呼叫點
+與所有 `display.drawString()`/`print()` 呼叫點，確認沒有任何既有函式依賴
+`drawCenteredText()` 遺留的樣式副作用（每個 draw 函式進入時都會自己重設所需樣式，
+是本檔既有的一致慣例）。
+
+### Important（4 個，不影響核心可用性，已一併處理）
 
 1. **placeholder 返回提示文字寫錯**（`main.cpp:1193-1196` → `ui_screens.cpp:501` →
    `input_handler.cpp:840-844`）：`drawPlaceholder()` 固定顯示「返回　主功能表」，但
    App連線設定／Type-C連線這兩個新 placeholder 是任意鍵返回**設定選單**（spec §3.4
    明定），不是主功能表也不限定 BACK 鍵。同段的 Phase 標記寫「Phase G」也不對——
    Phase G 就是正在出貨這兩個 placeholder 的階段，寫法暗示功能還要等更後面的 phase。
-   修法：`drawPlaceholder()` 加一個 `hint` 參數，預設值維持現有字串。
+   **✅ 實際修法**：`drawPlaceholder()` 加 `hint` 參數（無預設值，兩個呼叫點都改
+   明確傳「返回　系統設定」）；`phase` 參數傳空字串 `""` 時略過大字級 Phase 標記
+   （目前沒有明確排定的未來 phase 可標示，比起填一個猜測值更誠實），兩個呼叫點都
+   改傳 `""`。fix round 2 補上 `phase != nullptr` 防護。
 2. **`SYNC_FW_VERSION` 過期**（`app_globals.h:233`，值 `"v0.6-phaseF"`）：本分支是
    這個常數第一次會被使用者直接在畫面上看到（`ui_screens.cpp:367`），之前只出現在 BLE
    同步 metadata。字串**格式**重新設計已由 spec §7 明列不在範圍（不重提），但**值本身
    過期**是沒人問過的獨立問題——顯示這個版本號的畫面就是本分支的成果，卻報告一個
-   Phase F 的版本。一行修正。
+   Phase F 的版本。**✅ 實際修法**：改為 `"v0.7-phaseG"`，一行修正。獨立回歸測試
+   （斷言裝置資訊畫面/BLE metadata 輸出這個值）review 兩輪都有提，兩輪都裁決不加
+   ——`app_globals.h`／`ui_screens.cpp`／`sync_send.cpp` 全部在 `src/`，native
+   build 整檔排除，加測試需要改 native env 的 include path 或把常數搬出 `src/`，
+   超出本輪「修 review 發現」的範圍，記錄為殘餘風險。
 3. **UTF-8 截斷迴圈是純邏輯卻放在 `src/`，無測試覆蓋**（`ui_screens.cpp:344-355`）：
    計畫 Global Constraints 明定「純邏輯一律先抽到 `lib/` 再由 `src/` 呼叫，native test
    測 `lib/` 那份」——這正是 `clampScrollOffset()`/`advanceSettingsCursorAndScroll()`
    遵循的原則，但這段 UTF-8 continuation-byte 判斷的巢狀迴圈沒有照做，只用一個沒進
    repo 的獨立 g++ harness 驗證過。Review 追蹤過邏輯本身是對的，缺的只是回歸保護。
-   建議：抽出 `size_t utf8PrevCharBoundary(const char* s, size_t idx)` 到 `lib/`，
-   補 ASCII／3-byte CJK／邊界在 index 0／混合字串四種 native test case。
+   **✅ 實際修法**：抽出 `size_t utf8PrevCharBoundary(const char* s, size_t idx)`
+   到新 lib `lib/ems_utf8/ems_utf8.h`，補 6 個 native test case（ASCII／3-byte
+   CJK／index 0 邊界／混合字串／`idx==0` 與 `s==nullptr` 違反契約時 `abort()` 的
+   `fork()` 死亡測試——後兩個是 fix round 1 codex 抓到的 CRITICAL：契約只寫在文件
+   裡沒有真的擋，補上才算完整）。順手把 `ems_settings.cpp` 的
+   `device_name_sanitize()` 內同一個 continuation-byte 判斷式也改呼叫這裡抽出的
+   `utf8IsContinuationByte()`，消除兩處重複邏輯（fix round 1 codex 額外抓到）。
 4. **`drawSettingsMenu()` 尾端三個參數仍留預設值**（`ui_settings.h:142-145`）：Task 2
    那次「`bool`→`uint16_t` 隱式轉換、參數全部錯位、恢復預設對話框永遠不顯示」的
    CRITICAL，根因機制就是尾端預設值讓呼叫端漏傳參數也能編譯過。現在每個呼叫點都驗證
    正確（1 個正式呼叫點 + 16 個測試呼叫點），但地雷本身沒拆——未來這個參數列表只要再
-   插入一個新參數，同樣的錯位風險會重新出現。建議拿掉預設值，改成每處呼叫都明確傳值
-   （測試檔已經有 8/16 處這樣寫，改剩下的是機械性工作）。
+   插入一個新參數，同樣的錯位風險會重新出現。**✅ 實際修法**：拿掉全部 4 個尾端預設值
+   （`cursor`／`scroll_offset`／`device_name_locked`／`restore_confirm`），17 個
+   呼叫點（1 正式 + 16 測試）全部改明確傳值。
 
-完整報告（含 Minor 項目與 6 條 Strengths）在 SDD ledger：
-`.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md` 最後一段。
+**已核閱但不採納**（兩輪 codex re-review 都重複提出，記錄理由供之後想重新評估時參考）：
+- `ui_screens.cpp` 文字渲染邏輯（`drawCenteredText`／`drawPlaceholder`）與
+  `SYNC_FW_VERSION` 的 native 回歸測試——`src/` 整檔被 native build 排除是既有架構
+  限制（`platformio.ini` 的 `build_src_filter = -<*>` 與 `-I$PROJECT_LIB_DIR`），
+  同 `drawBatteryInfo()`/`drawDeviceInfo()` 從 Task 13/Task 5 起就有的既有慣例，
+  不是本次新增的缺口。要修須新增可測的顯示抽象層或搬動 include path，是獨立的架構
+  任務。
+- `utf8PrevCharBoundary()` 改用 `string_view`／`drawPlaceholder()` 改用
+  `enum class ReturnTarget` 的型別重設計——內部 helper 且呼叫點單純（分別 1 個與
+  2 個），過度工程化，同 `clampScrollOffset()` 既有 Ruling（`ui_scroll.h`，Task 1）
+  的判斷邏輯。
+
+原始全分支整合 review 完整報告（含 Minor 項目與 6 條 Strengths）當時記錄在 SDD
+ledger（`.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md`）；fix round
+兩輪 codex Tier 3 review 的完整結果在
+`~/.claude/state/codex-review/-Users-maxhero-Documents-MaxHero-Projects-ems_timer-.worktrees-phase-g-device-info/{340fca7,249472e}/`
+（本機 state 目錄，不隨 repo 走）。**SDD workspace（`.superpowers/sdd/`）已於
+fix round 完成、review 閘門解鎖後依流程刪除**——git-ignored、非最終記錄，最終記錄
+是 commit `62bf11f` 的完整訊息（已含所有發現與實際修法對照）與本文件。
 - **branch**：`feat/phase-g-device-info`（git worktree，路徑
   `.worktrees/phase-g-device-info`，從本機 `main`（`a634ba9`）分支——**不是**
   `origin/main`，本機 main 領先 origin/main 99+ commit 未推送）
@@ -133,32 +175,31 @@ UTF-8 安全的裝置名稱寬度截斷。字型重生 0 缺字。最終 commit 
 commit 都因 `drawDeviceInfo()` 前向引用而編不過，這是計畫本身設計好的序列狀態，不是
 迴歸）。
 
-**尚未開工**：無（Task 6 本身正在跑，是這份文件的最後更新）。全套 native test 645
-cases / 644 通過（唯一 ERRORED 仍是既有的 `test_storage_hw`，與本計畫無關），韌體
-Flash 73.0% / RAM 33.4%。
+**尚未開工**：無。6 個 task + 全分支整合 review fix round 全部完成，全套 native
+test 651 cases / 650 通過（唯一 ERRORED 仍是既有的 `test_storage_hw`，與本計畫無關），
+韌體 Flash 73.0% / RAM 33.4%。
 
 ---
 
 ## 2. 如何驗證現況 / 交接給下一步（上機驗收）
 
-所有 6 個 task（含本 task 6 的文件收尾）都已完成，**沒有剩餘的程式碼工作**——下一步是
-§3-B 的上機驗收清單，需要實體硬體，不是繼續開發。
+所有 6 個 task + 全分支整合 review 的 fix round 都已完成，**沒有剩餘的程式碼工作**
+——下一步是 §3-B 的上機驗收清單，需要實體硬體，不是繼續開發。
 
 ```bash
 cat docs/superpowers/specs/2026-09-01-phase-g-device-info-design.md   # 設計決策記錄
 cat docs/superpowers/plans/2026-09-01-phase-g-device-info.md          # 實作計畫 + 每個 task 執行時發現的計畫缺陷修正
 
-# 驗證最終狀態（2026-09-02，Task 6 完成時）
-cd firmware && pio test -e native                            # 應為 645 cases / 644 通過，唯一 ERRORED = test_storage_hw（既有、與本計畫無關）
+# 驗證最終狀態（2026-09-02，fix round 完成時）
+cd firmware && pio test -e native                            # 應為 651 cases / 650 通過，唯一 ERRORED = test_storage_hw（既有、與本計畫無關）
 cd firmware && pio run -e esp32-s3-devkitc-1                  # 應為 SUCCESS，Flash 73.0% / RAM 33.4%
-git log --oneline -15                                         # 確認在 feat/phase-g-device-info worktree、HEAD 是 Task 6 的 commit
+git log --oneline -15                                         # 確認在 feat/phase-g-device-info worktree、HEAD 是 62bf11f（全分支 review fix round）
 ```
 
-**SDD ledger**（完整過程記錄，含每個 task 的 pre-flight scan、review 發現、fix round、
-ruling）：
-`.worktrees/phase-g-device-info/.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md`
-——worktree 內的 git-ignored 目錄，換機器要重建但 git log 才是最終記錄。這份 ledger 比
-本文件更細，想知道「某個 finding 為什麼沒修」的完整理由要查這裡。
+**SDD ledger 已刪除**（fix round 完成、review 閘門解鎖後依流程清理，git-ignored、
+非最終記錄）。完整過程記錄改查：commit `62bf11f` 的完整訊息（發現＋實際修法對照）、
+以及本文件上方「✅ 已解決」區塊。想知道「某個 finding 為什麼沒修」查該區塊最後的
+「已核閱但不採納」段落。
 
 > 📌 **過程中兩次抓到計畫文字本身的缺陷，執行時當場修正並重新 commit 計畫檔**（不是
 > implementer 的錯，是寫計畫當下沒發現）：
@@ -220,14 +261,18 @@ ruling）：
 | 驗收項 | 步驟 | 預期結果 |
 |---|---|---|
 | 選單捲動流暢度 | 進系統設定，連續按 DOWN 8 次繞完整圈 | 畫面平滑捲動，無殘影/閃爍，游標高亮位置正確跟隨 |
-| App連線設定／Type-C連線 placeholder | 游標停在第 6/7 項按主鍵 | 顯示「尚未實作」，任意鍵返回設定選單 |
-| 裝置資訊六欄正確性 | 進裝置資訊畫面 | 名稱與裝置本身設定一致、型號固定顯示 EMS DoseSync Pro、序號與 App 端案件同步紀錄的 device_id 一致、韌體版本字串正確、電池%與充電狀態跟電池資訊畫面顯示一致 |
+| App連線設定／Type-C連線 placeholder | 游標停在第 6/7 項按主鍵 | 顯示「尚未實作」，任意鍵按下後回到系統設定選單，底部提示文字正確顯示「返回　系統設定」（不是舊的「返回　主功能表」） |
+| 裝置資訊六欄正確性＋文字渲染（**含全分支 review CRITICAL 修復驗證**） | 進裝置資訊畫面 | 六列文字**從螢幕左邊界正常起排、白色（非深綠）、未被裁切**（這正是修復前的 bug 症狀：置中在 x=24 導致左半邊被裁掉）；名稱與裝置本身設定一致、型號固定顯示 EMS DoseSync Pro、序號與 App 端案件同步紀錄的 device_id 一致、韌體版本字串顯示「v0.7-phaseG」、電池%與充電狀態跟電池資訊畫面顯示一致 |
+| 電池資訊畫面文字渲染（**同一個 CRITICAL 的既有 Phase H bug，本次一併修復**） | 系統設定 → 電池資訊 | 電量／電壓／充電狀態三列**從螢幕左邊界正常起排、白色、未被裁切**——這是 Phase H 就存在、從未被抓到的既有 bug，跟裝置資訊畫面同一個根因（`drawCenteredText()` 副作用），已隨本次修復一併解決 |
 | 恢復預設對話框捲動後觸發 | 捲到選單中段（如第 6 項）長按主鍵 | 對話框正確顯示，視窗最後一格項目正確跳過繪製不與對話框重疊 |
 | 裝置名稱捲出視窗行為 | 捲到選單底部（裝置資訊項）再捲回頂部 | 裝置名稱正確恢復顯示，鎖定/置灰狀態正確（若當下有未同步案件） |
 | 裝置名稱超長截斷（新增，Task 5 fix round） | App 端把裝置名稱改成接近 31 bytes 上限（含中文） | 裝置資訊畫面「名稱」列不溢出螢幕，超長時尾端顯示「…」，不切斷 UTF-8 字元造成亂碼 |
 
-全套 6 項目前皆**未執行**——本計畫全程無硬體，所有「已完成」結論建立在 native test 加
-韌體編譯（靜態推理）之上，跟 Phase H 收尾時的狀態一樣。
+全套 7 項目前皆**未執行**——本計畫全程無硬體，所有「已完成」結論建立在 native test 加
+韌體編譯（靜態推理）之上，跟 Phase H 收尾時的狀態一樣。**其中「裝置資訊六欄正確性＋
+文字渲染」與「電池資訊畫面文字渲染」兩項是本次全分支整合 review CRITICAL 的直接
+驗收項，是這輪上機驗收裡優先度最高的兩項**——這個 bug 純渲染邏輯、native test 測不到、
+編譯也不會報錯，唯一驗證管道就是上機肉眼看。
 
 ---
 

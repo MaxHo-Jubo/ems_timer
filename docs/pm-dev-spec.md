@@ -611,12 +611,13 @@ V1 §18.3。
 - 裝置名稱由 App 寫入 ✅ 已完成
 - **裝置資訊畫面**（2026-08-30 擴充，原「韌體版本 read-only」升級為完整畫面，並併入原 Impl-Phase H
   Task 14 的電池／充電狀態接線）：名稱 / 型號 / 序號 / 韌體版本 / 電池 % / 充電狀態，
-  SoT V1 §19.7。🟡 **6 個 task 皆已實作並通過 native test + 韌體編譯，但尚未可合併**
-  （2026-09-02，`feat/phase-g-device-info` 分支 HEAD `cba8ce9`）——SDD 流程最後一步
-  「全分支整合 review」抓到 1 個 CRITICAL：`drawDeviceInfo()`／`drawBatteryInfo()`
-  共用的 `drawCenteredText()` 沒還原繪圖狀態，畫面文字實際上是錯色＋裁切的，**尚未
-  修復**，詳見 `docs/superpowers/phase-g-device-info-handover.md`「🔴 未結」段落
-  （文件最上方）。修完並補跑 review 後才進入上機驗收（累積於該文件 §3-B）。
+  SoT V1 §19.7。🟡 **程式碼與 review 全數完成，僅待上機驗收**（2026-09-02，
+  `feat/phase-g-device-info` 分支 HEAD `62bf11f`）——6 個 task 完成後，SDD 流程最後
+  一步「全分支整合 review」抓到 1 個 CRITICAL（`drawDeviceInfo()`／`drawBatteryInfo()`
+  共用的 `drawCenteredText()` 沒還原繪圖狀態，畫面文字錯色＋裁切）+ 4 個 Important，
+  已全數修復並通過 repo Tier 3 codex 兩輪 re-review（6/6 面向、0 CRITICAL），詳見
+  `docs/superpowers/phase-g-device-info-handover.md`「✅ 已解決」段落。下一步是該文件
+  §3-B 的上機驗收清單（需要實體硬體），沒有剩餘的程式碼工作。
 - Type-C 管理工具 MVP（列案件 / 匯出 / 清除）未開工
 
 **驗收**：恢復預設不影響案件 / Training / 裝置名稱。
