@@ -1012,6 +1012,13 @@ drawDeviceInfo() 宣告才能完整編譯，序列執行下一 task 補上。"
 
 ### Task 5: 裝置資訊畫面本體
 
+> 📌 **2026-09-02 修正**：Step 3 原始程式碼片段的 STEP 03（讀裝置名稱）誤把
+> `ui_settings.cpp`（`lib/`，native + Arduino 雙軌編譯）的 `#ifdef ARDUINO` /
+> `mock_fs_read` 分支模式鏡像到本檔——但 `ui_screens.cpp` 屬 `src/`，native build
+> 整檔排除，`#else` 分支在這裡永遠不可達，是死碼（`dont-blindly-mirror` 原則：
+> grep 全庫確認 `ui_screens.cpp` 從無任何 `#ifdef ARDUINO` 用法）。已修正為直接呼叫，
+> 下方程式碼片段已更新，照抄即可。
+
 **Files:**
 - Modify: `firmware/src/ui_screens.cpp`
 - Modify: `firmware/src/app_globals.h`
@@ -1070,16 +1077,13 @@ void drawDeviceInfo() {
     // STEP 02: 標題
     drawCenteredText("裝置資訊", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    // STEP 03: 名稱（每次繪製重新讀，比照 drawSettingsMenu() 既有做法，非 snapshot 驅動）
+    // STEP 03: 名稱（每次繪製重新讀，比照 drawSettingsMenu() 既有做法，非 snapshot 驅動）。
+    //   不像 ui_settings.cpp 的 drawSettingsMenu() 需要 #ifdef ARDUINO / mock_fs_read
+    //   雙軌分支——本檔 ui_screens.cpp 屬 src/，native build 排除整個檔案
+    //   （platformio.ini build_src_filter = -<*>），這個函式只會在 ESP32/Arduino
+    //   環境被編譯到，#else 分支永遠不可達，寫了也是死碼，直接呼叫即可。
     char device_name[DEVICE_NAME_MAX_LEN];
-#ifdef ARDUINO
     settings_get_device_name(device_name, sizeof(device_name));
-#else
-    {
-        size_t len = 0;
-        mock_fs_read(DEVICE_NAME_FILE, device_name, sizeof(device_name), &len);
-    }
-#endif
     char buf[48];  // 最長行含中文標籤 + 裝置名稱，留餘裕
     snprintf(buf, sizeof(buf), "名稱：%s", device_name);
     display.drawString(buf, DEVICE_INFO_TEXT_X, DEVICE_INFO_LINE1_Y);
