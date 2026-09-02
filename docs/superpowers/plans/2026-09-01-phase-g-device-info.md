@@ -574,49 +574,56 @@ kSettingsAdjustableItems 重構為 kSettingsMenuItems，裝置名稱納入同一
 
 ---
 
-### Task 3: input_handler.cpp 接線——捲動 + 新游標分派
+### Task 3: input_handler.cpp 接線——新游標分派
+
+> 📌 **2026-09-02 範圍調整**：原 Step 1/2/4 的「捲動」半部分（`settingsScrollOffset`
+> 全域、UP/DOWN 分派改用 clamp）已在 2026-09-02 對 Task 2 的補跑 CRITICAL 修復
+> （commit `1b93baa`）中提前完成——不是照本節原始 Step 1/2/4 的字面程式碼做的，
+> 細節見下方 Step 1/2 的「現況」說明。**Task 3 剩下的範圍只有「新游標分派」**：
+> `BTN_PRIMARY` 對 cursor 5~7（App連線設定／Type-C連線／裝置資訊）目前仍無反應，
+> 需要接上對應的畫面切換。
 
 **Files:**
 - Modify: `firmware/src/input_handler.cpp`
+- Modify: `firmware/src/app_globals.h`（新增 `GlobalState` 列舉值 + `settingsDeviceInfoMode` extern）
+- Modify: `firmware/src/main.cpp`（新增 `settingsDeviceInfoMode` 全域定義）
 
 **Interfaces:**
-- Consumes: `clampScrollOffset()`（Task 1）、`SETTINGS_CURSOR_APP_CONN`/`SETTINGS_CURSOR_TYPEC_CONN`/`SETTINGS_CURSOR_DEVICE_INFO`/`SETTINGS_VISIBLE_ROWS`（Task 2）、`settingsScrollOffset`/`settingsDeviceInfoMode`（Task 4 會在 `main.cpp` 定義；本 task 先加 `extern` 宣告並假設它們存在——Task 3 與 Task 4 順序上 Task 4 需要在 Task 3 之前定義全域，見下方注意事項）
-- Produces: `settingsScrollOffset`/`settingsDeviceInfoMode` 的讀寫時機（供 Task 4 的 `DisplaySnapshotInputs` 填值使用）
+- Consumes: `SETTINGS_CURSOR_APP_CONN`/`SETTINGS_CURSOR_TYPEC_CONN`/`SETTINGS_CURSOR_DEVICE_INFO`（Task 2，已存在）、`advanceSettingsCursorAndScroll()`（2026-09-02 補跑修復新增，已存在，UP/DOWN 分派不要改回舊的 `wrapSettingsCursor()`+`clampScrollOffset()` 兩行寫法）
+- Produces: `settingsDeviceInfoMode` 的讀寫時機（供 Task 4 的 `DisplaySnapshotInputs` 填值使用）
 
-> ⚠️ **執行順序注意**：本 task 的 `extern` 宣告需要 `main.cpp` 已定義對應全域變數才能連結成功。**先做 Task 4 的 Step 1-2（只加全域定義，不做 DisplaySnapshot 接線），回頭做本 Task 3，再回 Task 4 做剩餘步驟**——或者依 subagent-driven-development 的慣例，把 Task 4 的全域宣告步驟挪到本 Task 3 的 Step 1 一併做掉也可以（兩個 task 本來就會改到同一個檔案的相鄰區塊，一份 PR 走完更省事）。以下步驟採**後者**：Task 3 Step 1 一併加 `main.cpp` 的全域定義，Task 4 只需接 `DisplaySnapshot` 與 `updateDisplay()` 分派。
+- [ ] **Step 1: 現況確認（不需要新增程式碼，此步驟純檢查）**
 
-- [ ] **Step 1: `main.cpp` 新增全域變數**
+以下三項已在 2026-09-02 完成，開工前先 `grep` 確認存在，不要重做：
+- `firmware/src/main.cpp`：`uint16_t settingsScrollOffset = 0;`（注意型別是 `uint16_t`
+  不是本節舊版寫的 `uint8_t`——2026-09-02 review 修正過一次窄化問題）
+- `firmware/src/app_globals.h` / `firmware/src/input_handler.cpp`：對應的
+  `extern uint16_t settingsScrollOffset;`
+- `firmware/src/input_handler.cpp` 的 `BTN_UP`/`BTN_DOWN` 分支已呼叫
+  `advanceSettingsCursorAndScroll()`（定義在 `firmware/lib/ui_settings/ui_settings.h`），
+  不是本節原始版本寫的 `wrapSettingsCursor()` + `clampScrollOffset()` 兩行分開呼叫
 
-Modify `firmware/src/main.cpp`，在既有第 245 行 `settingsBatteryInfoMode` 定義後插入：
+- [ ] **Step 2: `app_globals.h` / `main.cpp` 新增 `settingsDeviceInfoMode`**
+
+Modify `firmware/src/main.cpp`，在既有 `settingsBatteryInfoMode` 定義（約第 249 行）後插入：
 
 ```cpp
 bool    settingsBatteryInfoMode = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
-uint8_t settingsScrollOffset = 0;    // Impl-Phase G：設定選單捲動視窗起點（8 項一頁顯示 5 項）
-bool    settingsDeviceInfoMode = false;  // Impl-Phase G：裝置資訊子畫面顯示中
+bool    settingsDeviceInfoMode = false;   // Impl-Phase G：裝置資訊子畫面顯示中
 ```
 
-`firmware/src/app_globals.h`，在既有第 536 行 `settingsBatteryInfoMode` extern 後插入：
+Modify `firmware/src/app_globals.h`，在既有 `settingsBatteryInfoMode` extern（約第 538 行）後插入：
 
 ```cpp
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
-extern uint8_t settingsScrollOffset;    // Impl-Phase G：設定選單捲動視窗起點
 extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中
 ```
 
-- [ ] **Step 2: `input_handler.cpp` 新增 extern 宣告**
-
-Modify `firmware/src/input_handler.cpp`，在既有第 21 行 `settingsBatteryInfoMode` extern 後插入：
+Modify `firmware/src/input_handler.cpp`，在既有 `settingsBatteryInfoMode` extern（約第 23 行）後插入：
 
 ```cpp
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
-extern uint8_t settingsScrollOffset;    // Impl-Phase G：設定選單捲動視窗起點
 extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中
-```
-
-並在檔案頂部既有 `#include "ui_settings.h"` 附近加：
-
-```cpp
-#include "ui_scroll.h"  // Impl-Phase G：clampScrollOffset()，設定選單與歷史紀錄清單共用
 ```
 
 - [ ] **Step 3: 新增 `GlobalState` 列舉值**
@@ -639,21 +646,20 @@ enum GlobalState : uint8_t {
 };
 ```
 
-- [ ] **Step 4: 設定選單 UP/DOWN 分派改用捲動 clamp + 新增裝置資訊子畫面出口**
+- [ ] **Step 4: 新增裝置資訊子畫面出口 + BTN_PRIMARY 新游標分派**
 
-Modify `firmware/src/input_handler.cpp` 第 710-794 行（`GLOBAL_SETTINGS_PLACEHOLDER` 整段），在既有 STEP 03（電池資訊子畫面）後插入新的 STEP 03.5，並改寫 STEP 04：
+> 📌 **範圍已縮小**：`GLOBAL_SETTINGS_PLACEHOLDER` 整段（含 STEP 03 電池資訊子畫面、
+> STEP 04 的 UP/DOWN 分派）已經存在且不需要改動——UP/DOWN 目前呼叫的是
+> `advanceSettingsCursorAndScroll()`（2026-09-02 補跑修復新增），**不要改回**下方
+> 舊版範例程式碼裡的 `wrapSettingsCursor()` + `clampScrollOffset()` 兩行寫法，那是
+> 已經被取代的舊版本，改回去會讓 2026-09-02 修的 CRITICAL（游標移出可見視窗時畫面
+> 不重繪）重新出現。本步驟只新增兩塊：STEP 03 之後插入新的 STEP 03.5（裝置資訊
+> 子畫面出口），以及在既有 `BTN_PRIMARY` 的 if-else 鏈末端插入三個新游標分支。
+
+Modify `firmware/src/input_handler.cpp`，在既有 STEP 03（電池資訊子畫面，`if
+(settingsBatteryInfoMode) { ... }`）後插入新的 STEP 03.5：
 
 ```cpp
-        // STEP 03: 電池資訊子畫面中（唯讀導覽頁，無可調值 — 只有返回鍵離開）
-        if (settingsBatteryInfoMode) {
-            // STEP 03.01: 返回鍵離開子畫面，其餘按鍵在此唯讀畫面上一律忽略
-            if (btnIdx == BTN_BACK) {
-                settingsBatteryInfoMode = false;
-                Serial.println("[SETTINGS] battery info — back to menu");
-            }
-            return;
-        }
-
         // STEP 03.5: 裝置資訊子畫面中（唯讀導覽頁，同電池資訊 pattern）
         if (settingsDeviceInfoMode) {
             if (btnIdx == BTN_BACK) {
@@ -662,21 +668,13 @@ Modify `firmware/src/input_handler.cpp` 第 710-794 行（`GLOBAL_SETTINGS_PLACE
             }
             return;
         }
+```
 
-        // STEP 04: 主選單模式
-        switch (btnIdx) {
-            case BTN_UP:
-                settingsCursor = wrapSettingsCursor(settingsCursor, SETTINGS_CURSOR_DELTA_UP);
-                settingsScrollOffset = clampScrollOffset(settingsCursor, settingsScrollOffset, SETTINGS_VISIBLE_ROWS);
-                break;
-            case BTN_DOWN:
-                settingsCursor = wrapSettingsCursor(settingsCursor, SETTINGS_CURSOR_DELTA_DOWN);
-                settingsScrollOffset = clampScrollOffset(settingsCursor, settingsScrollOffset, SETTINGS_VISIBLE_ROWS);
-                break;
-            case BTN_BACK:
-                enterMainMenu();
-                break;
-            case BTN_PRIMARY:
+既有 `BTN_PRIMARY` 分支的完整 if-else 鏈現況如下——只需在 `SETTINGS_CURSOR_BATTERY_INFO`
+分支之後、`break;` 之前插入三個新游標分派（`SETTINGS_CURSOR_APP_CONN` 起的三個
+`else if` 區塊），前面的 `DEVICE_NAME`／可調值三項／`BATTERY_INFO` 分支已存在、不用動：
+
+```cpp
                 if (settingsCursor == SETTINGS_CURSOR_DEVICE_NAME) {
                     // §2.2.5：有未同步案件 → 裝置名稱鎖定，主鍵不可進入
                     if (g_device_name_locked) {
@@ -753,17 +751,23 @@ Modify `firmware/src/input_handler.cpp` 第 619-636 行：
 
 （`clampScrollOffset()` 接受 `uint16_t cursor`，`historyCursor`/`historyScrollOffset` 已是 `uint16_t`，型別相容不需轉型；`HISTORY_VISIBLE_ROWS` 是 `uint8_t`，函式簽章第三參數本就是 `uint8_t`，直接傳入。）
 
-- [ ] **Step 6: 進入設定選單時重置捲動視窗**
+- [x] **Step 6: 跳過——原步驟是計畫缺陷，Ruling 見下方**
 
-Modify `firmware/src/input_handler.cpp` 第 473-476 行（主選單 `case 4:` 進入系統設定的分支）：
-
-```cpp
-                    case 4:  // 系統設定（Phase G）
-                        refreshDeviceNameLock();  // 進選單前掃一次未同步案件，決定裝置名稱可否修改
-                        settingsScrollOffset = 0;  // Impl-Phase G：比照 historyScrollOffset 進入歷史紀錄清單時的重置慣例
-                        globalState = GLOBAL_SETTINGS_PLACEHOLDER;
-                        break;
-```
+> **Ruling（2026-09-02，team-lead 裁決，跳過本步驟不執行）**：本步驟原本要求進入
+> 設定選單時 `settingsScrollOffset = 0`，是照抄 `historyScrollOffset` 進入歷史紀錄
+> 清單時的重置慣例——但 grep 全庫確認 `historyCursor`/`historyScrollOffset` 在全部
+> 3 個重置點永遠成對重置（`input_handler.cpp:473-474/591-592/998-999`），而
+> `settingsCursor` 從未有任何重置邏輯（sticky，開機初始化一次後就不再重設，見
+> `main.cpp:242` 註解與既有行為）。若只重置 `settingsScrollOffset` 不重置
+> `settingsCursor`，游標停在上次離開時的位置（例如 cursor=7）但視窗被重置回
+> `[0,5)`，會立刻重新製造 2026-09-02 剛修好的 CRITICAL（游標在可見視窗外、高亮
+> 消失）——這是 `dont-blindly-mirror` 原則的典型案例：鏡像 `historyScrollOffset`
+> 的重置慣例前，沒有先確認 `settingsCursor` 端是否也有對應的重置（它沒有）。
+> **決定**：不執行本步驟，`settingsScrollOffset` 維持 2026-09-02 backfill fix 已
+> 實作的 sticky 行為（跟 `settingsCursor` 一樣不重置，兩者才能保持成對一致）。
+> **代價**：如果這個裁決錯了（例如使用者其實期待每次進設定選單都從第一項開始），
+> 之後要改就是把 `settingsCursor` 也一併加重置邏輯，而不是只加回這一行——兩者
+> 必須一起改，不能只改一邊。
 
 - [ ] **Step 7: 執行完整 native test suite 確認無迴歸**
 
@@ -780,13 +784,15 @@ Expected: SUCCESS（這是本 task 邏輯正確性的主要驗證管道，因為
 ```bash
 cd firmware
 git add src/input_handler.cpp src/main.cpp src/app_globals.h
-git commit -m "[PHASE-G] feat: 設定選單按鍵接線——捲動 clamp + 3 個新游標分派
+git commit -m "[PHASE-G] feat: 設定選單新游標分派 + 歷史清單捲動改用共用函式
 
-UP/DOWN 改呼叫共用 clampScrollOffset()（Task 1），連帶把既有歷史紀錄
-清單的 inline clamp 也換成同一個函式（EXTRACT-SHARED-HELPER 第二處
-呼叫點）。BTN_PRIMARY 新增 App連線設定／Type-C連線／裝置資訊 三個游標
-的分派：前兩者進 placeholder 全域狀態（任意鍵返回，無需子畫面 flag），
-裝置資訊進 settingsDeviceInfoMode（比照 Task 13 電池資訊 pattern）。
+BTN_PRIMARY 新增 App連線設定／Type-C連線／裝置資訊 三個游標的分派：
+前兩者進 placeholder 全域狀態（任意鍵返回，無需子畫面 flag），裝置資訊
+進 settingsDeviceInfoMode（比照 Task 13 電池資訊 pattern）。既有歷史
+紀錄清單的 inline clamp 改用共用 clampScrollOffset()（EXTRACT-SHARED-
+HELPER 第二處呼叫點，第一處是 2026-09-02 已接線的設定選單）。捲動視窗
+本身的接線（settingsScrollOffset）已在 2026-09-02 補跑修復先完成，本次
+不重複。
 
 韌體編譯 SUCCESS（本 task 主要驗證管道，input_handler.cpp 不在 native
 build 範圍內）。"
