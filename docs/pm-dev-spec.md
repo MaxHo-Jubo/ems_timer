@@ -452,6 +452,9 @@ V1 §20：
 
 對齊 V1 §17。
 
+**狀態**：❌ 未開工（2026-09-02 確認）——repo 內無任何 RN/Flutter/native 專案，`app/`
+目錄不存在；現有 `web/`／`docs/demo/` 是網頁 demo，僅供視覺參考，不是本節定義的真實 App。
+
 ### 1. 平台
 
 iOS / Android（暫定 React Native）。
@@ -513,6 +516,9 @@ App 端以 `case_id` 為主鍵；重複同步時覆蓋。
 
 V1 §18.3。
 
+**狀態**：❌ 未開工（2026-09-02 確認）——韌體端 USB CDC 協定處理與桌面端工具本體皆無
+任何程式碼，同 Phase G 段落記錄。
+
 獨立 Python 或 Electron 工具，連線 ESP32 USB CDC：
 
 - 列出案件
@@ -526,7 +532,15 @@ V1 §18.3。
 
 ## 四、實作階段
 
+⚠️ 下列各 Phase 的「✅ 已完成」僅代表**韌體已實作 + native test 綠燈 + 編譯通過**，
+不代表已完整上機驗收——除 Dev-Phase 1 硬體原型（2026-04-17 驗收通過）與少數獨立驗證
+過的硬體元件（DS3231 RTC、電池供電拓樸）外，尚未見任何 Phase 等級的完整上機端到端
+驗收記錄（本節「驗收」小節列的判準多數需要實機才能真正確認），這是全專案累積至今
+的最大殘餘風險。狀態校準：2026-09-02，對照 git log 與各 Phase handover 文件。
+
 ### Phase A — OHCA 核心（最高優先）
+
+**狀態**：✅ 已完成（commit `c90de77` 起，Impl-Phase A 韌體整合）
 
 **目標**：跑完一個 case，從待本機 EPI → 倒數 → 預警 → 警報 → 超時 → 結束鎖定。
 
@@ -548,6 +562,8 @@ V1 §18.3。
 
 ### Phase B — 補登 + Amiodarone + 案件總覽
 
+**狀態**：✅ 已完成（commit `897d9f4` 起，Impl-Phase B 韌體整合）
+
 - 長按 EPI 鍵 → 藥物選單（補登 EPI / Amiodarone）
 - 長按電擊鍵 → 電擊補登（接手前 / 純補登）
 - 補登次數選擇 UI（1~5 / 1~3）
@@ -561,6 +577,8 @@ V1 §18.3。
 
 ### Phase C — 6 秒通氣節奏
 
+**狀態**：✅ 已完成（commit `83114cb` 起，Impl-Phase C lib + 單元測試）
+
 - 獨立模式（從主功能表進入）
 - 通氣音量 0~5 獨立 NVS
 - OHCA 中快速功能進入（返回鍵）
@@ -573,6 +591,8 @@ V1 §18.3。
 
 ### Phase D — Training 模式
 
+**狀態**：✅ 已完成（commit `d5f64ab`「W2-W8 訓練模式功能整合」）
+
 - 30s / 1min / 4min 倒數可選
 - 全程「訓練模式」浮水印
 - 重置 / 結束 / 保存選項
@@ -584,6 +604,8 @@ V1 §18.3。
 
 ### Phase E — 持久化 + 歷史紀錄
 
+**狀態**：✅ 已完成（commit `5a2027e`「Phase E 持久化＋歷史紀錄」）
+
 - LittleFS partition 規劃
 - 50 OHCA + 20 Training FIFO 覆蓋
 - 從歷史紀錄重新進入案件總覽
@@ -594,6 +616,9 @@ V1 §18.3。
 ---
 
 ### Phase F — App 配對碼同步
+
+**狀態**：✅ 已完成（MVP1 對時 / MVP2 dispatcher / MVP3 chunked case_sync 真送皆已實作，
+commit `bbdd004` 起）
 
 - 配對碼 4 位數 + 120s TTL
 - 單案傳輸（NUS + JSON 過渡）
@@ -607,18 +632,24 @@ V1 §18.3。
 
 ### Phase G — 系統設定 + Type-C 工具
 
+**狀態**：🟡 部分完成——系統設定／裝置名稱／裝置資訊畫面已完成僅待上機驗收；
+**Type-C 管理工具（SoT §18.3，見下）完全未開工**
+
 - 螢幕亮度 / 系統音量 / 通氣音量 NVS ✅ 已完成
 - 裝置名稱由 App 寫入 ✅ 已完成
 - **裝置資訊畫面**（2026-08-30 擴充，原「韌體版本 read-only」升級為完整畫面，並併入原 Impl-Phase H
   Task 14 的電池／充電狀態接線）：名稱 / 型號 / 序號 / 韌體版本 / 電池 % / 充電狀態，
   SoT V1 §19.7。🟡 **程式碼與 review 全數完成，僅待上機驗收**（2026-09-02，
-  `feat/phase-g-device-info` 分支 HEAD `62bf11f`）——6 個 task 完成後，SDD 流程最後
-  一步「全分支整合 review」抓到 1 個 CRITICAL（`drawDeviceInfo()`／`drawBatteryInfo()`
-  共用的 `drawCenteredText()` 沒還原繪圖狀態，畫面文字錯色＋裁切）+ 4 個 Important，
-  已全數修復並通過 repo Tier 3 codex 兩輪 re-review（6/6 面向、0 CRITICAL），詳見
+  已合併回本機 `main` commit `81c8f0b`，修復本體 `62bf11f`；`feat/phase-g-device-info`
+  分支已合併並清理）——6 個 task 完成後，SDD 流程最後一步「全分支整合 review」抓到
+  1 個 CRITICAL（`drawDeviceInfo()`／`drawBatteryInfo()` 共用的 `drawCenteredText()`
+  沒還原繪圖狀態，畫面文字錯色＋裁切）+ 4 個 Important，已全數修復並通過 repo Tier 3
+  codex 兩輪 re-review（6/6 面向、0 CRITICAL），詳見
   `docs/superpowers/phase-g-device-info-handover.md`「✅ 已解決」段落。下一步是該文件
   §3-B 的上機驗收清單（需要實體硬體），沒有剩餘的程式碼工作。
-- Type-C 管理工具 MVP（列案件 / 匯出 / 清除）未開工
+- **Type-C 管理工具 MVP（列案件 / 匯出 / 清除，SoT §18.3）：未開工**——韌體端 USB CDC
+  協定處理與桌面端工具本體皆無任何程式碼；系統設定選單內的「Type-C連線」項
+  （SoT §18.4）目前只有 placeholder 畫面
 
 **驗收**：恢復預設不影響案件 / Training / 裝置名稱。
 
@@ -626,10 +657,19 @@ V1 §18.3。
 
 ### Phase H — 電源管理
 
-- OHCA / 通氣螢幕常亮
-- 邊充邊用測試
-- 低電量警告（不強制關機）
-- Type-C 插拔不中斷案件
+**狀態**：🟡 部分完成——**注意這裡跟另一個常被搞混的「Impl-Phase H（電量顯示）」不是
+同一件事**：Impl-Phase H 的 13 個 task（電量讀取層＋電量圖示／電池資訊畫面／低電量提示
+UI，2026-08-31 全數完成，見 `docs/superpowers/phase-h-handover.md`）只對應到下面「低電量
+警告」這一項；本節其餘三項（螢幕常亮／邊充邊用測試／Type-C 插拔不中斷案件）**未見專門
+實作或驗證**，是獨立於 Impl-Phase H 之外、目前還沒人動工的範圍。
+
+- OHCA / 通氣螢幕常亮：🟡 未見專門實作，但韌體目前沒有做 Deep Sleep、TFT 背光線路
+  硬接常亮（`main.cpp` 接線註解 "BL 常亮"），理論上天然滿足——**沒有專門驗證過**
+- 邊充邊用測試：❌ 純驗收測試項，尚未執行
+- 低電量警告（不強制關機）：✅ 已完成（Impl-Phase H Task 10/11：執行中低電量一次性
+  提示 + 低電量開案確認框；未見任何強制關機邏輯）
+- Type-C 插拔不中斷案件：❌ 韌體內找不到任何 VBUS／充電／拔插偵測相關邏輯，這項連
+  程式碼保護都還沒有，不只是沒測
 
 **驗收**：插拔 Type-C 期間 OHCA 計時連續，不丟事件。
 
