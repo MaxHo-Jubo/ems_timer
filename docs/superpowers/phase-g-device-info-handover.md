@@ -1,9 +1,10 @@
 # Impl-Phase G 裝置資訊畫面 — 交接文件
 
-- **最後更新**：2026-09-02（Task 1／Task 2 最終 commit 補跑完整 codex Tier 3 review，
-  發現的 CRITICAL/IMPORTANT 已修復並 amend；等使用者確認後續跑 Task 3-6）
-- **狀態**：SDD（subagent-driven-development）流程進行中。**Task 1-2/6 完成**，其餘 4 個
-  task 未開工。依使用者要求，每完成一個 task 就停下讓使用者確認，本次做完 Task 2。
+- **最後更新**：2026-09-02（**Task 1-5/6 全部完成**，Task 6 本身正在做——這份文件的更新
+  就是 Task 6 Step 2）
+- **狀態**：SDD（subagent-driven-development）流程完成 5 個實作 task，全部經 repo Tier
+  2/3 codex gate + SDD task-reviewer 雙重驗證通過。**尚未上機驗收**（見 §3-B），需要實體
+  硬體才能真正結案。
 - **branch**：`feat/phase-g-device-info`（git worktree，路徑
   `.worktrees/phase-g-device-info`，從本機 `main`（`a634ba9`）分支——**不是**
   `origin/main`，本機 main 領先 origin/main 99+ commit 未推送）
@@ -48,37 +49,61 @@ Tier 3 codex review 閘門從未被實際執行過（marker 卡在磁碟上、�
 手動補跑才解決，已存 feedback memory（`feedback_sdd_dispatch_must_mention_commit_gate.md`）
 供未來 dispatch brief 參考。
 
-**尚未開工**：Task 3-6。
+**Task 3 完成**（2026-09-02）：`input_handler.cpp` 新游標分派——`GlobalState` 新增
+`GLOBAL_SETTINGS_APP_CONN_PLACEHOLDER`/`TYPEC_PLACEHOLDER`、`settingsDeviceInfoMode`
+全域、`BTN_PRIMARY` 對 cursor 5~7 的分派、`historyScrollOffset` 改用共用
+`clampScrollOffset()`。最終 commit `928692c`（1 輪 amend）。細節見 §4。
+
+**Task 4 完成**（2026-09-02）：DisplaySnapshot 接線——`SNAP_FLAG_SETTINGS_DEVICE_INFO`
++ `settingsDeviceInfo` 欄位五步驟走完、`updateDisplay()` 新增裝置資訊子畫面與兩個
+placeholder 的實際畫面渲染分派（這正是 Task 3 完成後 repo Tier 2 gate 抓到的 2 個
+CRITICAL 缺口）。最終 commit `d5b33e6`（1 輪 amend）。細節見 §4。
+
+**Task 5 完成**（2026-09-02）：`drawDeviceInfo()` 畫面本體——名稱／型號／序號／韌體／
+電池／充電狀態六列，抽出與 `drawBatteryInfo()` 共用的 `chargeStateText()` helper，
+UTF-8 安全的裝置名稱寬度截斷。字型重生 0 缺字。最終 commit `43b40a8`（1 輪 amend）。
+細節見 §4。**這個 commit 完成後韌體才第一次真正編譯成功**（Task 4 之前的每個中間
+commit 都因 `drawDeviceInfo()` 前向引用而編不過，這是計畫本身設計好的序列狀態，不是
+迴歸）。
+
+**尚未開工**：無（Task 6 本身正在跑，是這份文件的最後更新）。全套 native test 645
+cases / 644 通過（唯一 ERRORED 仍是既有的 `test_storage_hw`，與本計畫無關），韌體
+Flash 73.0% / RAM 33.4%。
 
 ---
 
-## 2. 如何接手
+## 2. 如何驗證現況 / 交接給下一步（上機驗收）
+
+所有 6 個 task（含本 task 6 的文件收尾）都已完成，**沒有剩餘的程式碼工作**——下一步是
+§3-B 的上機驗收清單，需要實體硬體，不是繼續開發。
 
 ```bash
-cat docs/superpowers/specs/2026-09-01-phase-g-device-info-design.md   # 先讀設計決策
-cat docs/superpowers/plans/2026-09-01-phase-g-device-info.md          # 再讀實作計畫
+cat docs/superpowers/specs/2026-09-01-phase-g-device-info-design.md   # 設計決策記錄
+cat docs/superpowers/plans/2026-09-01-phase-g-device-info.md          # 實作計畫 + 每個 task 執行時發現的計畫缺陷修正
 
-# 開工前先確認測試基準線（Task 1/2 補跑 review 修復後現況，2026-09-02）
-cd firmware && pio test -e native                            # 應為 643 cases / 642 通過，唯一 ERRORED = test_storage_hw
-cd firmware && pio run -e esp32-s3-devkitc-1                  # 應為 SUCCESS，Flash 72.8%
-git log --oneline -5                                          # 確認在 feat/phase-g-device-info worktree 上
+# 驗證最終狀態（2026-09-02，Task 6 完成時）
+cd firmware && pio test -e native                            # 應為 645 cases / 644 通過，唯一 ERRORED = test_storage_hw（既有、與本計畫無關）
+cd firmware && pio run -e esp32-s3-devkitc-1                  # 應為 SUCCESS，Flash 73.0% / RAM 33.4%
+git log --oneline -15                                         # 確認在 feat/phase-g-device-info worktree、HEAD 是 Task 6 的 commit
 ```
 
-> ⚠️ **Task 3 範圍已縮小**：原計畫 Task 3＝「`input_handler.cpp` 接線：捲動 + 新游標分派」，
-> 但 2026-09-02 補跑 review 修復 Task 2 的 CRITICAL 時，已經把「捲動」那半部分提前做掉了
-> （`settingsScrollOffset` 全域 + `advanceSettingsCursorAndScroll()` + `main.cpp` 渲染呼叫
-> 全部接線完成，見 §4「已解決」段落）。**Task 3 剩下的範圍只有「新游標分派」**——
-> `input_handler.cpp` 的 `BTN_PRIMARY` 對 cursor 5~7（App連線設定／Type-C連線／裝置資訊）
-> 目前仍是無反應，需要接上對應的顯示模式切換（比照 `settingsBatteryInfoMode` 既有 pattern）。
-> 開工前務必先讀 §4「已解決」段落確認現況，不要重做已經完成的捲動接線。
+**SDD ledger**（完整過程記錄，含每個 task 的 pre-flight scan、review 發現、fix round、
+ruling）：
+`.worktrees/phase-g-device-info/.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md`
+——worktree 內的 git-ignored 目錄，換機器要重建但 git log 才是最終記錄。這份 ledger 比
+本文件更細，想知道「某個 finding 為什麼沒修」的完整理由要查這裡。
 
-**續跑方式**：用 `superpowers:subagent-driven-development`（已在跑，SDD ledger 見
-`.worktrees/phase-g-device-info/.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md`——
-worktree 內的 git-ignored 目錄，換機器要重建但 git log 是最終記錄）。6 個 task 有嚴格順序
-依賴——Task 3 依賴 Task 1（`clampScrollOffset()`）與 Task 2（游標常數）；Task 4 依賴
-Task 3 定義的全域變數；Task 5 的 `drawDeviceInfo()` 是 Task 4 Step 8 呼叫點的前向引用
-（計畫內已註明，序列執行時 Task 4 完成當下編譯會失敗，Task 5 完成後才會通過）——
-**不建議打散成平行 task**，依 1→2→3→4→5→6 序列執行。
+> 📌 **過程中兩次抓到計畫文字本身的缺陷，執行時當場修正並重新 commit 計畫檔**（不是
+> implementer 的錯，是寫計畫當下沒發現）：
+> 1. Task 3 原 Step 6 要求進入設定選單時只重置 `settingsScrollOffset`，但
+>    `settingsCursor` 從無重置邏輯——兩者拆開會重新製造游標移出可見視窗的 bug，已裁決
+>    跳過該步驟（commit `de97f59`）。
+> 2. Task 5 原 Step 3 把 `ui_settings.cpp`（`lib/`，native + Arduino 雙軌編譯）的
+>    `#ifdef ARDUINO` 分支模式鏡像進 `ui_screens.cpp`（`src/`，native build 整檔排除），
+>    `#else` 分支在這裡永遠不可達、是死碼，已修正為直接呼叫（commit `55b63b5`）。
+>
+> 兩者都是 `dont-blindly-mirror` 原則的案例：把既有結構鏡像到新情境前，沒有先確認
+> 新情境的實際流程是否真的對等。
 
 > ⚠️ 本次工作在 `feat/phase-g-device-info` git worktree（`git worktree add
 > .worktrees/phase-g-device-info -b feat/phase-g-device-info`，明確從本機 HEAD 分支，
@@ -120,11 +145,22 @@ Task 3 定義的全域變數；Task 5 的 `drawDeviceInfo()` 是 Task 4 Step 8 �
    brainstorming 過程中才算出來的（既有選單 40px 等間距 × 8 項 = 超出螢幕），
    不是預先規劃好的——過程記錄見 spec §1.2「規格缺口」。
 
-### 3-B. 上機驗收清單（尚未執行，等 Task 5 完成後）
+### 3-B. 上機驗收清單（Task 5 已完成，現在可以執行——**這是本計畫唯一剩下的待辦**）
 
-完整清單在計畫檔末尾，此處僅列摘要：選單捲動流暢度、placeholder 顯示與返回、裝置資訊
-六欄正確性（含序號與 App 端案件同步紀錄的 device_id 交叉核對）、恢復預設對話框捲動後
-觸發位置正確性、裝置名稱捲出視窗行為。
+完整清單在計畫檔末尾（`docs/superpowers/plans/2026-09-01-phase-g-device-info.md` 「上機
+驗收清單」段落），此處列摘要：
+
+| 驗收項 | 步驟 | 預期結果 |
+|---|---|---|
+| 選單捲動流暢度 | 進系統設定，連續按 DOWN 8 次繞完整圈 | 畫面平滑捲動，無殘影/閃爍，游標高亮位置正確跟隨 |
+| App連線設定／Type-C連線 placeholder | 游標停在第 6/7 項按主鍵 | 顯示「尚未實作」，任意鍵返回設定選單 |
+| 裝置資訊六欄正確性 | 進裝置資訊畫面 | 名稱與裝置本身設定一致、型號固定顯示 EMS DoseSync Pro、序號與 App 端案件同步紀錄的 device_id 一致、韌體版本字串正確、電池%與充電狀態跟電池資訊畫面顯示一致 |
+| 恢復預設對話框捲動後觸發 | 捲到選單中段（如第 6 項）長按主鍵 | 對話框正確顯示，視窗最後一格項目正確跳過繪製不與對話框重疊 |
+| 裝置名稱捲出視窗行為 | 捲到選單底部（裝置資訊項）再捲回頂部 | 裝置名稱正確恢復顯示，鎖定/置灰狀態正確（若當下有未同步案件） |
+| 裝置名稱超長截斷（新增，Task 5 fix round） | App 端把裝置名稱改成接近 31 bytes 上限（含中文） | 裝置資訊畫面「名稱」列不溢出螢幕，超長時尾端顯示「…」，不切斷 UTF-8 字元造成亂碼 |
+
+全套 6 項目前皆**未執行**——本計畫全程無硬體，所有「已完成」結論建立在 native test 加
+韌體編譯（靜態推理）之上，跟 Phase H 收尾時的狀態一樣。
 
 ---
 
@@ -339,6 +375,67 @@ codex 先抓到，SDD reviewer 對前者只標 Minor）——若要徹底排除�
 
 </details>
 
+### Task 3 完成（2026-09-02）——`input_handler.cpp` 新游標分派
+
+**現況**：`firmware/src/input_handler.cpp`／`app_globals.h`／`main.cpp`，最終 commit
+`928692c`（1 輪 amend）。native test 643 cases / 642 通過（本 task 只動 `src/`，native
+build 排除，數字理論上不變，這步是確認沒有連帶弄壞），ESP32 build SUCCESS Flash 72.8%。
+
+**Pre-flight scan 發現**：計畫原 Step 1/2/4 的「捲動」半部分已被同日稍早的 Task 2 補跑
+CRITICAL 修復提前做完（見上方「已解決」段落），計畫文字已瘦身避免重工（commit
+`de97f59`）。Step 6（進入選單重置 `settingsScrollOffset`）是計畫本身的缺陷——裁決跳過，
+理由見 §2 上方提示框。
+
+**Review**：repo Tier 2 codex gate 抓到 2 CRITICAL（`updateDisplay()` 尚未渲染新游標對應
+的畫面——這是刻意留給 Task 4 的缺口，不是本 task 的錯）+ 1 IMPORTANT（`STEP 03.5` 應
+整段重排為 `STEP 04`，1 輪 fix 修正）；SDD task-reviewer Approved，同一個 STEP finding
+獨立確認（標記為 plan-mandated，即計畫文字本身的缺陷）。implementer 自行找到並修正一個
+brief 未提到的缺口：`onLongPress()` 的恢復預設對話框守衛漏了排除 `settingsDeviceInfoMode`
+（同電池資訊既有 pattern）。
+
+### Task 4 完成（2026-09-02）——DisplaySnapshot 接線 + `updateDisplay()` 渲染分派
+
+**現況**：`firmware/lib/ems_display_snapshot/ems_display_snapshot.h`／`src/main.cpp`／
+`test/test_display_snapshot/test_display_snapshot.cpp`，最終 commit `d5b33e6`（1 輪
+amend）。native test 645 cases / 644 通過（`test_display_snapshot` 57→59，+2），ESP32
+build SUCCESS Flash 72.8%——**這是 Task 3 完成後 repo review 抓到的 2 個 CRITICAL 的下半場**：
+新增 `settingsDeviceInfoMode` 分派與兩個 placeholder 全域狀態的實際畫面渲染。
+
+**Review**：repo Tier 3 codex gate 1 CRITICAL（`drawDeviceInfo()` 未定義，韌體無法獨立
+編譯——計畫本身的前向引用，Task 5 完成後自動解決，不是缺陷）+ 10 IMPORTANT（2 個真的要修：
+STEP 編號、測試檔 flag 總數標題殘留舊數字；其餘 8 個逐一驗證後確認吻合這個檔案既有的
+大量前例——`if` 無大括號的 flag 映射寫法、`DisplaySnapshotInputs` 循序賦值、Group 3
+測試零文件慣例，這些都是整個 DisplaySnapshot pattern 本來就有的既有寫法，不是本次新增的
+問題）。implementer 自行補了一個 brief 沒明講的加固：既有的 flag 總數斷言測試同步更新，
+避免未來新增/移除 flag 忘記同步。SDD task-reviewer Approved，獨立確認同一個「if 無大括號」
+finding 也是既有慣例。
+
+### Task 5 完成（2026-09-02）——`drawDeviceInfo()` 畫面本體
+
+**現況**：`firmware/src/ui_screens.cpp`／`app_globals.h`／字型產物
+（`ems_zh_24_vlw.h`、`ems_zh_24.vlw`），最終 commit `43b40a8`（1 輪 amend）。native test
+645/644（本 task 不新增 native test，跟既有 `drawBatteryInfo()` 等所有 `ui_screens.cpp`
+畫面函式同一慣例——`src/` 整檔排除 native build）。VLW 字型重生 0 缺字（新增「名稱」／
+「型號」／「序號」／「韌體」四字）。ESP32 build SUCCESS Flash 73.0%——**韌體第一次真正
+編譯成功**（Task 4 完成當下的 commit 因 `drawDeviceInfo()` 前向引用編不過，是計畫設計
+好的序列狀態）。
+
+**Pre-flight scan 發現**：計畫 Step 3 原始程式碼把 `ui_settings.cpp`（`lib/`，native +
+Arduino 雙軌編譯）慣用的 `#ifdef ARDUINO` / `mock_fs_read` 分支模式鏡像進
+`ui_screens.cpp`（`src/`，native build 整檔排除）——`#else` 分支在這個檔案永遠不可達，
+是死碼。已修正為直接呼叫（commit `55b63b5`），`dont-blindly-mirror` 原則案例。
+
+**Review**：repo Tier 3 codex gate 1 CRITICAL + 7 IMPORTANT。CRITICAL（`settings_get_
+device_name()` 把 LittleFS 掛載/讀取失敗靜默偽裝成「未命名」的合法預設值）**驗證後
+確認是 Task 2 就已存在的既有缺陷**（`ui_settings.cpp:152` 的 `drawSettingsMenu()` 也是
+同一種不檢查回傳值的呼叫方式）——裁決不在本 task 修，記錄為殘餘風險（見 §5）。7 個
+IMPORTANT 中 4 個真的要修：STEP 巢狀編號（`STEP 07.01`／`08.01~03`）、Y 座標 magic
+number 改具名常數、與 `drawBatteryInfo()` 重複的充電狀態文字判斷抽成共用
+`chargeStateText()` helper、裝置名稱超長時用 `display.textWidth()` 做 UTF-8 安全截斷
+（1 輪 fix，re-reviewer 逐字元手算驗證截斷迴圈正確性）；其餘 3 個判定為既有慣例（無
+native test）或低價值（函式註解未明講「無參數」）不修。implementer 額外用獨立 g++ 測試
+harness 驗證截斷邏輯的 5 個案例（含長中文名稱），才提交 commit。
+
 ---
 
 ## 5. 殘餘風險（延續自 Phase H whole-branch review，本次擴大範圍時需留意）
@@ -357,11 +454,14 @@ Phase H whole-branch review（`docs/superpowers/phase-h-handover.md §3-A10`）�
 **⑫ `settingsCursor`/`settingsScrollOffset` 成對更新只靠慣例（2026-09-02 補跑 review 發現）**：
 兩個獨立 `extern` 全域變數的「必須成對更新」不變量沒有型別層級保證，目前只有
 `input_handler.cpp` 的兩個 UP/DOWN 分支會寫入（已改用 `advanceSettingsCursorAndScroll()`
-讓這兩個呼叫點不會出錯），但 Task 3 要新增 `BTN_PRIMARY` 對 cursor 5~7 的分派，是新的
-潛在寫入面。跟既有的 `historyCursor`/`historyScrollOffset`（同樣兩個獨立全域、同樣的
-不變量問題，`ui_scroll.h` 檔頭已預告 Task 3 要把它們遷到 `clampScrollOffset()`）是同一類
-待統一問題，建議 Task 3 順便抽成共用的 `ScrollCursorState{cursor, offset}` 型別，兩處
-一次收斂，避免累積第三份獨立實作。
+讓這兩個呼叫點不會出錯）。**更新（2026-09-02，Task 3 完成後）**：Task 3 新增的
+`BTN_PRIMARY` 對 cursor 5~7 分派（進 `settingsEditorMode`/`settingsBatteryInfoMode`/
+`settingsDeviceInfoMode`/`globalState` 等旗標）不寫 `settingsCursor` 本身，所以這個
+不變量目前仍只有那兩個 UP/DOWN 分支在維護，沒有被 Task 3 擴大成新的潛在寫入面。跟既有
+的 `historyCursor`/`historyScrollOffset`（同樣兩個獨立全域、同樣的不變量問題）仍是同一類
+待統一問題，**未來若要新增第三個會寫 `settingsCursor` 的分支**，建議屆時一併抽成共用的
+`ScrollCursorState{cursor, offset}` 型別，兩處一次收斂——本計畫全部 6 個 task 都沒有
+新增這樣的分支，故未觸發，繼續 park。
 
 **⑬ 恢復預設對話框覆蓋捲動後的游標高亮格（既有 bug，本次擴大觸發面）**：
 `drawSettingsMenu()` 的 `restore_confirm && is_last_visible_slot` 邏輯會跳過視窗內最後
@@ -371,6 +471,18 @@ bug，當時只影響 cursor=4 這一種情況，是 1/8；本次接上真實捲
 困擾，不影響按鍵分派邏輯，本次未修（超出「最小必要修復」範圍）。若要修，方向是讓
 對話框改用非選單格的獨立 Y 座標。
 
+**⑭ `settings_get_device_name()` 把儲存層故障靜默偽裝成「未命名」（2026-09-02 Task 5
+補跑 review 發現，既有缺陷非本次新增）**：`lib/ems_settings/ems_settings.cpp` 的
+`settings_get_device_name()` 在 LittleFS 未掛載或開檔失敗時，回傳值與「檔案確實不存在
+（合法的尚未設定狀態）」相同——都是回傳一個預設「未命名」字串，呼叫端無從分辨。系統
+允許 LittleFS mount 失敗後繼續開機，所以使用者會看到看似正常的名稱，完全不知道持久化
+層已故障。目前有 2 個呼叫點都是這樣呼叫（不檢查回傳值）：`ui_settings.cpp:152`
+（`drawSettingsMenu()`，Task 2 既有）與 `ui_screens.cpp`（`drawDeviceInfo()`，本次
+Task 5 新增，是照抄既有呼叫慣例，不是新引入的問題）。治本修法：`settings_get_device_
+name()` 的契約要能區分「檔案不存在」與「檔案系統未掛載／讀取失敗」兩種失敗，前者才
+回預設值，後者要讓兩個呼叫端都能顯示明確的錯誤/不可用狀態——這是一個獨立的小 task，
+會動到共用函式契約 + 兩個呼叫端，本次計畫範圍內未處理。
+
 ---
 
 ## 6. 對應文件
@@ -379,5 +491,6 @@ bug，當時只影響 cursor=4 這一種情況，是 1/8；本次接上真實捲
 |---|---|
 | `docs/superpowers/specs/2026-09-01-phase-g-device-info-design.md` | 設計 spec（決策記錄 + 架構） |
 | `docs/superpowers/plans/2026-09-01-phase-g-device-info.md` | 實作計畫（6 task，TDD 步驟） |
-| `docs/pm-dev-spec.md §四 Phase G` | 高層 Phase 描述（完成後待更新，見計畫 Task 6） |
+| `docs/pm-dev-spec.md §四 Phase G` | 高層 Phase 描述（已於 Task 6 標記完成，2026-09-02） |
 | `docs/superpowers/phase-h-handover.md §3-A7` | 本次工作範圍的裁決背景（上一階段文件） |
+| `.worktrees/phase-g-device-info/.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md` | SDD ledger——每個 task 的 pre-flight scan、review 發現、fix round、ruling 完整記錄（worktree 內 git-ignored，換機器要重建） |
