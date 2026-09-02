@@ -802,25 +802,39 @@ build 範圍內）。"
 
 ### Task 4: DisplaySnapshot 接線 + `updateDisplay()` 分派
 
+> 📌 **2026-09-02 範圍調整**：`settingsScrollOffset` 的 DisplaySnapshot 五步驟（struct
+> 欄位／Inputs／captureSnapshot 映射／main.cpp 填值）已在 2026-09-02 對 Task 2 的補跑
+> CRITICAL 修復（commit `1b93baa`）提前做完——型別是 `uint16_t` 不是本節原文的
+> `uint8_t`（同一輪修過一次窄化問題）。**Task 4 剩下的範圍只有 `settingsDeviceInfo`**
+> 相關的三件事：新 flag、struct/Inputs/映射/填值、以及 `updateDisplay()` 的實際渲染
+> 分派（這正是 Task 3 完成後、repo Tier 2 review 抓到的 2 個 CRITICAL 的缺口——
+> App連線設定／Type-C連線／裝置資訊三個游標選了之後畫面是空白的，因為渲染分派
+> 一直是本 task 的範圍，Task 3 的裁決已明確記錄這個缺口留給本 task 補）。
+
 **Files:**
 - Modify: `firmware/lib/ems_display_snapshot/ems_display_snapshot.h`
 - Modify: `firmware/src/main.cpp`
 - Modify: `firmware/test/test_display_snapshot/test_display_snapshot.cpp`
 
 **Interfaces:**
-- Consumes: `settingsScrollOffset`/`settingsDeviceInfoMode`（Task 3 Step 1 已定義）
-- Produces: `SNAP_FLAG_SETTINGS_DEVICE_INFO = 0x00400000`、`DisplaySnapshot::settingsScrollOffset` 欄位——Task 5 的 on-target 驗收與往後任何要讀這個 flag 的程式碼引用
+- Consumes: `settingsScrollOffset`（已存在，2026-09-02 提前完成）／`settingsDeviceInfoMode`（Task 3 已定義）
+- Produces: `SNAP_FLAG_SETTINGS_DEVICE_INFO = 0x00400000`——Task 5 的 on-target 驗收與往後任何要讀這個 flag 的程式碼引用
 
-- [ ] **Step 1: `DisplaySnapshot` struct 新增欄位**
+- [ ] **Step 1: 現況確認（不需要新增程式碼，此步驟純檢查）**
 
-Modify `firmware/lib/ems_display_snapshot/ems_display_snapshot.h`，在 `uint8_t settingsCursor` 欄位（第 55 行）後插入：
-
-```cpp
-    uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（0=裝置名稱 / 1=亮度 / 2=系統音量 / 3=通氣音量 / 4=電池資訊 / 5=App連線設定 / 6=Type-C連線 / 7=裝置資訊）
-    uint8_t  settingsScrollOffset; ///< Impl-Phase G：設定選單捲動視窗起點（8 項一頁顯示 5 項）
-```
-
-（同時把 `settingsCursor` 既有註解的括號說明更新為 8 項，如上所示一併改。）
+以下已在 2026-09-02 完成，開工前先 `grep` 確認存在，不要重做：
+- `firmware/lib/ems_display_snapshot/ems_display_snapshot.h`：`DisplaySnapshot` struct 已有
+  `uint16_t settingsScrollOffset;` 欄位（緊接在 `settingsCursor` 之後）
+- 同檔 `DisplaySnapshotInputs` struct 已有 `uint16_t settingsScrollOffset = 0;`
+- 同檔 `captureSnapshot()` 已有 `s.settingsScrollOffset = in.settingsScrollOffset;` 映射
+- `firmware/src/main.cpp` 的 `captureDisplaySnapshot()` 已有
+  `in.settingsScrollOffset = settingsScrollOffset;` 填值
+- `firmware/src/main.cpp` 的 `drawSettingsMenu()` 呼叫點已傳入 `settingsScrollOffset`
+  （`/* scroll_offset= */ settingsScrollOffset`），不是本節原文寫的字面值或需要新增參數
+- `firmware/test/test_display_snapshot/test_display_snapshot.cpp` 已有
+  `test_settings_scroll_offset_change_triggers_redraw_phase_g_regression`——**不要**
+  再依下方 Step 5 加一個同語意的新測試（會是重複覆蓋同一個欄位），Step 5 只需新增
+  `settingsDeviceInfo` 相關的兩個測試
 
 - [ ] **Step 2: 新增 `SNAP_FLAG_SETTINGS_DEVICE_INFO`**
 
@@ -831,61 +845,42 @@ Modify `firmware/lib/ems_display_snapshot/ems_display_snapshot.h`，在 `SNAP_FL
     SNAP_FLAG_SETTINGS_DEVICE_INFO = 0x00400000,   // Impl-Phase G：裝置資訊子畫面顯示中
 ```
 
-- [ ] **Step 3: `DisplaySnapshotInputs` 新增對應欄位**
+- [ ] **Step 3: `DisplaySnapshotInputs` 新增 `settingsDeviceInfo` 欄位**
 
-Modify 同檔 `DisplaySnapshotInputs` struct，在 `uint8_t settingsCursor = 0;`（第 117 行）後插入：
+> `settingsScrollOffset` 已存在於 `DisplaySnapshotInputs`（見 Step 1 現況確認），本步驟
+> 只新增 `settingsDeviceInfo`，不要重複加 `settingsScrollOffset`。
 
-```cpp
-    uint8_t  settingsCursor     = 0;  ///< Phase G：系統設定選單游標
-    uint8_t  settingsScrollOffset = 0; ///< Impl-Phase G：設定選單捲動視窗起點
-```
-
-在 `bool settingsBatteryInfo = false;`（第 142 行）後插入：
+Modify 同檔 `DisplaySnapshotInputs` struct，在 `bool settingsBatteryInfo = false;` 後插入：
 
 ```cpp
     bool     settingsBatteryInfo    = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
     bool     settingsDeviceInfo     = false;  // Impl-Phase G：裝置資訊子畫面顯示中
 ```
 
-- [ ] **Step 4: `captureSnapshot()` 映射**
+- [ ] **Step 4: `captureSnapshot()` 映射（僅 `settingsDeviceInfo` 這個 flag）**
 
-Modify 同檔 `captureSnapshot()` 函式：
+> `s.settingsScrollOffset = in.settingsScrollOffset;` 已存在於 STEP 01 區塊（見 Step 1
+> 現況確認），本步驟只在 STEP 02 區塊（bool → bit-packed flags）新增一行。
 
-STEP 01 區塊（1:1 欄位拷貝），在 `s.settingsCursor = in.settingsCursor;`（第 182 行）後插入：
-
-```cpp
-    s.settingsCursor      = in.settingsCursor;  // Phase G：系統設定選單游標
-    s.settingsScrollOffset = in.settingsScrollOffset;  // Impl-Phase G：設定選單捲動視窗起點
-```
-
-STEP 02 區塊（bool → bit-packed flags），在 `if (in.settingsBatteryInfo) s.flags |= SNAP_FLAG_SETTINGS_BATTERY_INFO;`（第 206 行）後插入：
+Modify 同檔 `captureSnapshot()` 函式，STEP 02 區塊，在 `if (in.settingsBatteryInfo) s.flags |= SNAP_FLAG_SETTINGS_BATTERY_INFO;` 後插入：
 
 ```cpp
     if (in.settingsBatteryInfo)    s.flags |= SNAP_FLAG_SETTINGS_BATTERY_INFO;
     if (in.settingsDeviceInfo)     s.flags |= SNAP_FLAG_SETTINGS_DEVICE_INFO;
 ```
 
-- [ ] **Step 5: 寫失敗測試（新欄位/flag 觸發重繪）**
+- [ ] **Step 5: 寫失敗測試（僅 `settingsDeviceInfo` flag，`settingsScrollOffset` 已有測試）**
+
+> `settingsScrollOffset` 的 regression test 已存在
+> （`test_settings_scroll_offset_change_triggers_redraw_phase_g_regression`），本步驟
+> **不要**再加一個同語意的新測試。只新增下面兩個 `settingsDeviceInfo` 相關的測試。
 
 Modify `firmware/test/test_display_snapshot/test_display_snapshot.cpp`，在既有 Phase H 電池欄位測試群組附近新增：
 
 ```cpp
 // ============================================================
-//  Impl-Phase G: settingsScrollOffset / settingsDeviceInfo 欄位覆蓋
+//  Impl-Phase G: settingsDeviceInfo flag 覆蓋
 // ============================================================
-
-static void test_settings_scroll_offset_change_triggers_redraw() {
-    DisplaySnapshotInputs in_a;
-    in_a.settingsScrollOffset = 0;
-    DisplaySnapshot a = captureSnapshot(in_a);
-
-    DisplaySnapshotInputs in_b;
-    in_b.settingsScrollOffset = 3;
-    DisplaySnapshot b = captureSnapshot(in_b);
-
-    TEST_ASSERT_FALSE_MESSAGE(snapshotsEqual(a, b),
-        "settingsScrollOffset 改變必須觸發重繪，否則捲動選單時畫面不跟著動");
-}
 
 static void test_settings_device_info_flag_change_triggers_redraw() {
     DisplaySnapshotInputs in_a;
@@ -910,41 +905,37 @@ static void test_settings_device_info_flag_maps_to_unique_bit() {
 }
 ```
 
-同步在 `main()` 加入這 3 個新測試的 `RUN_TEST()`。
+同步在 `main()` 加入這 2 個新測試的 `RUN_TEST()`。
 
 - [ ] **Step 6: 執行測試確認全數通過**
 
 Run: `cd firmware && pio test -e native -f test_display_snapshot`
-Expected: 全數 PASSED（原有 case 數 +3）
+Expected: 全數 PASSED（原有 case 數 +2，不是 +3——`settingsScrollOffset` 那個已經在基準線裡）
 
-- [ ] **Step 7: `main.cpp` `captureDisplaySnapshot()` 填值**
+- [ ] **Step 7: `main.cpp` `captureDisplaySnapshot()` 填值（僅 `settingsDeviceInfo` 這一行）**
 
-Modify `firmware/src/main.cpp`，在既有第 940-943 行區塊：
+> `in.settingsScrollOffset = settingsScrollOffset;` 已存在（見 Step 1 現況確認），
+> 本步驟只新增 `settingsDeviceInfo` 這一行，不要重複加 scroll offset。
 
-```cpp
-    in.settingsCursor         = settingsCursor;         // Phase G：漏此三項會使設定選單完全不重繪
-    in.settingsEditorMode     = settingsEditorMode;     // Phase G
-    in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
-    in.settingsBatteryInfo    = settingsBatteryInfoMode; // Phase H：Task 13，漏此項會使電池資訊子畫面進出不重繪
-```
-
-改為：
+Modify `firmware/src/main.cpp`，在既有 `in.settingsBatteryInfo = settingsBatteryInfoMode;` 那行後插入：
 
 ```cpp
-    in.settingsCursor         = settingsCursor;         // Phase G：漏此三項會使設定選單完全不重繪
-    in.settingsEditorMode     = settingsEditorMode;     // Phase G
-    in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
     in.settingsBatteryInfo    = settingsBatteryInfoMode; // Phase H：Task 13，漏此項會使電池資訊子畫面進出不重繪
-    in.settingsScrollOffset   = settingsScrollOffset;    // Impl-Phase G：漏此項會使選單捲動後畫面不跟著動
     in.settingsDeviceInfo     = settingsDeviceInfoMode;  // Impl-Phase G：漏此項會使裝置資訊子畫面進出不重繪
 ```
 
-- [ ] **Step 8: `updateDisplay()` 分派 `drawSettingsMenu()` 呼叫加 `scroll_offset`**
+- [ ] **Step 8: `updateDisplay()` 新增 `settingsDeviceInfoMode` 分派 + 兩個 placeholder 分派**
 
-Modify `firmware/src/main.cpp` 第 1177 行：
+> `drawSettingsMenu()` 呼叫點已經傳入 `settingsScrollOffset`（見 Step 1 現況確認），
+> 不要動那一行。本步驟只新增 `settingsDeviceInfoMode` 這個 `else if` 分支（插在
+> `settingsBatteryInfoMode` 分支之後、`settingsEditorMode` 分支之前）以及
+> `GLOBAL_SETTINGS_PLACEHOLDER` 整個 if-else 鏈結束後的兩個新頂層分支。
+
+Modify `firmware/src/main.cpp`，現況的 `updateDisplay()` 相關區塊如下（僅供對照，
+`drawSettingsMenu()` 那行維持原樣）：
 
 ```cpp
-            drawSettingsMenu(settingsDisp, settingsCursor, g_device_name_locked, settingsRestoreConfirm);
+            drawSettingsMenu(settingsDisp, settingsCursor, /* scroll_offset= */ settingsScrollOffset,
 ```
 
 改為（`scroll_offset` 參數插在 `cursor` 之後，對齊 Task 2 的新函式簽章）：
@@ -953,7 +944,8 @@ Modify `firmware/src/main.cpp` 第 1177 行：
             drawSettingsMenu(settingsDisp, settingsCursor, settingsScrollOffset, g_device_name_locked, settingsRestoreConfirm);
 ```
 
-同段（第 1160-1178 行）新增 `settingsDeviceInfoMode` 分支與 placeholder 分支，改為：
+同段插入 `settingsDeviceInfoMode` 分支與兩個 placeholder 頂層分支後，完整區塊應長這樣
+（`drawSettingsMenu()` 那行不變，只是讓你確認插入位置前後對不對）：
 
 ```cpp
     } else if (globalState == GLOBAL_SETTINGS_PLACEHOLDER) {
@@ -990,7 +982,7 @@ Modify `firmware/src/main.cpp` 第 1177 行：
 - [ ] **Step 9: 執行完整 native test suite 確認無迴歸**
 
 Run: `cd firmware && pio test -e native`
-Expected: 全數通過或維持既有唯一失敗 `test_storage_hw`（`test_display_snapshot` 應為前一版 +3）
+Expected: 全數通過或維持既有唯一失敗 `test_storage_hw`（`test_display_snapshot` 應為前一版 +2，不是 +3——見 Step 1 現況確認）
 
 - [ ] **Step 10: 韌體編譯確認**
 
@@ -1002,14 +994,17 @@ Expected: 全數通過或維持既有唯一失敗 `test_storage_hw`（`test_disp
 cd firmware
 git add lib/ems_display_snapshot/ems_display_snapshot.h src/main.cpp \
         test/test_display_snapshot/test_display_snapshot.cpp
-git commit -m "[PHASE-G] feat: DisplaySnapshot 接線——裝置資訊子畫面 flag + 選單捲動欄位
+git commit -m "[PHASE-G] feat: DisplaySnapshot 接線——裝置資訊子畫面 flag + 畫面渲染分派
 
-新增 SNAP_FLAG_SETTINGS_DEVICE_INFO 與 settingsScrollOffset 欄位，依
+新增 SNAP_FLAG_SETTINGS_DEVICE_INFO 與 settingsDeviceInfo 欄位，依
 既有五步驟 checklist 走完（struct/Inputs/captureSnapshot/呼叫端填值/
-regression test）。updateDisplay() 新增 settingsDeviceInfoMode 分派與
-兩個 placeholder 全域狀態分派（drawPlaceholder 複用既有函式）。
+regression test；settingsScrollOffset 那組已在 2026-09-02 補跑修復
+提前做完，本次不重複）。updateDisplay() 新增 settingsDeviceInfoMode
+分派與兩個 placeholder 全域狀態分派（drawPlaceholder 複用既有函式）
+——這是 Task 3 完成後 repo Tier 2 review 抓到的 2 個 CRITICAL 的缺口
+（新游標選了之後畫面空白），本 commit 補上畫面渲染那一半。
 
-native test +3（test_display_snapshot），本 commit 依賴 Task 5 的
+native test +2（test_display_snapshot），本 commit 依賴 Task 5 的
 drawDeviceInfo() 宣告才能完整編譯，序列執行下一 task 補上。"
 ```
 
