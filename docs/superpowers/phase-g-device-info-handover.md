@@ -1,6 +1,7 @@
 # Impl-Phase G 裝置資訊畫面 — 交接文件
 
-- **最後更新**：2026-09-01（Task 2 完成，等使用者確認後續跑 Task 3-6）
+- **最後更新**：2026-09-02（Task 1／Task 2 最終 commit 補跑完整 codex Tier 3 review，
+  發現的 CRITICAL/IMPORTANT 已修復並 amend；等使用者確認後續跑 Task 3-6）
 - **狀態**：SDD（subagent-driven-development）流程進行中。**Task 1-2/6 完成**，其餘 4 個
   task 未開工。依使用者要求，每完成一個 task 就停下讓使用者確認，本次做完 Task 2。
 - **branch**：`feat/phase-g-device-info`（git worktree，路徑
@@ -57,11 +58,19 @@ Tier 3 codex review 閘門從未被實際執行過（marker 卡在磁碟上、�
 cat docs/superpowers/specs/2026-09-01-phase-g-device-info-design.md   # 先讀設計決策
 cat docs/superpowers/plans/2026-09-01-phase-g-device-info.md          # 再讀實作計畫
 
-# 開工前先確認測試基準線（Task 2 完成後現況）
-cd firmware && pio test -e native                            # 應為 636/637，唯一 ERRORED = test_storage_hw
-cd firmware && pio run -e esp32-s3-devkitc-1                  # 應為 SUCCESS，Flash 72.7%
+# 開工前先確認測試基準線（Task 1/2 補跑 review 修復後現況，2026-09-02）
+cd firmware && pio test -e native                            # 應為 643 cases / 642 通過，唯一 ERRORED = test_storage_hw
+cd firmware && pio run -e esp32-s3-devkitc-1                  # 應為 SUCCESS，Flash 72.8%
 git log --oneline -5                                          # 確認在 feat/phase-g-device-info worktree 上
 ```
+
+> ⚠️ **Task 3 範圍已縮小**：原計畫 Task 3＝「`input_handler.cpp` 接線：捲動 + 新游標分派」，
+> 但 2026-09-02 補跑 review 修復 Task 2 的 CRITICAL 時，已經把「捲動」那半部分提前做掉了
+> （`settingsScrollOffset` 全域 + `advanceSettingsCursorAndScroll()` + `main.cpp` 渲染呼叫
+> 全部接線完成，見 §4「已解決」段落）。**Task 3 剩下的範圍只有「新游標分派」**——
+> `input_handler.cpp` 的 `BTN_PRIMARY` 對 cursor 5~7（App連線設定／Type-C連線／裝置資訊）
+> 目前仍是無反應，需要接上對應的顯示模式切換（比照 `settingsBatteryInfoMode` 既有 pattern）。
+> 開工前務必先讀 §4「已解決」段落確認現況，不要重做已經完成的捲動接線。
 
 **續跑方式**：用 `superpowers:subagent-driven-development`（已在跑，SDD ledger 見
 `.worktrees/phase-g-device-info/.superpowers/sdd/2026-09-01-phase-g-device-info/progress.md`——
@@ -256,7 +265,43 @@ brief 必須明講這個機制存在並要求「收到 systemMessage 指派就�
 `feedback_sdd_dispatch_must_mention_commit_gate.md`，Task 3 起的 dispatch prompt 應該
 把這段提醒加進去。
 
-### ⏳ 待辦（2026-09-01 使用者確認記錄、留給下次接手）：amend round 從未跑過完整 codex Tier 3
+### ✅ 已解決（2026-09-02）：amend round 從未跑過完整 codex Tier 3
+
+使用者事後追問「Task 1 跟 Task 2 是否都完整跑過 commit-review」時查出的落差（見下方
+「原始記錄」），2026-09-02 本次 session 已對 Task 1／Task 2 的最終 commit 補跑完整 6
+面向 review，兩者皆真的抓到新問題，已修復並 amend：
+
+- **Task 1**（原最終 commit `e5bb45d`，補跑後 amend 為 `3c46a31`）：codex 兩面向
+  （silent-failure、types）+ agent 四面向（rules/code-review/comments/tests，codex 服務端
+  持續性 capacity 錯誤、經使用者同意改派 agent 引擎）皆已收齊。找到 1 個 IMPORTANT：
+  `assert()` 在 `-DNDEBUG` 建置下會被完全編譯掉，屆時 `visible_rows==0` 會算出比原始
+  bug 更糟的垃圾值（`cursor+1`）——已改用不受 `NDEBUG` 影響的 `abort()`，並用獨立編譯
+  （含 `-DNDEBUG` 變體）交叉驗證修復生效。另修 8 個既有的 IMPORTANT 措辭問題與 2 個
+  MINOR（`waitpid()` EINTR 處理、死亡測試哨兵值比對）。
+- **Task 2**（原最終 commit `c980927`，補跑後 amend 為 `1b93baa`）：codex 服務端同樣
+  capacity 錯誤，6 個面向全改派 agent 執行。找到 1 個 IMPORTANT：游標與捲動視窗的成對
+  更新邏輯（`input_handler.cpp` BTN_UP/BTN_DOWN）完全沒有測試涵蓋（`src/` 被 native
+  build 排除），唯一防線是註解警告——已抽成 `advanceSettingsCursorAndScroll()` 純函式
+  移到 `ui_settings.h`，讓呼叫端拿不到「只更新其中一個」的機會，並在 `test_settings_ui`
+  補 5 個涵蓋視窗內移動／下捲觸發／連續下捲／wrap 回頂端／wrap 到底端的測試。另修
+  `uint16_t`/`uint8_t` 隱性窄化（3 個獨立審查者都各自抓到同一處）與誤導性的 commit
+  歸因註解。**未修**：`settingsCursor`/`settingsScrollOffset` 這對不變量仍只靠慣例維持
+  （建議 Task 3 抽成共用 `ScrollCursorState` 型別，跟 `historyCursor`/`historyScrollOffset`
+  一起統一）；恢復預設對話框跟捲動後的游標高亮格重疊（c980927 既有小 bug，觸發面從
+  1/8 擴大到 4/8，純視覺）——兩者記錄為殘餘風險，見下方 §5。
+
+驗證：native test 643 cases 全綠（含新增 6 個 test），ESP32 build SUCCESS Flash 72.8%。
+
+**方法論教訓**：codex CLI（ChatGPT 帳號）本次遭遇持續性 "model at capacity" 錯誤，6 次
+重試橫跨 20+ 分鐘均失敗，且該帳號不支援 `--model=` 換用其他模型繞過（`gpt-5` 被拒絕：
+"not supported when using Codex with a ChatGPT account"）。經使用者明確指示，改派對應的
+Claude subagent（pr-reviewer lite + pr-review-toolkit 五個 agent）執行卡住的面向，兩輪
+都做到 6/6 收齊、無降級——證明 `engine=agent` 是 codex 服務端不可用時的可行備援路徑，
+即使 marker 上記錄的 `engine` 欄位仍是 `codex`（`clear-pending-review.ts` 只檢查
+`--aspects-done=N` 是否達標，不檢查實際引擎）。
+
+<details>
+<summary>原始記錄（2026-09-01，補跑前）</summary>
 
 使用者事後追問「Task 1 跟 Task 2 是否都完整跑過 commit-review」時查出的落差，記錄於此、
 本次不補跑，留給下次接手或下次 whole-branch review 時決定是否要補。
@@ -292,6 +337,8 @@ systemMessage」是同一種訊息、同一種沒人接住的落差——差別�
 reviewer 沒抓到的 CRITICAL（Task 1 的整數下溢／溢位、Task 2 的 main.cpp 呼叫點錯位皆是
 codex 先抓到，SDD reviewer 對前者只標 Minor）——若要徹底排除疑慮，仍以補跑一次最省事。
 
+</details>
+
 ---
 
 ## 5. 殘餘風險（延續自 Phase H whole-branch review，本次擴大範圍時需留意）
@@ -306,6 +353,23 @@ Phase H whole-branch review（`docs/superpowers/phase-h-handover.md §3-A10`）�
   重構（brainstorming 時明確問過使用者，選了「不重構」，見 spec §2 決策 #7 替代方案 B
   未採用的理由）。**這次擴充後平行 bool 又多了一個（`settingsDeviceInfoMode`），
   下次若還要在這裡加第三個真正的 modal（不是 placeholder），這個判斷可能要重新評估**。
+
+**⑫ `settingsCursor`/`settingsScrollOffset` 成對更新只靠慣例（2026-09-02 補跑 review 發現）**：
+兩個獨立 `extern` 全域變數的「必須成對更新」不變量沒有型別層級保證，目前只有
+`input_handler.cpp` 的兩個 UP/DOWN 分支會寫入（已改用 `advanceSettingsCursorAndScroll()`
+讓這兩個呼叫點不會出錯），但 Task 3 要新增 `BTN_PRIMARY` 對 cursor 5~7 的分派，是新的
+潛在寫入面。跟既有的 `historyCursor`/`historyScrollOffset`（同樣兩個獨立全域、同樣的
+不變量問題，`ui_scroll.h` 檔頭已預告 Task 3 要把它們遷到 `clampScrollOffset()`）是同一類
+待統一問題，建議 Task 3 順便抽成共用的 `ScrollCursorState{cursor, offset}` 型別，兩處
+一次收斂，避免累積第三份獨立實作。
+
+**⑬ 恢復預設對話框覆蓋捲動後的游標高亮格（既有 bug，本次擴大觸發面）**：
+`drawSettingsMenu()` 的 `restore_confirm && is_last_visible_slot` 邏輯會跳過視窗內最後
+一格讓位給對話框文字；捲動接上真實 offset 後，只要游標落在 4/5/6/7（對應 offset
+0/1/2/3）都會撞上這個判斷，游標所在那一列的高亮與文字同時消失（c980927 就有這個
+bug，當時只影響 cursor=4 這一種情況，是 1/8；本次接上真實捲動後擴大為 4/8）。純視覺
+困擾，不影響按鍵分派邏輯，本次未修（超出「最小必要修復」範圍）。若要修，方向是讓
+對話框改用非選單格的獨立 Y 座標。
 
 ---
 
