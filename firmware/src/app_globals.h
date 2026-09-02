@@ -258,6 +258,10 @@ enum GlobalState : uint8_t {
     GLOBAL_HISTORY_PLACEHOLDER  = 4,
     GLOBAL_SETTINGS_PLACEHOLDER = 5,
     GLOBAL_SYNC                 = 6,
+    // Impl-Phase G：App連線設定／Type-C連線 placeholder（drawPlaceholder() 顯示中，
+    // 任意鍵返回 GLOBAL_SETTINGS_PLACEHOLDER，見 input_handler.cpp）
+    GLOBAL_SETTINGS_APP_CONN_PLACEHOLDER = 7,
+    GLOBAL_SETTINGS_TYPEC_PLACEHOLDER    = 8,
 };
 
 constexpr uint8_t MAIN_MENU_COUNT = 5;
@@ -532,12 +536,14 @@ extern FlashState flashState;
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp，操作於 input_handler.cpp）
 extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，Impl-Phase G
                                        //   擴充至 SoT §19.1 完整 8 項；input_handler.cpp 的
-                                       //   BTN_PRIMARY 分派目前僅處理到 cursor 4，5~7 尚未接線，見 Task 3）
+                                       //   BTN_PRIMARY 分派已涵蓋 cursor 0~7（Task 3 補齊 5~7：
+                                       //   App連線設定／Type-C連線／裝置資訊）
 extern uint16_t settingsScrollOffset; // 設定選單捲動視窗起點，跟 settingsCursor 成對更新（UP/DOWN
                                        //   時一起算，見 input_handler.cpp），不單獨重設
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
+extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中
 
 // true = 裝置名稱不可修改（storage 內有未同步案件）。
 // 進入設定選單時掃描一次即可：lock 狀態只由「儲存新案件」或「同步完成」改變，

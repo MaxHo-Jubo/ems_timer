@@ -19,12 +19,14 @@
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp）
 extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，Impl-Phase G
                                        //   擴充至 SoT §19.1 完整 8 項；本檔 BTN_PRIMARY 分派
-                                       //   目前僅處理到 cursor 4〔電池資訊〕，5~7 尚未接線，見 Task 3）
+                                       //   已涵蓋 cursor 0~7（Task 3 補齊 5~7：App連線設定／
+                                       //   Type-C連線／裝置資訊）
 extern uint16_t settingsScrollOffset; // 設定選單捲動視窗起點，跟 settingsCursor 成對更新，
                                        //   見下方 BTN_UP/BTN_DOWN 分支
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
+extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中
 
 // 系統設定 NVS state（開機由 main.cpp settings_init 載入，調值時 settings_write 寫回）
 settings_state_t g_settings_state;
@@ -628,17 +630,16 @@ void onShortPress(uint8_t btnIdx) {
                 if (historyCursor > 0) {
                     historyCursor--;
                 }
-                if (historyCursor < historyScrollOffset) {
-                    historyScrollOffset = historyCursor;
-                }
+                // EXTRACT-SHARED-HELPER 第二處呼叫點：捲動視窗跟隨游標的 clamp 邏輯
+                // 改用共用 clampScrollOffset()（ui_scroll.h），不再各自 inline 一份，
+                // 第一處呼叫點是設定選單 advanceSettingsCursorAndScroll() 內部呼叫。
+                historyScrollOffset = clampScrollOffset(historyCursor, historyScrollOffset, HISTORY_VISIBLE_ROWS);
                 break;
             case BTN_DOWN:
                 if (historyCursor + 1 < historyCount) {
                     historyCursor++;
                 }
-                if (historyCursor >= historyScrollOffset + HISTORY_VISIBLE_ROWS) {
-                    historyScrollOffset = historyCursor - (HISTORY_VISIBLE_ROWS - 1);
-                }
+                historyScrollOffset = clampScrollOffset(historyCursor, historyScrollOffset, HISTORY_VISIBLE_ROWS);
                 break;
             case BTN_BACK:
                 enterMainMenu();
@@ -764,10 +765,20 @@ void onShortPress(uint8_t btnIdx) {
             return;
         }
 
-        // STEP 04: 主選單模式
+        // STEP 04: 裝置資訊子畫面中（唯讀導覽頁，同電池資訊 pattern）
+        if (settingsDeviceInfoMode) {
+            // STEP 04.01: 返回鍵離開子畫面，其餘按鍵在此唯讀畫面上一律忽略
+            if (btnIdx == BTN_BACK) {
+                settingsDeviceInfoMode = false;
+                Serial.println("[SETTINGS] device info — back to menu");
+            }
+            return;
+        }
+
+        // STEP 05: 主選單模式
         switch (btnIdx) {
             case BTN_UP: {
-                // STEP 04.01: 游標與捲動視窗必須成對更新——c980927 的根因是這兩者
+                // STEP 05.01: 游標與捲動視窗必須成對更新——c980927 的根因是這兩者
                 //   原本各自 inline，只改了項目數卻沒人記得同步接上捲動視窗，游標
                 //   移出可見視窗後畫面高亮消失（2026-09-02 codex Tier 3 補跑 review
                 //   抓到並修正，見 89917d5）。改用 advanceSettingsCursorAndScroll()
@@ -778,7 +789,7 @@ void onShortPress(uint8_t btnIdx) {
                 break;
             }
             case BTN_DOWN: {
-                // STEP 04.02: 同上，DOWN 方向
+                // STEP 05.02: 同上，DOWN 方向
                 SettingsCursorScroll next = advanceSettingsCursorAndScroll(settingsCursor, settingsScrollOffset, SETTINGS_CURSOR_DELTA_DOWN);
                 settingsCursor = next.cursor;
                 settingsScrollOffset = next.scroll_offset;
@@ -803,11 +814,32 @@ void onShortPress(uint8_t btnIdx) {
                     // Task 13：進入電池資訊子畫面
                     settingsBatteryInfoMode = true;
                     Serial.println("[SETTINGS] battery info — show sub");
+                } else if (settingsCursor == SETTINGS_CURSOR_APP_CONN) {
+                    // Impl-Phase G：App連線設定尚未實作，顯示 placeholder
+                    globalState = GLOBAL_SETTINGS_APP_CONN_PLACEHOLDER;
+                    Serial.println("[SETTINGS] app conn — placeholder");
+                } else if (settingsCursor == SETTINGS_CURSOR_TYPEC_CONN) {
+                    // Impl-Phase G：Type-C連線尚未實作，顯示 placeholder
+                    globalState = GLOBAL_SETTINGS_TYPEC_PLACEHOLDER;
+                    Serial.println("[SETTINGS] type-c conn — placeholder");
+                } else if (settingsCursor == SETTINGS_CURSOR_DEVICE_INFO) {
+                    // Impl-Phase G：進入裝置資訊子畫面
+                    settingsDeviceInfoMode = true;
+                    Serial.println("[SETTINGS] device info — show sub");
                 }
                 break;
             default:
                 break;
         }
+        return;
+    }
+
+    // ===== Impl-Phase G：App連線設定／Type-C連線 placeholder =====
+    //   比照 Training/History 主選單當年用過的 drawPlaceholder() pattern：
+    //   任意鍵返回設定選單，不需要子畫面狀態機（沒有真正的畫面內容要記）。
+    if (globalState == GLOBAL_SETTINGS_APP_CONN_PLACEHOLDER ||
+        globalState == GLOBAL_SETTINGS_TYPEC_PLACEHOLDER) {
+        globalState = GLOBAL_SETTINGS_PLACEHOLDER;
         return;
     }
 
@@ -1419,8 +1451,10 @@ void onLongPress(uint8_t btnIdx) {
     //   開啟一個與此畫面無關的恢復預設確認框。單純是「不要讓長按開啟它」，不是
     //   「開啟後沒有按鍵能關掉它」——若真的被開啟，onShortPress() 開頭的
     //   settingsRestoreConfirm 分支本來就會處理 BTN_PRIMARY／BTN_BACK 兩鍵關閉它。
+    //   Impl-Phase G Task 3：裝置資訊子畫面比照電池資訊同理排除，同一類 bug。
     if (btnIdx == BTN_PRIMARY && globalState == GLOBAL_SETTINGS_PLACEHOLDER &&
-        !settingsEditorMode && !settingsRestoreConfirm && !settingsBatteryInfoMode) {
+        !settingsEditorMode && !settingsRestoreConfirm && !settingsBatteryInfoMode &&
+        !settingsDeviceInfoMode) {
         settingsRestoreConfirm = true;
         Serial.println("[SETTINGS] restore confirm dialog");
         return;

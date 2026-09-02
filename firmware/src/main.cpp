@@ -247,6 +247,7 @@ uint16_t settingsScrollOffset = 0;
 bool    settingsEditorMode = false;
 bool    settingsRestoreConfirm = false;
 bool    settingsBatteryInfoMode = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
+bool    settingsDeviceInfoMode = false;   // Impl-Phase G：裝置資訊子畫面顯示中
 bool    g_device_name_locked = false;  // 進入設定選單時由 refreshDeviceNameLock() 更新
 
 ems::LowBatteryConfirmTarget g_lowBatteryConfirmTarget = ems::LowBatteryConfirmTarget::None;  // Phase H：§20.3
