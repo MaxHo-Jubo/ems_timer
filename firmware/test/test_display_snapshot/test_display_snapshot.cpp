@@ -134,6 +134,13 @@ static void test_settings_cursor_change_triggers_redraw_phase_g_regression() {
     ASSERT_FIELD_TRIGGERS_CHANGE(settingsCursor, 2);
 }
 
+// Phase G 回溯：設定選單捲動視窗起點變化無重繪——同類別另一次重演
+// （2026-09-02 codex Tier 3 補跑抓到 c980927 缺這個欄位，同型 bug 見
+// historyScrollOffset 那條 Phase E 回溯）
+static void test_settings_scroll_offset_change_triggers_redraw_phase_g_regression() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(settingsScrollOffset, 3);
+}
+
 // W5 回溯：Training 保存/不保存 cursor 移動 bug 同類別（漏 trainingSaveCursor 導致保存畫面高亮凍結）
 static void test_training_save_cursor_change_triggers_redraw_w5_regression() {
     ASSERT_FIELD_TRIGGERS_CHANGE(trainingSaveCursor, 1);
@@ -571,6 +578,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_training_save_cursor_change_triggers_redraw_w5_regression);
     // Phase G 回溯：系統設定選單 cursor 同類別（本類別第 4 次重演）
     RUN_TEST(test_settings_cursor_change_triggers_redraw_phase_g_regression);
+    RUN_TEST(test_settings_scroll_offset_change_triggers_redraw_phase_g_regression);
 
     // Group 3: bool flag → bit mask
     RUN_TEST(test_flag_epi_armed_sets_bit_0x0001);

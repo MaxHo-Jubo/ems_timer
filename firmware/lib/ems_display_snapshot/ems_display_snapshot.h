@@ -54,6 +54,8 @@ struct DisplaySnapshot {
     uint8_t  storageFailure;    ///< W9：儲存失敗（0=無 / 1=OHCA 失敗 / 2=Training 失敗）
     uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，
                                  ///< SoT §19.1 完整 8 項；cursor 5~7 尚未接線 BTN_PRIMARY 分派，見 Task 3）
+    uint16_t settingsScrollOffset; ///< Phase G：設定選單捲動視窗起點；漏此欄位會讓捲動後的
+                                    ///< 選單畫面不重繪（同 historyScrollOffset 的既有 pattern）
     uint8_t  batteryPercent;     ///< Phase H：電量 0~100；255 = 燃料計不在線（0 是合法讀數，不可共用）
     uint8_t  batteryChargeState; ///< Phase H：ems::ChargeState 列舉值（0=Unknown 1=Charging 2=Discharging 3=Idle）
     uint16_t batteryMillivolts;  ///< Phase H Task 13：電壓 mV。batteryPercent 只在整數百分比變動時才變，
@@ -117,6 +119,7 @@ struct DisplaySnapshotInputs {
     uint8_t  storageFailure     = 0;  ///< W9：儲存失敗狀態（0=無 / 1=OHCA / 2=Training）
     uint8_t  settingsCursor     = 0;  ///< Phase G：系統設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，
                                        ///< SoT §19.1 完整 8 項；cursor 5~7 尚未接線 BTN_PRIMARY 分派，見 Task 3）
+    uint16_t settingsScrollOffset = 0; ///< Phase G：設定選單捲動視窗起點
 
     // STEP 02: 衍生值（呼叫端先算）
     uint32_t countdownSec    = 0;
@@ -182,6 +185,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     s.trainingSaveCursor  = in.trainingSaveCursor;
     s.storageFailure      = in.storageFailure;  // W9：儲存失敗狀態
     s.settingsCursor      = in.settingsCursor;  // Phase G：系統設定選單游標
+    s.settingsScrollOffset = in.settingsScrollOffset;  // Phase G：設定選單捲動視窗起點
     s.batteryPercent      = in.batteryPercent;      // Phase H
     s.batteryChargeState  = in.batteryChargeState;  // Phase H
     s.batteryMillivolts   = in.batteryMillivolts;   // Phase H Task 13

@@ -301,6 +301,62 @@ static void test_g19_wrap_up_from_device_name_to_device_info() {
         "G1.9: UP cursor=0 應 wrap 到 7（裝置資訊）——項目數變成 8 之後的新邊界");
 }
 
+// ----- G-Pairing: advanceSettingsCursorAndScroll() 游標＋捲動視窗成對更新 -----
+//
+// 2026-09-02 codex Tier 3 補跑對 89917d5 抓到的 IMPORTANT：input_handler.cpp
+// 的 BTN_UP/BTN_DOWN 分支（wrapSettingsCursor() + clampScrollOffset() 串接）
+// 屬 src/，native build 排除，這段「成對更新」邏輯先前完全沒有測試涵蓋，唯一
+// 防線是註解警告。抽成 advanceSettingsCursorAndScroll() 後這裡直接測。
+
+/** 游標在視窗內移動（未觸發捲動）：cursor 1→2，視窗仍是 [0,5)，offset 不變 */
+static void test_pairing_move_within_window_offset_unchanged() {
+    // STEP 01: 從 cursor=1、offset=0 往下一步，視窗容納 cursor=2，offset 應不變
+    SettingsCursorScroll result = advanceSettingsCursorAndScroll(SETTINGS_CURSOR_BRIGHTNESS, 0, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_SYSTEM_VOL, result.cursor, "G-Pairing: cursor 1→2");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(0, result.scroll_offset, "G-Pairing: 視窗內移動 offset 應不變");
+}
+
+/** 游標移出視窗下緣觸發捲動：cursor 4→5，視窗從 [0,5) 跟著捲到 [1,6) */
+static void test_pairing_move_below_window_scrolls_down() {
+    // STEP 01: 從 cursor=4（電池資訊，視窗 [0,5) 最後一項）往下一步
+    SettingsCursorScroll result = advanceSettingsCursorAndScroll(SETTINGS_CURSOR_BATTERY_INFO, 0, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_APP_CONN, result.cursor, "G-Pairing: cursor 4→5");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(1, result.scroll_offset, "G-Pairing: 移出視窗下緣應觸發捲動，新視窗 [1,6)");
+}
+
+/**
+ * 連續下捲直到清單末項：cursor 5→6→7，視窗跟著捲到 [3,8)。
+ * 對應既有 test_scroll_offset_three_shows_last_five_items 的視窗狀態，證明
+ * advanceSettingsCursorAndScroll() 連續呼叫算出的 offset 跟渲染測試假設的一致。
+ */
+static void test_pairing_sequential_scroll_down_to_last_item() {
+    // STEP 01: cursor=5,offset=1 → DOWN → cursor=6
+    SettingsCursorScroll step1 = advanceSettingsCursorAndScroll(SETTINGS_CURSOR_APP_CONN, 1, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_TYPEC_CONN, step1.cursor, "G-Pairing: cursor 5→6");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(2, step1.scroll_offset, "G-Pairing: 視窗跟著捲到 [2,7)");
+
+    // STEP 02: cursor=6,offset=2 → DOWN → cursor=7，視窗應為 [3,8)
+    SettingsCursorScroll step2 = advanceSettingsCursorAndScroll(step1.cursor, step1.scroll_offset, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_DEVICE_INFO, step2.cursor, "G-Pairing: cursor 6→7");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(3, step2.scroll_offset, "G-Pairing: 視窗跟著捲到 [3,8)，同渲染測試的視窗狀態");
+}
+
+/** wrap DOWN：cursor 7→0（wrap 回第一項），視窗應跟著捲回頂端 [0,5) */
+static void test_pairing_wrap_down_resets_scroll_to_top() {
+    // STEP 01: 從 cursor=7、offset=3（視窗 [3,8)）往下一步，wrap 回 cursor=0
+    SettingsCursorScroll result = advanceSettingsCursorAndScroll(SETTINGS_CURSOR_DEVICE_INFO, 3, SETTINGS_CURSOR_DELTA_DOWN);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_DEVICE_NAME, result.cursor, "G-Pairing: DOWN wrap 7→0");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(0, result.scroll_offset, "G-Pairing: wrap 回頂端後視窗應跟著捲回 [0,5)");
+}
+
+/** wrap UP：cursor 0→7（wrap 到最後一項），視窗應跟著捲到底端 [3,8) */
+static void test_pairing_wrap_up_scrolls_to_bottom() {
+    // STEP 01: 從 cursor=0、offset=0（視窗 [0,5)）往上一步，wrap 到 cursor=7
+    SettingsCursorScroll result = advanceSettingsCursorAndScroll(SETTINGS_CURSOR_DEVICE_NAME, 0, SETTINGS_CURSOR_DELTA_UP);
+    TEST_ASSERT_EQUAL_UINT8_MESSAGE(SETTINGS_CURSOR_DEVICE_INFO, result.cursor, "G-Pairing: UP wrap 0→7");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(3, result.scroll_offset, "G-Pairing: wrap 到底端後視窗應跟著捲到 [3,8)");
+}
+
 // ----- G-Phase-G-Scroll: 8 項選單捲動渲染 -----
 
 /** 捲動視窗預設 0 時，只畫前 5 項（裝置名稱~電池資訊），不畫捲出視窗外的 3 項 */
@@ -446,6 +502,13 @@ void run_all_tests() {
     RUN_TEST(test_g19_sequential_no_wrap_through_new_items);
     RUN_TEST(test_g19_wrap_down_from_device_info_to_device_name);
     RUN_TEST(test_g19_wrap_up_from_device_name_to_device_info);
+
+    // G-Pairing: advanceSettingsCursorAndScroll() 游標＋捲動視窗成對更新
+    RUN_TEST(test_pairing_move_within_window_offset_unchanged);
+    RUN_TEST(test_pairing_move_below_window_scrolls_down);
+    RUN_TEST(test_pairing_sequential_scroll_down_to_last_item);
+    RUN_TEST(test_pairing_wrap_down_resets_scroll_to_top);
+    RUN_TEST(test_pairing_wrap_up_scrolls_to_bottom);
     // G-Phase-G-Scroll: 8 項選單捲動渲染
     RUN_TEST(test_scroll_offset_zero_shows_first_five_items);
     RUN_TEST(test_scroll_offset_three_shows_last_five_items);

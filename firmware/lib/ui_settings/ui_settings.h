@@ -11,6 +11,7 @@
 
 #include "display_abstraction.h"
 #include "ems_storage_logic.h"
+#include "ui_scroll.h"
 
 // 設定選單項目索引。定義於此（而非 .cpp）供 input_handler / main.cpp 共用，
 // 避免游標語意退化成散落各處的裸數字（故意不在文字裡列一份數值範圍，這裡只是
@@ -72,6 +73,42 @@ inline uint8_t wrapSettingsCursor(uint8_t cursor, int8_t delta) {
     return (uint8_t)((cursor + SETTINGS_MENU_COUNT + delta) % SETTINGS_MENU_COUNT);
 }
 
+/**
+ * 游標與捲動視窗的成對更新結果。cursor／scroll_offset 兩個欄位必須一起讀寫，
+ * 不拆開使用——這正是 advanceSettingsCursorAndScroll() 存在的理由（見下方）。
+ */
+struct SettingsCursorScroll {
+    uint8_t  cursor;
+    uint16_t scroll_offset;
+};
+
+/**
+ * 設定選單 UP/DOWN 按鍵分派的游標＋捲動視窗成對更新（純函式）。
+ *
+ * 把 wrapSettingsCursor() 的 wrap-around 位移與 clampScrollOffset()（ui_scroll.h）
+ * 的捲動視窗跟隨合併成一次呼叫，回傳新的一對值。存在理由：c980927 CRITICAL 的
+ * 根因是這兩者原本各自 inline 在 input_handler.cpp 的 BTN_UP/BTN_DOWN 分支，
+ * 只改了項目數（SETTINGS_MENU_COUNT）卻沒人記得同步接上捲動視窗；抽成單一
+ * 純函式後，呼叫端只能拿到「已經配對好」的結果，沒有機會只更新其中一個。
+ * input_handler.cpp 屬 src/，native build 排除（platformio.ini
+ * `build_src_filter = -<*>`），本函式抽到這裡讓 native test 能直接涵蓋這段
+ * 配對邏輯，不必只靠 input_handler.cpp 分支旁的註解警告（2026-09-02 codex Tier
+ * 3 補跑 review 對 89917d5 抓到的 IMPORTANT：這段配對邏輯先前完全沒有測試涵蓋）。
+ *
+ * @param cursor        目前游標值（SETTINGS_CURSOR_*）
+ * @param scroll_offset 目前捲動視窗起點
+ * @param delta         SETTINGS_CURSOR_DELTA_UP 或 SETTINGS_CURSOR_DELTA_DOWN
+ * @return              wrap 後的新游標與跟隨新游標算出的新捲動視窗起點
+ */
+inline SettingsCursorScroll advanceSettingsCursorAndScroll(uint8_t cursor, uint16_t scroll_offset, int8_t delta) {
+    // STEP 01: 先算 wrap 後的新游標
+    SettingsCursorScroll result;
+    result.cursor = wrapSettingsCursor(cursor, delta);
+    // STEP 02: 用新游標與既有 scroll_offset 算出新的捲動視窗起點
+    result.scroll_offset = clampScrollOffset(result.cursor, scroll_offset, SETTINGS_VISIBLE_ROWS);
+    return result;
+}
+
 // 文字顏色（RGB565）。定義於此供 native test 驗證「置灰 vs 正常」的實際繪製顏色，
 // 否則測試只能斷言「有畫出文字」，無法分辨置灰與否。
 #define SETTINGS_COLOR_WHITE  0xFFFF
@@ -91,9 +128,10 @@ inline uint8_t wrapSettingsCursor(uint8_t cursor, int8_t delta) {
   *
   * @param disp   顯示抽象層（mock 或真實顯示）
   * @param cursor 游標索引（SETTINGS_CURSOR_*），預設 3 向後相容
-  * @param scroll_offset 捲動視窗起點（顯示清單第幾項開始）。未來規劃由呼叫端以
-  *               clampScrollOffset() 算好再傳入（見 ui_scroll.h，接線在 Task 3）；
-  *               在此之前（含目前 main.cpp 呼叫點）一律傳字面值 0，選單尚不會捲動。
+  * @param scroll_offset 捲動視窗起點（顯示清單第幾項開始）。由呼叫端以
+  *               clampScrollOffset() 算好再傳入（見 ui_scroll.h）；正式呼叫點
+  *               （main.cpp）已接線，跟隨 settingsCursor 由 UP/DOWN 分派同步更新
+  *               （input_handler.cpp）。BTN_PRIMARY 對 cursor 5~7 的分派仍待 Task 3。
   *               預設 0（不捲動）
   * @param device_name_locked 裝置名稱是否鎖定（true = 置灰且不顯示當前名稱）。
   *               由呼叫端以 storage_has_unsynced_case() 算好再傳入，對齊
@@ -103,7 +141,7 @@ inline uint8_t wrapSettingsCursor(uint8_t cursor, int8_t delta) {
   */
  void drawSettingsMenu(Display& disp,
                        uint8_t cursor = SETTINGS_CURSOR_VENT_VOL,
-                       uint8_t scroll_offset = 0,
+                       uint16_t scroll_offset = 0,
                        bool device_name_locked = false,
                        bool restore_confirm = false);
 

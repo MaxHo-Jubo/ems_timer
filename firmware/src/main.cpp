@@ -240,6 +240,10 @@ FlashState flashState = {};
 // Dev-Phase G: 設定 UI 狀態（操作於 input_handler.cpp）
 // settingsCursor 初始值 1：跳過裝置名稱（索引 0），因為裝置名稱暫不支援調整
 uint8_t settingsCursor = 1;
+// 設定選單捲動視窗起點。跟 settingsCursor 一樣不在進入選單時重設（sticky）——
+// 兩者永遠成對更新（見 input_handler.cpp UP/DOWN 分支），拆開重設會讓其中一個
+// 落單，重新製造 c980927 那個「游標在窗外、畫面沒跟著捲」的 bug。
+uint16_t settingsScrollOffset = 0;
 bool    settingsEditorMode = false;
 bool    settingsRestoreConfirm = false;
 bool    settingsBatteryInfoMode = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
@@ -938,6 +942,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.bleConnected          = g_ble.connected();  // Phase F MVP1
     in.syncState             = (uint8_t)g_sync_ctx.state;  // Phase F MVP2
     in.settingsCursor         = settingsCursor;         // Phase G：漏此三項會使設定選單完全不重繪
+    in.settingsScrollOffset   = settingsScrollOffset;   // Phase G：漏此欄位會讓捲動後的選單畫面不重繪
     in.settingsEditorMode     = settingsEditorMode;     // Phase G
     in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
     in.settingsBatteryInfo    = settingsBatteryInfoMode; // Phase H：Task 13，漏此項會使電池資訊子畫面進出不重繪
@@ -1174,7 +1179,7 @@ void updateDisplay() {
                 drawSettingEditor(settingsDisp, "通氣音量", getVentVolume(), SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX);
             }
         } else {
-            drawSettingsMenu(settingsDisp, settingsCursor, /* scroll_offset= */ 0,
+            drawSettingsMenu(settingsDisp, settingsCursor, /* scroll_offset= */ settingsScrollOffset,
                              g_device_name_locked, settingsRestoreConfirm);
         }
     }

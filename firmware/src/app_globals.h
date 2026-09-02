@@ -533,6 +533,8 @@ extern FlashState flashState;
 extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，Impl-Phase G
                                        //   擴充至 SoT §19.1 完整 8 項；input_handler.cpp 的
                                        //   BTN_PRIMARY 分派目前僅處理到 cursor 4，5~7 尚未接線，見 Task 3）
+extern uint16_t settingsScrollOffset; // 設定選單捲動視窗起點，跟 settingsCursor 成對更新（UP/DOWN
+                                       //   時一起算，見 input_handler.cpp），不單獨重設
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）

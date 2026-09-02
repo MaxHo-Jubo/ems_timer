@@ -143,7 +143,7 @@ static_assert(SETTINGS_MENU_ITEM_COUNT == SETTINGS_MENU_COUNT,
   * @param device_name_locked  裝置名稱是否鎖定（由呼叫端算好）
   * @param restore_confirm     恢復預設確認對話框是否顯示中
   */
- void drawSettingsMenu(Display& disp, uint8_t cursor, uint8_t scroll_offset,
+ void drawSettingsMenu(Display& disp, uint8_t cursor, uint16_t scroll_offset,
                        bool device_name_locked, bool restore_confirm) {
      // STEP 01: 讀取裝置名稱（ESP32: LittleFS / native: mock FS）
      //   注意：此處不得重設 s_brightness——開機時 main.cpp setup() 已用 NVS 值灌入，

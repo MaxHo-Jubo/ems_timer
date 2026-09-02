@@ -1,6 +1,7 @@
 #include "app_globals.h"
 
-// Wave 1：系統設定 UI（brightness/volume getter/setter）
+// Wave 1：系統設定 UI（brightness/volume getter/setter；含 advanceSettingsCursorAndScroll()
+// ——settingsScrollOffset 跟 settingsCursor 的成對更新，見下方 BTN_UP/BTN_DOWN 分支）
 #include "ui_settings.h"
 
 // Wave 1：系統設定 NVS 讀寫（settings_state_t, settings_init, settings_reset_defaults）
@@ -10,14 +11,17 @@
 #include "ems_storage_logic.h"
 
 // Wave 1：系統設定選單狀態（settingsCursor / editor / confirm）
-// UP/DOWN 捲動的 wrap-around 交給 ui_settings.h 的 wrapSettingsCursor() 處理
-// （項目總數 SETTINGS_MENU_COUNT 是它內部讀的不變量，呼叫端不必也不能傳），
-// 這裡只在 BTN_UP/BTN_DOWN 分支呼叫它，不在此另外複製一份算式或常數。
+// UP/DOWN 的游標 wrap-around 與捲動視窗跟隨交給 ui_settings.h 的
+// advanceSettingsCursorAndScroll() 一次處理（內部呼叫 wrapSettingsCursor() +
+// clampScrollOffset()），這裡只在 BTN_UP/BTN_DOWN 分支呼叫它，不在此另外複製
+// 一份算式或常數，也不會有機會只更新 cursor／scroll_offset 其中一個。
 
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp）
 extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，Impl-Phase G
                                        //   擴充至 SoT §19.1 完整 8 項；本檔 BTN_PRIMARY 分派
                                        //   目前僅處理到 cursor 4〔電池資訊〕，5~7 尚未接線，見 Task 3）
+extern uint16_t settingsScrollOffset; // 設定選單捲動視窗起點，跟 settingsCursor 成對更新，
+                                       //   見下方 BTN_UP/BTN_DOWN 分支
 extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
@@ -762,12 +766,24 @@ void onShortPress(uint8_t btnIdx) {
 
         // STEP 04: 主選單模式
         switch (btnIdx) {
-            case BTN_UP:
-                settingsCursor = wrapSettingsCursor(settingsCursor, SETTINGS_CURSOR_DELTA_UP);
+            case BTN_UP: {
+                // STEP 04.01: 游標與捲動視窗必須成對更新——c980927 的根因是這兩者
+                //   原本各自 inline，只改了項目數卻沒人記得同步接上捲動視窗，游標
+                //   移出可見視窗後畫面高亮消失（2026-09-02 codex Tier 3 補跑 review
+                //   抓到並修正，見 89917d5）。改用 advanceSettingsCursorAndScroll()
+                //   讓呼叫端拿到的是已配對好的結果，沒有機會只更新其中一個。
+                SettingsCursorScroll next = advanceSettingsCursorAndScroll(settingsCursor, settingsScrollOffset, SETTINGS_CURSOR_DELTA_UP);
+                settingsCursor = next.cursor;
+                settingsScrollOffset = next.scroll_offset;
                 break;
-            case BTN_DOWN:
-                settingsCursor = wrapSettingsCursor(settingsCursor, SETTINGS_CURSOR_DELTA_DOWN);
+            }
+            case BTN_DOWN: {
+                // STEP 04.02: 同上，DOWN 方向
+                SettingsCursorScroll next = advanceSettingsCursorAndScroll(settingsCursor, settingsScrollOffset, SETTINGS_CURSOR_DELTA_DOWN);
+                settingsCursor = next.cursor;
+                settingsScrollOffset = next.scroll_offset;
                 break;
+            }
             case BTN_BACK:
                 enterMainMenu();
                 break;
