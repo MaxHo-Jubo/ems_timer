@@ -947,6 +947,7 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.settingsEditorMode     = settingsEditorMode;     // Phase G
     in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
     in.settingsBatteryInfo    = settingsBatteryInfoMode; // Phase H：Task 13，漏此項會使電池資訊子畫面進出不重繪
+    in.settingsDeviceInfo     = settingsDeviceInfoMode;  // Impl-Phase G：漏此項會使裝置資訊子畫面進出不重繪
     // §20.3：snapshot 只需要知道「該不該畫」，不需要知道畫給誰看——三個目標的確認框
     // 文字完全一樣（spec 沒有分別措辭），型別維持 bool，不隨 g_lowBatteryConfirmTarget
     // 改成三選一型別而順手重構（B6 裁決：round 1 這部分已 review 過沒問題）。
@@ -1069,6 +1070,9 @@ void updateDisplay() {
         return;
     }
 
+    // STEP 04: 依 globalState 分派畫面內容 — 每個 globalState（含子模式旗標）對應各自的
+    // 全螢幕繪製函式；Impl-Phase G Task 4 新增 settingsDeviceInfoMode 分支與兩個
+    // placeholder 全域狀態分支（App連線設定／Type-C連線）。
     if (globalState == GLOBAL_MAIN_MENU) {
         drawMainMenu();
     } else if (globalState == GLOBAL_SYNC) {
@@ -1168,8 +1172,11 @@ void updateDisplay() {
         if (settingsBatteryInfoMode) {
             // 電池資訊子畫面，無需 Display 參數（畫面直接寫 display sprite，沿用
             // 其他全螢幕 draw 函式的慣例）。不在此呼叫 presentFrame() 或提前
-            // return——讓流程照常往下走到本函式 STEP 04 統一出口，理由見下方 STEP 04 註解。
+            // return——讓流程照常往下走到本函式 STEP 05 統一出口，理由見下方 STEP 05 註解。
             drawBatteryInfo();
+        } else if (settingsDeviceInfoMode) {
+            // Impl-Phase G：裝置資訊子畫面，同電池資訊 pattern。
+            drawDeviceInfo();
         } else if (settingsEditorMode) {
             // 編輯模式：依游標索引繪製對應設定項目的數值調整畫面
             if (settingsCursor == SETTINGS_CURSOR_BRIGHTNESS) {
@@ -1183,6 +1190,10 @@ void updateDisplay() {
             drawSettingsMenu(settingsDisp, settingsCursor, /* scroll_offset= */ settingsScrollOffset,
                              g_device_name_locked, settingsRestoreConfirm);
         }
+    } else if (globalState == GLOBAL_SETTINGS_APP_CONN_PLACEHOLDER) {
+        drawPlaceholder("App連線設定", "Phase G");
+    } else if (globalState == GLOBAL_SETTINGS_TYPEC_PLACEHOLDER) {
+        drawPlaceholder("Type-C連線", "Phase G");
     }
 
     // W9：儲存失敗提示（紅字警告 + 重試按鈕，無聲音）
@@ -1202,7 +1213,7 @@ void updateDisplay() {
         drawFlashOverlay();
     }
 
-    // STEP 04: presentFrame() 統一重繪出口 — 呼叫 drawBatteryIcon() 畫電量圖示後
+    // STEP 05: presentFrame() 統一重繪出口 — 呼叫 drawBatteryIcon() 畫電量圖示後
     // pushSprite DMA 一次推到實體 TFT，消除「fillScreen → 慢慢出文字」中間態
     presentFrame(now);
 }

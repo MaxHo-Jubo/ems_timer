@@ -269,7 +269,7 @@ static void test_flag_settings_battery_info_sets_bit_0x200000() {
 }
 
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 22 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 23 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -293,6 +293,7 @@ static void test_all_flags_on_combine_all_bits() {
     in.settingsEditorMode     = true;
     in.settingsRestoreConfirm = true;
     in.settingsBatteryInfo    = true;
+    in.settingsDeviceInfo     = true;
     in.batteryLowBlinkOn      = true;
     in.lowBatteryNoticeVisible = true;
     in.lowBatteryStartConfirmShown = true;
@@ -316,21 +317,23 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_SETTINGS_EDITOR
                             | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
                             | SNAP_FLAG_SETTINGS_BATTERY_INFO
+                            | SNAP_FLAG_SETTINGS_DEVICE_INFO
                             | SNAP_FLAG_BATTERY_LOW_BLINK
                             | SNAP_FLAG_LOW_BATTERY_NOTICE
                             | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
     TEST_ASSERT_EQUAL_UINT32(expected, captureSnapshot(in).flags);
 }
 
-/// 截至 Task 13 的 DisplaySnapshot flag bit 總數（不是「Task 7-13 新增了幾個」——
+/// 截至 Impl-Phase G Task 4 的 DisplaySnapshot flag bit 總數（不是「Task 7-13 新增了幾個」——
 /// 是全案自 flags 欄位存在以來累計的總數），改動時同步更新（新增/移除 flag 記得改這裡）
-constexpr uint32_t EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT = 22;
+constexpr uint32_t EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT = 23;
 
 static void test_all_flags_bit_masks_are_unique() {
     // 確保 EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT 個 mask 沒有撞號（OR 全部應等於 set bit count）
     // Phase G：原 uint16_t 的 16 bit 於 W8 用罄，flags 擴為 uint32_t 容納設定 UI 兩個新 flag
     // Phase H：新增電池低電量閃爍 flag（第 19 個 bit）、§13.16 低電量提示 flag（第 20 個 bit）、
     //          §20.3 低電量開案確認框 flag（第 21 個 bit）與 Task 13 電池資訊子畫面 flag（第 22 個 bit）
+    // Impl-Phase G Task 4：新增裝置資訊子畫面 flag（第 23 個 bit）
     const uint32_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
@@ -340,7 +343,7 @@ static void test_all_flags_bit_masks_are_unique() {
                        | SNAP_FLAG_BLE_CONNECTED | SNAP_FLAG_RESYNC_CONFIRM
                        | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM
                        | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
-                       | SNAP_FLAG_SETTINGS_BATTERY_INFO
+                       | SNAP_FLAG_SETTINGS_BATTERY_INFO | SNAP_FLAG_SETTINGS_DEVICE_INFO
                        | SNAP_FLAG_BATTERY_LOW_BLINK | SNAP_FLAG_LOW_BATTERY_NOTICE
                        | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
     // popcount
@@ -448,6 +451,32 @@ static void test_flag_low_battery_start_confirm_sets_bit_0x100000() {
     DisplaySnapshotInputs in;
     in.lowBatteryStartConfirmShown = true;
     TEST_ASSERT_EQUAL_UINT32(SNAP_FLAG_LOW_BATTERY_START_CONFIRM, captureSnapshot(in).flags);
+}
+
+// ============================================================
+//  Impl-Phase G: settingsDeviceInfo flag 覆蓋
+// ============================================================
+
+static void test_settings_device_info_flag_change_triggers_redraw() {
+    DisplaySnapshotInputs in_a;
+    in_a.settingsDeviceInfo = false;
+    DisplaySnapshot a = captureSnapshot(in_a);
+
+    DisplaySnapshotInputs in_b;
+    in_b.settingsDeviceInfo = true;
+    DisplaySnapshot b = captureSnapshot(in_b);
+
+    TEST_ASSERT_FALSE_MESSAGE(snapshotsEqual(a, b),
+        "settingsDeviceInfo 進出必須觸發重繪，否則裝置資訊子畫面進出不重繪");
+}
+
+static void test_settings_device_info_flag_maps_to_unique_bit() {
+    DisplaySnapshotInputs in;
+    in.settingsDeviceInfo = true;
+    DisplaySnapshot s = captureSnapshot(in);
+
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SNAP_FLAG_SETTINGS_DEVICE_INFO, s.flags,
+        "settingsDeviceInfo=true 時 flags 應恰為 SNAP_FLAG_SETTINGS_DEVICE_INFO 這一個 bit");
 }
 
 // ============================================================
@@ -615,6 +644,10 @@ int main(int /*argc*/, char ** /*argv*/) {
     RUN_TEST(test_flag_battery_low_blink_sets_bit_0x40000);
     RUN_TEST(test_flag_low_battery_notice_sets_bit_0x80000);
     RUN_TEST(test_flag_low_battery_start_confirm_sets_bit_0x100000);
+
+    // Impl-Phase G: settingsDeviceInfo flag 覆蓋
+    RUN_TEST(test_settings_device_info_flag_change_triggers_redraw);
+    RUN_TEST(test_settings_device_info_flag_maps_to_unique_bit);
 
     // Group 6: partial update 判斷（漏欄位會吞掉重繪）
     RUN_TEST(test_only_countdown_differs_allows_partial_update);

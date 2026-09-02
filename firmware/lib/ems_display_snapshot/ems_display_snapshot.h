@@ -89,6 +89,7 @@ enum DisplaySnapshotFlag : uint32_t {
     SNAP_FLAG_LOW_BATTERY_NOTICE = 0x00080000,  // Phase H：§13.16 低電量提示顯示中（3 秒）
     SNAP_FLAG_LOW_BATTERY_START_CONFIRM = 0x00100000,  // Phase H：§20.3 低電量開案確認框顯示中
     SNAP_FLAG_SETTINGS_BATTERY_INFO = 0x00200000,  // Phase H：電池資訊子畫面顯示中（Task 13）
+    SNAP_FLAG_SETTINGS_DEVICE_INFO = 0x00400000,   // Impl-Phase G：裝置資訊子畫面顯示中
 };
 
 
@@ -145,6 +146,7 @@ struct DisplaySnapshotInputs {
     bool     settingsEditorMode     = false;  // Phase G：設定值編輯畫面顯示中
     bool     settingsRestoreConfirm = false;  // Phase G：恢復預設確認對話框顯示中
     bool     settingsBatteryInfo    = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
+    bool     settingsDeviceInfo     = false;  // Impl-Phase G：裝置資訊子畫面顯示中
 
     // STEP 04: Phase H 電池欄位
     uint8_t  batteryPercent     = 255;    // Phase H：預設 255 = 不在線
@@ -210,6 +212,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.settingsEditorMode)     s.flags |= SNAP_FLAG_SETTINGS_EDITOR;
     if (in.settingsRestoreConfirm) s.flags |= SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
     if (in.settingsBatteryInfo)    s.flags |= SNAP_FLAG_SETTINGS_BATTERY_INFO;
+    if (in.settingsDeviceInfo)     s.flags |= SNAP_FLAG_SETTINGS_DEVICE_INFO;
     if (in.batteryLowBlinkOn)      s.flags |= SNAP_FLAG_BATTERY_LOW_BLINK;
     if (in.lowBatteryNoticeVisible) s.flags |= SNAP_FLAG_LOW_BATTERY_NOTICE;
     if (in.lowBatteryStartConfirmShown) s.flags |= SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
