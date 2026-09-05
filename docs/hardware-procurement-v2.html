@@ -144,13 +144,13 @@
 <div class="header">
   <h1>🛒 EMS DoseSync 硬體採購清單 v2</h1>
   <div class="subtitle">PM 6 條需求對齊 · 兩條升級路徑對照 · 給 PM 下單參考</div>
-  <div class="version">v2.3 · 2026-05-14 · Max Ho</div>
+  <div class="version">v2.5 · 2026-08-25 · Max Ho</div>
 </div>
 
 <div class="meta-box">
   <div><span class="meta-label">適用階段：</span><span class="meta-value">Dev-Phase 2 / Prod-Phase pilot</span></div>
   <div><span class="meta-label">建立日期：</span><span class="meta-value">2026-05-07</span></div>
-  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-08-22</span></div>
+  <div><span class="meta-label">最後更新：</span><span class="meta-value">2026-08-25</span></div>
   <div><span class="meta-label">負責人：</span><span class="meta-value">Max Ho</span></div>
   <div><span class="meta-label">關聯文件：</span><span class="meta-value">power-module-purchase.md</span></div>
 </div>
@@ -181,6 +181,9 @@
   <div class="card">
     <div class="note note-blue">
       此表為 <strong>Dev-Phase 1.5 / Dev-Phase 2 階段現況快照</strong>。採購規格細節與升級路徑決策見 §2~§5；本表只回答「我手上有什麼、缺什麼、接到哪了」。
+    </div>
+    <div class="note note-green">
+      🔄 <strong>2026-08-25 校正</strong>：下表 #8 / #9 / #10 / #12 的採購與接線狀態已依實際現況更新（不再是 2026-05-13 當時的「已下單」快照）；決策脈絡見 §11 採購建議、版本見 §13。
     </div>
 
     <h3 class="sub-title">硬體清單（11 項）</h3>
@@ -254,14 +257,14 @@
           <td><span class="badge badge-green">✅ 已採購</span></td>
           <td><span class="badge badge-amber">⏳ 未接</span></td>
         </tr>
-        <tr>
+        <tr class="path-a">
           <td class="num-col">8</td>
           <td><strong>RTC 模組</strong></td>
           <td>離線時間校準</td>
           <td>DS3231 I2C</td>
           <td><a href="https://tw.shp.ee/QUJCyUiS" class="link" target="_blank">蝦皮 ↗</a></td>
-          <td><span class="badge badge-blue">🚚 已下單未到貨</span></td>
-          <td><span class="badge badge-amber">⏳ 待到貨（Dev-Phase 3）</span></td>
+          <td><span class="badge badge-green">✅ 已到貨</span></td>
+          <td><span class="badge badge-pass">✅ 已接線驗收（2026-05-24）</span></td>
         </tr>
         <tr class="path-a">
           <td class="num-col">9</td>
@@ -269,8 +272,8 @@
           <td>離線供電</td>
           <td>LiPo 1000mAh + 保護板 + PH2.0（<strong>左紅右黑</strong>）</td>
           <td><a href="https://reurl.cc/R28yZr" class="link" target="_blank">賣場 ↗</a></td>
-          <td><span class="badge badge-blue">🚚 已下單未到貨（5/14 下單）</span></td>
-          <td><span class="badge badge-amber">⏳ 待到貨</span></td>
+          <td><span class="badge badge-green">✅ 已到貨</span></td>
+          <td><span class="badge badge-pass">✅ 已接線供電中（2026-06 起；2026-07-04 排除白屏問題）</span></td>
         </tr>
         <tr class="path-a">
           <td class="num-col">10</td>
@@ -278,8 +281,8 @@
           <td>充放電 + 5V 升壓 + 真實 load-sharing</td>
           <td>PowerBoost 1000 C</td>
           <td><a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天 ↗</a></td>
-          <td><span class="badge badge-blue">🚚 已下單未到貨（5/14 下單，<strong>預計 ~6/4 到貨</strong>）</span></td>
-          <td><span class="badge badge-amber">⏳ 待到貨（3~4 週）</span></td>
+          <td><span class="badge badge-green">✅ 已到貨</span></td>
+          <td><span class="badge badge-amber">⏸ 已到貨但未採用（現行電源維持 #12 聯騰 TP4056）</span></td>
         </tr>
         <tr class="path-a">
           <td class="num-col">11</td>
@@ -292,12 +295,12 @@
         </tr>
         <tr class="path-a">
           <td class="num-col">12</td>
-          <td><strong>聯騰 TP4056 一體版</strong>（pilot 主驗證）</td>
-          <td>充電 + 升壓 5V（PowerBoost 到貨前的 pilot 替代）</td>
+          <td><strong>聯騰 TP4056 一體版</strong>（現行採用）</td>
+          <td>充電 + 升壓 5V</td>
           <td>MTARDTP4056S（TP4056 + DW01 + 8205A + SX1308 升壓 + Type-C）</td>
           <td><a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮 ↗</a></td>
-          <td><span class="badge badge-blue">🚚 已下單未到貨（5/14 下單）</span></td>
-          <td><span class="badge badge-amber">⏳ 待到貨（1~3 天）</span></td>
+          <td><span class="badge badge-green">✅ 已到貨</span></td>
+          <td><span class="badge badge-pass">✅ 已接線使用中（2026-06 起為實際電源模組）</span></td>
         </tr>
         <tr class="path-a">
           <td class="num-col">13</td>
@@ -431,9 +434,9 @@
   <h2 class="section-title"><span class="num">3</span>總結</h2>
   <div class="card">
     <div class="recommend-box">
-      <div class="rec-title">🚚 2026-05-14 採購已執行</div>
+      <div class="rec-title">✅ 採購與到貨已完成（2026-08-25 更新）</div>
       <div class="rec-body">
-        電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">連結</a>）+ <strong>PowerBoost 1000 C</strong>（<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天</a>，預計 ~6/4 到貨）+ <strong>聯騰 TP4056 一體版</strong>（<a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮</a>，1~3 天到貨先行 pilot 驗證）均已下單。
+        電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">連結</a>）、<strong>PowerBoost 1000 C</strong>（<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天</a>）、<strong>聯騰 TP4056 一體版</strong>（<a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮</a>）均已到貨並接線。<strong>實際電源方案是聯騰 TP4056 一體版</strong>（2026-06 起供電使用），PowerBoost 到貨後未觸發換裝，目前是量產階段的庫存候選（見 §11）。
       </div>
     </div>
 
@@ -452,7 +455,7 @@
     <div class="note note-blue">
       <strong>必須跟 PM 確認的兩點</strong>：
       <ol style="margin: 8px 0 0 20px;">
-        <li>路徑 A 是 micro USB <strong>不是 Type-C</strong>，能否接受？</li>
+        <li>路徑 A 是 micro USB <strong>不是 Type-C</strong>，能否接受？（已用此規格運作至今，如尚未書面確認，建議此時補齊）</li>
         <li>電池實際採購是 1000mAh（不是原規格 500~800mAh），確認規格鬆綁？</li>
       </ol>
     </div>
@@ -730,25 +733,29 @@
   <div class="card">
 
     <div class="recommend-box">
-      <div class="rec-title">🎯 短期決策（Dev-Phase 2 BLE 開發）— 走路徑 A</div>
+      <div class="rec-title">✅ 短期決策（Dev-Phase 2 BLE 開發）— 路徑 A 已執行完成（2026-08-25 更新）</div>
       <div class="rec-body">
-        <strong>下單清單</strong>：
+        <strong>到貨清單</strong>：
         <ul style="margin: 8px 0 8px 20px;">
-          <li>電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-blue">🚚 已下單（5/14）</span></li>
-          <li>電池模組 PowerBoost 1000 C ×1（<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天 ↗</a>）— <span class="badge badge-blue">🚚 已下單（5/14，預計 ~6/4 到貨）</span></li>
-          <li><strong>聯騰 TP4056 一體版 ×1</strong>（PowerBoost 到貨前的 pilot 替代，<a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-blue">🚚 已下單（5/14，1~3 天到貨）</span></li>
+          <li>電池 ×1（<a href="https://reurl.cc/R28yZr" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-pass">✅ 已到貨並接線供電（2026-06 起）</span></li>
+          <li><strong>聯騰 TP4056 一體版 ×1</strong>（<a href="https://reurl.cc/O6zjZr" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-pass">✅ 已到貨並接線，現為實際採用的電源模組</span></li>
+          <li>電池模組 PowerBoost 1000 C ×1（<a href="https://www.ruten.com.tw/item/21644203728515" class="link" target="_blank">露天 ↗</a>）— <span class="badge badge-amber">✅ 已到貨，但現階段未採用（見下方 📌）</span></li>
           <li>MCP23017 已焊版 ×1（<a href="https://reurl.cc/j6a4m2" class="link" target="_blank">蝦皮 ↗</a>）— <em>為未來預留，現階段不接也行</em> <span class="badge badge-red">❌ 未下單</span></li>
           <li>排針 ×1 包（<a href="https://reurl.cc/zQoGqV" class="link" target="_blank">蝦皮 ↗</a>）— <span class="badge badge-red">❌ 未下單</span></li>
         </ul>
-        <strong>理由</strong>：
+        <strong>理由（原始決策，事後驗證成立）</strong>：
         <ol style="margin: 8px 0 0 20px;">
           <li>路徑 A <strong>完全符合 PM 6 條</strong>（除了 #3 接口非 Type-C，可接受）</li>
           <li><strong>韌體 0 行改動</strong>，95 個現有 test 全綠狀態保留</li>
           <li>Dev-Phase 2 真正要做的是 BLE 通訊，<strong>不該為了硬體換板打斷節奏</strong></li>
           <li>MCP23017 提早採購備料，等 Prod-Phase 真要切 SparkFun 時不用等貨</li>
-          <li><strong>聯騰一體版作為 PowerBoost 到貨前的 pilot 主驗證</strong>，焊接工少、debug 風險低，雙模組到齊後做 load-sharing 對比驗證</li>
+          <li>聯騰一體版原規劃是「PowerBoost 到貨前的 pilot」，<strong>實際結果是它足以撐起 Dev-Phase 2~3 全程開發</strong>，未再換裝 PowerBoost</li>
         </ol>
       </div>
+    </div>
+
+    <div class="note note-blue">
+      📌 <strong>PowerBoost 1000C 到貨後未採用</strong>：到貨當下聯騰 TP4056 已穩定運作中（含 2026-07-04 白屏排查完成），沒有觸發「換板驗證真實 load-sharing」的必要性，原規劃的雙模組對比測試因此<strong>沒有執行</strong>。PowerBoost 目前是庫存中的量產候選，去留交給下方中長期決策的觸發條件決定。
     </div>
 
     <div class="skip-box">
@@ -767,6 +774,10 @@
         <li>95 unit tests 全部重跑</li>
         <li>實機重新驗證 Dev-Phase 1 全項目</li>
       </ul>
+    </div>
+
+    <div class="note note-blue">
+      💡 若屆時要驗真實 load-sharing，<strong>PowerBoost 1000C 已到貨</strong>（見 §0 #10），不需再採購，直接沿用即可。
     </div>
   </div>
 </div>
@@ -802,13 +813,14 @@
         <tr><td>2026-05-13</td><td>v2.2-html</td><td>頁首新增 §0「目前開發硬體清單與狀態」11 項快照表（含採購/接線狀態 + 蝦皮連結）；補上排針規格 6 項確認清單 + 下單前檢核點；對應 markdown v2.2</td><td>Max Ho</td></tr>
         <tr><td>2026-05-14</td><td>v2.3</td><td>更新採購狀態：#9 電池、#10 PowerBoost 1000C 均於 5/14 下單；新增 #12 聯騰 TP4056 一體版（5/14 下單，PowerBoost 到貨前 pilot 主驗證）與 #13 MAX17048 燃料計（延後採購，觸發條件指向 power-module-purchase.md §10.4）；§3 總結與 §11 短期決策反映採購進度；對應 markdown v2.3</td><td>Max Ho</td></tr>
         <tr><td>2026-07-22<br>2026-08-22</td><td>v2.4</td><td>修正 #13 燃料計實際採購型號為 <strong>MAX17043</strong>（非原規劃 MAX17048）；2026-08-22 補上機驗收結果——已接線，I2C <code>0x36</code> 與 RTC 共用線路無衝突，讀數 3.844V 對比電表 3.88V（差 36mV）通過，#13 接線欄由 ⏳ 改 ✅；§3 總結同步更新；I2C 位址表加註「屬 SparkFun 方案（未採用）的 Qwiic 線路規劃、非現況」並補各裝置實際狀態（SH1106 已移除、DS3231 已上機、補列漏掉的 AT24C32 <code>0x57</code>）；對應 markdown v2.4</td><td>Max Ho</td></tr>
+        <tr><td>2026-08-25</td><td>v2.5</td><td>校正 §0 快照表 #8/#9/#10/#12 到貨與使用狀態：RTC（2026-05-24 已上機）、電池與聯騰 TP4056（2026-06 起供電中）皆由「已下單未到貨」改列「已到貨」，聯騰 TP4056 從「pilot 替代」改列「現行採用」；PowerBoost 1000C 到貨但未觸發換裝，改列「已到貨、現階段未採用」，未做原規劃的 load-sharing 對比驗證；§3 總結、§11 採購建議同步改寫為「已執行完成」語氣，不再是下單中的快照；對應 markdown v2.5</td><td>Max Ho</td></tr>
       </tbody>
     </table>
   </div>
 </div>
 
 <div class="footer">
-  EMS Timer 硬體採購清單 v2.4 · 2026-08-22 · Max Ho<br>
+  EMS Timer 硬體採購清單 v2.5 · 2026-08-25 · Max Ho<br>
   本文件對應 Markdown 版：<code>docs/hardware-procurement-v2.md</code>
 </div>
 

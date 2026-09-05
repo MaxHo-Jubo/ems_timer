@@ -402,6 +402,11 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
         </tr>
       </tbody>
     </table>
+    <div class="note note-red">🚨 <strong>OUT- 這個 GND 接點必須焊死，不可用杜邦線／排針等可拔插方式接。</strong>
+      純電池供電時曾發生 TFT 白屏，根因花了近 3 週才定位（2026-06-14 定位 → 2026-07-04 修復）：
+      OUT- 若用可拔插方式接觸，接觸電阻會造成 GND 回流壓降約 0.5V（ground bounce）——正極與升壓板輸出量起來都正常，
+      只有這個接點有問題，故障現象是 TFT 白屏，不是不開機，很容易誤判成螢幕或韌體問題而繞遠路排查。
+      <strong>焊死這個接點後問題消失、實測通過。</strong>這條規則只對 OUT- 這一個接點成立，不代表其他所有接點都要焊死。</div>
     <div class="note note-red">⚠️ <strong>千萬不要接到 3V3 pin</strong> — 會燒晶片。</div>
 
     <h3 class="sub-title">5.4 整合測試</h3>
@@ -431,6 +436,11 @@ USB-C 5V 輸入 ─────►│ TP4056 充電升壓 │
           <td>ESP32 一插電池就重開機</td>
           <td>升壓電壓沒調到 5V，VIN &lt; 4.7V</td>
           <td>重新校正電位器到 5.0V</td>
+        </tr>
+        <tr>
+          <td><strong>純電池供電時 TFT 白屏</strong>（ESP32 有開機、不是不開機）</td>
+          <td>OUT- 用可拔插方式接（杜邦線/排針），接觸電阻造成 GND 回流壓降 ~0.5V（ground bounce）；正極與升壓板輸出量起來都正常，容易誤判成螢幕或韌體問題</td>
+          <td>量 OUT- 到 ESP32 GND 之間的接觸電阻／壓降；<strong>把這個接點改成焊死</strong>，不要用可拔插方式（2026-07-04 實測：焊死後問題消失）</td>
         </tr>
         <tr>
           <td>充電指示燈不亮</td>

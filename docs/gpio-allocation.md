@@ -3,8 +3,51 @@
 > **狀態**：本文件為 GPIO 分配的唯一真相來源
 > **建立日期**：2026-05-04
 > **依據**：SoT V1 `§4.1 主要按鍵`（按鍵命名）、`§21.3 擴充預留腳位`（擴充策略）
-> **目標硬體**：ESP32-S3 GOOUUU 開發板（標準 N8 模組，非 octal PSRAM 版）
+> **目標硬體**：ESP32-S3 GOOUUU 開發板（**實際為 N16R8 octal PSRAM 模組**，2026-05-08 實機確認，見 §5.1/§5.2；非標準 N8）
 > **同步原則**：本文件變更後，`main.cpp` 註解、`SoT V1 §21.3`、`tft-migration-plan.md` 必須對齊
+
+---
+
+## ⭐ 目前實作腳位速查（2026-08-25 校正，供快速查看）
+
+下表列出目前韌體已實際使用的訊號腳位（已寫進 `app_globals.h` 且有對應邏輯驅動，不含尚未整合的麥克風/MicroSD 佔位接線），以及各周邊與電源模組實際的電源／接地接線（VCC/GND，含 TP4056 電源模組與 MAX17043 燃料計，2026-08-25 新增）。電源接點列最前，其餘依 GPIO 編號排序，方便對照實體接線。完整規格、互斥約束、變更歷程見下方 §1~§8。
+
+| ESP32接點 | 用途 | 所屬功能 | 詳見章節 |
+|---|---|---|---|
+| 5V / VIN（V5IN） | **TP4056 電源模組 OUT+**（板子唯一電源輸入） | 電源 | `power-module-purchase.md §5.3` |
+| 5V / VIN（V5IN） | TFT VCC（與 TP4056 OUT+ 共用同一條軌） | 顯示 | §5.2 |
+| 3V3 | TFT 背光 LED | 顯示 | §5.2 |
+| 3V3 | DS3231 RTC VCC | RTC | §5.4 |
+| GND | TP4056 OUT- | 電源 | `power-module-purchase.md §5.3` |
+| GND | 8 顆按鍵共用回路（`INPUT_PULLUP`，無需外部 VCC） | 按鍵 | §1 |
+| GND | 蜂鳴器 | 提醒輸出 | §3 |
+| GND | TFT | 顯示 | §5.2 |
+| GND | DS3231 RTC | RTC | §5.4 |
+| GND | MAX17043 燃料計 | 電池監測 | `power-module-purchase.md §10.7` |
+| (不接) | **MAX17043 VCC**——電池直供不需要接 ESP32；**MAX17043 的 JST「+」/「-」與 TP4056 B+/B- 並聯** | 電池監測 | `power-module-purchase.md §10.7` |
+| 1 | TFT DC | 顯示 | §5.2 |
+| 2 | TFT MOSI（SPI） | 顯示 | §5.2 |
+| 3 | TFT SCK（SPI） | 顯示 | §5.2 |
+| 4 | 主按鍵（`BTN_PRIMARY`） | 按鍵 | §1 |
+| 5 | 上鍵（`BTN_UP`） | 按鍵 | §1 |
+| 6 | 下鍵（`BTN_DOWN`） | 按鍵 | §1 |
+| 7 | Power 鍵（`BTN_POWER`） | 按鍵 | §1 |
+| 14 | 蜂鳴器 PWM（`digitalWrite` 直驅，GPIO 兼作供電，無獨立 VCC） | 提醒輸出 | §3 |
+| 16 | 返回鍵（`BTN_BACK`） | 按鍵 | §1 |
+| 17 | EPI 鍵（`BTN_EPI`） | 按鍵 | §1 |
+| 18 | 電擊鍵（`BTN_SHOCK`） | 按鍵 | §1 |
+| 21 | TFT CS | 顯示 | §5.2（與震動馬達共腳，震動目前停用） |
+| 41 | I2C SCL | DS3231 RTC + MAX17043 燃料計 | §5.4 |
+| 42 | I2C SDA | DS3231 RTC + MAX17043 燃料計 | §5.4 |
+| 47 | TFT RST | 顯示 | §5.2 |
+
+> 📌 錄音鍵（GPIO 15）已接線但韌體刻意寫成 noop（`input_handler.cpp` 明寫「Phase H / Phase 1.5 — noop」），故不列入本表，狀態見 §1、§4。震動馬達（GPIO 21）目前停用，不另立一列。
+>
+> 📌 **TP4056 千萬不要接錯電壓**：OUT+ 只能接 VIN/V5IN，誤接 3V3 會直接燒晶片。詳見 `power-module-purchase.md §5.3`。
+>
+> 📌 **MAX17043 VCC 不接 ESP32 是刻意設計，不是漏接**——VDD 是外露節點，直接由電池供電；若誤接 ESP32 3.3V 會跟電池供電互打。詳見 `power-module-purchase.md §10.7`。
+>
+> ⚠️ **DS3231 VCC→3V3 未見專屬接線記錄**：本專案文件只留下 SDA/SCL（GPIO 42/41）的明確記載（`ds3231-integration-plan.md`），VCC/GND 走 3V3 是標準 I2C 模組供電慣例的推定，非文件逐條確認過的事實；TFT 的 5V/VIN/GND 三線與 TP4056 OUT+/OUT- 則有 `tft-migration-plan.md §3.1`、`power-module-purchase.md §5.3` 實機驗證表逐一核對。
 
 ---
 
@@ -17,9 +60,9 @@
 | **下鍵** | `BTN_DOWN` | **6** | ✅ 已實作 | ✅ 接線 | 選單下移 / 音量 - |
 | **Power 鍵** | `BTN_POWER` | **7** | ✅ 已實作 | ✅ 接線 | 開關機 |
 | **錄音鍵** | `BTN_RECORD` | **15** | ⚠️ 佔位 noop | ✅ 接線 | INMP441 到貨後啟用 |
-| **返回鍵** | `BTN_BACK` | **16** | ❌ 未實作 | ✅ 接線 | Impl-Phase B 必補 |
-| **EPI 鍵**（針筒圖案） | `BTN_EPI` | **17** | ❌ 未實作 | ✅ 接線 | Impl-Phase B 必補 |
-| **電擊鍵**（閃電圖案） | `BTN_SHOCK` | **18** | ❌ 未實作 | ✅ 接線 | Impl-Phase B 必補 |
+| **返回鍵** | `BTN_BACK` | **16** | ✅ 已實作 | ✅ 接線 | 選單返回 / 各子狀態退出（`input_handler.cpp`） |
+| **EPI 鍵**（針筒圖案） | `BTN_EPI` | **17** | ✅ 已實作 | ✅ 接線 | 兩段確認 + OHCA 事件分派（`input_handler.cpp`） |
+| **電擊鍵**（閃電圖案） | `BTN_SHOCK` | **18** | ✅ 已實作 | ✅ 接線 | 兩段確認 + OHCA 事件分派（`input_handler.cpp`） |
 
 > 📌 **GPIO 16/17/18 已封給按鍵**：原 main.cpp 註解標記為「獨立 I2C 候選」的 GPIO 17/18 **無效**，CO 感測器擴充必須改用其他腳位（見第 5 節）。
 
@@ -195,3 +238,7 @@
 | 2026-07-22 | §5.4 新增 MAX17043 燃料計（0x36，掛 41/42 bus）| 使用者確認實際採購型號為 MAX17043（原規劃 MAX17048），已購入尚未上機接線 |
 | 2026-08-22 | §5.4 MAX17043 從「尚未上機」→「實機驗證通過」 | 上機接線後 i2c-scan 確認 0x36 在線且與 0x57/0x68 共存無衝突；fuel-gauge-check 讀出 VCELL 3.844V / SOC 54.4%，對比電表 3.88V 差 36mV，確認 VDD 為真實電池電壓。驗收紀錄見 `power-module-purchase.md §10.8` |
 | 2026-08-22 | §5.4 新增「當前 I2C bus 位址表」 | 專案原本沒有任何一張表記錄 42/41 bus 上實際掛了什麼——既有兩張 I2C 位址表（`hardware-procurement-v2.md`、`power-module-purchase.md §9.8.3`）都是 SparkFun Thing Plus 方案的 Qwiic bus（GPIO 8/9）規劃推算，易被誤讀為現況。新表以實機掃描為依據（`0x36`/`0x57`/`0x68`），並標明 SH1106 已隨 TFT 改 SPI 而移除、MCP23017 尚未採購 |
+| 2026-08-25 | 校正 §1 返回/EPI/電擊鍵韌體狀態從「❌ 未實作」改「✅ 已實作」；修正頁首「目標硬體」誤植標準 N8（應為 N16R8，§5.1/§5.2 早已如此記載，僅頁首漏改）；新增「⭐ 目前實作腳位速查」章節置頂 | 對照 `firmware/src/input_handler.cpp` 實測確認三鍵已於 OHCA 狀態機（EPI/電擊兩段確認、返回鍵各處退出）中實際分派，不再是 Impl-Phase A 當時的佔位狀態；使用者要求把「目前實際在用」的腳位彙整置頂供快速查閱，避免每次都要翻 §1~§5 逐條核對 |
+| 2026-08-25 | 速查表新增電源接點（5V/VIN、3V3、GND）：TFT VCC/GND/背光、DS3231 VCC、MAX17043 GND，並標明 MAX17043 VCC 刻意不接 ESP32（電池直供）、DS3231 VCC 走 3V3 為推定非逐條確認 | 使用者要求把「有接到 ESP32 的 VCC/GND」都列進速查表；對照 `tft-migration-plan.md §3.1` 實機驗證表確認 TFT 三線、`power-module-purchase.md §10.7` 確認 MAX17043 GND 接法與 VCC 不接的理由；DS3231 VCC/GND 走線本專案從未留下逐條記錄，如實標記為推定避免誤讀成已驗證事實 |
+| 2026-08-25 | 速查表補上 TP4056 電源模組（OUT+ → VIN/V5IN、OUT- → GND，與 TFT VCC 共用同一條 5V 軌）與 MAX17043 電池並聯細節；修正 `tft-migration-plan.md §3.1` TFT DC 腳位殘留舊值（誤植 GPIO 48，實際 2026-05-08 已改 GPIO 1） | 使用者追加要求把 TP4056、MAX17043 的接法也列進速查表；對照 `power-module-purchase.md §5.3` 確認 TP4056 OUT+/OUT- 走線、§10.7 確認 MAX17043 JST 電池並聯關係；順手修掉查證 GND 接線時發現的 `tft-migration-plan.md` 與 `gpio-allocation.md` §7 對齊狀態表宣稱「已同步」但實際不同步的殘留 bug |
+| 2026-08-25 | 速查表拆成逐一接點列（每個接點一個元件一列），5V/VIN 與 GND 不再把多個周邊擠進同一格；新增「（不接 ESP32）」列明示 MAX17043 VCC 的狀態 | 使用者要求「表格要列出 MAX17043 與 TP4056 的接法」——原本併成單一儲存格的寫法讓兩者的接線淹沒在一堆逗號分隔的清單裡，拆開後每條連線在表裡都能單獨對照 |

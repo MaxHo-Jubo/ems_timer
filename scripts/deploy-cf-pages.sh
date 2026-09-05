@@ -38,6 +38,9 @@ cp "$ROOT_DIR/docs/hardware-procurement-v2.html"            "$DIST_DIR/"
 # PM 進度報告: 部署但不掛連結，僅透過直接 URL 訪問（累加結構）
 cp "$ROOT_DIR/docs/progress.html"                            "$DIST_DIR/"
 
+# GPIO 分配總表: 部署但不掛連結，僅透過直接 URL 訪問
+cp "$ROOT_DIR/docs/gpio-allocation.html"                     "$DIST_DIR/"
+
 echo "▶ Files staged for deploy:"
 find "$DIST_DIR" -type f -print0 | xargs -0 -n1 | sed "s|$DIST_DIR/|  |"
 

@@ -49,7 +49,7 @@
 | **2** | MOSI / SDI | ✅（原 35 → 2，避開 N16R8 octal PSRAM） |
 | **3** | SCK | ✅（原 36 → 3，同上原因） |
 | **21** | CS | ✅ |
-| **48** | DC | ✅ |
+| **1** | DC | ✅（原 48 → 1，2026-05-08 改；GPIO 48 與板上 WS2812 RGB LED 衝突，見 `gpio-allocation.md` §6） |
 | **47** | RST | ✅ |
 | **3.3V** 直供 | LED（背光） | ✅ 常亮，未啟用 PWM |
 | **5V / VIN** | VCC | ✅ 板上有 LDO + level shifter，3.3V VCC 會 brown out |
@@ -60,7 +60,7 @@
 - 避開 GPIO 8~13（SPI flash）、19/20（USB）、0/45/46（strapping）。
 - 避開按鍵已封版 GPIO 4~7, 14~18。
 - **避開 GPIO 35~37**（N16R8 octal PSRAM 內部佔用，2026-05-08 實機踩雷確認）。
-- MOSI/SCK 用 GPIO 2/3（原為 ADC1 候選），CS/DC/RST 用 GPIO 21/48/47。
+- MOSI/SCK 用 GPIO 2/3（原為 ADC1 候選），CS/DC/RST 用 GPIO 21/1/47（DC 原規劃 48，2026-05-08 改 1，見上表）。
 
 > 🔴 **採購警示升級**：先前文件警告「採購務必選 N8 / 非 octal PSRAM 版本」**未生效** — 採購到的 GOOUUU TECH 板實際就是 N16R8（金屬遮蔽印 `ESP32-S3-N16R8`）。本節腳位以「拿到 N16R8」為前提；若日後改用 N8 模組，可釋放 GPIO 2/3 回 ADC、SPI 改回 35/36。
 

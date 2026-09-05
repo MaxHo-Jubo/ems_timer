@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS DoseSync GPIO 分配總表</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+
+  .header { text-align: center; margin-bottom: 24px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+  .header .version { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+
+  .meta-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 20px; margin-bottom: 16px; box-shadow: var(--shadow);
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px 20px;
+    font-size: 13px;
+  }
+  .meta-box .meta-label { color: var(--text-secondary); margin-right: 6px; }
+  .meta-box .meta-value { color: var(--text); font-weight: 600; }
+
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .toc-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  .toc-list a { color: var(--blue); text-decoration: none; }
+  .toc-list a:hover { text-decoration: underline; }
+
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--blue); display: flex; align-items: center; gap: 8px; scroll-margin-top: 16px; }
+  .section-title .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--blue); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: var(--shadow); }
+  .sub-title { font-size: 15px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num-col { text-align: center; font-weight: 600; color: var(--text-secondary); width: 50px; }
+  td.price-col { text-align: right; font-weight: 600; color: var(--blue); white-space: nowrap; }
+  tr.total-row td { background: var(--blue-light); font-weight: 700; color: var(--blue); border-top: 2px solid var(--blue); }
+  tr.path-a td { background: var(--green-light); }
+  tr.path-b td { background: var(--amber-light); }
+
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .badge-pass { background: var(--green-light); color: #15803d; }
+  .badge-fail { background: var(--red-light); color: var(--red); }
+
+  .note { margin-top: 12px; padding: 10px 14px; background: var(--amber-light); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; font-size: 12px; color: #92400e; }
+  .note-blue { background: var(--blue-light); border-left-color: var(--blue); color: #1e40af; }
+  .note-red { background: var(--red-light); border-left-color: var(--red); color: #991b1b; }
+  .note-green { background: var(--green-light); border-left-color: var(--green); color: #15803d; }
+
+  .ascii-flow {
+    font-family: "Courier New", monospace; font-size: 13px; background: #0a0a0a; color: #e2e8f0;
+    padding: 20px; border-radius: 8px; line-height: 1.5; white-space: pre; overflow-x: auto;
+  }
+
+  .check-list { list-style: none; padding: 0; margin: 8px 0; font-size: 13px; }
+  .check-list li { padding: 6px 0 6px 28px; position: relative; }
+  .check-list li::before {
+    content: "✓"; position: absolute; left: 0; top: 6px;
+    color: var(--green); font-weight: 700; font-size: 16px;
+  }
+  .check-list li.warn::before { content: "⚠"; color: var(--amber); }
+  .check-list li.cross::before { content: "✗"; color: var(--red); }
+
+  .step-box {
+    margin: 12px 0; padding: 14px 18px; background: var(--bg);
+    border-left: 4px solid var(--blue); border-radius: 0 8px 8px 0; font-size: 13px;
+  }
+  .step-box .step-label { font-weight: 700; color: var(--blue); margin-bottom: 6px; }
+  .step-box ol { margin-left: 18px; }
+  .step-box ol li { margin: 4px 0; }
+
+  .recommend-box {
+    margin: 16px 0; padding: 18px 22px; background: linear-gradient(135deg, #f0fdf4, #ecfdf5);
+    border: 2px solid var(--green); border-radius: var(--radius);
+  }
+  .recommend-box .rec-title { font-size: 15px; font-weight: 700; color: #15803d; margin-bottom: 8px; }
+  .recommend-box .rec-body { font-size: 13px; color: #166534; line-height: 1.7; }
+
+  .skip-box {
+    margin: 12px 0; padding: 14px 18px; background: var(--red-light);
+    border: 1px dashed var(--red); border-radius: var(--radius);
+    font-size: 13px; color: #991b1b;
+  }
+  .skip-box strong { color: var(--red); }
+
+  code {
+    background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px;
+    font-family: "Courier New", monospace; color: #1e40af;
+  }
+
+  .link { color: var(--blue); text-decoration: none; font-weight: 600; }
+  .link:hover { text-decoration: underline; }
+
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+
+  .path-card {
+    margin: 16px 0; padding: 18px 22px; border-radius: var(--radius); border: 2px solid;
+  }
+  .path-a-card { background: var(--green-light); border-color: var(--green); }
+  .path-b-card { background: var(--amber-light); border-color: var(--amber); }
+  .path-card .path-title { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+  .path-a-card .path-title { color: #15803d; }
+  .path-b-card .path-title { color: #b45309; }
+  .path-card .path-buy { font-size: 13px; margin-bottom: 12px; opacity: 0.85; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 22px; }
+    .meta-box { grid-template-columns: 1fr; }
+    .ascii-flow { font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>🔌 GPIO 分配總表</h1>
+  <div class="subtitle">Single Source of Truth · ESP32-S3 GOOUUU N16R8 開發板</div>
+  <div class="version">最後變更 2026-08-25 · Max Ho</div>
+</div>
+
+<div class="meta-box">
+  <div><span class="meta-label">狀態：</span><span class="meta-value">GPIO 分配的唯一真相來源</span></div>
+  <div><span class="meta-label">建立日期：</span><span class="meta-value">2026-05-04</span></div>
+  <div><span class="meta-label">目標硬體：</span><span class="meta-value">ESP32-S3 GOOUUU（N16R8 octal PSRAM 模組，非標準 N8）</span></div>
+  <div><span class="meta-label">依據：</span><span class="meta-value">SoT V1 §4.1 主要按鍵、§21.3 擴充預留腳位</span></div>
+  <div><span class="meta-label">同步原則：</span><span class="meta-value">本文件變更後，main.cpp 註解、SoT V1 §21.3、tft-migration-plan.md 必須對齊</span></div>
+</div>
+
+<div class="toc">
+  <div class="toc-title">目錄</div>
+  <div class="toc-list">
+    <a href="#sec-0">⭐ 目前實作腳位速查</a>
+    <a href="#sec-1">1. 按鍵腳位</a>
+    <a href="#sec-2">2. 顯示</a>
+    <a href="#sec-3">3. 提醒輸出</a>
+    <a href="#sec-4">4. 錄音</a>
+    <a href="#sec-5">5. 擴充預留</a>
+    <a href="#sec-6">6. 互斥約束總覽</a>
+    <a href="#sec-7">7. 對齊狀態</a>
+    <a href="#sec-8">8. 變更歷程</a>
+  </div>
+</div>
+
+<!-- §0 目前實作腳位速查 -->
+<div class="section" id="sec-0">
+  <h2 class="section-title"><span class="num" style="background: var(--purple);">⭐</span>目前實作腳位速查（2026-08-25 校正，供快速查看）</h2>
+  <div class="card">
+    <div class="note note-blue">
+      下表列出目前韌體已實際使用的訊號腳位（已寫進 <code>app_globals.h</code> 且有對應邏輯驅動，不含尚未整合的麥克風/MicroSD 佔位接線），以及各周邊與電源模組實際的電源／接地接線（VCC/GND，含 TP4056 電源模組與 MAX17043 燃料計，2026-08-25 新增）。電源接點列最前，其餘依 GPIO 編號排序，方便對照實體接線。完整規格、互斥約束、變更歷程見下方 §1~§8。
+    </div>
+    <table>
+      <thead><tr><th>ESP32接點</th><th>用途</th><th>所屬功能</th><th>詳見章節</th></tr></thead>
+      <tbody>
+        <tr class="path-a"><td class="num-col">5V/VIN（V5IN）</td><td><strong>TP4056 電源模組 OUT+</strong>（板子唯一電源輸入）</td><td>電源</td><td><code>power-module-purchase.md §5.3</code></td></tr>
+        <tr class="path-a"><td class="num-col">5V/VIN（V5IN）</td><td>TFT VCC（與 TP4056 OUT+ 共用同一條軌）</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a></td></tr>
+        <tr class="path-a"><td class="num-col">3V3</td><td>TFT 背光 LED</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a></td></tr>
+        <tr class="path-a"><td class="num-col">3V3</td><td>DS3231 RTC VCC</td><td>RTC</td><td><a href="#sec-5" class="link">§5.4</a></td></tr>
+        <tr class="path-a"><td class="num-col">GND</td><td>TP4056 OUT-</td><td>電源</td><td><code>power-module-purchase.md §5.3</code></td></tr>
+        <tr class="path-a"><td class="num-col">GND</td><td>8 顆按鍵共用回路（<code>INPUT_PULLUP</code>，無需外部 VCC）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr class="path-a"><td class="num-col">GND</td><td>蜂鳴器</td><td>提醒輸出</td><td><a href="#sec-3" class="link">§3</a></td></tr>
+        <tr class="path-a"><td class="num-col">GND</td><td>TFT</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a></td></tr>
+        <tr class="path-a"><td class="num-col">GND</td><td>DS3231 RTC</td><td>RTC</td><td><a href="#sec-5" class="link">§5.4</a></td></tr>
+        <tr class="path-a"><td class="num-col">GND</td><td>MAX17043 燃料計</td><td>電池監測</td><td><code>power-module-purchase.md §10.7</code></td></tr>
+        <tr class="path-b"><td class="num-col">(不接)</td><td><strong>MAX17043 VCC</strong>——電池直供不需要接 ESP32；<strong>MAX17043 的 JST「+」/「-」與 TP4056 B+/B- 並聯</strong></td><td>電池監測</td><td><code>power-module-purchase.md §10.7</code></td></tr>
+        <tr><td class="num-col">1</td><td>TFT DC</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a></td></tr>
+        <tr><td class="num-col">2</td><td>TFT MOSI（SPI）</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a></td></tr>
+        <tr><td class="num-col">3</td><td>TFT SCK（SPI）</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a></td></tr>
+        <tr><td class="num-col">4</td><td>主按鍵（<code>BTN_PRIMARY</code>）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr><td class="num-col">5</td><td>上鍵（<code>BTN_UP</code>）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr><td class="num-col">6</td><td>下鍵（<code>BTN_DOWN</code>）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr><td class="num-col">7</td><td>Power 鍵（<code>BTN_POWER</code>）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr><td class="num-col">14</td><td>蜂鳴器 PWM（<code>digitalWrite</code> 直驅，GPIO 兼作供電，無獨立 VCC）</td><td>提醒輸出</td><td><a href="#sec-3" class="link">§3</a></td></tr>
+        <tr><td class="num-col">16</td><td>返回鍵（<code>BTN_BACK</code>）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr><td class="num-col">17</td><td>EPI 鍵（<code>BTN_EPI</code>）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr><td class="num-col">18</td><td>電擊鍵（<code>BTN_SHOCK</code>）</td><td>按鍵</td><td><a href="#sec-1" class="link">§1</a></td></tr>
+        <tr><td class="num-col">21</td><td>TFT CS</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a>（與震動馬達共腳，震動目前停用）</td></tr>
+        <tr><td class="num-col">41</td><td>I2C SCL</td><td>DS3231 RTC + MAX17043 燃料計</td><td><a href="#sec-5" class="link">§5.4</a></td></tr>
+        <tr><td class="num-col">42</td><td>I2C SDA</td><td>DS3231 RTC + MAX17043 燃料計</td><td><a href="#sec-5" class="link">§5.4</a></td></tr>
+        <tr><td class="num-col">47</td><td>TFT RST</td><td>顯示</td><td><a href="#sec-5" class="link">§5.2</a></td></tr>
+      </tbody>
+    </table>
+    <div class="note">
+      📌 錄音鍵（GPIO 15）已接線但韌體刻意寫成 noop（<code>input_handler.cpp</code> 明寫「Phase H / Phase 1.5 — noop」），故不列入本表，狀態見 §1、§4。震動馬達（GPIO 21）目前停用，不另立一列。
+    </div>
+    <div class="note note-blue">
+      📌 <strong>TP4056 千萬不要接錯電壓</strong>：OUT+ 只能接 VIN/V5IN，誤接 3V3 會直接燒晶片。詳見 <code>power-module-purchase.md §5.3</code>。
+    </div>
+    <div class="note note-red">
+      📌 <strong>MAX17043 VCC 不接 ESP32 是刻意設計，不是漏接</strong>——VDD 是外露節點，直接由電池供電；若誤接 ESP32 3.3V 會跟電池供電互打。詳見 <code>power-module-purchase.md §10.7</code>。
+    </div>
+    <div class="note note-amber">
+      ⚠️ <strong>DS3231 VCC→3V3 未見專屬接線記錄</strong>：本專案文件只留下 SDA/SCL（GPIO 42/41）的明確記載，VCC/GND 走 3V3 是標準 I2C 模組供電慣例的推定，非文件逐條確認過的事實；TFT 的 5V/VIN/GND 三線與 TP4056 OUT+/OUT- 則有 <code>tft-migration-plan.md §3.1</code>、<code>power-module-purchase.md §5.3</code> 實機驗證表逐一核對。
+    </div>
+  </div>
+</div>
+
+<!-- §1 按鍵腳位 -->
+<div class="section" id="sec-1">
+  <h2 class="section-title"><span class="num">1</span>按鍵腳位（依 SoT V1 §4.1，8 鍵封版）</h2>
+  <div class="card">
+    <table>
+      <thead>
+        <tr><th>SoT 名稱</th><th>韌體 ID（建議）</th><th>GPIO</th><th>韌體狀態</th><th>物理狀態</th><th>備註</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>主按鍵</strong></td><td><code>BTN_PRIMARY</code></td><td><strong>4</strong></td><td><span class="badge badge-green">✅ 已實作</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>紅色大鍵</td></tr>
+        <tr><td><strong>上鍵</strong></td><td><code>BTN_UP</code></td><td><strong>5</strong></td><td><span class="badge badge-green">✅ 已實作</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>選單上移 / 音量 +</td></tr>
+        <tr><td><strong>下鍵</strong></td><td><code>BTN_DOWN</code></td><td><strong>6</strong></td><td><span class="badge badge-green">✅ 已實作</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>選單下移 / 音量 -</td></tr>
+        <tr><td><strong>Power 鍵</strong></td><td><code>BTN_POWER</code></td><td><strong>7</strong></td><td><span class="badge badge-green">✅ 已實作</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>開關機</td></tr>
+        <tr><td><strong>錄音鍵</strong></td><td><code>BTN_RECORD</code></td><td><strong>15</strong></td><td><span class="badge badge-amber">⚠️ 佔位 noop</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>INMP441 到貨後啟用</td></tr>
+        <tr><td><strong>返回鍵</strong></td><td><code>BTN_BACK</code></td><td><strong>16</strong></td><td><span class="badge badge-green">✅ 已實作</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>選單返回 / 各子狀態退出（<code>input_handler.cpp</code>）</td></tr>
+        <tr><td><strong>EPI 鍵</strong>（針筒圖案）</td><td><code>BTN_EPI</code></td><td><strong>17</strong></td><td><span class="badge badge-green">✅ 已實作</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>兩段確認 + OHCA 事件分派（<code>input_handler.cpp</code>）</td></tr>
+        <tr><td><strong>電擊鍵</strong>（閃電圖案）</td><td><code>BTN_SHOCK</code></td><td><strong>18</strong></td><td><span class="badge badge-green">✅ 已實作</span></td><td><span class="badge badge-green">✅ 接線</span></td><td>兩段確認 + OHCA 事件分派（<code>input_handler.cpp</code>）</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      📌 <strong>GPIO 16/17/18 已封給按鍵</strong>：原 main.cpp 註解標記為「獨立 I2C 候選」的 GPIO 17/18 <strong>無效</strong>，CO 感測器擴充必須改用其他腳位（見 §5）。
+    </div>
+  </div>
+</div>
+
+<!-- §2 顯示 -->
+<div class="section" id="sec-2">
+  <h2 class="section-title"><span class="num">2</span>顯示</h2>
+  <div class="card">
+    <p>主顯示為 2.8" ST7789 TFT（SPI bus）—— 完整腳位見 §5.2。</p>
+    <table>
+      <thead><tr><th>用途</th><th>GPIO</th><th>介面</th><th>模組</th><th>狀態</th></tr></thead>
+      <tbody>
+        <tr><td>I2C SDA</td><td><strong>42</strong></td><td>I2C</td><td>—</td><td><span class="badge badge-amber">🟡 預留</span></td></tr>
+        <tr><td>I2C SCL</td><td><strong>41</strong></td><td>I2C</td><td>—</td><td><span class="badge badge-amber">🟡 預留</span></td></tr>
+      </tbody>
+    </table>
+    <div class="note note-blue">
+      📌 原 1.3" SH1106 OLED（I2C，GPIO 41/42）於 2026-05-08 拆除改 SPI TFT，I2C bus 整段釋出。GPIO 41/42 目前掛 DS3231 RTC（Dev-Phase 3）與 MAX17043 燃料計，詳見 §5.4。
+    </div>
+  </div>
+</div>
+
+<!-- §3 提醒輸出 -->
+<div class="section" id="sec-3">
+  <h2 class="section-title"><span class="num">3</span>提醒輸出</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>用途</th><th>GPIO</th><th>模組</th><th>狀態</th></tr></thead>
+      <tbody>
+        <tr><td>蜂鳴器 PWM</td><td><strong>14</strong></td><td>主動式蜂鳴器</td><td><span class="badge badge-green">✅ 啟用</span></td></tr>
+        <tr><td>震動馬達</td><td><strong>21</strong>（與 TFT CS 互斥）</td><td>S8050 NPN + 1kΩ 基極</td><td><span class="badge badge-red">❌ 停用</span>（<code>ENABLE_VIBRATION = 0</code>）</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-red">
+      🔴 <strong>GPIO 21 互斥約束（2026-05-08 標註）</strong>：本欄震動馬達 GPIO 21 與 §5.2 TFT CS GPIO 21 為同一支腳，<strong>依專案進度擇一啟用</strong>：
+      <ul style="margin: 8px 0 0 20px;">
+        <li><strong>TFT 整合前</strong>：可啟用震動馬達（<code>ENABLE_VIBRATION = 1</code>），TFT CS 暫無物件占用</li>
+        <li><strong>TFT 整合後（Impl-Phase B+）</strong>：TFT CS 正式占用 GPIO 21，震動馬達必須搬走或保持停用</li>
+        <li>若 Prod-Phase 量產同時需要 TFT 顯示 + 震動回饋，震動馬達需重新分配 GPIO（候選：剩餘空閒中找 PWM 能力腳位，需重做 §5.1 盤點）</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<!-- §4 錄音 -->
+<div class="section" id="sec-4">
+  <h2 class="section-title"><span class="num">4</span>錄音（Dev-Phase 1.5 待啟用）</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>用途</th><th>GPIO</th><th>介面</th><th>模組</th><th>狀態</th></tr></thead>
+      <tbody>
+        <tr><td>I2S SCK</td><td><strong>40</strong></td><td>I2S</td><td>INMP441 麥克風</td><td><span class="badge badge-amber">⚠️ 接線但停用</span>（<code>ENABLE_MIC_MONITOR = 0</code>）</td></tr>
+        <tr><td>I2S WS</td><td><strong>39</strong></td><td>I2S</td><td>INMP441 麥克風</td><td><span class="badge badge-amber">⚠️ 同上</span></td></tr>
+        <tr><td>I2S SD</td><td><strong>38</strong></td><td>I2S</td><td>INMP441 麥克風</td><td><span class="badge badge-amber">⚠️ 同上</span></td></tr>
+        <tr><td>MicroSD 共用 SCK</td><td><strong>與 TFT 共用 → GPIO 36</strong>（見 §5.2）</td><td>SPI</td><td>MicroSD 卡模組</td><td><span class="badge badge-red">❌ 待選型</span></td></tr>
+        <tr><td>MicroSD 共用 MOSI</td><td><strong>與 TFT 共用 → GPIO 35</strong></td><td>SPI</td><td>MicroSD 卡模組</td><td><span class="badge badge-red">❌ 待選型</span></td></tr>
+        <tr><td>MicroSD 共用 MISO</td><td><strong>與 TFT 共用 → GPIO 37</strong></td><td>SPI</td><td>MicroSD 卡模組</td><td><span class="badge badge-red">❌ 待選型</span></td></tr>
+        <tr><td>MicroSD CS</td><td><strong>47</strong>（獨立）</td><td>SPI</td><td>MicroSD 卡模組</td><td><span class="badge badge-red">❌ 待選型</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- §5 擴充預留 -->
+<div class="section" id="sec-5">
+  <h2 class="section-title"><span class="num">5</span>擴充預留（重新規劃，覆寫 SoT V1 §21.3.3 舊版）</h2>
+  <div class="card">
+
+    <h3 class="sub-title">5.1 ESP32-S3 N8 模組可用 GPIO 盤點</h3>
+    <table>
+      <thead><tr><th>分類</th><th>GPIO</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td><span class="badge badge-blue">已用（14 支）</span></td><td>4, 5, 6, 7, 14, 15, 16, 17, 18, 38, 39, 40, 41, 42</td><td>按鍵 + 蜂鳴器 + I2S + I2C</td></tr>
+        <tr><td><span class="badge badge-red">禁用（不可作 I/O）</span></td><td>0, 45, 46 / 8~13 / 19, 20 / 26~32</td><td>strapping pin / 內建 SPI flash / USB D-D+ / SPI flash bonding pads（保守禁用）</td></tr>
+        <tr><td><span class="badge badge-green">可用空閒（11 支）</span></td><td>1, 2, 3（ADC1）/ 21 / 35, 36, 37 / 43, 44（UART0）/ 47, 48</td><td>詳見下方逐項備註</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-amber">
+      ⚠️ GPIO 35/36/37 標示「N8 模組可用」，但<strong>本專案實際採購到的是 N16R8 octal PSRAM 模組</strong>，這三支腳被 PSRAM 佔用不可作 IO（詳見 §5.2 的實機踩雷記錄）。GPIO 43/44 為 UART0 預設腳（U0TXD/U0RXD），本韌體 <code>Serial</code> 走 USB-CDC（晶片內建 USB，GPIO 19/20），不經過 43/44，兩者互不相關；開機瞬間 ROM bootloader 會對 UART0 印 boot log，app 啟動後即釋出，不影響後續挪用。
+    </div>
+
+    <h3 class="sub-title">5.2 TFT SPI bus 腳位（2026-05-08 實機修正：GPIO 35/36/37 不可用）</h3>
+    <div class="note note-red">
+      🔴 <strong>2026-05-08 實機踩雷</strong>：採購到的 GOOUUU TECH ESP32-S3 開發板實際為 <strong>N16R8 octal PSRAM 模組</strong>（金屬遮蔽印 <code>ESP32-S3-N16R8</code>），GPIO 35/36/37 內部給 PSRAM，當 IO 用即 <code>Guru Meditation StoreProhibited</code>。原 §5.1「N16R8 模組可能被佔」的警告由「保守提示」升級為「強制限制」。<strong>MOSI/SCK 必須改用 ADC1（GPIO 2/3）</strong>，犧牲兩支 ADC。
+    </div>
+    <table>
+      <thead><tr><th>用途</th><th>GPIO</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td>SPI MOSI</td><td><strong>2</strong></td><td>原 35 → 改 2（ADC1_CH1，已取消 ADC 候選）</td></tr>
+        <tr><td>SPI SCK</td><td><strong>3</strong></td><td>原 36 → 改 3（ADC1_CH2，已取消 ADC 候選）</td></tr>
+        <tr><td>SPI MISO</td><td><strong>不接</strong>（TFT 純寫入）/ MicroSD 用 <strong>44</strong></td><td>原 37 不可用、GPIO 1 已改派 TFT DC；MicroSD MISO=44 與 CS=43 配對</td></tr>
+        <tr><td>TFT CS</td><td><strong>21</strong></td><td>獨立，PWM 能力（與震動馬達互斥，見 §3）</td></tr>
+        <tr><td>TFT DC</td><td><strong>1</strong>（2026-05-08 改）</td><td>原 48 與 GOOUUU 板上 WS2812 RGB LED 衝突 → DC 切換時 LED 會把訊號吃成色彩資料</td></tr>
+        <tr><td>TFT RST</td><td><strong>47</strong></td><td>Hardware reset</td></tr>
+        <tr><td>TFT BL（背光）</td><td><strong>接 3.3V 常亮</strong></td><td>原計畫 PWM 走 GPIO 1，現 GPIO 1 給 TFT DC，BL PWM 能力放棄</td></tr>
+        <tr><td>MicroSD CS</td><td><strong>43</strong>（UART0 腳，可直接用）或不接</td><td>候選 GPIO 2 已給 SPI MOSI、GPIO 47 與 TFT RST 衝突，43 為唯一可用腳；與 §5.3 CO-UART 候選同腳，兩者擇一</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-green">
+      📌 <strong>2026-05-08 實機驗證通過配置</strong>：Library 用 <strong>Adafruit_ST7789 + Adafruit_GFX</strong>（不用 TFT_eSPI 2.5.43）；必加 <code>tft.invertDisplay(false)</code>（蝦皮買的 ST7789 紅板出廠 polarity 與 Adafruit 預設相反）；VCC 接 <strong>5V/VIN</strong>（板上有 LDO + level shifter，吃 3.3V VCC 會 brown out）；LED 接 3.3V 常亮；訊號線（CS/DC/RST/MOSI/SCK）3.3V 邏輯，不需 level shift。
+    </div>
+    <div class="note note-red">
+      🚫 <strong>TFT_eSPI 2.5.43 在此模組踩雷</strong>：lib 對 ESP32-S3 SPI controller 做暫存器級存取，在 N16R8 模組 <code>init()</code> 即 <code>StoreProhibited</code>（lib 自己原始碼註解 "Draws once then freezes"）。換 GPIO 無解，必須換 lib。
+    </div>
+
+    <h3 class="sub-title">5.3 CO 感測器擴充腳位（取代舊版 GPIO 17/18 獨立 I2C）</h3>
+    <table>
+      <thead><tr><th>候選方案</th><th>介面</th><th>GPIO</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td>電化學型 + I2C</td><td>SDA / SCL</td><td><strong>GPIO 42 / 41</strong>（可與 §5.4 DS3231 共用）</td><td>I2C 多裝置 bus；DS3231 地址 0x68，CO 感測器選用不同地址即可同 bus 並存</td></tr>
+        <tr><td>電化學型 + UART</td><td>TX / RX</td><td><strong>GPIO 43 / 44</strong></td><td>佔用 UART0 預設腳，不影響 USB-CDC；但與 §5.2 MicroSD 同腳，兩者擇一</td></tr>
+        <tr><td>MEMS 半導體型 + ADC</td><td>類比輸入</td><td><span class="badge badge-red">❌ 已無 ADC 可用</span></td><td>2026-05-08 起 N16R8 + TFT 整合後 ADC（GPIO 1/2/3）全用完；CO 必須走 I2C 或 UART</td></tr>
+        <tr><td>加熱半導體型（MQ-7/MQ-9）</td><td>—</td><td><span class="badge badge-red">🚫 禁用</span></td><td>功耗超出 USB-C 供電上限（SoT V1 §20.5）</td></tr>
+      </tbody>
+    </table>
+
+    <h3 class="sub-title">5.4 RTC 模組擴充（DS3231，Dev-Phase 3 已上機）</h3>
+    <div class="note note-green">
+      ✅ <strong>2026-05-24 實機驗證通過</strong>：DS3231 模組接 GPIO 42/41 I2C bus，<code>main.cpp</code> setup STEP 06.5 runtime 偵測 <code>0x68</code> → 掛 <code>ems::DS3231Backend</code>；不在線時掛 <code>ems::NullRtcBackend</code> 降級。
+    </div>
+    <div class="note note-blue">
+      ⏳ <strong>永續性測試待跑</strong>：對時 → 斷電 30 秒 → 重開 → boot log 應顯示 seeded（不需 BLE）。CR2032 紐扣電池備援能力尚未實測。
+    </div>
+    <table>
+      <thead><tr><th>用途</th><th>GPIO</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td>I2C SDA</td><td><strong>GPIO 42</strong></td><td>原 OLED bus；DS3231 地址 0x68、MAX17043 燃料計 0x36；boot 時 <code>Wire.begin(42, 41)</code></td></tr>
+        <tr><td>I2C SCL</td><td><strong>GPIO 41</strong></td><td>原 OLED bus，TFT 升級後釋出</td></tr>
+        <tr><td>INT（選用）</td><td><strong>GPIO 43</strong> 或不接</td><td>目前未接；用於秒中斷喚醒；與 §5.2 MicroSD CS、§5.3 CO-UART 同腳，多者並用需重新盤點</td></tr>
+      </tbody>
+    </table>
+    <div class="note note-green">
+      ✅ <strong>2026-08-22 實機驗證通過</strong>：MAX17043 燃料計（I2C 地址 <code>0x36</code>）已上機接線，與 DS3231（<code>0x68</code>）、模組附掛 EEPROM（<code>0x57</code>）三者同時掛在本 41/42 bus 上，位址不衝突、連掃 5 輪無掉線。VCELL 讀數 3.844V 對比電表實測 3.88V（差 36mV，在電表誤差帶內），確認 VDD 吃到真實電池電壓。驗收工具：<code>i2c-scan</code> 與 <code>fuel-gauge-check</code> 兩個獨立環境，不影響主韌體。
+    </div>
+
+    <h4 style="margin-top: 16px; font-size: 14px; font-weight: 600;">當前 I2C bus 位址表（GPIO 42=SDA / 41=SCL）</h4>
+    <div class="note note-red">
+      📌 <strong>這是本專案實際使用的 I2C bus，查現況以本表為準。</strong> <code>hardware-procurement-v2.md</code> 與 <code>power-module-purchase.md §9.8.3</code> 另有兩張 I2C 位址表，那是 SparkFun Thing Plus 方案（<strong>未採用</strong>）的 Qwiic bus（GPIO 8/9）規劃推算，不是現況。
+    </div>
+    <table>
+      <thead><tr><th>位址</th><th>裝置</th><th>狀態</th></tr></thead>
+      <tbody>
+        <tr><td><code>0x36</code></td><td>MAX17043 燃料計</td><td><span class="badge badge-green">✅ 已上機</span>（2026-08-22 驗收）</td></tr>
+        <tr><td><code>0x57</code></td><td>AT24C32 EEPROM</td><td><span class="badge badge-green">✅ 已上機</span>（DS3231 模組附掛，非獨立採購）</td></tr>
+        <tr><td><code>0x68</code></td><td>DS3231 RTC</td><td><span class="badge badge-green">✅ 已上機</span>（2026-05-24）</td></tr>
+      </tbody>
+    </table>
+    <div class="note">2026-08-22 實機掃描確認 bus 上僅此三個位址回應，無衝突。<strong>已不在此 bus 上</strong>：SH1106 OLED（<code>0x3C</code>）——2026-05-08 顯示器改用 TFT ST7789 走 SPI，OLED 移除。<strong>尚未接入</strong>：MCP23017（<code>0x20</code>）按鈕擴充候選，尚未採購。</div>
+  </div>
+</div>
+
+<!-- §6 互斥約束總覽 -->
+<div class="section" id="sec-6">
+  <h2 class="section-title"><span class="num">6</span>互斥約束總覽</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>衝突組合</th><th>互斥原因</th><th>解法</th></tr></thead>
+      <tbody>
+        <tr><td><strong>TFT CS（GPIO 21）vs 震動馬達（GPIO 21）</strong></td><td>同一支腳</td><td>依進度擇一啟用；Prod-Phase 同需則震動搬腳（見 §3）</td></tr>
+        <tr><td><strong>TFT DC（GPIO 48 → 1）vs 板上 WS2812 RGB LED（GPIO 48）</strong></td><td>GOOUUU 板出廠 GPIO 48 接 WS2812，DC 切換頻率高，LED 把訊號吃成資料一直亂亮</td><td>2026-05-08 改 TFT DC → GPIO 1；GPIO 48 留給 WS2812（未來可當狀態指示燈）</td></tr>
+        <tr><td>TFT SPI MOSI/SCK（GPIO 2/3）vs CO 感測器 ADC</td><td>2026-05-08 起 GPIO 2/3 已給 SPI</td><td>ADC 全部用完（1/2/3 全給 TFT）；CO 感測器改走 I2C 或 UART</td></tr>
+        <tr><td>MicroSD（43/44）vs CO 感測器 UART（43/44）vs DS3231 INT（43）</td><td>GPIO 43/44 為三者唯一候選腳，物理腳位重疊</td><td>三者擇一；需並用須改用其他空閒腳或外接 I2C 擴充。與 USB-CDC 無關（USB 除錯走內建 USB GPIO 19/20）</td></tr>
+        <tr><td>獨立 I2C vs 按鍵 16/17/18</td><td>物理腳位衝突</td><td>按鍵已封版；I2C 改用釋出的 GPIO 41/42 bus（原 OLED 用）</td></tr>
+        <tr><td><strong>GPIO 35/36/37 vs N16R8 octal PSRAM</strong></td><td>2026-05-08 實機踩雷確認：採購到的就是 N16R8 模組</td><td>TFT SPI 改 GPIO 2/3；採購若能選 N8 可釋放 GPIO 35/36/37</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- §7 對齊狀態 -->
+<div class="section" id="sec-7">
+  <h2 class="section-title"><span class="num">7</span>對齊狀態（其他文件同步進度）</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>文件</th><th>同步狀態</th><th>待修正項目</th></tr></thead>
+      <tbody>
+        <tr><td><code>firmware/src/main.cpp</code> 8 按鍵定義</td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td>Impl-Phase A 重寫；<code>BTN_COUNT=8</code>，返回/EPI/電擊鍵已加入</td></tr>
+        <tr><td><code>main.cpp</code> 震動馬達 GPIO</td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td><code>VIBRATION_PIN=21</code>，原 GPIO 16 釋放給返回鍵</td></tr>
+        <tr><td><code>EMS_DoseSync_Pro_Prototype_V1.md</code> §21.3.1</td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td>補上返回/EPI/電擊鍵；震動馬達 GPIO 16 → 21；新增狀態欄</td></tr>
+        <tr><td><code>EMS_DoseSync_Pro_Prototype_V1.md</code> §21.3.3</td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td>移除「獨立 I2C：GPIO 17/18」候選</td></tr>
+        <tr><td><code>EMS_DoseSync_Pro_Prototype_V1_flow.html</code></td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td>對齊 §21.3.1 與 §21.3.3</td></tr>
+        <tr><td><code>gap-analysis.md</code> 震動馬達列</td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td>GPIO 16 → 21</td></tr>
+        <tr><td><code>tft-migration-plan.md</code> 第 3.1 節</td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td>TFT GPIO 從 9~13 改為 35~37, 21, 47, 48</td></tr>
+        <tr><td><code>CLAUDE.md</code></td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-04）</td><td>加入本文件索引</td></tr>
+        <tr><td><code>ems_rtc/</code> + <code>main.cpp</code> setup STEP 06.5</td><td><span class="badge badge-green">✅ 已同步</span>（2026-05-24）</td><td>DS3231Backend runtime 偵測，<code>Wire.begin()</code> 使用 §5.4 的 GPIO 42/41</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- §8 變更歷程 -->
+<div class="section" id="sec-8">
+  <h2 class="section-title"><span class="num">8</span>變更歷程</h2>
+  <div class="card">
+    <table>
+      <thead><tr><th>日期</th><th>變更</th><th>原因</th></tr></thead>
+      <tbody>
+        <tr><td>2026-05-04</td><td>建立本文件</td><td>解決 main.cpp / SoT V1 / tft-migration-plan 三方 GPIO 矛盾</td></tr>
+        <tr><td>2026-05-04</td><td>確認 SoT §4.1 8 按鍵封版</td><td>GPIO 16/17/18 歸屬返回 / EPI / 電擊鍵</td></tr>
+        <tr><td>2026-05-04</td><td>TFT GPIO 重配</td><td>原 9~13 與 SPI flash 禁用區衝突，改 35~37 + 21, 47, 48</td></tr>
+        <tr><td>2026-05-04</td><td>Impl-Phase A 韌體對齊</td><td>main.cpp 重寫：<code>BTN_COUNT=8</code>、新增返回/EPI/電擊鍵、震動 GPIO 21；舊 lib <code>ems_countdown</code> / <code>ems_vent</code> 廢止</td></tr>
+        <tr><td>2026-05-08</td><td>TFT SPI 改 GPIO 2/3、library 改 Adafruit</td><td>實機踩雷：採購到 N16R8 octal PSRAM 模組，GPIO 35/36/37 不可用；TFT_eSPI 2.5.43 暫存器級存取 crash，改 Adafruit_ST7789</td></tr>
+        <tr><td>2026-05-08</td><td>TFT DC 改 GPIO 48 → 1</td><td>主韌體整合 Step 1 燒錄後實機踩雷：GOOUUU 板上 GPIO 48 接 WS2812 RGB LED，TFT DC 高頻切換時 LED 把訊號吃成色彩資料一直亂亮</td></tr>
+        <tr><td>2026-05-21</td><td>修正 GPIO 43/44 與 USB-CDC 的錯誤關聯</td><td>原文件誤標 43/44 為「USB-CDC TX/RX」——事實錯誤：43/44 是 UART0，USB-CDC 走晶片內建 USB（GPIO 19/20）。挪用 43/44 不影響 USB 除錯。真實衝突為 43/44 在 MicroSD、CO-UART、DS3231 INT 三方重疊</td></tr>
+        <tr><td>2026-05-21</td><td>收斂 §5.2 MicroSD MISO 腳位為明確 44</td><td>原文件含糊寫「用 43/44」，確定 MicroSD MISO=44、CS=43 配對</td></tr>
+        <tr><td>2026-05-24</td><td>§5.4 DS3231 從「計畫」→「已上機」</td><td>Dev-Phase 3 RTC 整合 6 wave 完成，實機 boot log 確認 0x68 偵測 + seed 時間狀態；永續性測試（斷電 30 秒重開）待補</td></tr>
+        <tr><td>2026-07-22</td><td>§5.4 新增 MAX17043 燃料計（0x36，掛 41/42 bus）</td><td>使用者確認實際採購型號為 MAX17043（原規劃 MAX17048），已購入尚未上機接線</td></tr>
+        <tr><td>2026-08-22</td><td>§5.4 MAX17043 從「尚未上機」→「實機驗證通過」</td><td>上機接線後 i2c-scan 確認 0x36 在線且與 0x57/0x68 共存無衝突；fuel-gauge-check 讀出 VCELL 3.844V / SOC 54.4%，對比電表 3.88V 差 36mV，確認 VDD 為真實電池電壓</td></tr>
+        <tr><td>2026-08-22</td><td>§5.4 新增「當前 I2C bus 位址表」</td><td>既有兩張 I2C 位址表（<code>hardware-procurement-v2.md</code>、<code>power-module-purchase.md §9.8.3</code>）都是 SparkFun 方案的 Qwiic bus 規劃推算，易被誤讀為現況。新表以實機掃描為依據，並標明 SH1106 已移除、MCP23017 尚未採購</td></tr>
+        <tr><td>2026-08-25</td><td>校正 §1 返回/EPI/電擊鍵韌體狀態從「❌ 未實作」改「✅ 已實作」；新增「⭐ 目前實作腳位速查」章節置頂</td><td>對照 <code>firmware/src/input_handler.cpp</code> 實測確認三鍵已於 OHCA 狀態機（EPI/電擊兩段確認、返回鍵各處退出）中實際分派，不再是 Impl-Phase A 當時的佔位狀態；使用者要求把「目前實際在用」的腳位彙整置頂供快速查閱</td></tr>
+        <tr><td>2026-08-25</td><td>速查表新增電源接點（5V/VIN、3V3、GND）：TFT VCC/GND/背光、DS3231 VCC、MAX17043 GND，並標明 MAX17043 VCC 刻意不接 ESP32（電池直供）、DS3231 VCC 走 3V3 為推定非逐條確認</td><td>使用者要求把「有接到 ESP32 的 VCC/GND」都列進速查表；對照 <code>tft-migration-plan.md §3.1</code> 實機驗證表確認 TFT 三線、<code>power-module-purchase.md §10.7</code> 確認 MAX17043 GND 接法與 VCC 不接的理由；DS3231 VCC/GND 走線本專案從未留下逐條記錄，如實標記為推定避免誤讀成已驗證事實</td></tr>
+        <tr><td>2026-08-25</td><td>速查表補上 TP4056 電源模組（OUT+ → VIN/V5IN、OUT- → GND，與 TFT VCC 共用同一條 5V 軌）與 MAX17043 電池並聯細節；修正 <code>tft-migration-plan.md §3.1</code> TFT DC 腳位殘留舊值（誤植 GPIO 48，實際 2026-05-08 已改 GPIO 1）</td><td>使用者追加要求把 TP4056、MAX17043 的接法也列進速查表；對照 <code>power-module-purchase.md §5.3</code> 確認 TP4056 OUT+/OUT- 走線、§10.7 確認 MAX17043 JST 電池並聯關係；順手修掉查證 GND 接線時發現的 <code>tft-migration-plan.md</code> 與 §7 對齊狀態表宣稱「已同步」但實際不同步的殘留 bug</td></tr>
+        <tr><td>2026-08-25</td><td>速查表拆成逐一接點列（每個接點一個元件一列），5V/VIN 與 GND 不再把多個周邊擠進同一格；新增「（不接 ESP32）」列明示 MAX17043 VCC 的狀態</td><td>使用者要求「表格要列出 MAX17043 與 TP4056 的接法」——原本併成單一儲存格的寫法讓兩者的接線淹沒在一堆逗號分隔的清單裡，拆開後每條連線在表裡都能單獨對照</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="footer">
+  GPIO 分配總表 · 最後變更 2026-08-25 · Max Ho<br>
+  本文件對應 Markdown 版：<code>docs/gpio-allocation.md</code>（Single Source of Truth，與 main.cpp / SoT V1 §21.3 / tft-migration-plan.md 保持對齊）
+</div>
+
+</body>
+</html>
