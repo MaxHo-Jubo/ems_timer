@@ -63,23 +63,24 @@ static void test_g11_draw_settings_menu_items() {
 
 // ----- G1.2: 游標位置 -----
 
-/** G1.2: 游標高亮 → fillRect 繪製於明確傳入的 cursor=3（通氣音量）位置（Y=150）。
- *  cursor 已無預設值，本測試明確傳入 SETTINGS_CURSOR_VENT_VOL；驗證的 Y=150
+/** G1.2: 游標高亮 → fillRect 繪製於明確傳入的 cursor=3（通氣音量）位置（Y=166）。
+ *  cursor 已無預設值，本測試明確傳入 SETTINGS_CURSOR_VENT_VOL；驗證的 Y=166
  *  不是捲動視窗〔scroll_offset=0〕內最後一個可見項——8 項化後視窗內最後一個
- *  可見項是電池資訊〔cursor=4〕，選單真正的最後一項則是裝置資訊〔cursor=7〕 */
+ *  可見項是電池資訊〔cursor=4〕，選單真正的最後一項則是裝置資訊〔cursor=7〕。
+ *  座標對齊 drawMainMenu()：滿版寬度高亮條（X=0, W=SCREEN_W）+ 36px 列高。 */
 static void test_g12_cursor_position_at_vent_vol() {
     drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
                      /* device_name_locked= */ false, /* restore_confirm= */ false);
 
     // 游標高亮矩形應存在（fillRect 應被呼叫）
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(10, mock_get_last_fill_x(),
-        "G1.2: 游標 fillRect X 座標應從左邊距開始");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(150, mock_get_last_fill_y(),
-        "G1.2: 游標 fillRect Y 座標應為 150（cursor=3 通氣音量位置，非選單最後一項）");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(80, mock_get_last_fill_w(),
-        "G1.2: 游標 fillRect 寬度應為 80（文字區域）");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(20, mock_get_last_fill_h(),
-        "G1.2: 游標 fillRect 高度應為 20（文字行高）");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(0, mock_get_last_fill_x(),
+        "G1.2: 游標 fillRect X 座標應從畫面最左緣開始（滿版寬度，對齊主選單）");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(166, mock_get_last_fill_y(),
+        "G1.2: 游標 fillRect Y 座標應為 166（cursor=3 通氣音量位置，非選單最後一項）");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(320, mock_get_last_fill_w(),
+        "G1.2: 游標 fillRect 寬度應為 320（滿版寬度，對齊主選單）");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(36, mock_get_last_fill_h(),
+        "G1.2: 游標 fillRect 高度應為 36（列高，對齊主選單）");
 }
 
 // ----- G1.3: 數值調整在範圍內 -----
@@ -164,38 +165,38 @@ static void test_g16_cancel_preserves_values() {
 
 // ----- G1.7: 游標高亮依參數變化 -----
 
-/** G1.7: cursor=0 → 高亮裝置名稱（Y=30） */
+/** G1.7: cursor=0 → 高亮裝置名稱（Y=58） */
 static void test_g17_cursor_0_highlights_device_name() {
     drawSettingsMenu(g_disp, 0, /* scroll_offset= */ 0,
                      /* device_name_locked= */ false, /* restore_confirm= */ false);
 
-    // 最後一次 fillRect 應為裝置名稱列（Y=30）
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(30, mock_get_last_fill_y(),
-        "G1.7: cursor=0 時高亮應為裝置名稱 Y=30");
+    // 最後一次 fillRect 應為裝置名稱列（Y=58）
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(58, mock_get_last_fill_y(),
+        "G1.7: cursor=0 時高亮應為裝置名稱 Y=58");
 }
 
-/** G1.7: cursor=1 → 高亮螢幕亮度（Y=70） */
+/** G1.7: cursor=1 → 高亮螢幕亮度（Y=94） */
 static void test_g17_cursor_1_highlights_brightness() {
     drawSettingsMenu(g_disp, 1, /* scroll_offset= */ 0,
                      /* device_name_locked= */ false, /* restore_confirm= */ false);
 
-    // 最後一次 fillRect 應為螢幕亮度列（Y=70）
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(70, mock_get_last_fill_y(),
-        "G1.7: cursor=1 時高亮應為螢幕亮度 Y=70");
+    // 最後一次 fillRect 應為螢幕亮度列（Y=94）
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(94, mock_get_last_fill_y(),
+        "G1.7: cursor=1 時高亮應為螢幕亮度 Y=94");
 }
 
-/** G1.7: cursor=2 → 高亮系統音量（Y=110） */
+/** G1.7: cursor=2 → 高亮系統音量（Y=130） */
 static void test_g17_cursor_2_highlights_system_volume() {
     drawSettingsMenu(g_disp, 2, /* scroll_offset= */ 0,
                      /* device_name_locked= */ false, /* restore_confirm= */ false);
 
-    // 最後一次 fillRect 應為系統音量列（Y=110）
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(110, mock_get_last_fill_y(),
-        "G1.7: cursor=2 時高亮應為系統音量 Y=110");
+    // 最後一次 fillRect 應為系統音量列（Y=130）
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(130, mock_get_last_fill_y(),
+        "G1.7: cursor=2 時高亮應為系統音量 Y=130");
 }
 
 /**
- * G1.7: cursor=4（電池資訊）→ 高亮電池資訊（Y=190）。
+ * G1.7: cursor=4（電池資訊）→ 高亮電池資訊（Y=202）。
  *
  * Fix round 1 新增：原本刪掉電池資訊那段 STEP 04.02 的 fill_rect 分支也不會讓
  * 任何既有測試變紅（G1.1 只驗文字有沒有畫出來，不驗高亮），這裡補上鑑別力。
@@ -203,20 +204,24 @@ static void test_g17_cursor_2_highlights_system_volume() {
  * Fix round 3：拿掉這裡原本驗證「選取中文字色為對比色」與「未選取文字色維持
  * 白色」的兩個斷言——fix round 1 曾把選取時的文字色改成黑色想解決白底白字，
  * fix round 3 發現那個修法讓文字其餘 83% 面積變成黑字疊黑螢幕背景，比原本更
- * 看不清楚，已撤銷改回全部項目一律白字（不分選取與否），色彩區分因此不存在，
- * 這兩個斷言隨之失去意義。fill_rect Y 座標這個斷言仍是有效的 regression guard
- * （驗證「游標命中哪一列」邏輯本身沒壞），保留。
+ * 看不清楚，已撤銷改回全部項目一律白字（不分選取與否），色彩區分當時因此不
+ * 存在，這兩個斷言隨之失去意義而移除。fill_rect Y 座標這個斷言仍是有效的
+ * regression guard（驗證「游標命中哪一列」邏輯本身沒壞），保留。
+ *
+ * 2026-09-05 更新：高亮框改滿版寬度後，選取列文字反白已重新加回（見
+ * SETTINGS_COLOR_SELECTED_TEXT），色彩區分現在確實存在——對應斷言見
+ * test_g23d_regular_item_text_color_follows_selection()，不在本測試重複驗證。
  */
 static void test_g17_cursor_4_highlights_battery_info() {
     drawSettingsMenu(g_disp, SETTINGS_CURSOR_BATTERY_INFO, /* scroll_offset= */ 0,
                      /* device_name_locked= */ false, /* restore_confirm= */ false);
 
-    // 確認電池資訊列本身有被正確高亮（Y=190）；不證明其他列沒有被誤觸發高亮——電池資訊
+    // 確認電池資訊列本身有被正確高亮（Y=202）；不證明其他列沒有被誤觸發高亮——電池資訊
     // 是預設捲動視窗（scroll_offset=0）內最後一個可見項（8 項化後選單真正的最後一項是
     // 裝置資訊 cursor=7，捲出視窗外），較早的列即使也誤呼叫 fill_rect，最後一次記錄的
-    // Y 仍會是 190，這個斷言照樣會過。要涵蓋互斥性得記錄全部 fill_rect 呼叫並斷言呼叫次數為 1。
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(190, mock_get_last_fill_y(),
-        "G1.7: cursor=4 時高亮應為電池資訊 Y=190");
+    // Y 仍會是 202，這個斷言照樣會過。要涵蓋互斥性得記錄全部 fill_rect 呼叫並斷言呼叫次數為 1。
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(202, mock_get_last_fill_y(),
+        "G1.7: cursor=4 時高亮應為電池資訊 Y=202");
 
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("電池資訊"),
         "G1.7: 應繪製「電池資訊」標籤文字");
@@ -224,8 +229,8 @@ static void test_g17_cursor_4_highlights_battery_info() {
 
 /**
  * Fix round 1 item 5 regression：cursor=4 且確認對話框顯示中時，電池資訊列必須
- * 跳過繪製。它的 Y=190 與對話框文字 Y=180（SETTINGS_ITEM4_Y + SETTINGS_CONFIRM_Y_OFFSET）
- * 只差 10px，兩段文字若同時畫出會疊在一起看不清楚；長按 BTN_PRIMARY 觸發此對話框
+ * 跳過繪製。它的 Y=202 與對話框文字 Y=196（SETTINGS_ITEM4_Y + SETTINGS_CONFIRM_Y_OFFSET）
+ * 只差 6px，兩段文字若同時畫出會疊在一起看不清楚；長按 BTN_PRIMARY 觸發此對話框
  * 不受目前游標位置限制，cursor=4 時一樣可能觸發，須驗證。
  *
  * Fix round 3 補一個範圍精確性斷言：原本 STEP 04.01 的 guard 條件是
@@ -390,7 +395,7 @@ static void test_scroll_offset_zero_shows_first_five_items() {
  * 捲動視窗 offset=3 時，畫第 4~8 項（通氣音量~裝置資訊），裝置名稱捲出視窗不畫。
  *
  * 除了「有沒有畫出來」，同時驗證視窗內 5 項各自的 Y 座標——通氣音量原本（offset=0
- * 時）查表固定畫在 Y=150，捲動後它落在視窗第 1 格改畫在 Y=30，證明 Y 真的是依
+ * 時）查表固定畫在 Y=166，捲動後它落在視窗第 1 格改畫在 Y=58，證明 Y 真的是依
  * 「目前在視窗內第幾格」動態算出，不是查表存死值；並驗證游標高亮 fill_rect 的
  * Y 與文字 Y 用同一份捲動位置計算，不會分裂成兩套算式（fix round 1 這裡曾只查
  * 文字有無畫出，Y 座標算錯或高亮位置對不上文字都測不出來）。
@@ -404,31 +409,31 @@ static void test_scroll_offset_three_shows_last_five_items() {
     TEST_ASSERT_NULL_MESSAGE(mock_text_log_find("裝置名稱"),
         "捲出視窗的裝置名稱不應被畫出");
 
-    // STEP 03: 視窗內 5 項應依序畫在 Y=30/70/110/150/190
+    // STEP 03: 視窗內 5 項應依序畫在 Y=58/94/130/166/202
     const MockTextCall* vent = mock_text_log_find("通氣音量");
     TEST_ASSERT_NOT_NULL_MESSAGE(vent, "視窗內第 1 項（通氣音量）應被畫出");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(30, vent->y,
-        "通氣音量在 offset=3 時應落於視窗第 1 格 Y=30（非其 offset=0 時的固定位置 Y=150）");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(58, vent->y,
+        "通氣音量在 offset=3 時應落於視窗第 1 格 Y=58（非其 offset=0 時的固定位置 Y=166）");
 
     const MockTextCall* battery = mock_text_log_find("電池資訊");
     TEST_ASSERT_NOT_NULL_MESSAGE(battery, "視窗內第 2 項（電池資訊）應被畫出");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(70, battery->y, "電池資訊在 offset=3 時應落於視窗第 2 格 Y=70");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(94, battery->y, "電池資訊在 offset=3 時應落於視窗第 2 格 Y=94");
 
     const MockTextCall* app_conn = mock_text_log_find("App連線設定");
     TEST_ASSERT_NOT_NULL_MESSAGE(app_conn, "視窗內第 3 項（App連線設定）應被畫出");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(110, app_conn->y, "App連線設定在 offset=3 時應落於視窗第 3 格 Y=110");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(130, app_conn->y, "App連線設定在 offset=3 時應落於視窗第 3 格 Y=130");
 
     const MockTextCall* typec = mock_text_log_find("Type-C連線");
     TEST_ASSERT_NOT_NULL_MESSAGE(typec, "視窗內第 4 項（Type-C連線）應被畫出");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(150, typec->y, "Type-C連線在 offset=3 時應落於視窗第 4 格 Y=150");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(166, typec->y, "Type-C連線在 offset=3 時應落於視窗第 4 格 Y=166");
 
     const MockTextCall* device_info = mock_text_log_find("裝置資訊");
     TEST_ASSERT_NOT_NULL_MESSAGE(device_info, "視窗內最後一項（裝置資訊）應被畫出");
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(190, device_info->y, "裝置資訊在 offset=3 時應落於視窗第 5 格 Y=190");
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(202, device_info->y, "裝置資訊在 offset=3 時應落於視窗第 5 格 Y=202");
 
-    // STEP 04: cursor=7（裝置資訊）為視窗最後一格，游標高亮 fill_rect 應落在同一個 Y=190
-    TEST_ASSERT_EQUAL_INT16_MESSAGE(190, mock_get_last_fill_y(),
-        "cursor=7（裝置資訊）的游標高亮在 offset=3 時應落於視窗第 5 格 Y=190，與文字 Y 一致");
+    // STEP 04: cursor=7（裝置資訊）為視窗最後一格，游標高亮 fill_rect 應落在同一個 Y=202
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(202, mock_get_last_fill_y(),
+        "cursor=7（裝置資訊）的游標高亮在 offset=3 時應落於視窗第 5 格 Y=202，與文字 Y 一致");
 }
 
 /** 恢復預設確認對話框顯示中時，視窗最後一格讓給對話框——不論該格當下是哪個項目 */
@@ -448,6 +453,32 @@ static void test_restore_confirm_hides_last_visible_slot_regardless_of_item() {
     // STEP 04: 對話框本身應正常顯示
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("是否恢復預設設定？"),
         "對話框本身應正常顯示");
+}
+
+/**
+ * Regression（2026-09-05 CONFIRM_Y_OFFSET 修正）：游標在通氣音量（scroll_offset=0
+ * 時為 shown=3，視窗倒數第 2 格，不在「跳過最後一格」範圍內因此仍會正常繪製
+ * 高亮）且確認對話框顯示中時，該列的游標高亮矩形範圍不得與對話框文字重疊，
+ * 否則白色高亮疊白色對話框文字會造成白底白字。
+ *
+ * 高亮列高從 20px 改 36px 前，SETTINGS_CONFIRM_Y_OFFSET 固定寫死 30 在此情境
+ * 下會產生重疊（Y=202 的高亮底部 vs Y=196 的對話框文字起點）；此測試驗證改為
+ * `SETTINGS_CURSOR_HEIGHT + 4` 自適應公式後兩者不再重疊。
+ */
+static void test_restore_confirm_no_overlap_with_second_to_last_row_highlight() {
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_VENT_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ true);
+
+    // STEP 01: 通氣音量（shown=3）被選取時仍應正常繪製高亮
+    TEST_ASSERT_EQUAL_INT16_MESSAGE(166, mock_get_last_fill_y(),
+        "通氣音量在 shown=3 選取中時高亮仍應正常繪製於 Y=166");
+
+    // STEP 02: 對話框文字必須落在該列高亮矩形（Y=166~202）底部之後
+    const MockTextCall* confirm_text = mock_text_log_find("是否恢復預設設定？");
+    TEST_ASSERT_NOT_NULL_MESSAGE(confirm_text, "對話框本身應正常顯示");
+    TEST_ASSERT_TRUE_MESSAGE(confirm_text->y >= 166 + 36,
+        "對話框文字 Y 座標必須在通氣音量高亮矩形（Y=166~202）底部之後，"
+        "否則白色高亮會壓住白色對話框文字造成白底白字");
 }
 
 // ----- G2.3: 案件中裝置名稱置灰 + 名稱顯示 -----
@@ -473,10 +504,15 @@ static void test_g23_locked_renders_dim_and_hides_name() {
 }
 
 /**
- * G2.3b: device_name_locked = false → 正常白色 + 顯示當前名稱。
+ * G2.3b: device_name_locked = false、游標在裝置名稱（選取中）→ 反白文字色
+ * （SETTINGS_COLOR_SELECTED_TEXT，對齊 drawMainMenu() 選取列黑字風格）+ 顯示當前名稱。
  *
  * 這個方向原本完全沒測，導致 is_device_name_locked 恆回 true（永遠置灰）
  * 的 bug 在 483 個綠燈下存活。
+ *
+ * 2026-09-05：游標高亮改滿版寬度後，選取列文字改回反白（見 ui_settings.h
+ * SETTINGS_COLOR_SELECTED_TEXT doc comment），原本斷言的 SETTINGS_COLOR_WHITE
+ * 已隨之改變；未選取時的白色改由 test_g23c 驗證。
  */
 static void test_g23_unlocked_renders_white_and_shows_name() {
     mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
@@ -486,10 +522,84 @@ static void test_g23_unlocked_renders_white_and_shows_name() {
 
     const MockTextCall* label = mock_text_log_find("裝置名稱");
     TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3b: 裝置名稱標籤應被繪製");
-    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SETTINGS_COLOR_WHITE, label->color,
-        "G2.3b: 未鎖定時裝置名稱應為正常白色");
+    // 斷言硬編碼字面值 0x0000（RGB565 黑），不直接比對 SETTINGS_COLOR_SELECTED_TEXT
+    // 常數本身——否則常數若被誤改成白色，兩邊同步出錯，斷言仍會通過，測不出
+    // 白底白字這個回歸
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0x0000, label->color,
+        "G2.3b: 未鎖定且選取中時裝置名稱應為反白文字色（RGB565 黑）");
+    TEST_ASSERT_TRUE_MESSAGE(label->color != SETTINGS_COLOR_WHITE,
+        "G2.3b: 反白文字色不應等於一般白字色，否則選取與非選取視覺無區別");
     TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("測試站"),
         "G2.3b: 未鎖定時應顯示當前裝置名稱");
+}
+
+/**
+ * G2.3c: device_name_locked = false、游標不在裝置名稱（未選取）→ 正常白色。
+ *
+ * 補 G2.3b 沒涵蓋的另一半：確認反白只發生在選取列，非選取列仍是一般白字，
+ * 不是整個畫面在未鎖定時都變成反白文字色。
+ */
+static void test_g23c_unlocked_unselected_renders_white() {
+    mock_fs_write(DEVICE_NAME_FILE, "測試站", strlen("測試站"));
+
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_BRIGHTNESS, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
+
+    const MockTextCall* label = mock_text_log_find("裝置名稱");
+    TEST_ASSERT_NOT_NULL_MESSAGE(label, "G2.3c: 裝置名稱標籤應被繪製（視窗內第 1 項，未選取）");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SETTINGS_COLOR_WHITE, label->color,
+        "G2.3c: 未鎖定且未選取時裝置名稱應維持正常白色");
+}
+
+/**
+ * G2.3d: 一般項目（非裝置名稱特例）選取中 → 反白文字色；未選取 → 正常白色。
+ * 對齊 drawMainMenu() 選取列黑字風格，驗證 STEP 03.04 分支（非 STEP 03.03 特例）。
+ */
+static void test_g23d_regular_item_text_color_follows_selection() {
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_BRIGHTNESS, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
+    const MockTextCall* selected_label = mock_text_log_find("螢幕亮度");
+    TEST_ASSERT_NOT_NULL_MESSAGE(selected_label, "G2.3d: 螢幕亮度標籤應被繪製");
+    // 硬編碼字面值，理由同 test_g23_unlocked_renders_white_and_shows_name 的說明
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0x0000, selected_label->color,
+        "G2.3d: 游標在螢幕亮度時應為反白文字色（RGB565 黑）");
+    TEST_ASSERT_TRUE_MESSAGE(selected_label->color != SETTINGS_COLOR_WHITE,
+        "G2.3d: 反白文字色不應等於一般白字色，否則選取與非選取視覺無區別");
+
+    // mock text log 累積、不會在同一個測試函式內的兩次 draw 呼叫之間自動清空
+    // （只有 setUp() 在每個 TEST_FUNCTION 開始前清一次）——不重置的話
+    // mock_text_log_find() 會找到上一次呼叫留下的舊紀錄，斷言會誤判成功
+    mock_display_reset();
+
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_SYSTEM_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
+    const MockTextCall* unselected_label = mock_text_log_find("螢幕亮度");
+    TEST_ASSERT_NOT_NULL_MESSAGE(unselected_label, "G2.3d: 螢幕亮度標籤應被繪製（視窗內第 2 項，未選取）");
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SETTINGS_COLOR_WHITE, unselected_label->color,
+        "G2.3d: 游標不在螢幕亮度時應維持正常白色");
+}
+
+// ----- G-Page-Indicator: 捲動選單頁碼指示 -----
+
+/**
+ * 8 項選單超出可見列數（5）時，應顯示「游標位置/總項目數」頁碼指示，
+ * 提示使用者選單還能往下捲，不是只有畫面上看到的 5 項。
+ */
+static void test_page_indicator_shown_when_scrollable() {
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_SYSTEM_VOL, /* scroll_offset= */ 0,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("3/8"),
+        "游標在系統音量（cursor=2，第 3 項）時應顯示頁碼指示 3/8");
+}
+
+/** 游標移動時頁碼指示的分子應跟著變動，不是釘死在某個固定值 */
+static void test_page_indicator_follows_cursor() {
+    drawSettingsMenu(g_disp, SETTINGS_CURSOR_DEVICE_INFO, /* scroll_offset= */ 3,
+                     /* device_name_locked= */ false, /* restore_confirm= */ false);
+
+    TEST_ASSERT_NOT_NULL_MESSAGE(mock_text_log_find("8/8"),
+        "游標在裝置資訊（cursor=7，第 8 項）時應顯示頁碼指示 8/8");
 }
 
 // ============================================================
@@ -525,9 +635,15 @@ void run_all_tests() {
     RUN_TEST(test_scroll_offset_zero_shows_first_five_items);
     RUN_TEST(test_scroll_offset_three_shows_last_five_items);
     RUN_TEST(test_restore_confirm_hides_last_visible_slot_regardless_of_item);
+    RUN_TEST(test_restore_confirm_no_overlap_with_second_to_last_row_highlight);
     // G2.3: 案件中裝置名稱置灰 + 名稱顯示
     RUN_TEST(test_g23_locked_renders_dim_and_hides_name);
     RUN_TEST(test_g23_unlocked_renders_white_and_shows_name);
+    RUN_TEST(test_g23c_unlocked_unselected_renders_white);
+    RUN_TEST(test_g23d_regular_item_text_color_follows_selection);
+    // G-Page-Indicator: 捲動選單頁碼指示
+    RUN_TEST(test_page_indicator_shown_when_scrollable);
+    RUN_TEST(test_page_indicator_follows_cursor);
 }
 
 int main(int argc, char** argv) {

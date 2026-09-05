@@ -544,6 +544,7 @@ extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整�
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
 extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中
+extern bool    settingsDeviceNameSubMode; // Impl-Phase G：true = 裝置名稱子畫面顯示中（同電池/裝置資訊 pattern）
 
 // true = 裝置名稱不可修改（storage 內有未同步案件）。
 // 進入設定選單時掃描一次即可：lock 狀態只由「儲存新案件」或「同步完成」改變，
@@ -632,6 +633,8 @@ void handleButtons();
 void onShortPress(uint8_t btnIdx);
 void onLongPress(uint8_t btnIdx);
 void handleSummarySubmenuPrimary();
+uint8_t getCurrentSettingValue(uint8_t cursor);  // Impl-Phase G：cursor→目前可調設定值，
+                                                   //   供 main.cpp captureDisplaySnapshot() 用
 
 // ── ohca_logic.cpp ──
 void dispatchOhcaEvent(ohca_event_t event, uint32_t since_ms);

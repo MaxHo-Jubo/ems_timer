@@ -82,20 +82,44 @@
 // 注意：g_settings_state 宣告在 main.cpp（extern），input_handler.cpp 透過 extern 取得
 extern settings_state_t g_settings_state;
 
+// 中文字級縮放係數：Display 抽象層傳入的 fontsize 目前恆為 SETTINGS_FONT_SIZE(2)
+// （ui_settings.cpp），乘上本係數得 1.1，對齊 drawMainMenu()（ui_screens.cpp）
+// 的 zhFont setTextSize(1.1f, 1.1f)，兩個選單視覺字級一致。
+#define SETTINGS_TEXT_SCALE_PER_UNIT 0.55f
+
 /**
  * Display 抽象層文字回調：設定選單專用
  *
+ * 原實作用 setCursor+setTextSize(int)+print()，未呼叫 useZhFont()——中文字串
+ * 會沿用上一畫面留下的字型狀態渲染，非 vlw 中文字型時整段跑版/亂碼。改用
+ * useZhFont()+drawString()+top_left datum，對齊 drawMainMenu() 的渲染方式。
+ *
  * @param str     要繪製的字串
- * @param x       X 座標
- * @param y       Y 座標
- * @param fontsize 字型大小
- * @param color   顏色（RGB565）
+ * @param x       X 座標（top_left datum）
+ * @param y       Y 座標（top_left datum）
+ * @param fontsize 字型大小（乘上 SETTINGS_TEXT_SCALE_PER_UNIT 換算實際縮放倍率）
+ * @param color   顏色（RGB565，但參數型別是 uint32_t——呼叫 LovyanGFX 前必須先窄化
+ *                成 uint16_t，見下方 STEP 04 內註解）
  */
 static void _settings_text_fn(const char* str, int16_t x, int16_t y, int16_t fontsize, uint32_t color) {
-    display.setCursor(x, y);
-    display.setTextSize(fontsize);
-    display.setTextColor(color);
-    display.print(str);
+    // STEP 01: 切換中文字型——原實作漏呼叫這行，中文字串沿用上一畫面留下的字型
+    //   狀態渲染，非 vlw 中文字型時整段跑版/亂碼
+    useZhFont();
+    // STEP 02: 座標基準改 top_left，對齊 drawMainMenu() 的 drawString 呼叫慣例
+    display.setTextDatum(textdatum_t::top_left);
+    // STEP 03: fontsize 是抽象層單位，乘上係數換算 LovyanGFX 實際縮放倍率
+    const float scale = fontsize * SETTINGS_TEXT_SCALE_PER_UNIT;
+    display.setTextSize(scale, scale);
+    // STEP 04: 色彩窄化——LovyanGFX 的 setTextColor/fillRect 是樣板函式，依「傳入
+    //   實參的 C++ 型別」而非顯示器實際色深決定色彩空間：uint16_t 走 rgb565_t
+    //   建構子直接當 565 用，uint32_t 走 rgb888_t 建構子當成 8-8-8 三通道解讀。
+    //   Display 抽象層的 color 參數固定是 uint32_t（供 mock 統一簽章），若直接把
+    //   0xFFFF 這樣的 uint32_t 傳進去，會被誤判成 rgb888 的 (R=0x00,G=0xFF,B=0xFF)
+    //   ＝青色，不是預期的 565 白色。呼叫 LovyanGFX 前一律窄化成 uint16_t 校正
+    //   回 565 語意。
+    display.setTextColor((uint16_t)color);
+    // STEP 05: 實際繪製
+    display.drawString(str, x, y);
 }
 
 /**
@@ -105,10 +129,12 @@ static void _settings_text_fn(const char* str, int16_t x, int16_t y, int16_t fon
  * @param y     Y 座標
  * @param w     寬度
  * @param h     高度
- * @param color 顏色（RGB565）
+ * @param color 顏色（RGB565，參數型別 uint32_t，呼叫 LovyanGFX 前需窄化，理由同
+ *              _settings_text_fn 的 doc comment）
  */
 static void _settings_fill_rect_fn(int16_t x, int16_t y, int16_t w, int16_t h, uint32_t color) {
-    display.fillRect(x, y, w, h, color);
+    // STEP 01: 色彩窄化（理由同 _settings_text_fn STEP 04 doc comment），直接繪製
+    display.fillRect(x, y, w, h, (uint16_t)color);
 }
 
 /**
@@ -263,6 +289,7 @@ bool    settingsEditorMode = false;
 bool    settingsRestoreConfirm = false;
 bool    settingsBatteryInfoMode = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
 bool    settingsDeviceInfoMode = false;   // Impl-Phase G：裝置資訊子畫面顯示中
+bool    settingsDeviceNameSubMode = false; // Impl-Phase G：裝置名稱子畫面顯示中
 bool    g_device_name_locked = false;  // 進入設定選單時由 refreshDeviceNameLock() 更新
 
 ems::LowBatteryConfirmTarget g_lowBatteryConfirmTarget = ems::LowBatteryConfirmTarget::None;  // Phase H：§20.3
@@ -963,6 +990,16 @@ static DisplaySnapshot captureDisplaySnapshot() {
     in.settingsRestoreConfirm = settingsRestoreConfirm; // Phase G
     in.settingsBatteryInfo    = settingsBatteryInfoMode; // Phase H：Task 13，漏此項會使電池資訊子畫面進出不重繪
     in.settingsDeviceInfo     = settingsDeviceInfoMode;  // Impl-Phase G：漏此項會使裝置資訊子畫面進出不重繪
+    in.settingsDeviceNameSub  = settingsDeviceNameSubMode; // Impl-Phase G：漏此項會使裝置名稱子畫面進出不重繪
+    // Impl-Phase G fix：編輯模式顯示的數值本身若未進 snapshot，UP/DOWN 調整後
+    // settingsCursor/settingsEditorMode 都不變，snapshot 判定無變化而跳過重繪，
+    // 畫面停留在調整前的舊數值（同型 bug，見 DisplaySnapshot 欄位同步 checklist）。
+    // 只有一個編輯器畫面同時顯示，非編輯模式時填 0 不影響比對（cursor/mode 欄位已能
+    // 區分「有沒有在編輯」，此欄位只需在編輯中正確反映當前數值）。
+    // cursor→值的映射查 input_handler.cpp 的 getCurrentSettingValue()（kSettingsSlots
+    // 查表），不在此另外重寫一份 ternary——同一份映射已存在於 adjustCurrentSetting()，
+    // 兩處各自維護容易漏改其中一處。
+    in.settingsEditorValue = settingsEditorMode ? getCurrentSettingValue(settingsCursor) : 0;
     // §20.3：snapshot 只需要知道「該不該畫」，不需要知道畫給誰看——三個目標的確認框
     // 文字完全一樣（spec 沒有分別措辭），型別維持 bool，不隨 g_lowBatteryConfirmTarget
     // 改成三選一型別而順手重構（B6 裁決：round 1 這部分已 review 過沒問題）。
@@ -1192,6 +1229,9 @@ void updateDisplay() {
         } else if (settingsDeviceInfoMode) {
             // Impl-Phase G：裝置資訊子畫面，同電池資訊 pattern。
             drawDeviceInfo();
+        } else if (settingsDeviceNameSubMode) {
+            // Impl-Phase G：裝置名稱子畫面（「請連接 App 設定裝置名稱」提示），同電池/裝置資訊 pattern。
+            show_device_name_sub(settingsDisp);
         } else if (settingsEditorMode) {
             // 編輯模式：依游標索引繪製對應設定項目的數值調整畫面
             if (settingsCursor == SETTINGS_CURSOR_BRIGHTNESS) {

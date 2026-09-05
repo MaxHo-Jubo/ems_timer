@@ -269,7 +269,7 @@ static void test_flag_settings_battery_info_sets_bit_0x200000() {
 }
 
 // ============================================================
-//  Group 4: 所有 flag 同時開 → 23 個 bit OR 起來
+//  Group 4: 所有 flag 同時開 → 24 個 bit OR 起來
 // ============================================================
 
 static void test_all_flags_on_combine_all_bits() {
@@ -294,6 +294,7 @@ static void test_all_flags_on_combine_all_bits() {
     in.settingsRestoreConfirm = true;
     in.settingsBatteryInfo    = true;
     in.settingsDeviceInfo     = true;
+    in.settingsDeviceNameSub  = true;
     in.batteryLowBlinkOn      = true;
     in.lowBatteryNoticeVisible = true;
     in.lowBatteryStartConfirmShown = true;
@@ -318,6 +319,7 @@ static void test_all_flags_on_combine_all_bits() {
                             | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
                             | SNAP_FLAG_SETTINGS_BATTERY_INFO
                             | SNAP_FLAG_SETTINGS_DEVICE_INFO
+                            | SNAP_FLAG_SETTINGS_DEVICE_NAME_SUB
                             | SNAP_FLAG_BATTERY_LOW_BLINK
                             | SNAP_FLAG_LOW_BATTERY_NOTICE
                             | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
@@ -326,7 +328,7 @@ static void test_all_flags_on_combine_all_bits() {
 
 /// 截至 Impl-Phase G Task 4 的 DisplaySnapshot flag bit 總數（不是「Task 7-13 新增了幾個」——
 /// 是全案自 flags 欄位存在以來累計的總數），改動時同步更新（新增/移除 flag 記得改這裡）
-constexpr uint32_t EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT = 23;
+constexpr uint32_t EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT = 24;
 
 static void test_all_flags_bit_masks_are_unique() {
     // 確保 EXPECTED_DISPLAY_SNAPSHOT_FLAG_COUNT 個 mask 沒有撞號（OR 全部應等於 set bit count）
@@ -334,6 +336,7 @@ static void test_all_flags_bit_masks_are_unique() {
     // Phase H：新增電池低電量閃爍 flag（第 19 個 bit）、§13.16 低電量提示 flag（第 20 個 bit）、
     //          §20.3 低電量開案確認框 flag（第 21 個 bit）與 Task 13 電池資訊子畫面 flag（第 22 個 bit）
     // Impl-Phase G Task 4：新增裝置資訊子畫面 flag（第 23 個 bit）
+    // Impl-Phase G：新增裝置名稱子畫面 flag（第 24 個 bit，補接線缺工時一併新增）
     const uint32_t all = SNAP_FLAG_EPI_ARMED | SNAP_FLAG_SHOCK_ARMED
                        | SNAP_FLAG_AMIO_ARMED | SNAP_FLAG_OHCA_VENT
                        | SNAP_FLAG_VENT_END_CHECK | SNAP_FLAG_ALARM_MUTED
@@ -344,6 +347,7 @@ static void test_all_flags_bit_masks_are_unique() {
                        | SNAP_FLAG_DELETE_CONFIRM | SNAP_FLAG_RESET_CONFIRM
                        | SNAP_FLAG_SETTINGS_EDITOR | SNAP_FLAG_SETTINGS_RESTORE_CONFIRM
                        | SNAP_FLAG_SETTINGS_BATTERY_INFO | SNAP_FLAG_SETTINGS_DEVICE_INFO
+                       | SNAP_FLAG_SETTINGS_DEVICE_NAME_SUB
                        | SNAP_FLAG_BATTERY_LOW_BLINK | SNAP_FLAG_LOW_BATTERY_NOTICE
                        | SNAP_FLAG_LOW_BATTERY_START_CONFIRM;
     // popcount
@@ -480,6 +484,61 @@ static void test_settings_device_info_flag_maps_to_unique_bit() {
 }
 
 // ============================================================
+//  Impl-Phase G: settingsDeviceNameSub flag 覆蓋
+// ============================================================
+
+/**
+ * settingsDeviceNameSub 由 false 變 true 必須讓 snapshot 不同，否則裝置名稱
+ * 子畫面進出時 updateDisplay() 會誤判無變化而跳過重繪。
+ *
+ * @param （無參數）
+ * @return （無回傳，Unity 斷言失敗時測試框架標記該 case 為 FAIL）
+ */
+static void test_settings_device_name_sub_flag_change_triggers_redraw() {
+    // in_a：基準輸入，settingsDeviceNameSub 維持預設 false（子畫面未顯示）
+    DisplaySnapshotInputs in_a;
+    in_a.settingsDeviceNameSub = false;
+    DisplaySnapshot a = captureSnapshot(in_a);
+
+    // in_b：僅 settingsDeviceNameSub 改 true（子畫面顯示中），其餘欄位維持預設值
+    DisplaySnapshotInputs in_b;
+    in_b.settingsDeviceNameSub = true;
+    DisplaySnapshot b = captureSnapshot(in_b);
+
+    TEST_ASSERT_FALSE_MESSAGE(snapshotsEqual(a, b),
+        "settingsDeviceNameSub 進出必須觸發重繪，否則裝置名稱子畫面進出不重繪");
+}
+
+/**
+ * settingsDeviceNameSub=true 時，captureSnapshot() 映射出的 flags 應恰好只有
+ * SNAP_FLAG_SETTINGS_DEVICE_NAME_SUB 這一個 bit 被設置，不誤觸其他 bit。
+ *
+ * @param （無參數）
+ * @return （無回傳，斷言失敗時測試框架標記該 case 為 FAIL）
+ */
+static void test_settings_device_name_sub_flag_maps_to_unique_bit() {
+    // in：僅設定 settingsDeviceNameSub，其餘欄位維持預設值
+    DisplaySnapshotInputs in;
+    in.settingsDeviceNameSub = true;
+    // s：映射後的 snapshot，用於檢查 flags 位元
+    DisplaySnapshot s = captureSnapshot(in);
+
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(SNAP_FLAG_SETTINGS_DEVICE_NAME_SUB, s.flags,
+        "settingsDeviceNameSub=true 時 flags 應恰為 SNAP_FLAG_SETTINGS_DEVICE_NAME_SUB 這一個 bit");
+}
+
+// ============================================================
+//  Impl-Phase G 回溯：設定編輯畫面數值變化無重繪（本類別重演——UP/DOWN 調整
+//  亮度/音量後 settingsCursor 與 settingsEditorMode 皆不變，漏了數值本身這個
+//  欄位會讓調整後畫面停留在舊數值，使用者以為按鍵沒反應）
+// ============================================================
+
+/** settingsEditorValue 由預設 0 變 4 必須讓 snapshot 不同，涵蓋上方區段標題所述的回歸情境。 */
+static void test_settings_editor_value_change_triggers_redraw() {
+    ASSERT_FIELD_TRIGGERS_CHANGE(settingsEditorValue, 4);
+}
+
+// ============================================================
 //  Group 6: partial update 判斷（snapshotsEqualExceptCountdown）
 //
 //  updateDisplay() 在 OHCA 倒數畫面只重繪時間區塊時，靠這個判斷確認
@@ -608,6 +667,7 @@ int main(int /*argc*/, char ** /*argv*/) {
     // Phase G 回溯：系統設定選單 cursor 同類別（本類別第 4 次重演）
     RUN_TEST(test_settings_cursor_change_triggers_redraw_phase_g_regression);
     RUN_TEST(test_settings_scroll_offset_change_triggers_redraw_phase_g_regression);
+    RUN_TEST(test_settings_editor_value_change_triggers_redraw);
 
     // Group 3: bool flag → bit mask
     RUN_TEST(test_flag_epi_armed_sets_bit_0x0001);
@@ -648,6 +708,8 @@ int main(int /*argc*/, char ** /*argv*/) {
     // Impl-Phase G: settingsDeviceInfo flag 覆蓋
     RUN_TEST(test_settings_device_info_flag_change_triggers_redraw);
     RUN_TEST(test_settings_device_info_flag_maps_to_unique_bit);
+    RUN_TEST(test_settings_device_name_sub_flag_change_triggers_redraw);
+    RUN_TEST(test_settings_device_name_sub_flag_maps_to_unique_bit);
 
     // Group 6: partial update 判斷（漏欄位會吞掉重繪）
     RUN_TEST(test_only_countdown_differs_allows_partial_update);

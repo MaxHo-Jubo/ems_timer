@@ -6,6 +6,73 @@
 
 ## 🎯 當前焦點（2026-05-25）
 
+> ⚠️ **本檔已知落後實際進度**——下方大部份內容停在 2026-05~07。Phase A~F 已完成、
+> Phase G（系統設定/裝置名稱/裝置資訊）與 Phase H（電量顯示）也已完成並合併進
+> `main`，最新狀態請以 `README.md` §🔧 開發階段（2026-09-02 校準）與各
+> `docs/superpowers/*-handover.md` 為準，本檔僅保留歷史 backlog 供查閱。
+>
+> **2026-09-05 session 快照**（純韌體改動，未動硬體採購/PM 對齊，記錄供下次接手；
+> 本條取代同日稍早寫入、已被後續排查推翻的舊版本）：
+>
+> **系統設定選單 4 個 bug，程式碼層面全部修完，硬體驗證進行到一半**：
+> 1. ✅ 中文跑版根因：`_settings_text_fn()` 從未呼叫 `useZhFont()`，已修＋改用
+>    `drawString()`，座標對齊 `drawMainMenu()`（滿版 320×36 高亮條），新增右上角
+>    頁碼指示（如「3/8」）
+> 2. ✅ 選取列白底白字：高亮框改滿版寬度後，選取列文字改回反白（黑字），對齊主選單
+> 3. ✅ 選取列高亮底色是淺藍不是白色：根因是 LovyanGFX 樣板函式依「傳入實參的
+>    C++ 型別」決定色彩空間——`Display` 抽象層的 color 參數是 `uint32_t`，
+>    直接傳給 `fillRect`/`setTextColor` 會被誤判成 RGB888（0xFFFF → 青色系），
+>    不是預期的 RGB565 白色。修法：呼叫 LovyanGFX 前先窄化成 `uint16_t`
+>    （`main.cpp` 的 `_settings_text_fn`/`_settings_fill_rect_fn`）。**已實機驗證
+>    通過**（使用者確認高亮底色現在是白色）
+> 4. ⚠️ **裝置名稱顏色暗+按不進去，未解決**：已補上 `settingsDeviceNameSubMode`
+>    完整接線（比照電池/裝置資訊子畫面 pattern），但實機測試**仍然兩個症狀都在**。
+>    領先假說：`g_device_name_locked` 被誤判為 true（今天 board 崩潰重置數百次，
+>    LittleFS 可能留下一筆讀起來像「未同步」的殘缺案件紀錄），因為鎖定時規格上
+>    本來就是「顯示暗灰 + 按主鍵無視」，兩個症狀能用同一個原因解釋。**尚未透過
+>    log 確認**（卡在 USB 連線問題，見下）。下次接手：裝置名稱那格按下去時
+>    log 應印出 `[SETTINGS] device name locked` 或 `[SETTINGS] device name —
+>    show sub` 其中一行，直接看那行就能定案；如果真的是鎖定誤判，需要查
+>    `storage_has_unsynced_case()` 掃到的案件記錄內容
+>
+> 另外修了一個真的 bug（跟上述 4 項同批次發現）：**DisplaySnapshot 漏欄位**——
+> 編輯亮度/音量畫面按 UP/DOWN 數值有變、有寫入 NVS，但畫面不重繪（本類別第 N 次
+> 重演，`settingsCursor`/`settingsEditorMode` 都不變導致 snapshot 比對無感）。
+> 已補 `settingsEditorValue` 欄位，native test 已驗證通過。
+>
+> native test 657/658 全過（唯一失敗為既有無關的 `test_storage_hw`），ESP32
+> 編譯 SUCCESS（Flash 72.7%）。**上述 1~3 + DisplaySnapshot 漏欄位已 commit
+> de206cb**（含 Tier 3 review fix round 1：抽出 `getCurrentSettingValue()` 共用
+> helper、`SETTINGS_CONFIRM_Y_OFFSET` 改自適應公式修正高亮/對話框重疊、補測試與
+> 註解修正）；**裝置名稱那項（#4）仍未解決**，留待下次接手依上方假說排查。
+>
+> ⚠️ Review 另指出 `show_device_name_sub()`／`drawSettingsMenu()` 裝置名稱那列
+> 换成真正 VLW 中文字型後，既有固定座標（`SETTINGS_VALUE_X_OFFSET=70`、
+> 提示文字從 `SETTINGS_MENU_X` 起繪）**沒有依實際字寬重新驗證**，估算下「裝置
+> 名稱」標籤可能寬過 70px 而與值文字重疊、「請連接 App 設定裝置名稱」提示可能
+> 超出 320px 螢幕寬度被裁切——USB 目前斷線無法上機量測，未著手臆測調整座標，
+> 待 USB 恢復後上機拍照確認，需要才動座標常數。
+>
+> **電源/開機異常事件，結論反覆修正多次，目前又回到不確定狀態**：
+> - 一度以為 6V 過壓燒壞板子 → 排查推翻，board 多次乾淨開機成功
+> - 精確定位出 **MAX17043 板子本身故障**（I2C bus 鎖死，電源正常但 SDA+SCL 接上
+>   必鎖死，斷電重置也救不回來）——**這個結論仍然成立，需更換這顆 MAX17043**
+> - 但 session 收尾階段 **USB 連線又開始大範圍失聯**：`pio device list` 連續
+>   10+ 次掃描不到、macOS 系統資訊也完全看不到這個 USB 裝置（不是序列埠沒建立，
+>   是電腦整個看不到裝置存在）；螢幕仍有背光但沒進主選單。電表複測 **V5IN 5.3V /
+>   3V3 3.3V 皆正常、無短路**——推翻了「電源不穩/重置迴圈」的猜測。目前傾向懷疑
+>   ESP32 的 USB 介面電路與/或 TFT 驅動 IC 個別受損（同一條 V5IN 軌，6V 事件時
+>   兩者可能都受到影響），但**信心只有 5/10，未證實**。session 結束時 USB 仍未
+>   恢復穩定連線。
+> - Power 鍵（GPIO7）接線接到 3V3 應改接 GND（獨立的真實接線錯誤）——**尚未修正**
+> - 完整時間軸見 memory `project_usb_power_conflict_incident_2026_09_05`
+>
+> **下次接手優先順序**：① 想辦法讓 USB 穩定連線（換線/換 port 都試過仍不穩，
+> 可能要等新板）② 有連線後先確認裝置名稱鎖定假說 ③ Power 鍵改接 GND
+> ④ 上機確認裝置名稱子畫面文字座標（見上方 ⚠️ 寬度疑慮）⑤ 更換 MAX17043
+> - 🔵 DS3231 backup 電池疑似沒電（epoch out of range 拒絕 seed），與上述電源事件
+>   同批次觀察但無因果關係，見 memory `project_ds3231_backup_battery_suspect_dead`。
+>
 > **2026-07-13 更新**：**Phase D（訓練模式）韌體實作全部完成**（commit `d5f64ab` W2-W8 + `aa39def` W9），native test 455/456 綠，韌體編譯通過（RAM 32.3% / Flash 68.8%）。下一步：**實機測試驗證**，照 [`docs/phase-d-training-plan.md §9.5`](../docs/phase-d-training-plan.md) 實機測試對照清單逐項驗收。
 >
 > **📌 下次開工 = Phase D 實機測試 → Phase G（系統設定 / 裝置名稱 / 音量亮度 / Type-C 電腦端工具）** — SoT V1 剩下唯二可**自主推進**的 Phase（純韌體、無硬體/PM 阻塞）。Phase D 韌體實作完成後，裝置端主功能表 5 項目前「系統設定」1 項仍為 placeholder（`input_handler.cpp` GLOBAL_SETTINGS_PLACEHOLDER），做完即全可用。Phase H 電源/電池顯示卡硬體（**ADC 腳已用盡**，gpio-allocation §5.1；見 progress 進度 9 盤點）。**做 Phase H 電池顯示前必讀 [`docs/power-module-purchase.md §10.6`](../docs/power-module-purchase.md)（電池顯示能力現況 + 三選項 A 數位狀態腳 / B 電壓 ADC / C 燃料計）。**
@@ -417,7 +484,11 @@
   - [ ] 滿電拔 USB-C 連續運作 ≥ 30 分鐘
   - [ ] 放電到 3.4V 仍正常（升壓有效）
   - [ ] 過放保護觸發測試
-  - [ ] 邊充邊用不重開機
+  - [ ] 邊充邊用不重開機 — ⚠️ **2026-09-05 實測結果不一致**：同一天內在同樣的
+        USB+TP4056+電池接線下，有時反覆重置、有時乾淨開機成功，最終排查認為當
+        時的重置是 MAX17043 接線造成 I2C bus 鎖死的併發現象，不是 load-sharing
+        本身的問題，但尚未在「board 穩定、MAX17043 未接」的乾淨條件下專門重測過
+        這項，仍算未正式驗收；詳見 memory `project_usb_power_conflict_incident_2026_09_05`
 - [ ] **驗證通過後同步 SoT**（依 §8）
   - [ ] `docs/EMS_DoseSync_Pro_Prototype_V1.md` §20.4.3 / §21.1
   - [ ] `docs/pcb-outsourcing-guide.md` PCB 預留要求

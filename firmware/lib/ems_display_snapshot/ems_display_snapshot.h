@@ -56,6 +56,10 @@ struct DisplaySnapshot {
                                  ///< SoT §19.1 完整 8 項；cursor 5~7 尚未接線 BTN_PRIMARY 分派，見 Task 3）
     uint16_t settingsScrollOffset; ///< Phase G：設定選單捲動視窗起點；漏此欄位會讓捲動後的
                                     ///< 選單畫面不重繪（同 historyScrollOffset 的既有 pattern）
+    uint8_t  settingsEditorValue; ///< Impl-Phase G：編輯畫面當前顯示的數值（亮度/系統音量/通氣音量
+                                    ///< 三者共用一個欄位，同時只會有一個編輯畫面顯示中）；漏此欄位會讓
+                                    ///< UP/DOWN 調整後畫面停留在舊數值不重繪（settingsCursor/
+                                    ///< settingsEditorMode 皆不變，同型 bug）
     uint8_t  batteryPercent;     ///< Phase H：電量 0~100；255 = 燃料計不在線（0 是合法讀數，不可共用）
     uint8_t  batteryChargeState; ///< Phase H：ems::ChargeState 列舉值（0=Unknown 1=Charging 2=Discharging 3=Idle）
     uint16_t batteryMillivolts;  ///< Phase H Task 13：電壓 mV。batteryPercent 只在整數百分比變動時才變，
@@ -90,6 +94,7 @@ enum DisplaySnapshotFlag : uint32_t {
     SNAP_FLAG_LOW_BATTERY_START_CONFIRM = 0x00100000,  // Phase H：§20.3 低電量開案確認框顯示中
     SNAP_FLAG_SETTINGS_BATTERY_INFO = 0x00200000,  // Phase H：電池資訊子畫面顯示中（Task 13）
     SNAP_FLAG_SETTINGS_DEVICE_INFO = 0x00400000,   // Impl-Phase G：裝置資訊子畫面顯示中
+    SNAP_FLAG_SETTINGS_DEVICE_NAME_SUB = 0x00800000, // Impl-Phase G：裝置名稱子畫面顯示中
 };
 
 
@@ -121,6 +126,7 @@ struct DisplaySnapshotInputs {
     uint8_t  settingsCursor     = 0;  ///< Phase G：系統設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，
                                        ///< SoT §19.1 完整 8 項；cursor 5~7 尚未接線 BTN_PRIMARY 分派，見 Task 3）
     uint16_t settingsScrollOffset = 0; ///< Phase G：設定選單捲動視窗起點
+    uint8_t  settingsEditorValue  = 0; ///< Impl-Phase G：編輯畫面當前顯示的數值
 
     // STEP 02: 衍生值（呼叫端先算）
     uint32_t countdownSec    = 0;
@@ -147,6 +153,7 @@ struct DisplaySnapshotInputs {
     bool     settingsRestoreConfirm = false;  // Phase G：恢復預設確認對話框顯示中
     bool     settingsBatteryInfo    = false;  // Phase H：電池資訊子畫面顯示中（Task 13）
     bool     settingsDeviceInfo     = false;  // Impl-Phase G：裝置資訊子畫面顯示中
+    bool     settingsDeviceNameSub  = false;  // Impl-Phase G：裝置名稱子畫面顯示中
 
     // STEP 04: Phase H 電池欄位
     uint8_t  batteryPercent     = 255;    // Phase H：預設 255 = 不在線
@@ -188,6 +195,7 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     s.storageFailure      = in.storageFailure;  // W9：儲存失敗狀態
     s.settingsCursor      = in.settingsCursor;  // Phase G：系統設定選單游標
     s.settingsScrollOffset = in.settingsScrollOffset;  // Phase G：設定選單捲動視窗起點
+    s.settingsEditorValue = in.settingsEditorValue;    // Impl-Phase G：編輯畫面當前數值
     s.batteryPercent      = in.batteryPercent;      // Phase H
     s.batteryChargeState  = in.batteryChargeState;  // Phase H
     s.batteryMillivolts   = in.batteryMillivolts;   // Phase H Task 13
@@ -213,6 +221,9 @@ inline DisplaySnapshot captureSnapshot(const DisplaySnapshotInputs& in) {
     if (in.settingsRestoreConfirm) s.flags |= SNAP_FLAG_SETTINGS_RESTORE_CONFIRM;
     if (in.settingsBatteryInfo)    s.flags |= SNAP_FLAG_SETTINGS_BATTERY_INFO;
     if (in.settingsDeviceInfo)     s.flags |= SNAP_FLAG_SETTINGS_DEVICE_INFO;
+    if (in.settingsDeviceNameSub) {
+        s.flags |= SNAP_FLAG_SETTINGS_DEVICE_NAME_SUB;
+    }
     if (in.batteryLowBlinkOn)      s.flags |= SNAP_FLAG_BATTERY_LOW_BLINK;
     if (in.lowBatteryNoticeVisible) s.flags |= SNAP_FLAG_LOW_BATTERY_NOTICE;
     if (in.lowBatteryStartConfirmShown) s.flags |= SNAP_FLAG_LOW_BATTERY_START_CONFIRM;

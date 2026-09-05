@@ -115,13 +115,15 @@ inline SettingsCursorScroll advanceSettingsCursorAndScroll(uint8_t cursor, uint1
 // 否則測試只能斷言「有畫出文字」，無法分辨置灰與否。
 #define SETTINGS_COLOR_WHITE  0xFFFF
 #define SETTINGS_COLOR_DIM    0x6B4D  // 暗灰：項目不可操作時的置灰色
+#define SETTINGS_COLOR_SELECTED_TEXT 0x0000  // 選取列反白文字色，對齊 app_globals.h 的 COLOR_BG
 
-// 註：fix round 1 曾在此加過 SETTINGS_COLOR_HIGHLIGHT_TEXT（選取時改黑字），
-// 想解決游標高亮框（80×20）蓋不住整個渲染文字（約 192×48）造成的局部白底白字。
-// 但那個修法讓文字其餘 ~83% 面積變成黑字疊黑螢幕背景，比原本更看不清楚，
-// fix round 3 已撤銷並移除這個常數。正確修法是仿 ui_screens.cpp drawMainMenu()
-// 改成整列高亮，超出本 task 範圍，見 ui_settings.cpp 的 kSettingsMenuItems
-// doc comment 與 handover §3-A8。
+// 註：fix round 1 曾加過 SETTINGS_COLOR_HIGHLIGHT_TEXT（選取時改黑字），想解決
+// 游標高亮框（80×20）蓋不住整個渲染文字（約 192×48）造成的局部白底白字。但那個
+// 修法讓文字其餘 ~83% 面積變成黑字疊黑螢幕背景，比原本更看不清楚，fix round 3
+// 撤銷並移除該常數，備註「正確修法是仿 drawMainMenu() 改成整列高亮，超出本 task
+// 範圍」。2026-09-05 系統設定 TFT 版式對齊修正已把游標高亮改成滿版寬度（對齊
+// drawMainMenu() 的 fillRect(0, y, SCREEN_W, ...)），fix round 1 的顧慮不再成立，
+// 選取列文字改回黑字（SETTINGS_COLOR_SELECTED_TEXT）不會再有局部黑字疊黑底問題。
 
 /**
   * 設定主選單畫面

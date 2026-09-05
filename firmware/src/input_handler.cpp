@@ -27,6 +27,7 @@ extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整�
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
 extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中
+extern bool    settingsDeviceNameSubMode; // Impl-Phase G：true = 裝置名稱子畫面顯示中
 
 // 系統設定 NVS state（開機由 main.cpp settings_init 載入，調值時 settings_write 寫回）
 settings_state_t g_settings_state;
@@ -105,6 +106,28 @@ static void adjustCurrentSetting(int8_t delta) {
     if (!settings_write(&g_settings_state, slot->key, (uint8_t)next)) {
         Serial.printf("[SETTINGS] ERROR 寫入失敗 key=0x%02X value=%d\n", slot->key, (int)next);
     }
+}
+
+/**
+ * 依游標查表取得目前可調設定的顯示值，供 main.cpp 的 DisplaySnapshot 擷取共用
+ * 同一份 cursor→getter 映射（kSettingsSlots），取代另外散寫一份 if/ternary 分支
+ * ——後者是本檔 adjustCurrentSetting() 已有的邏輯，新增第二份等於同一映射存在
+ * 兩處，改其中一處容易漏改另一處。
+ *
+ * @param cursor SETTINGS_CURSOR_*；不在 kSettingsSlots 之列時（如裝置名稱等
+ *               不可調項目）回傳 0——呼叫端只在 settingsEditorMode 為 true 時
+ *               取用此值，而 settingsEditorMode 只會在 cursor 落於可調範圍內
+ *               才被設為 true（見本檔 BTN_PRIMARY 分派），故 0 這條路徑目前
+ *               不可達，不需另加 fail-fast。
+ * @return 該設定目前顯示值
+ */
+uint8_t getCurrentSettingValue(uint8_t cursor) {
+    for (size_t i = 0; i < sizeof(kSettingsSlots) / sizeof(kSettingsSlots[0]); i++) {
+        if (kSettingsSlots[i].cursor == cursor) {
+            return kSettingsSlots[i].get();
+        }
+    }
+    return 0;
 }
 
 /**
@@ -775,6 +798,16 @@ void onShortPress(uint8_t btnIdx) {
             return;
         }
 
+        // STEP 04.5: 裝置名稱子畫面中（唯讀導覽頁，同電池/裝置資訊 pattern）
+        if (settingsDeviceNameSubMode) {
+            // STEP 04.5.01: 返回鍵離開子畫面，其餘按鍵在此唯讀畫面上一律忽略
+            if (btnIdx == BTN_BACK) {
+                settingsDeviceNameSubMode = false;
+                Serial.println("[SETTINGS] device name sub — back to menu");
+            }
+            return;
+        }
+
         // STEP 05: 主選單模式
         switch (btnIdx) {
             case BTN_UP: {
@@ -804,7 +837,8 @@ void onShortPress(uint8_t btnIdx) {
                     if (g_device_name_locked) {
                         Serial.println("[SETTINGS] device name locked — 有未同步案件");
                     } else {
-                        Serial.println("[SETTINGS] device name — show sub（子畫面尚未接線，見 §2.2.3）");
+                        settingsDeviceNameSubMode = true;
+                        Serial.println("[SETTINGS] device name — show sub");
                     }
                 } else if (settingsCursor >= SETTINGS_CURSOR_BRIGHTNESS &&
                            settingsCursor <= SETTINGS_CURSOR_VENT_VOL) {
@@ -1452,9 +1486,10 @@ void onLongPress(uint8_t btnIdx) {
     //   「開啟後沒有按鍵能關掉它」——若真的被開啟，onShortPress() 開頭的
     //   settingsRestoreConfirm 分支本來就會處理 BTN_PRIMARY／BTN_BACK 兩鍵關閉它。
     //   Impl-Phase G Task 3：裝置資訊子畫面比照電池資訊同理排除，同一類 bug。
+    //   裝置名稱子畫面同理排除（三者同一 pattern）。
     if (btnIdx == BTN_PRIMARY && globalState == GLOBAL_SETTINGS_PLACEHOLDER &&
         !settingsEditorMode && !settingsRestoreConfirm && !settingsBatteryInfoMode &&
-        !settingsDeviceInfoMode) {
+        !settingsDeviceInfoMode && !settingsDeviceNameSubMode) {
         settingsRestoreConfirm = true;
         Serial.println("[SETTINGS] restore confirm dialog");
         return;
