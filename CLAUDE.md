@@ -71,11 +71,9 @@ GPIO 分配以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為**單一�
 
 ### 相關文件
 
-| 文件 | 用途 |
-|------|------|
-| [`docs/gpio-allocation.md`](docs/gpio-allocation.md) | **GPIO 分配單一真相來源**（按鍵/顯示/錄音/擴充/互斥約束/對齊狀態） |
-| [`docs/tft-migration-plan.md`](docs/tft-migration-plan.md) | 2.4" TFT 升級計劃（GPIO 已對齊 gpio-allocation.md） |
-| [`docs/superpowers/phase-h-handover.md`](docs/superpowers/phase-h-handover.md) | **Impl-Phase H 電量顯示交接文件**（現況／接手步驟／待硬體的上機驗收／殘餘風險／48 條 ruling 摘要） |
+完整文件索引（含現行／歷史分類）見 [`docs/README.md`](docs/README.md)。本節只點名兩份：
+GPIO 以 [`docs/gpio-allocation.md`](docs/gpio-allocation.md) 為單一真相來源；Phase H 接手前必讀
+[`docs/superpowers/phase-h-handover.md`](docs/superpowers/phase-h-handover.md)。
 
 ### 韌體與規格對齊狀態
 
@@ -117,12 +115,8 @@ Task 11–14 未開工。全套 599 cases / 598 通過（唯一未過的 `test_s
 
 ### 文件索引
 
-| 文件 | 用途 | 給誰看 |
-|------|------|------|
-| [`firmware/release-template/README.txt`](firmware/release-template/README.txt) | 對方燒錄說明（事前準備 + 步驟 + 5 種錯誤排除） | 收 release 包的工程師 |
-| [`firmware/release-template/flash.bat`](firmware/release-template/flash.bat) | Windows 一鍵燒錄腳本（自動偵測 COM Port） | 收 release 包的工程師 |
-| [`firmware/release-template/flash.sh`](firmware/release-template/flash.sh) | macOS / Linux 一鍵燒錄腳本（自動偵測 `cu.usbmodem*` / `ttyUSB*`） | 收 release 包的工程師 |
-| [`firmware/release-template/HOW_TO_BUILD_RELEASE.md`](firmware/release-template/HOW_TO_BUILD_RELEASE.md) | **僅開發者**：打包 release 的 SOP（5 步驟 + 自動化建議） | 專案維護者 |
+模板檔案在 [`firmware/release-template/`](firmware/release-template/)：`README.txt`、`flash.sh`、`flash.bat` 給收 release 包的工程師；
+`HOW_TO_BUILD_RELEASE.md` **僅開發者**。各檔用途見 [`docs/README.md`](docs/README.md) §5。
 
 ### 打包流程速查
 
@@ -196,12 +190,9 @@ EmsEvent { event_type: uint8, timestamp: uint64 (epoch ms), elapsed_ms: uint32 }
 
 ### 相關文件
 
-| 文件 | 用途 |
-|------|------|
-| [`docs/hardware-procurement-v2.md`](docs/hardware-procurement-v2.md) | **硬體採購清單 v2**（PM 6 條需求對照、兩條升級路徑、蝦皮/露天連結、焊接清單、成本工時對照、給 PM 下單參考）|
-| [`docs/hardware-procurement-v2.html`](docs/hardware-procurement-v2.html) | 同上 HTML 版（排版對齊 power-module-purchase.html，方便發給 PM）|
-| [`docs/power-module-purchase.md`](docs/power-module-purchase.md) | 電源模組採購與組裝 SOP（採購清單、收貨驗收、組裝步驟、故障排除） |
-| [`docs/power-module-purchase.html`](docs/power-module-purchase.html) | 同上 HTML 版（排版對齊 flow.html，方便瀏覽） |
+採購清單 [`docs/hardware-procurement-v2.md`](docs/hardware-procurement-v2.md)、電源模組 SOP
+[`docs/power-module-purchase.md`](docs/power-module-purchase.md)、量產規劃 [`docs/pcb-outsourcing-guide.md`](docs/pcb-outsourcing-guide.md)；
+各自的 HTML 版與其餘硬體文件見 [`docs/README.md`](docs/README.md) §2。
 
 ### Dev-Phase 2~3 開發階段
 - 原規劃 USB Type-C 直供；**實際已提前進入鋰電池供電驗證**（1000mAh LiPo + TP4056 + 升壓，2026-06 起）。
