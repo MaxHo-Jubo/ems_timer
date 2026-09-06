@@ -102,13 +102,23 @@
 
 ### T6 — 上機驗收（**進行中**，2026-09-06 已燒錄新韌體到板上）
 
-韌體已燒進板子（`pio run -e esp32-s3-devkitc-1 -t upload`，port `/dev/cu.usbmodem1101`），
-板子上跑的就是本次改動後的版本，**下次接手不必重燒**（除非又改了程式碼）。
+韌體已燒進板子（`pio run -e esp32-s3-devkitc-1 -t upload`，port `/dev/cu.usbmodem1101`）。
+板上版本 = **commit `da6f6cf`**，也就是**含 codex review 三個 CRITICAL 修正之後**的版本
+（開機 log 佐證：`[FONT] vlw loaded: 145803 bytes`、`[SETTINGS] NVS loaded: brt=1 vol=1 vvol=1`）。
+**下次接手不必重燒**，除非又改了程式碼。
 
-**收 serial log 的工具**（下次直接用，不必重寫）：
-`scratchpad/monitor.py`（本 session 的 scratchpad；若已清掉，重點是：**不要碰 RTS/DTR**，
-驗收時碰它會把正在被操作的板子重開機；port 名稱要用 glob 找 `/dev/cu.usbmodem*`，
-macOS 重新列舉後會漂移）。
+**收 serial log 的工具**：`firmware/scripts/serial_monitor.py`
+```bash
+cd firmware && python3 scripts/serial_monitor.py /tmp/ems_serial.log
+```
+要拿開機 log 就請人按板上 RST 鍵：腳本靠「USB CDC 重新列舉」偵測並自動重連，畫面會出現
+`=== detached ===` 接著 `=== attached ===`。**若按了 RST 遲遲沒出現那兩行就直接拔插 USB**
+——重連依賴 host 真的看到 detach，不保證每次都成立，不要空等。
+
+**不要改成自己 toggle RTS 去 reset**：這片是 native USB-JTAG、沒有 UART bridge，那樣做
+不保證有效，在有 bridge 的板子上則會把正在被操作的板子重開。另注意 pyserial 光傳
+`dsrdtr=False` 並不等於不碰控制線（反而保證 open 時拉高 DTR/RTS），腳本已改成先建
+未開啟物件、設 `dtr/rts = False` 再 open，理由寫在腳本檔頭。
 
 > ⚠️ **log 能佐證什麼、不能佐證什麼**：`[REDRAW]` 只印 `globalState / ohcaState /
 > mainMenuCursor / countdownSec`，**不印 `settingsCursor` 與 `settingsEditorMode`**，
@@ -153,7 +163,17 @@ log 佐證：31.6~35.7s 期間 7 次 `gs=5` 重繪；重開機後 `[SETTINGS] NV
 - [ ] 兩個音量都設「關」→ 關機再開機 → 預期仍是「關」
       （可用 serial log 的 `[SETTINGS] NVS loaded: brt=? vol=? vvol=?` 直接佐證，
       這行是機器可讀的，不必靠肉眼）
+- [ ] **通氣畫面內**按上/下切換 → 關機再開機 → 預期也被記住
+      （2026-09-06 修正前這個入口不寫 NVS，重開機會丟失）
 - [ ] 長按主鍵觸發恢復預設 → 確認 → 預期兩個音量都回「開」（`vol=1 vvol=1`）
+
+#### ⚠️ 實機驗不到的一條（只有 native test 覆蓋）
+舊 NVS 值遷移（存舊值 3 → 開機遷成 1 並寫回，log 會出現 `[SETTINGS] migrate "vol": 3 -> 1`）
+在這片板子上重現不了——它的 NVS 早已被寫成新值域的 0/1，遷移不會觸發（2026-09-06 重燒後
+的開機 log 確認沒有 migrate 行，這是正確行為）。要在實機驗得把 NVS 灌回舊值，沒有簡便管道。
+這條目前由 `test_g02b_normalize_toggle_legacy_values` / `test_g02c_settings_init_migrates_legacy_nvs`
+覆蓋。**它影響的是別人手上還沒升級過的裝置，不是這片**——若之後有第二片沒燒過新韌體的
+板子，那片的首次開機就是驗這條的唯一機會，記得先接 serial 收 log。
 
 ### T8 — codex Tier 3 review 提出、本次刻意未做的兩類建議
 
