@@ -3,8 +3,8 @@
 // 對應規格：docs/phase-g-system-settings-plan.md §2.1.2
 //
 // 設計：
-//   - drawSettingsMenu：繪製 8 項目設定選單，捲動顯示一頁 5 項
-//   - drawSettingEditor：繪製設定值編輯器
+//   - drawSettingsMenu：繪製 7 項目設定選單，捲動顯示一頁 5 項
+//   - drawToggleEditor：繪製開/關切換編輯器
 //   - 使用 Display 抽象層，ESP32 端換成真實 display 物件
 
 #include "ui_settings.h"
@@ -21,14 +21,18 @@ static char s_device_name[DEVICE_NAME_MAX_LEN];
 //  顯示常數（座標 + 字型 + 顏色）
 // ============================================================
 
-// 目前亮度值（開機預設，從 settings_state 讀取）
+// 目前亮度值（開機預設，從 settings_state 讀取）。2026-09-06 起「螢幕亮度」已
+// 從選單移除（背光焊死 3.3V 無可控 GPIO，見 ui_settings.h 游標常數區），這個值
+// 只反映 NVS 內容，不對應任何實際硬體行為。
 static uint8_t s_brightness = SETTINGS_BRIGHTNESS_DEFAULT;
 
-// 目前系統音量值（開機預設，從 settings_state 讀取）
+// 目前系統音量值（開機預設，從 settings_state 讀取）。0 = 關 / 1 = 開。
 static uint8_t s_system_volume = SETTINGS_VOLUME_DEFAULT;
 
-// 目前通氣音量值（開機預設，從 settings_state 讀取）
-static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
+// 註：原 s_vent_volume 已於 2026-09-06 移除，理由見 ui_settings.h 中
+//   getVentVolume()/setVentVolume() 原處的說明（通氣音量的唯一真相是
+//   app_globals.h 的 ventVolume 全域；本檔這份副本只有設定選單在讀寫，
+//   節奏邏輯讀的是另一個，兩者從未同步）。
 
 // X 座標：文字左邊距。對齊 drawMainMenu()（src/ui_screens.cpp）的 MENU_TEXT_PAD，
 // 兩個選單視覺對齊一致。
@@ -64,10 +68,15 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 // 字型大小（pt）
 #define SETTINGS_FONT_SIZE       2
 
-// 緩衝區大小
-#define SETTINGS_VALUE_BUF_SIZE  8
-#define SETTINGS_RANGE_BUF_SIZE 16
-#define SETTINGS_PAGE_BUF_SIZE   8   // 頁碼指示緩衝區（如 "8/8\0"，8 項選單最長 3 字元）
+// 緩衝區大小（原 SETTINGS_VALUE_BUF_SIZE / SETTINGS_RANGE_BUF_SIZE 隨數值版
+// 編輯器 drawSettingEditor 一併移除——開/關編輯器畫的是固定字串，不需格式化）
+#define SETTINGS_PAGE_BUF_SIZE   8   // 頁碼指示緩衝區（如 "7/7\0"，7 項選單最長 3 字元）
+
+// 開/關編輯器的操作提示文字（「開」「關」兩個字本身定義在 ui_settings.h，
+// 與通氣畫面共用，見 settingsToggleLabel()）。抽成常數而非散在函式內：這些
+// 中文字是 scripts/regen_vlw.sh 掃描字型子集的來源，漏進字集會在實機上顯示
+// ▯，而 native test 與編譯都不會報錯。
+#define SETTINGS_TOGGLE_HINT_TEXT  "上下鍵切換"
 
 // 游標高亮矩形寬度：滿版寬度，對齊 drawMainMenu() 選取列樣式（不再是只涵蓋
 // 文字區域的小方塊）
@@ -84,8 +93,16 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
 // 造成白底白字（若再改高亮列高，此定義自動跟著調整，不會重演同一個 bug）
 #define SETTINGS_CONFIRM_Y_OFFSET  (SETTINGS_CURSOR_HEIGHT + 4)
 
-// 項目值（如裝置名稱）相對於標籤起點的 X 偏移，讓「標籤　值」對齊成兩欄
-#define SETTINGS_VALUE_X_OFFSET  70
+// 項目值（如裝置名稱）相對於標籤起點的 X 偏移，讓「標籤 值」同列並排。
+// 目前唯一用途是「裝置名稱」列把當前名稱（空值時為「未命名」）畫在標籤右側。
+// 推導：標籤「裝置名稱」為 4 個全形中文字，中文 vlw 基準 24px（ems_zh_24.vlw）
+//   ×本選單縮放 1.1（SETTINGS_FONT_SIZE 2 × SETTINGS_TEXT_SCALE_PER_UNIT 0.55，
+//   見 main.cpp _settings_text_fn）≈ 26px/字，4 字 ≈ 104px；再加約一個字寬的
+//   間隔（「右邊空一格」）≈ 120。
+// 舊值 70 會讓值畫在 x=94（=SETTINGS_MENU_X 24 + 70），但標籤右緣約在 x=130，
+//   值直接壓在標籤上 → 這就是「位子不太對」。此值仍是估算（無 textWidth 可量、
+//   vlw 為變寬字），實機上以截圖微調為準。
+#define SETTINGS_VALUE_X_OFFSET  120
 
 // 頁碼指示 X 座標：靠右上角，對齊 drawMainMenu() BT 圖示的右側留白風格
 #define SETTINGS_PAGE_INDICATOR_X  (SETTINGS_SCREEN_W - 60)
@@ -101,7 +118,7 @@ static uint8_t s_vent_volume = SETTINGS_VENT_VOLUME_DEFAULT;
  * 按鍵分派邏輯的事（BTN_PRIMARY 依 cursor 範圍決定要不要進編輯模式），與這份版面
  * 資料無關，故意不放進這個 struct。
  *
- * Y 座標不存在這張表裡（Impl-Phase G 捲動重構前是查表填死的絕對座標）——8 項要
+ * Y 座標不存在這張表裡（Impl-Phase G 捲動重構前是查表填死的絕對座標）——7 項要
  * 捲動顯示，某一項畫在螢幕哪個 Y 完全取決於它目前落在捲動視窗內的第幾格，是
  * drawSettingsMenu() STEP 03 迴圈當下算的，不是這張表的靜態屬性。
  */
@@ -114,8 +131,8 @@ typedef struct {
  * 完整選單清單，順序對齊 SoT V1 §19.1。
  *
  * 裝置名稱（cursor 0）納入同一張表、同一套捲動迴圈——Impl-Phase G 捲動重構前它是
- * 獨立於這張表外、固定畫在 Y=30 的特例。8 項全部要能捲動，若裝置名稱不跟著捲會
- * 變成「7 項可捲動 + 1 項永遠釘在頂端」，跟既有歷史紀錄清單的捲動方式不一致，
+ * 獨立於這張表外、固定畫在 Y=30 的特例。7 項全部要能捲動，若裝置名稱不跟著捲會
+ * 變成「6 項可捲動 + 1 項永遠釘在頂端」，跟既有歷史紀錄清單的捲動方式不一致，
  * 游標邏輯也會分裂成兩套。裝置名稱的鎖定/置灰渲染邏輯（見 STEP 03.03）內容不變，
  * 只是不再保證畫在固定 Y——見 docs/superpowers/specs/2026-09-01-phase-g-device-info-design.md §3.3。
  *
@@ -128,7 +145,8 @@ typedef struct {
  */
 static const settings_menu_item_t kSettingsMenuItems[] = {
     { SETTINGS_CURSOR_DEVICE_NAME,  "裝置名稱" },      // 特例渲染，見 STEP 03.03
-    { SETTINGS_CURSOR_BRIGHTNESS,   "螢幕亮度" },
+    // 註：原「螢幕亮度」列已於 2026-09-06 移除（背光焊死 3.3V、無可控 GPIO，
+    //     韌體改不動亮度，留著只會誤導），見 ui_settings.h 游標常數區說明。
     { SETTINGS_CURSOR_SYSTEM_VOL,   "系統音量" },
     { SETTINGS_CURSOR_VENT_VOL,     "通氣音量" },
     { SETTINGS_CURSOR_BATTERY_INFO, "電池資訊" },
@@ -150,12 +168,12 @@ static const settings_menu_item_t kSettingsMenuItems[] = {
 static_assert(SETTINGS_MENU_ITEM_COUNT == SETTINGS_MENU_COUNT,
     "kSettingsMenuItems 列數變動時要同步更新 SETTINGS_MENU_COUNT（wrap-around 用）");
 
-// 選單項目之間的垂直間距（px）。對齊 drawMainMenu() 的 MENU_ROW_H，8 項時
+// 選單項目之間的垂直間距（px）。對齊 drawMainMenu() 的 MENU_ROW_H，7 項時
 // 一頁只顯示 SETTINGS_VISIBLE_ROWS（5）項，超出視窗的項目捲動後才看得到。
 #define SETTINGS_ROW_SPACING 36
 
 /**
-  * 設定主選單畫面（Impl-Phase G：SoT §19.1 完整 8 項，捲動顯示一頁 5 項）
+  * 設定主選單畫面（SoT §19.1 八項扣除 2026-09-06 移除的螢幕亮度＝7 項，捲動顯示一頁 5 項）
   *
   * 預設參數宣告於 ui_settings.h，此處不重複。
   *
@@ -168,8 +186,9 @@ static_assert(SETTINGS_MENU_ITEM_COUNT == SETTINGS_MENU_COUNT,
  void drawSettingsMenu(Display& disp, uint8_t cursor, uint16_t scroll_offset,
                        bool device_name_locked, bool restore_confirm) {
      // STEP 01: 讀取裝置名稱（ESP32: LittleFS / native: mock FS）
-     //   注意：此處不得重設 s_brightness——開機時 main.cpp setup() 已用 NVS 值灌入，
-     //   在每次重繪時覆寫回預設值會靜默丟掉使用者剛調好的亮度。
+     //   注意：此處不得重設 s_system_volume／s_brightness——開機時 main.cpp
+     //   setup() 已用 NVS 值灌入，在每次重繪時覆寫回預設值會靜默丟掉使用者
+     //   剛調好的設定（原始 regression 發生在亮度上，見 test_g15）。
 #ifdef ARDUINO
      settings_get_device_name(s_device_name, sizeof(s_device_name));
 #else
@@ -234,7 +253,7 @@ static_assert(SETTINGS_MENU_ITEM_COUNT == SETTINGS_MENU_COUNT,
              continue;
          }
 
-         // STEP 03.04: 其餘項目（可調值 3 項 + 導覽項 4 項）— 版面與行為一致。
+         // STEP 03.04: 其餘項目（可調值 2 項 + 導覽項 4 項）— 版面與行為一致。
          //   選取列文字反白（黑字疊白底），對齊 drawMainMenu()。fix round 1 曾在
          //   Task 12 這樣做但那時高亮框只有 80×20、蓋不住整個文字，反白後大部分
          //   文字變黑字疊黑底更難看，已撤銷；2026-09-05 把高亮框改滿版寬度後
@@ -253,14 +272,14 @@ static_assert(SETTINGS_MENU_ITEM_COUNT == SETTINGS_MENU_COUNT,
         disp.text("是否恢復預設設定？", SETTINGS_MENU_X, SETTINGS_ITEM4_Y + SETTINGS_CONFIRM_Y_OFFSET, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
     }
 
-    // STEP 05: 捲動頁碼指示（游標位置/總項目數）——8 項僅顯示 5 項時，讓使用者
+    // STEP 05: 捲動頁碼指示（游標位置/總項目數）——7 項僅顯示 5 項時，讓使用者
     //   知道選單還能往下捲，否則捲出視窗外的項目容易被誤以為選單只有 5 項。
     //   項目數 <= 可見列數時（無需捲動）不顯示，避免多餘資訊。
     if (SETTINGS_MENU_ITEM_COUNT > SETTINGS_VISIBLE_ROWS) {
         // STEP 05.01：static 緩衝——disp.text() 的 mock 實作只存字串指標不複製
-        //   內容（native test），函式返回後棧上緩衝區會被覆寫；同檔
-        //   drawSettingEditor() 的 range 緩衝區已用同一手法處理過這個問題，
-        //   這裡沿用。
+        //   內容（native test），函式返回後棧上緩衝區會被覆寫。本檔曾有第二個
+        //   同型緩衝（已移除的 drawSettingEditor() 內的 range 字串），現在只剩
+        //   這一處；任何要傳給 disp.text() 的格式化字串都必須比呼叫活得久。
         static char page_buf[SETTINGS_PAGE_BUF_SIZE];
         // STEP 05.02：格式化「游標位置/總項目數」（1-indexed，符合使用者直覺）
         snprintf(page_buf, sizeof(page_buf), "%u/%u",
@@ -271,31 +290,33 @@ static_assert(SETTINGS_MENU_ITEM_COUNT == SETTINGS_MENU_COUNT,
 }
 
 // ============================================================
-//  drawSettingEditor：設定值編輯器
+//  drawToggleEditor：開/關切換編輯器
 // ============================================================
 
+// 註：原 drawSettingEditor(disp, title, value, min, max) 已於 2026-09-06 移除。
+//   選單上僅存的兩個可調設定（系統音量／通氣音量）都改成開/關兩態，主動式蜂鳴器
+//   沒有任何可調的音量級距，數值版編輯器（印出「3」與「1 ~ 5」）再無呼叫點，
+//   留著只會讓人以為還有數值調整這條路。
+
 /**
- * 設定子畫面（亮度/音量調整）
+ * 設定子畫面：開/關切換編輯器
  *
  * @param disp    顯示抽象層
- * @param title   設定名稱（「螢幕亮度」等）
- * @param value   當前值
- * @param min     最小值
- * @param max     最大值
+ * @param title   設定名稱（「系統音量」／「通氣音量」）
+ * @param enabled 目前狀態（true = 開，false = 關）
  */
-void drawSettingEditor(Display& disp, const char* title, uint8_t value, uint8_t min, uint8_t max) {
+void drawToggleEditor(Display& disp, const char* title, bool enabled) {
     // STEP 01: 繪製標題
     disp.text(title, SETTINGS_MENU_X, SETTINGS_TITLE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-    // STEP 02: 繪製當前值
-    char buf[SETTINGS_VALUE_BUF_SIZE];
-    snprintf(buf, sizeof(buf), "%d", value);
-    disp.text(buf, SETTINGS_MENU_X, SETTINGS_VALUE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+    // STEP 02: 繪製當前狀態（開/關）
+    disp.text(settingsToggleLabel(enabled),
+              SETTINGS_MENU_X, SETTINGS_VALUE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
 
-    // STEP 03: 繪製範圍提示
-    static char range[SETTINGS_RANGE_BUF_SIZE];
-    snprintf(range, sizeof(range), "%d ~ %d", min, max);
-    disp.text(range, SETTINGS_MENU_X, SETTINGS_RANGE_Y, SETTINGS_FONT_SIZE, SETTINGS_COLOR_WHITE);
+    // STEP 03: 繪製操作提示（取代數值版的「min ~ max」範圍提示）——兩態設定沒有
+    //   範圍可言，使用者需要知道的是「怎麼切換」
+    disp.text(SETTINGS_TOGGLE_HINT_TEXT, SETTINGS_MENU_X, SETTINGS_RANGE_Y,
+              SETTINGS_FONT_SIZE, SETTINGS_COLOR_DIM);
 }
 
 // ============================================================
@@ -319,14 +340,6 @@ uint8_t getSystemVolume() {
 }
 
 /**
- * 取得目前通氣音量值
- * @return 通氣音量值
- */
-uint8_t getVentVolume() {
-    return s_vent_volume;
-}
-
-/**
  * 設定亮度值
  * @param value 亮度值
  */
@@ -336,18 +349,10 @@ void setBrightness(uint8_t value) {
 
 /**
  * 設定系統音量值
- * @param value 系統音量值
+ * @param value 系統音量值（0 = 關 / 1 = 開）
  */
 void setSystemVolume(uint8_t value) {
     s_system_volume = value;
-}
-
-/**
- * 設定通氣音量值
- * @param value 通氣音量值
- */
-void setVentVolume(uint8_t value) {
-    s_vent_volume = value;
 }
 
 // 註：原 confirmRestoreDefaults() 已移除——它未在 header 宣告、全 repo 無呼叫點，
@@ -356,7 +361,7 @@ void setVentVolume(uint8_t value) {
 //   原 test_g15 宣稱測它，實際只是讀到 static 變數初值，刪掉該函式測試照樣會過。
 
 /**
-  * 取消恢復預設（亮度/系統音量/通氣音量→不變更）
+  * 取消恢復預設（設定值→不變更）
   * @return true 成功
   */
  bool cancelRestore() {

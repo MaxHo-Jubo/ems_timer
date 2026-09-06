@@ -4,9 +4,9 @@
 //
 // 設計：
 //   - drawSettingsMenu(Display&, cursor, scroll_offset, device_name_locked,
-//     restore_confirm)：繪製設定主選單（8 項目，捲動顯示一頁 5 項）。五個
+//     restore_confirm)：繪製設定主選單（7 項目，捲動顯示一頁 5 項）。五個
 //     參數皆無預設值、呼叫端必須明確傳入，理由見該函式宣告的 @param cursor。
-//   - drawSettingEditor(Display&, ...)：繪製設定編輯器
+//   - drawToggleEditor(Display&, title, enabled)：繪製開/關切換編輯器
 //   - 使用 Display 抽象層（display_abstraction.h），native test 可 mock
 
 #pragma once
@@ -21,29 +21,33 @@
 // kSettingsMenuItems[]〔ui_settings.cpp〕；下方的
 // SETTINGS_MENU_COUNT〔本檔，wrap-around 用，漏改會被 static_assert 擋下來〕；
 // 可調值項目還要動 BTN_PRIMARY 的判斷範圍〔input_handler.cpp〕）。
+// 註（2026-09-06 工程決策 1）：原 SETTINGS_CURSOR_BRIGHTNESS（值 1）已移除，其後
+// 各項一律往前遞補一號。根因是背光（BL）焊死在 3.3V 常亮、沒接任何可控 GPIO
+// （原規劃的 GPIO 1 已被 TFT DC 佔走），setBrightness() 只更新 s_brightness、
+// 沒有任何 PWM 驅動硬體，選單留著只會讓使用者調了卻沒反應。NVS 欄位與
+// getBrightness()／setBrightness() 保留（見本檔下方該兩個宣告的說明）。
 #define SETTINGS_CURSOR_DEVICE_NAME  0
-#define SETTINGS_CURSOR_BRIGHTNESS   1
-#define SETTINGS_CURSOR_SYSTEM_VOL   2
-#define SETTINGS_CURSOR_VENT_VOL     3
+#define SETTINGS_CURSOR_SYSTEM_VOL   1
+#define SETTINGS_CURSOR_VENT_VOL     2
 // Phase H：電池資訊（唯讀導覽項，非可調值）。游標停在此項時按主鍵
 // （input_handler.cpp）進入 drawBatteryInfo() 子畫面，按返回鍵離開，
 // 見 settingsBatteryInfoMode（Task 13 接線，Task 12 只新增選單顯示與 UP/DOWN 捲動）。
-#define SETTINGS_CURSOR_BATTERY_INFO 4
+#define SETTINGS_CURSOR_BATTERY_INFO 3
 // Impl-Phase G：App 連線設定／Type-C 連線（SoT §19.1 選單順序要求的 placeholder，
 // 未來規劃選到後顯示「尚未實作」〔drawPlaceholder()〕，接線在 input_handler.cpp
 // BTN_PRIMARY 分派，見 Task 3；本 task 只佔選單位置，主鍵目前對這兩項無反應）
-#define SETTINGS_CURSOR_APP_CONN     5
-#define SETTINGS_CURSOR_TYPEC_CONN   6
+#define SETTINGS_CURSOR_APP_CONN     4
+#define SETTINGS_CURSOR_TYPEC_CONN   5
 // Impl-Phase G：裝置資訊（唯讀導覽項，比照電池資訊的既有 pattern）
-#define SETTINGS_CURSOR_DEVICE_INFO  7
+#define SETTINGS_CURSOR_DEVICE_INFO  6
 
 // 設定選單項目總數。UP/DOWN 捲動 wrap-around 用（見 wrapSettingsCursor()）。
 // 原本只在 input_handler.cpp 定義，搬到這裡與其他游標常數放一起，native test
 // 才能拿到跟正式路徑同一份常數值，不必在測試裡另外複製一份數字。
-#define SETTINGS_MENU_COUNT 8
+#define SETTINGS_MENU_COUNT 7
 
 // 選單一次可見列數（超過此數量需捲動）。與既有 HISTORY_VISIBLE_ROWS
-// （app_globals.h）同值，維持畫面資訊密度一致；8 項選單一頁顯示其中 5 項。
+// （app_globals.h）同值，維持畫面資訊密度一致；7 項選單一頁顯示其中 5 項。
 #define SETTINGS_VISIBLE_ROWS 5
 
 // UP/DOWN 傳給 wrapSettingsCursor() 的方向增量。具名常數取代呼叫端裸寫 -1/+1，
@@ -111,6 +115,24 @@ inline SettingsCursorScroll advanceSettingsCursorAndScroll(uint8_t cursor, uint1
     return result;
 }
 
+// 開/關兩態設定的顯示字串。設定編輯器（drawToggleEditor）與通氣畫面
+// （ui_screens.cpp drawVentPre / drawVentStandalone）共用同一份——同一個概念在
+// 兩處各寫一份字面值必然分歧，而且這些中文字都要進 .vlw 字型子集
+// （scripts/regen_vlw.sh），集中一處才數得清用到哪些字。
+#define SETTINGS_TOGGLE_ON_TEXT   "開"
+#define SETTINGS_TOGGLE_OFF_TEXT  "關"
+
+/**
+ * 取得開/關狀態的顯示字串。
+ *
+ * @param enabled true = 開，false = 關
+ * @return 對應的顯示字串（字面值，呼叫端不需複製或釋放）
+ */
+inline const char* settingsToggleLabel(bool enabled) {
+    // STEP 01: 依狀態回傳對應的顯示字串（兩者都是字面值，生命週期同程式）
+    return enabled ? SETTINGS_TOGGLE_ON_TEXT : SETTINGS_TOGGLE_OFF_TEXT;
+}
+
 // 文字顏色（RGB565）。定義於此供 native test 驗證「置灰 vs 正常」的實際繪製顏色，
 // 否則測試只能斷言「有畫出文字」，無法分辨置灰與否。
 #define SETTINGS_COLOR_WHITE  0xFFFF
@@ -127,8 +149,8 @@ inline SettingsCursorScroll advanceSettingsCursorAndScroll(uint8_t cursor, uint1
 
 /**
   * 設定主選單畫面
-  * 項目：裝置名稱 / 螢幕亮度 / 系統音量 / 通氣音量 / 電池資訊 / App連線設定 /
-  *       Type-C連線 / 裝置資訊（Impl-Phase G 擴充至 SoT §19.1 完整 8 項）
+  * 項目：裝置名稱 / 系統音量 / 通氣音量 / 電池資訊 / App連線設定 /
+  *       Type-C連線 / 裝置資訊（SoT §19.1 八項扣除 2026-09-06 移除的螢幕亮度＝7 項）
   *
   * @param disp   顯示抽象層（mock 或真實顯示）
   * @param cursor 游標索引（SETTINGS_CURSOR_*）——不提供預設值，呼叫端必須明確
@@ -162,54 +184,67 @@ inline SettingsCursorScroll advanceSettingsCursorAndScroll(uint8_t cursor, uint1
                        bool restore_confirm);
 
 /**
- * 設定子畫面（亮度/音量調整）
+ * 設定子畫面：開/關切換編輯器。
+ *
+ * 取代原本的數值編輯器 drawSettingEditor(disp, title, value, min, max)——2026-09-06
+ * 之後選單上僅存的兩個可調設定（系統音量／通氣音量）都是開/關兩態，蜂鳴器是主動式、
+ * 只有 digitalWrite 開關可控，沒有任何數值級距可調，數值版編輯器因此再無呼叫點。
  *
  * @param disp    顯示抽象層
- * @param title   設定名稱（「螢幕亮度」等）
- * @param value   當前值
- * @param min     最小值
- * @param max     最大值
+ * @param title   設定名稱（「系統音量」／「通氣音量」）
+ * @param enabled 目前狀態（true = 開，false = 關）
  */
-void drawSettingEditor(Display& disp, const char* title, uint8_t value, uint8_t min, uint8_t max);
+void drawToggleEditor(Display& disp, const char* title, bool enabled);
 
 /**
- * 取得目前亮度值（測試用）
+ * 取得目前亮度值。
+ *
+ * 2026-09-06 起「螢幕亮度」已從設定選單移除（背光焊死 3.3V，無可控 GPIO，
+ * 見本檔上方游標常數區的說明），此 getter 在正式路徑上已無讀取者，只剩
+ * NVS 值的保存與 native test 使用；保留是為了未來接上可控背光時不必重建
+ * 整條 NVS→UI 的存取路徑。
+ *
  * @return 亮度值
  */
 uint8_t getBrightness();
 
 /**
- * 取得目前系統音量值（測試用）
- * @return 系統音量值
+ * 取得目前系統音量值。
+ *
+ * 0 = 關 / 1 = 開（2026-09-06 起為兩態，見 ems_settings.h）。UI 確認音以此
+ * 為 gate（input_handler.cpp uiConfirmBeep()）；危急警報不看這個值。
+ *
+ * @return 系統音量值（0 或 1）
  */
 uint8_t getSystemVolume();
 
-/**
- * 取得目前通氣音量值（測試用）
- * @return 通氣音量值
- */
-uint8_t getVentVolume();
+// 註：原 getVentVolume() / setVentVolume() / s_vent_volume 已於 2026-09-06 移除。
+//   通氣音量的唯一 runtime 真相是 app_globals.h 的 ventVolume 全域——通氣畫面的
+//   UP/DOWN 與 decideVentOutput() 用的都是它。本 lib 這份副本只有設定選單這條路
+//   在讀寫（編輯器畫面顯示的就是它），節奏邏輯從來沒讀過，兩者也從未同步：
+//   在設定選單調通氣音量，畫面上的數字會跟著動，實際節奏卻完全不受影響
+//   （2026-09-06 發現）。設定選單改用 input_handler.cpp 內直接讀寫 ventVolume
+//   的 slot getter/setter。
 
 /**
- * 設定亮度值（測試用）
+ * 設定亮度值。
+ *
+ * 選單移除後仍有兩個呼叫點：開機時把 NVS 值灌入（main.cpp setup()）與恢復
+ * 預設（input_handler.cpp）。兩者都只是讓 s_brightness 與 NVS 保持一致，
+ * 不會改變實際背光——理由同 getBrightness() 的說明。
+ *
  * @param value 亮度值
  */
 void setBrightness(uint8_t value);
 
 /**
- * 設定系統音量值（測試用）
- * @param value 系統音量值
+ * 設定系統音量值。
+ * @param value 系統音量值（0 = 關 / 1 = 開）
  */
 void setSystemVolume(uint8_t value);
 
 /**
- * 設定通氣音量值（測試用）
- * @param value 通氣音量值
- */
-void setVentVolume(uint8_t value);
-
-/**
-  * 取消恢復預設（亮度/系統音量/通氣音量→不變更）
+  * 取消恢復預設（設定值→不變更）
   * @return true 成功
   */
  bool cancelRestore();

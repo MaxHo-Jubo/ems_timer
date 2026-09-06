@@ -513,6 +513,12 @@ extern uint8_t summarySubmenuCursor;
 extern uint16_t timelineScrollOffset;
 
 // Phase C
+// ventVolume：通氣音量的**唯一** runtime 真相（0 = 關 / 1 = 開）。三個入口共用同一份：
+//   ① 開機由 NVS 灌入（main.cpp setup）②「系統設定 → 通氣音量」（input_handler.cpp
+//   的 kSettingsSlots，改值時一併寫回 NVS）③ 通氣畫面上/下鍵即時切換。
+//   2026-09-06 前 ② 走的是 ui_settings.cpp 內另一份副本（只有設定選單畫面在讀寫），
+//   跟這個值從未同步，導致設定選單調通氣音量畫面有反應、對節奏卻毫無作用；那份副本
+//   已移除，不要再新增第二份鏡像。三個入口的寫入都會持久化到 NVS。
 extern uint8_t  ventVolume;
 extern uint32_t ventStartMs;
 extern uint32_t ventPrevSinceMs;
@@ -534,13 +540,14 @@ extern uint16_t summaryScrollOffset;
 extern FlashState flashState;
 
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp，操作於 input_handler.cpp）
-extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，Impl-Phase G
-                                       //   擴充至 SoT §19.1 完整 8 項；input_handler.cpp 的
-                                       //   BTN_PRIMARY 分派已涵蓋 cursor 0~7（Task 3 補齊 5~7：
-                                       //   App連線設定／Type-C連線／裝置資訊）
+extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~6：SoT §19.1
+                                       //   八項扣除 2026-09-06 移除的螢幕亮度；input_handler.cpp
+                                       //   的 BTN_PRIMARY 分派已涵蓋 cursor 0~6，含 App連線設定／
+                                       //   Type-C連線／裝置資訊）
 extern uint16_t settingsScrollOffset; // 設定選單捲動視窗起點，跟 settingsCursor 成對更新（UP/DOWN
                                        //   時一起算，見 input_handler.cpp），不單獨重設
-extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
+extern bool    settingsEditorMode;    // true = 開/關切換編輯模式（UP/DOWN 切換；硬體無左右鍵，
+                                       //   2026-09-06 起兩個可調設定都是開/關兩態，非數值級距）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
 extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中

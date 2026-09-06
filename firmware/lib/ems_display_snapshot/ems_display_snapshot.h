@@ -52,12 +52,12 @@ struct DisplaySnapshot {
     uint8_t  trainingHistoryOptionsCursor; ///< W7：Training 歷史操作選單游標
     uint8_t  trainingSaveCursor;  ///< W5：Training 保存/不保存游標（0=保存 / 1=不保存）
     uint8_t  storageFailure;    ///< W9：儲存失敗（0=無 / 1=OHCA 失敗 / 2=Training 失敗）
-    uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，
-                                 ///< SoT §19.1 完整 8 項；cursor 5~7 尚未接線 BTN_PRIMARY 分派，見 Task 3）
+    uint8_t  settingsCursor;    ///< Phase G：系統設定選單游標（SETTINGS_CURSOR_*，範圍 0~6：
+                                 ///< SoT §19.1 八項扣除 2026-09-06 移除的螢幕亮度）
     uint16_t settingsScrollOffset; ///< Phase G：設定選單捲動視窗起點；漏此欄位會讓捲動後的
                                     ///< 選單畫面不重繪（同 historyScrollOffset 的既有 pattern）
-    uint8_t  settingsEditorValue; ///< Impl-Phase G：編輯畫面當前顯示的數值（亮度/系統音量/通氣音量
-                                    ///< 三者共用一個欄位，同時只會有一個編輯畫面顯示中）；漏此欄位會讓
+    uint8_t  settingsEditorValue; ///< Impl-Phase G：編輯畫面當前顯示的數值（系統音量/通氣音量
+                                    ///< 兩者共用一個欄位，同時只會有一個編輯畫面顯示中）；漏此欄位會讓
                                     ///< UP/DOWN 調整後畫面停留在舊數值不重繪（settingsCursor/
                                     ///< settingsEditorMode 皆不變，同型 bug）
     uint8_t  batteryPercent;     ///< Phase H：電量 0~100；255 = 燃料計不在線（0 是合法讀數，不可共用）

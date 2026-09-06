@@ -63,7 +63,7 @@ static void test_compute_beat_at_2000_is_beat_3() {
 
 /** 從 0→0 視為剛啟動，無 buzz（避免初始化誤觸發） */
 static void test_decide_init_state_no_buzz() {
-    vent_output_t o = decideVentOutput(0, 0, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(0, 0, /*vol*/ 1);
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_FALSE(o.buzz_short);
     TEST_ASSERT_TRUE (o.led_red_flash);      // BEAT_1 視覺仍維持
@@ -73,7 +73,7 @@ static void test_decide_init_state_no_buzz() {
 
 /** 0→1（剛啟動的第一個推進 tick）→ 仍 BEAT_1 內，無新 buzz（不誤觸發） */
 static void test_decide_first_tick_no_double_emphasis() {
-    vent_output_t o = decideVentOutput(0, 1, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(0, 1, /*vol*/ 1);
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_FALSE(o.buzz_short);
     TEST_ASSERT_TRUE (o.led_red_flash);
@@ -82,7 +82,7 @@ static void test_decide_first_tick_no_double_emphasis() {
 
 /** 0→500（仍 BEAT_1，無邊緣）→ 不應再 emphasis */
 static void test_decide_within_beat_1_no_buzz() {
-    vent_output_t o = decideVentOutput(0, 500, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(0, 500, /*vol*/ 1);
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_FALSE(o.buzz_short);
     TEST_ASSERT_TRUE (o.led_red_flash);
@@ -92,7 +92,7 @@ static void test_decide_within_beat_1_no_buzz() {
 
 /** 999→1000（跨 BEAT_1→BEAT_2 邊界）→ 觸發 buzz_short */
 static void test_decide_crossing_to_beat_2_triggers_short() {
-    vent_output_t o = decideVentOutput(999, 1000, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(999, 1000, /*vol*/ 1);
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_TRUE (o.buzz_short);
     TEST_ASSERT_FALSE(o.led_red_flash);
@@ -102,7 +102,7 @@ static void test_decide_crossing_to_beat_2_triggers_short() {
 
 /** 1000→1500（仍 BEAT_2，無邊緣）→ 無 buzz */
 static void test_decide_within_beat_2_no_buzz() {
-    vent_output_t o = decideVentOutput(1000, 1500, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(1000, 1500, /*vol*/ 1);
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_FALSE(o.buzz_short);
     TEST_ASSERT_EQUAL_UINT8(2, o.display_number);
@@ -110,7 +110,7 @@ static void test_decide_within_beat_2_no_buzz() {
 
 /** 5999→6000（跨 BEAT_6→BEAT_1，新循環）→ 觸發 buzz_emphasis */
 static void test_decide_crossing_cycle_triggers_emphasis() {
-    vent_output_t o = decideVentOutput(5999, 6000, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(5999, 6000, /*vol*/ 1);
     TEST_ASSERT_TRUE (o.buzz_emphasis);
     TEST_ASSERT_FALSE(o.buzz_short);
     TEST_ASSERT_TRUE (o.led_red_flash);
@@ -120,7 +120,7 @@ static void test_decide_crossing_cycle_triggers_emphasis() {
 
 /** 跨 BEAT_2→BEAT_3 → 觸發 buzz_short，display=3 */
 static void test_decide_crossing_to_beat_3() {
-    vent_output_t o = decideVentOutput(1999, 2000, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(1999, 2000, /*vol*/ 1);
     TEST_ASSERT_TRUE (o.buzz_short);
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_EQUAL_UINT8(3, o.display_number);
@@ -150,7 +150,7 @@ static void test_volume_0_short_off_no_visuals() {
     TEST_ASSERT_EQUAL_UINT8(2, o.display_number);
 }
 
-/** volume=5 + 跨 BEAT_1 → 全部觸發 */
+/** volume=1（開，2026-09-06 起的最大值）+ 跨 BEAT_1 → 全部觸發 */
 static void test_volume_max_emphasis_triggered() {
     vent_output_t o = decideVentOutput(5999, 6000, VENT_VOLUME_MAX);
     TEST_ASSERT_TRUE(o.buzz_emphasis);
@@ -164,7 +164,7 @@ static void test_volume_max_emphasis_triggered() {
 
 /** 第 2 個循環 BEAT_1 → 與第 1 個循環一致 */
 static void test_decide_second_cycle_beat_1_same_behavior() {
-    vent_output_t o = decideVentOutput(11999, 12000, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(11999, 12000, /*vol*/ 1);
     TEST_ASSERT_TRUE (o.buzz_emphasis);
     TEST_ASSERT_TRUE (o.screen_invert_red);
     TEST_ASSERT_EQUAL_UINT8(1, o.display_number);
@@ -172,7 +172,7 @@ static void test_decide_second_cycle_beat_1_same_behavior() {
 
 /** 第 3 個循環 BEAT_3 */
 static void test_decide_third_cycle_beat_3() {
-    vent_output_t o = decideVentOutput(13999, 14000, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(13999, 14000, /*vol*/ 1);
     TEST_ASSERT_TRUE (o.buzz_short);
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_EQUAL_UINT8(3, o.display_number);
@@ -182,26 +182,31 @@ static void test_decide_third_cycle_beat_3() {
 //  Group 5: clampVentVolume 邊界
 // ============================================================
 
+// 2026-09-06：通氣音量改為開/關兩態（0/1），原本 0~5 的 clamp 邊界隨之改變。
+// 期望值一律寫死字面值，不引用 VENT_VOLUME_MIN/MAX——引用常數的話，常數被改錯
+// 時 clamp 與斷言會同步跟著錯，測試照樣全綠（見 memory feedback_test_assert_not_same_symbol）。
+
+/** clamp 下界：0（關）原樣通過 */
 static void test_clamp_volume_min_zero() {
     TEST_ASSERT_EQUAL_UINT8(0, clampVentVolume(0));
 }
 
-static void test_clamp_volume_max_5() {
-    TEST_ASSERT_EQUAL_UINT8(5, clampVentVolume(5));
+/** clamp 上界：1（開）原樣通過 */
+static void test_clamp_volume_max_one() {
+    TEST_ASSERT_EQUAL_UINT8(1, clampVentVolume(1));
 }
 
+/** 負值 → clamp 回下界 0 */
 static void test_clamp_volume_negative_to_min() {
     TEST_ASSERT_EQUAL_UINT8(0, clampVentVolume(-1));
     TEST_ASSERT_EQUAL_UINT8(0, clampVentVolume(-100));
 }
 
-static void test_clamp_volume_above_max_to_5() {
-    TEST_ASSERT_EQUAL_UINT8(5, clampVentVolume(6));
-    TEST_ASSERT_EQUAL_UINT8(5, clampVentVolume(255));
-}
-
-static void test_clamp_volume_mid_value_passthrough() {
-    TEST_ASSERT_EQUAL_UINT8(3, clampVentVolume(3));
+/** 超出上界（含舊值域的 3、5）→ clamp 回 1，不得放行成 2 以上 */
+static void test_clamp_volume_above_max_to_one() {
+    TEST_ASSERT_EQUAL_UINT8(1, clampVentVolume(2));
+    TEST_ASSERT_EQUAL_UINT8(1, clampVentVolume(5));
+    TEST_ASSERT_EQUAL_UINT8(1, clampVentVolume(255));
 }
 
 // ============================================================
@@ -211,13 +216,13 @@ static void test_clamp_volume_mid_value_passthrough() {
 /** BEAT_2 內連續 3 個 tick → 只第一個 tick 觸發 buzz */
 static void test_continuous_ticks_within_beat_only_first_buzzes() {
     // tick 1: 999 → 1000 (BEAT_1 → BEAT_2，跨界，觸發)
-    vent_output_t a = decideVentOutput(999, 1000, /*vol*/ 3);
+    vent_output_t a = decideVentOutput(999, 1000, /*vol*/ 1);
     TEST_ASSERT_TRUE(a.buzz_short);
     // tick 2: 1000 → 1200 (仍 BEAT_2，無跨界)
-    vent_output_t b = decideVentOutput(1000, 1200, /*vol*/ 3);
+    vent_output_t b = decideVentOutput(1000, 1200, /*vol*/ 1);
     TEST_ASSERT_FALSE(b.buzz_short);
     // tick 3: 1200 → 1800 (仍 BEAT_2)
-    vent_output_t c = decideVentOutput(1200, 1800, /*vol*/ 3);
+    vent_output_t c = decideVentOutput(1200, 1800, /*vol*/ 1);
     TEST_ASSERT_FALSE(c.buzz_short);
 }
 
@@ -229,7 +234,7 @@ static void test_continuous_ticks_within_beat_only_first_buzzes() {
 static void test_decide_handles_uint32_rollover() {
     // 假設 prev_since 跟 since_start 都已是 mod 後的數字
     // 不應該有問題，因為 since_start 直接決定 beat
-    vent_output_t o = decideVentOutput(0xFFFFFFFEu, 0xFFFFFFFFu, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(0xFFFFFFFEu, 0xFFFFFFFFu, /*vol*/ 1);
     // 0xFFFFFFFE / 1000 = 4294967, 4294967 % 6 = 5 → BEAT_6
     // 0xFFFFFFFF / 1000 = 4294967, 4294967 % 6 = 5 → BEAT_6（同 beat）
     TEST_ASSERT_EQUAL_UINT8(6, o.display_number);
@@ -243,7 +248,7 @@ static void test_decide_handles_uint32_rollover() {
 
 /** prev=500, since=2500 跨 BEAT_1→BEAT_3（跳了 BEAT_2）→ 仍應觸發 buzz_short on BEAT_3 */
 static void test_skip_beat_still_triggers_buzz_for_landed_beat() {
-    vent_output_t o = decideVentOutput(500, 2500, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(500, 2500, /*vol*/ 1);
     TEST_ASSERT_TRUE (o.buzz_short);          // 落在 BEAT_3 = 短音
     TEST_ASSERT_FALSE(o.buzz_emphasis);
     TEST_ASSERT_EQUAL_UINT8(3, o.display_number);
@@ -251,7 +256,7 @@ static void test_skip_beat_still_triggers_buzz_for_landed_beat() {
 
 /** prev=500, since=6500 跨多 beat 落在 BEAT_1（新循環）→ 應觸發 emphasis */
 static void test_skip_to_new_cycle_triggers_emphasis() {
-    vent_output_t o = decideVentOutput(500, 6500, /*vol*/ 3);
+    vent_output_t o = decideVentOutput(500, 6500, /*vol*/ 1);
     TEST_ASSERT_TRUE (o.buzz_emphasis);
     TEST_ASSERT_FALSE(o.buzz_short);
     TEST_ASSERT_EQUAL_UINT8(1, o.display_number);
@@ -294,10 +299,9 @@ int main(int /*argc*/, char ** /*argv*/) {
 
     // Group 5: clamp
     RUN_TEST(test_clamp_volume_min_zero);
-    RUN_TEST(test_clamp_volume_max_5);
+    RUN_TEST(test_clamp_volume_max_one);
     RUN_TEST(test_clamp_volume_negative_to_min);
-    RUN_TEST(test_clamp_volume_above_max_to_5);
-    RUN_TEST(test_clamp_volume_mid_value_passthrough);
+    RUN_TEST(test_clamp_volume_above_max_to_one);
 
     // Group 6: no-double-trigger
     RUN_TEST(test_continuous_ticks_within_beat_only_first_buzzes);

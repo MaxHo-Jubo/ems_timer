@@ -109,7 +109,9 @@ bool mock_nvs_read(uint8_t* brightness, uint8_t* volume, uint8_t* vent_vol) {
 
 /**
  * settings_init 的 native 版本
- * 邏輯：讀 mock NVS，有資料就用 NVS 值，無資料就 fallback 預設值
+ * 邏輯：讀 mock NVS，有資料就用 NVS 值，無資料就 fallback 預設值。
+ *       兩個音量與 ARDUINO 版一樣要跑舊值域遷移（見 settings_normalize_toggle），
+ *       否則 native test 涵蓋不到「舊裝置升級」這條路徑。
  */
 bool settings_init_mock(settings_state_t* state) {
     uint8_t br, vol, vv;
@@ -117,8 +119,16 @@ bool settings_init_mock(settings_state_t* state) {
 
     if (has_data) {
         state->brightness = br;
-        state->system_volume = vol;
-        state->vent_volume = vv;
+        // 舊值域（1~5）遷移成 0/1，並把結果寫回 mock NVS，語意對齊 ARDUINO 版的
+        // read_toggle_setting_with_migration()——遷移只發生一次
+        state->system_volume = settings_normalize_toggle(vol, SETTINGS_VOLUME_DEFAULT);
+        state->vent_volume = settings_normalize_toggle(vv, SETTINGS_VENT_VOLUME_DEFAULT);
+        if (state->system_volume != vol) {
+            s_mock_nvs[SETTING_KEY_SYSTEM_VOL] = state->system_volume;
+        }
+        if (state->vent_volume != vv) {
+            s_mock_nvs[SETTING_KEY_VENT_VOL] = state->vent_volume;
+        }
     } else {
         state->brightness = SETTINGS_BRIGHTNESS_DEFAULT;
         state->system_volume = SETTINGS_VOLUME_DEFAULT;
@@ -160,7 +170,11 @@ bool settings_write_mock(settings_state_t* state, uint8_t key, uint8_t value) {
         return false;
     }
 
-    // 寫入 state
+    // 先寫 mock NVS 再更新 state，順序對齊 ARDUINO 版的交易式流程（見 settings_write()
+    // STEP 03）。mock 寫入不會失敗，這裡對齊的是語意而非錯誤路徑——兩版流程分歧的話，
+    // native test 驗到的就不是正式路徑的行為。
+    s_mock_nvs[key] = value;
+
     switch (key) {
         case SETTING_KEY_BRIGHTNESS:
             state->brightness = value;
@@ -172,9 +186,6 @@ bool settings_write_mock(settings_state_t* state, uint8_t key, uint8_t value) {
             state->vent_volume = value;
             break;
     }
-
-    // 寫入 mock NVS
-    s_mock_nvs[key] = value;
 
     return true;
 }
@@ -332,10 +343,41 @@ static bool nvs_write_uint8(const char* key, uint8_t val) {
     return true;
 }
 
+/**
+ * 讀一個兩態音量設定並就地完成舊值域遷移。
+ *
+ * 抽成 helper 而非在 settings_init() 內寫兩遍：兩個音量的處理完全相同，複製一份
+ * 等於要求日後改遷移規則的人記得兩處都改（EXTRACT-SHARED-HELPER）。
+ *
+ * @param nvs_key      NVS 欄位鍵名
+ * @param default_val  NVS 無資料或值損壞時採用的預設值
+ * @return             已收進 0/1 的值
+ */
+static uint8_t read_toggle_setting_with_migration(const char* nvs_key, uint8_t default_val) {
+    // STEP 01: 讀原始值（可能是 2026-09-06 前的 1~5 舊值域）
+    uint8_t raw = nvs_read_uint8(nvs_key, default_val);
+
+    // STEP 02: 收進 0/1
+    uint8_t normalized = settings_normalize_toggle(raw, default_val);
+
+    // STEP 03: 值有變動才寫回，讓遷移只發生一次；寫回失敗不阻斷開機（runtime 值
+    //   已經是對的，下次開機會再遷移一次），但要留痕，不能靜默吞掉
+    if (normalized != raw) {
+        Serial.printf("[SETTINGS] migrate \"%s\": %u -> %u（2026-09-06 值域改為 0/1）\n",
+                      nvs_key, (unsigned)raw, (unsigned)normalized);
+        if (!nvs_write_uint8(nvs_key, normalized)) {
+            Serial.printf("[SETTINGS] ERROR 遷移寫回失敗 key=\"%s\"，下次開機會再試\n", nvs_key);
+        }
+    }
+    return normalized;
+}
+
 bool settings_init(settings_state_t* state) {
     state->brightness = nvs_read_uint8(NVS_BRIGHTNESS_KEY, SETTINGS_BRIGHTNESS_DEFAULT);
-    state->system_volume = nvs_read_uint8(NVS_VOLUME_KEY, SETTINGS_VOLUME_DEFAULT);
-    state->vent_volume = nvs_read_uint8(NVS_VENT_VOL_KEY, SETTINGS_VENT_VOLUME_DEFAULT);
+    // 兩個音量 2026-09-06 起值域為 0/1，舊裝置 NVS 存的是 1~5，載入時就要遷移——
+    // 留著舊值會讓「按一次關不掉」（3 → clamp → 1，畫面仍是「開」）
+    state->system_volume = read_toggle_setting_with_migration(NVS_VOLUME_KEY, SETTINGS_VOLUME_DEFAULT);
+    state->vent_volume = read_toggle_setting_with_migration(NVS_VENT_VOL_KEY, SETTINGS_VENT_VOLUME_DEFAULT);
     // 裝置名稱暫由 LittleFS 管理（Phase 2）
     strncpy(state->device_name, DEVICE_NAME_DEFAULT, DEVICE_NAME_MAX_LEN - 1);
     state->device_name[DEVICE_NAME_MAX_LEN - 1] = '\0';
@@ -343,40 +385,62 @@ bool settings_init(settings_state_t* state) {
 }
 
 bool settings_write(settings_state_t* state, uint8_t key, uint8_t value) {
-    // STEP 01: 依 key 決定值域與對應的 NVS 欄位鍵名
+    // STEP 01: 依 key 取出值域與對應的 NVS 欄位鍵名（此步不動 state）
+    uint8_t min_val;
+    uint8_t max_val;
     const char* nvs_key = nullptr;
 
     switch (key) {
         case SETTING_KEY_BRIGHTNESS:
-            // STEP 01.01: 亮度超出 1~5 → 拒絕，不動 state 也不寫 NVS
-            if (value < SETTINGS_BRIGHTNESS_MIN || value > SETTINGS_BRIGHTNESS_MAX) {
-                return false;
-            }
-            state->brightness = value;
+            min_val = SETTINGS_BRIGHTNESS_MIN;
+            max_val = SETTINGS_BRIGHTNESS_MAX;
             nvs_key = NVS_BRIGHTNESS_KEY;
             break;
         case SETTING_KEY_SYSTEM_VOL:
-            // STEP 01.02: 系統音量不可靜音（min=1，V1 §19.4）
-            if (value < SETTINGS_VOLUME_MIN || value > SETTINGS_VOLUME_MAX) {
-                return false;
-            }
-            state->system_volume = value;
+            // 2026-09-06 起 0 = 關（原 V1 §19.4 的「不可靜音」已放寬，見該節工程變更註記）
+            min_val = SETTINGS_VOLUME_MIN;
+            max_val = SETTINGS_VOLUME_MAX;
             nvs_key = NVS_VOLUME_KEY;
             break;
         case SETTING_KEY_VENT_VOL:
-            // STEP 01.03: 通氣音量可靜音（min=0，V1 §19.5）
-            if (value < SETTINGS_VENT_VOLUME_MIN || value > SETTINGS_VENT_VOLUME_MAX) {
-                return false;
-            }
-            state->vent_volume = value;
+            min_val = SETTINGS_VENT_VOLUME_MIN;
+            max_val = SETTINGS_VENT_VOLUME_MAX;
             nvs_key = NVS_VENT_VOL_KEY;
             break;
         default:
             return false;
     }
 
-    // STEP 02: 寫回 NVS 持久化——少了這步，設定只存在 RAM，重開機即丟失
-    return nvs_write_uint8(nvs_key, value);
+    // STEP 02: 值域檢查——超出範圍直接拒絕，state 與 NVS 都不動
+    if (value < min_val || value > max_val) {
+        return false;
+    }
+
+    // STEP 03: 先持久化。順序刻意是「NVS 成功才改 state」而非反過來——寫入失敗時
+    //   若 state 已經改了，呼叫端會拿到一個「這次看起來生效、重開機卻不見」的值，
+    //   而失敗只有一行 Serial log，使用者無從察覺（2026-09-06 codex Tier 3 review
+    //   的 CRITICAL）。通氣音量尤其嚴重：它的 state 直接決定實際會不會發出節奏音。
+    if (!nvs_write_uint8(nvs_key, value)) {
+        return false;
+    }
+
+    // STEP 04: 持久化成功後才更新記憶體狀態，兩者保證一致
+    switch (key) {
+        case SETTING_KEY_BRIGHTNESS:
+            state->brightness = value;
+            break;
+        case SETTING_KEY_SYSTEM_VOL:
+            state->system_volume = value;
+            break;
+        case SETTING_KEY_VENT_VOL:
+            state->vent_volume = value;
+            break;
+        default:
+            // STEP 01 的 switch 已擋掉所有未知 key，這裡不可達；留著讓
+            //   -Wswitch 在未來新增 key 時提醒兩處都要改
+            return false;
+    }
+    return true;
 }
 
 uint8_t settings_read(const settings_state_t* state, uint8_t key) {

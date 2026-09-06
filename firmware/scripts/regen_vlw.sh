@@ -67,6 +67,7 @@ SRC_FILES=(
     src/*_handler.cpp
     src/*_logic.cpp
     lib/ui_settings/ui_settings.cpp
+    lib/ui_settings/ui_settings.h
     lib/ems_settings/ems_settings.h
 )
 # .h 另外處理：排除 ems_zh_24_vlw.h（vlw2header.py 生成的 PROGMEM binary array，
@@ -80,7 +81,7 @@ shopt -u nullglob
 
 if [ ${#SRC_FILES[@]} -eq 0 ]; then
     echo "[error] 沒找到任何來源檔（src/main.cpp / src/ui_*.cpp / src/*_handler.cpp /" >&2
-    echo "        src/*_logic.cpp / src/*.h / lib/ui_settings/ui_settings.cpp /" >&2
+    echo "        src/*_logic.cpp / src/*.h / lib/ui_settings/ui_settings.{cpp,h} /" >&2
     echo "        lib/ems_settings/ems_settings.h）" >&2
     exit 1
 fi

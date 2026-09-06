@@ -1,6 +1,6 @@
 #include "app_globals.h"
 
-// Wave 1：系統設定 UI（brightness/volume getter/setter；含 advanceSettingsCursorAndScroll()
+// Wave 1：系統設定 UI（volume getter/setter；含 advanceSettingsCursorAndScroll()
 // ——settingsScrollOffset 跟 settingsCursor 的成對更新，見下方 BTN_UP/BTN_DOWN 分支）
 #include "ui_settings.h"
 
@@ -17,13 +17,14 @@
 // 一份算式或常數，也不會有機會只更新 cursor／scroll_offset 其中一個。
 
 // Dev-Phase G: 設定 UI 狀態（定義於 main.cpp）
-extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~7，Impl-Phase G
-                                       //   擴充至 SoT §19.1 完整 8 項；本檔 BTN_PRIMARY 分派
-                                       //   已涵蓋 cursor 0~7（Task 3 補齊 5~7：App連線設定／
-                                       //   Type-C連線／裝置資訊）
+extern uint8_t settingsCursor;        // 設定選單游標（SETTINGS_CURSOR_*，範圍 0~6：SoT §19.1
+                                       //   八項扣除 2026-09-06 移除的螢幕亮度；本檔 BTN_PRIMARY
+                                       //   分派已涵蓋 cursor 0~6，含 App連線設定／Type-C連線／
+                                       //   裝置資訊）
 extern uint16_t settingsScrollOffset; // 設定選單捲動視窗起點，跟 settingsCursor 成對更新，
                                        //   見下方 BTN_UP/BTN_DOWN 分支
-extern bool    settingsEditorMode;    // true = 編輯模式（左右鍵調整數值）
+extern bool    settingsEditorMode;    // true = 開/關切換編輯模式（UP/DOWN 切換；硬體無左右鍵，
+                                       //   2026-09-06 起兩個可調設定都是開/關兩態，非數值級距）
 extern bool    settingsRestoreConfirm; // true = 恢復預設確認對話框顯示中
 extern bool    settingsBatteryInfoMode; // Phase H：true = 電池資訊子畫面顯示中（Task 13）
 extern bool    settingsDeviceInfoMode;  // Impl-Phase G：true = 裝置資訊子畫面顯示中
@@ -49,11 +50,108 @@ static void startTrainingCase(uint32_t cycle_ms);
 // 確認後啟動兩處共用，定義見下方
 static void startVentActive();
 
+// UI 操作確認音的蜂鳴參數。原本四個呼叫點各自裸寫 `triggerBeep(1, 80, 0)`，
+// 抽成具名常數與下方 uiConfirmBeep() 一起集中，避免有人只改其中一處。
+#define UI_CONFIRM_BEEP_PULSES  1    // 響一聲
+#define UI_CONFIRM_BEEP_ON_MS  80    // 每聲 80ms
+#define UI_CONFIRM_BEEP_OFF_MS  0    // 單響，無間隔
+
+/**
+ * UI 操作確認音（受系統音量設定 gate）。
+ *
+ * 2026-09-06 新增：在此之前 getSystemVolume() 沒有任何蜂鳴程式碼在讀，設定選單上
+ * 的「系統音量」是純死設定，調它完全不影響任何聲音。四個操作確認音呼叫點
+ * （Amiodarone／補登／EPI／電擊「已紀錄」）改走這裡，讓該設定真的有作用。
+ *
+ * **危急警報絕不得改用本函式**——ALARMING 連續發報（ohca_logic.cpp applyOhcaOutput()
+ * 的 triggerBeep(255, ...)）、EPI 倒數到期的警示音與 6 秒通氣節奏音都是醫療安全
+ * 訊號，不受使用者音量設定影響（通氣節奏另有自己的 ventVolume 開關，那是 SoT
+ * §13.10／§14.6 明定的靜音規則，與本 gate 無關）。
+ *
+ * 靜音時本函式不做任何替代回饋，因為四個呼叫點各自都有視覺回饋：EPI／電擊／
+ * Amiodarone 緊接著呼叫 triggerFlash() 畫全螢幕「已紀錄」提示；補登流程則是切到
+ * SUBSTATE_BACKFILL_SUCCESS 由該子畫面顯示成功。使用者不會因為靜音而失去回饋。
+ */
+static void uiConfirmBeep() {
+    // STEP 01: 系統音量為關時直接返回，不發聲
+    if (!settings_toggle_enabled(getSystemVolume())) {
+        return;
+    }
+    // STEP 02: 發出短確認音，參數與各呼叫點原本內嵌的完全相同
+    triggerBeep(UI_CONFIRM_BEEP_PULSES, UI_CONFIRM_BEEP_ON_MS, UI_CONFIRM_BEEP_OFF_MS);
+}
+
+// 通氣音量的值域常數有兩份：ems_vent_metronome.h 的 VENT_VOLUME_*（節奏邏輯用）
+// 與 ems_settings.h 的 SETTINGS_VENT_VOLUME_*（NVS 值域驗證用）。兩者描述同一件事，
+// 改一邊漏改另一邊會讓設定選單存得進去的值超出節奏邏輯的 clamp 範圍（或反過來），
+// 且沒有任何執行期訊號。本檔是唯一同時 include 兩者的編譯單元，在此鎖住不變量。
+static_assert(VENT_VOLUME_MIN == SETTINGS_VENT_VOLUME_MIN,
+    "ems_vent_metronome.h 與 ems_settings.h 的通氣音量最小值必須一致");
+static_assert(VENT_VOLUME_MAX == SETTINGS_VENT_VOLUME_MAX,
+    "ems_vent_metronome.h 與 ems_settings.h 的通氣音量最大值必須一致");
+static_assert(VENT_VOLUME_DEFAULT == SETTINGS_VENT_VOLUME_DEFAULT,
+    "ems_vent_metronome.h 與 ems_settings.h 的通氣音量預設值必須一致");
+
+/**
+ * 通氣音量的 slot 存取函式（kSettingsSlots 用）。
+ *
+ * 直接讀寫 ventVolume 全域——那是通氣節奏唯一真正消費的值（decideVentOutput()
+ * 的 volume 參數、通氣畫面 UP/DOWN 調的也是它）。2026-09-06 前設定選單走的是
+ * ui_settings.cpp 內另一份 s_vent_volume，跟 ventVolume 從未同步，導致選單上的
+ * 「通氣音量」對實際節奏完全沒有作用；那份副本已移除，這裡是唯一入口。
+ *
+ * @return 目前通氣音量（0 = 關 / 1 = 開）
+ */
+static uint8_t getVentVolumeSetting() {
+    // STEP 01: 直接讀唯一 runtime 真相，不經任何本地副本
+    return ventVolume;
+}
+
+/**
+ * 設定通氣音量（kSettingsSlots 用）。值域由呼叫端 adjustCurrentSetting() 依
+ * slot->min/max clamp 後傳入、持久化也由它負責，本函式不重複 clamp 或寫 NVS。
+ *
+ * @param value 新的通氣音量（0 = 關 / 1 = 開）
+ */
+static void setVentVolumeSetting(uint8_t value) {
+    // STEP 01: 直接寫入唯一 runtime 真相
+    ventVolume = value;
+}
+
+/**
+ * 通氣畫面（VENT_PRE 預覽與執行中）上/下鍵調整通氣音量，clamp 後持久化。
+ *
+ * 抽成 helper 的理由：通氣音量有兩個調整入口——設定選單（走 adjustCurrentSetting()，
+ * 本來就會寫 NVS）與通氣畫面的四個 UP/DOWN 分支。後者原本只改 ventVolume 全域、
+ * 不碰 NVS，於是「在設定選單關掉 → 進通氣畫面打開 → 重開機又變回關」，同一個設定
+ * 依修改入口不同而決定要不要記住（2026-09-06 codex Tier 3 review 的 IMPORTANT）。
+ * SoT §19.5 明定「通氣音量需記憶」，兩個入口都該持久化。四個分支各自 inline 一份
+ * clamp + 寫入必然分歧，故集中在此。
+ *
+ * @param raw 調整後的原始值（可能超出值域，由本函式 clamp）
+ */
+static void setVentVolumeFromVentScreen(int16_t raw) {
+    // STEP 01: clamp 進合法值域（0/1）
+    uint8_t next = clampVentVolume(raw);
+
+    // STEP 02: 值沒變就不寫 NVS——按到值域邊界時每次按鍵都寫一次 flash 沒有意義
+    if (next == ventVolume) {
+        return;
+    }
+
+    // STEP 03: 先持久化，成功才套用；順序與 adjustCurrentSetting() 一致，理由見該處
+    if (!settings_write(&g_settings_state, SETTING_KEY_VENT_VOL, next)) {
+        Serial.printf("[SETTINGS] ERROR 通氣音量寫入失敗 value=%u，設定未變更\n", (unsigned)next);
+        return;
+    }
+    setVentVolumeSetting(next);
+}
+
 /**
  * 一個可調設定的完整描述：游標索引、NVS 鍵、值域、存取函式。
  *
- * 把「亮度/系統音量/通氣音量」這組對應關係集中在一張表，取代原本散在
- * BTN_UP / BTN_DOWN 兩個 switch 共 6 段幾乎逐字相同的程式碼。
+ * 把「系統音量/通氣音量」這組對應關係集中在一張表，取代原本散在
+ * BTN_UP / BTN_DOWN 兩個 switch 幾乎逐字相同的程式碼。
  * 新增可調設定只需在表中加一列。
  */
 typedef struct {
@@ -66,12 +164,14 @@ typedef struct {
 } settings_slot_t;
 
 static const settings_slot_t kSettingsSlots[] = {
-    { SETTINGS_CURSOR_BRIGHTNESS, SETTING_KEY_BRIGHTNESS,
-      SETTINGS_BRIGHTNESS_MIN, SETTINGS_BRIGHTNESS_MAX, getBrightness, setBrightness },
+    // 註：原 SETTINGS_CURSOR_BRIGHTNESS 那一列已於 2026-09-06 移除——螢幕亮度不再
+    //     出現在選單，游標不可能停在它上面，留著這一列等於保留一條不可達的分派。
+    //     NVS 欄位（SETTING_KEY_BRIGHTNESS）與 get/setBrightness() 仍在，見
+    //     ui_settings.h 的說明。
     { SETTINGS_CURSOR_SYSTEM_VOL, SETTING_KEY_SYSTEM_VOL,
       SETTINGS_VOLUME_MIN, SETTINGS_VOLUME_MAX, getSystemVolume, setSystemVolume },
     { SETTINGS_CURSOR_VENT_VOL, SETTING_KEY_VENT_VOL,
-      SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX, getVentVolume, setVentVolume },
+      SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX, getVentVolumeSetting, setVentVolumeSetting },
 };
 
 /**
@@ -101,11 +201,16 @@ static void adjustCurrentSetting(int8_t delta) {
         next = slot->max;
     }
 
-    // STEP 03: 更新 UI 值並持久化，寫入失敗必須留痕（原本回傳值被直接丟棄）
-    slot->set((uint8_t)next);
+    // STEP 03: 先持久化，成功才更新 runtime 值。順序不可對調——通氣音量的 setter
+    //   寫的就是 decideVentOutput() 讀的那個值，NVS 失敗卻照樣套用的話，這一輪
+    //   聽起來、看起來都生效了，重開機才發現沒存到（2026-09-06 codex Tier 3
+    //   review 的 CRITICAL；settings_write() 內部也已改成 NVS 成功才動 state）。
     if (!settings_write(&g_settings_state, slot->key, (uint8_t)next)) {
-        Serial.printf("[SETTINGS] ERROR 寫入失敗 key=0x%02X value=%d\n", slot->key, (int)next);
+        Serial.printf("[SETTINGS] ERROR 寫入失敗 key=0x%02X value=%d，設定未變更\n",
+                      slot->key, (int)next);
+        return;
     }
+    slot->set((uint8_t)next);
 }
 
 /**
@@ -519,11 +624,11 @@ void onShortPress(uint8_t btnIdx) {
         // A8: VENT_PRE preview 畫面（按主鍵開始）
         if (ventPreShown) {
             if (btnIdx == BTN_UP) {
-                ventVolume = clampVentVolume((int16_t)ventVolume + 1);
+                setVentVolumeFromVentScreen((int16_t)ventVolume + 1);
                 return;
             }
             if (btnIdx == BTN_DOWN) {
-                ventVolume = clampVentVolume((int16_t)ventVolume - 1);
+                setVentVolumeFromVentScreen((int16_t)ventVolume - 1);
                 return;
             }
             if (btnIdx == BTN_BACK) {
@@ -560,11 +665,11 @@ void onShortPress(uint8_t btnIdx) {
         }
         // STEP 02: 主畫面按鍵
         if (btnIdx == BTN_UP) {
-            ventVolume = clampVentVolume((int16_t)ventVolume + 1);
+            setVentVolumeFromVentScreen((int16_t)ventVolume + 1);
             return;
         }
         if (btnIdx == BTN_DOWN) {
-            ventVolume = clampVentVolume((int16_t)ventVolume - 1);
+            setVentVolumeFromVentScreen((int16_t)ventVolume - 1);
             return;
         }
         if (btnIdx == BTN_BACK) {
@@ -744,10 +849,23 @@ void onShortPress(uint8_t btnIdx) {
             if (btnIdx == BTN_PRIMARY) {
                 settings_state_t gstate;
                 settings_init(&gstate);
-                settings_reset_defaults(&gstate);
+                // STEP 01.01: 持久化失敗就不套用 runtime，也不關對話框——原本這裡
+                //   直接丟棄回傳值，NVS 任一欄位寫失敗時使用者照樣看到對話框關閉、
+                //   聲音跟著變，重開機才發現是舊值或半套狀態（2026-09-06 codex
+                //   Tier 3 review 的 CRITICAL）。對話框留在畫面上是目前唯一能讓
+                //   使用者察覺異常的方式；專屬的失敗提示 UI 待補（需新增中文字串，
+                //   要一併重生 .vlw 字型子集）。
+                if (!settings_reset_defaults(&gstate)) {
+                    Serial.println("[SETTINGS] ERROR 恢復預設失敗（NVS 寫入），設定未變更");
+                    return;
+                }
+                // STEP 01.02: 持久化成功後才同步三個 runtime 值。setBrightness 仍呼叫：
+                //   亮度雖已離開選單（2026-09-06），NVS 欄位還在，恢復預設要讓
+                //   s_brightness 與 NVS 保持一致，不留下不同步的舊值。
                 setBrightness(gstate.brightness);
                 setSystemVolume(gstate.system_volume);
-                setVentVolume(gstate.vent_volume);
+                // 通氣音量的唯一真相是 ventVolume 全域（見 getVentVolumeSetting()）
+                ventVolume = gstate.vent_volume;
                 settingsRestoreConfirm = false;
                 Serial.println("[SETTINGS] defaults restored");
                 return;
@@ -761,7 +879,7 @@ void onShortPress(uint8_t btnIdx) {
             return;
         }
 
-        // STEP 02: 編輯器模式（數值調整 — 硬體無左右鍵，用 UP/DOWN）
+        // STEP 02: 編輯器模式（開/關切換 — 硬體無左右鍵，用 UP/DOWN）
         if (settingsEditorMode) {
             if (btnIdx == BTN_UP) {
                 adjustCurrentSetting(+1);
@@ -840,9 +958,11 @@ void onShortPress(uint8_t btnIdx) {
                         settingsDeviceNameSubMode = true;
                         Serial.println("[SETTINGS] device name — show sub");
                     }
-                } else if (settingsCursor >= SETTINGS_CURSOR_BRIGHTNESS &&
+                } else if (settingsCursor >= SETTINGS_CURSOR_SYSTEM_VOL &&
                            settingsCursor <= SETTINGS_CURSOR_VENT_VOL) {
-                    // 三個可調項目行為一致：進入編輯模式
+                    // 兩個可調項目（系統音量／通氣音量）行為一致：進入編輯模式。
+                    // 範圍下界原為 SETTINGS_CURSOR_BRIGHTNESS，該項 2026-09-06 移除後
+                    // 改由系統音量接手第一個可調項的位置。
                     settingsEditorMode = true;
                 } else if (settingsCursor == SETTINGS_CURSOR_BATTERY_INFO) {
                     // Task 13：進入電池資訊子畫面
@@ -1112,7 +1232,7 @@ void onShortPress(uint8_t btnIdx) {
                     showAmioArmedPrompt = false;
                     recordLocalEvent(EVT_AMIODARONE);
                     dispatchOhcaEvent(OHCA_EVT_AMIO_CONFIRMED, 0);  // 不重啟倒數
-                    triggerBeep(1, 80, 0);
+                    uiConfirmBeep();
                     // A4：對齊 demo flash('Amiodarone 已紀錄', '')
                     triggerFlash("Amiodarone 已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK,
                                  FLASH_TITLE_SIZE_XLONG, FLASH_SUBTITLE_SIZE_DEFAULT);
@@ -1241,7 +1361,7 @@ void onShortPress(uint8_t btnIdx) {
             }
             if (btnIdx == BTN_PRIMARY) {
                 recordSuppEvent(backfillSuppType, backfillCount);
-                triggerBeep(1, 80, 0);
+                uiConfirmBeep();
                 ohcaSubState           = SUBSTATE_BACKFILL_SUCCESS;
                 backfillSuccessShownMs = now;
                 Serial.printf("[OHCA] supp recorded: type=%u count=%u\n",
@@ -1407,7 +1527,9 @@ void onShortPress(uint8_t btnIdx) {
                 alarmMuted      = false;
                 stopBeep();
                 recordLocalEvent(EVT_EPI_LOCAL);
-                triggerBeep(1, 80, 0);  // 短確認音
+                // 短確認音（「EPI 已紀錄」的操作回饋，非倒數到期的警示音——後者
+                // 在 ohca_logic.cpp applyOhcaOutput()，不受系統音量 gate）
+                uiConfirmBeep();
                 // A2：對齊 demo flash('EPI 已紀錄', '重新倒數 4 分鐘')
                 triggerFlash("EPI 已紀錄", "重新倒數 4 分鐘", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                 Serial.println("[OHCA] EPI confirmed");
@@ -1426,7 +1548,7 @@ void onShortPress(uint8_t btnIdx) {
                 showShockArmedPrompt = false;
                 dispatchOhcaEvent(OHCA_EVT_SHOCK_CONFIRMED, 0);  // 不重啟倒數
                 recordLocalEvent(EVT_SHOCK_LOCAL);
-                triggerBeep(1, 80, 0);
+                uiConfirmBeep();
                 // A3：對齊 demo flash('電擊已紀錄', '')
                 triggerFlash("電擊已紀錄", "", FLASH_DEFAULT_MS, COLOR_ACCENT_OK);
                 Serial.println("[OHCA] Shock confirmed");

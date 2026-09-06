@@ -1,6 +1,7 @@
 #include "app_globals.h"
 #include "ems_settings.h"  // settings_get_device_name() / DEVICE_NAME_MAX_LEN（drawDeviceInfo() 用，Impl-Phase G）
 #include "ems_utf8.h"       // utf8PrevCharBoundary()（drawDeviceInfo() 裝置名稱截斷用，Impl-Phase G）
+#include "ui_settings.h"    // settingsToggleLabel()（通氣畫面音量開/關文字，與設定選單共用同一組字串）
 
 
 /** 主功能表畫面：標題列（含 BLE 連線「BT」圖示）+ 分隔線 + 5 項可捲動選單（cursor 列白底黑字反白）。 */
@@ -802,6 +803,11 @@ void drawTimeline() {
 //  Phase C 顯示函式
 // ============================================================
 
+// 通氣畫面音量列的緩衝區大小。內容為「音量 開」／「音量 關」——2 個全形中文
+// （6 bytes）+ 半形空格（1）+ 1 個全形中文（3）+ 結尾 '\0' = 11 bytes，取 16
+// 留餘裕。drawVentPre() 與 drawVentStandalone() 兩處共用，不各寫一份。
+static constexpr size_t VENT_VOLUME_BUF_SIZE = 16;
+
 /**
  * A8：VENT_PRE 預備畫面 — 進入 Vent 模式但尚未按主鍵開始
  * 對齊 demo VENT_PRE render
@@ -819,12 +825,12 @@ void drawVentPre() {
 
     // 副訊息兩行
     display.setTextSize(1);
-    drawCenteredText("通氣音量可由 上/下 調整", SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
+    drawCenteredText("通氣音量可由 上/下 開關", SCREEN_H / 2 + 32, COLOR_TEXT_MUTED);
     drawCenteredText("主鍵暫停／繼續　長按 3 秒結束", SCREEN_H / 2 + 60, COLOR_TEXT_DIM);
 
-    // 底部音量顯示
-    char volBuf[32];
-    snprintf(volBuf, sizeof(volBuf), "音量 %u/%u", ventVolume, VENT_VOLUME_MAX);
+    // 底部音量顯示（2026-09-06：通氣音量改為開/關兩態，不再有 N/5 級數）
+    char volBuf[VENT_VOLUME_BUF_SIZE];
+    snprintf(volBuf, sizeof(volBuf), "音量 %s", settingsToggleLabel(settings_toggle_enabled(ventVolume)));
     drawCenteredText(volBuf, SCREEN_H - OHCA_COUNTER_BOTTOM - 8, COLOR_TEXT_DIM);
 }
 
@@ -836,8 +842,8 @@ void drawVentStandalone() {
     display.setTextSize(1.2f, 1.2f);
     drawCenteredText("6 秒通氣節奏", OHCA_BADGE_Y, COLOR_ACCENT_OK);
 
-    char volBuf[32];
-    snprintf(volBuf, sizeof(volBuf), "音量 %u/%u", ventVolume, VENT_VOLUME_MAX);
+    char volBuf[VENT_VOLUME_BUF_SIZE];
+    snprintf(volBuf, sizeof(volBuf), "音量 %s", settingsToggleLabel(settings_toggle_enabled(ventVolume)));
     display.setTextSize(1);
     drawCenteredText(volBuf, 56, COLOR_TEXT_MUTED);
 

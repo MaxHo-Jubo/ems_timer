@@ -9,7 +9,8 @@
 //   - 1 秒一拍，6 拍循環（BEAT_1~BEAT_6）
 //   - 第 1 拍：加強提示音 + 紅燈閃 + 畫面反紅
 //   - 第 2~6 拍：短提示音
-//   - 通氣音量 0~5（NVS 獨立 key，與系統音量分開）
+//   - 通氣音量 0=關 / 1=開（NVS 獨立 key，與系統音量分開；2026-09-06 由 0~5 改為兩態，
+//     理由見 ems_settings.h 該常數區塊）
 //     volume = 0 時：buzz 全關，但 LED 紅閃 + 畫面反紅 + 顯示數字仍保留（V1 §13.10 / §14.6 靜音規則）
 //   - 邊緣偵測：buzz_* 在「跨越 beat 邊界」的那一個 tick 為 true，避免重複觸發
 #pragma once
@@ -22,9 +23,12 @@ constexpr uint32_t VENT_BEAT_INTERVAL_MS = 1000;   // 1 秒一拍
 constexpr uint32_t VENT_CYCLE_MS         = 6000;   // 6 拍一循環
 
 // ===== 音量常數 =====
-constexpr uint8_t  VENT_VOLUME_MIN     = 0;        // 靜音
-constexpr uint8_t  VENT_VOLUME_MAX     = 5;
-constexpr uint8_t  VENT_VOLUME_DEFAULT = 3;
+// 與 ems_settings.h 的 SETTINGS_VENT_VOLUME_* 是同一個值的兩份定義（本檔給節奏
+// 邏輯用、那邊給 NVS 值域驗證用），必須一致；input_handler.cpp 有 static_assert
+// 鎖住這個不變量，改了一邊沒改另一邊會在韌體編譯期就被擋下。
+constexpr uint8_t  VENT_VOLUME_MIN     = 0;        // 0 = 關（靜音）
+constexpr uint8_t  VENT_VOLUME_MAX     = 1;        // 1 = 開
+constexpr uint8_t  VENT_VOLUME_DEFAULT = 1;        // 預設開
 
 // ===== Beat enum =====
 typedef enum {
@@ -67,7 +71,7 @@ vent_beat_t computeVentBeat(uint32_t since_start_ms);
  *
  * @param prev_since_ms      上一次 tick 的 since_start_ms（用於邊緣偵測）
  * @param since_start_ms     當前 since_start_ms
- * @param volume             通氣音量（0~5；外部由 NVS 讀取，0 = 靜音）
+ * @param volume             通氣音量（0=關 / 1=開；外部由 NVS 讀取，0 = 靜音）
  *
  * 邊緣偵測規則：
  *   buzz_emphasis = (current_beat == BEAT_1) && (current_beat != prev_beat) && (volume > 0)

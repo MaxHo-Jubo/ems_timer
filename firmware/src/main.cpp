@@ -279,8 +279,10 @@ uint16_t summaryScrollOffset = 0;
 FlashState flashState = {};
 
 // Dev-Phase G: 設定 UI 狀態（操作於 input_handler.cpp）
-// settingsCursor 初始值 1：跳過裝置名稱（索引 0），因為裝置名稱暫不支援調整
-uint8_t settingsCursor = 1;
+// settingsCursor 初始值＝第一個可調項目（跳過裝置名稱，索引 0，裝置端不支援輸入）。
+// 螢幕亮度 2026-09-06 移除後，第一個可調項改成系統音量；這裡用具名常數而非裸寫
+// 數字，日後選單增減項目時初始游標會自動跟著搬，不會停在別的項目上。
+uint8_t settingsCursor = SETTINGS_CURSOR_SYSTEM_VOL;
 // 設定選單捲動視窗起點。跟 settingsCursor 一樣不在進入選單時重設（sticky）——
 // 兩者永遠成對更新（見 input_handler.cpp UP/DOWN 分支），拆開重設會讓其中一個
 // 落單，重新製造 c980927 那個「游標在窗外、畫面沒跟著捲」的 bug。
@@ -511,12 +513,18 @@ void setup() {
         lastBtnState[i] = digitalRead(BTN_PINS[i]);
     }
 
-    // STEP 03.5: Dev-Phase G — 系統設定 NVS 載入（亮度/音量 → RAM）
-    //   必須早於 TFT init（亮度影響顯示），晚於 GPIO init（按鍵已可操作）
+    // STEP 03.5: Dev-Phase G — 系統設定 NVS 載入（音量 → RAM）
+    //   晚於 GPIO init（按鍵已可操作）。原本還有「必須早於 TFT init（亮度影響
+    //   顯示）」這個理由，2026-09-06 已不成立——背光焊死 3.3V、韌體無法改變亮度。
     settings_init(&g_settings_state);
+    // 亮度已離開選單，這行只是讓 s_brightness 與 NVS 同步，不影響實際背光
     setBrightness(g_settings_state.brightness);
     setSystemVolume(g_settings_state.system_volume);
-    setVentVolume(g_settings_state.vent_volume);
+    // 通氣音量直接灌進 ventVolume 全域——它是通氣節奏唯一消費的值（decideVentOutput()
+    // 與通氣畫面 UP/DOWN 都用它）。2026-09-06 前這裡呼叫的是 ui_settings 的
+    // setVentVolume()，寫進另一份只有設定選單畫面在讀的副本，節奏邏輯讀不到，
+    // NVS 存的通氣音量開機後從未真正生效。
+    ventVolume = g_settings_state.vent_volume;
     Serial.printf("[SETTINGS] NVS loaded: brt=%u vol=%u vvol=%u\n",
                   g_settings_state.brightness, g_settings_state.system_volume, g_settings_state.vent_volume);
 
@@ -1233,13 +1241,13 @@ void updateDisplay() {
             // Impl-Phase G：裝置名稱子畫面（「請連接 App 設定裝置名稱」提示），同電池/裝置資訊 pattern。
             show_device_name_sub(settingsDisp);
         } else if (settingsEditorMode) {
-            // 編輯模式：依游標索引繪製對應設定項目的數值調整畫面
-            if (settingsCursor == SETTINGS_CURSOR_BRIGHTNESS) {
-                drawSettingEditor(settingsDisp, "螢幕亮度", getBrightness(), SETTINGS_BRIGHTNESS_MIN, SETTINGS_BRIGHTNESS_MAX);
-            } else if (settingsCursor == SETTINGS_CURSOR_SYSTEM_VOL) {
-                drawSettingEditor(settingsDisp, "系統音量", getSystemVolume(), SETTINGS_VOLUME_MIN, SETTINGS_VOLUME_MAX);
+            // 編輯模式：依游標索引繪製對應設定項目的開/關切換畫面
+            // （原「螢幕亮度」分支已於 2026-09-06 隨選單項一併移除；同日兩個
+            //   音量改為開/關兩態，數值版 drawSettingEditor 隨之移除）
+            if (settingsCursor == SETTINGS_CURSOR_SYSTEM_VOL) {
+                drawToggleEditor(settingsDisp, "系統音量", settings_toggle_enabled(getSystemVolume()));
             } else if (settingsCursor == SETTINGS_CURSOR_VENT_VOL) {
-                drawSettingEditor(settingsDisp, "通氣音量", getVentVolume(), SETTINGS_VENT_VOLUME_MIN, SETTINGS_VENT_VOLUME_MAX);
+                drawToggleEditor(settingsDisp, "通氣音量", settings_toggle_enabled(ventVolume));
             }
         } else {
             drawSettingsMenu(settingsDisp, settingsCursor, /* scroll_offset= */ settingsScrollOffset,
