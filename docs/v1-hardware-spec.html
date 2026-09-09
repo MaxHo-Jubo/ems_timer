@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EMS DoseSync Pro — V1 硬體與晶片規格</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --purple: #8b5cf6; --purple-light: #f5f3ff;
+    --teal: #14b8a6; --teal-light: #f0fdfa;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+
+  /* === Header === */
+  .header { text-align: center; margin-bottom: 24px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 28px; font-weight: 700; letter-spacing: 1px; }
+  .header .subtitle { font-size: 14px; opacity: 0.85; margin-top: 6px; }
+  .header .version { font-size: 12px; opacity: 0.6; margin-top: 4px; }
+
+  /* === Meta box === */
+  .meta-box {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 8px 24px; padding: 14px 20px; margin-bottom: 24px;
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    font-size: 13px; box-shadow: var(--shadow);
+  }
+  .meta-box .meta-label { color: var(--text-secondary); margin-right: 6px; }
+  .meta-box .meta-value { color: var(--text); font-weight: 600; }
+
+  /* === TOC === */
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .toc-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+  .toc-list.inline { flex-direction: row; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  .toc-list a { color: var(--blue); text-decoration: none; padding: 4px 0; }
+  .toc-list a:hover { text-decoration: underline; }
+  .toc-list .toc-date { color: var(--text-secondary); font-size: 12px; margin-right: 8px; }
+
+  /* === Section (numbered) === */
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--blue); display: flex; align-items: center; gap: 8px; scroll-margin-top: 16px; }
+  .section-title .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--blue); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+
+  /* === Card === */
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); margin-bottom: 14px; }
+  .sub-title { font-size: 15px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+
+  /* === Tables === */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num-col { text-align: center; font-weight: 600; color: var(--text-secondary); width: 50px; }
+  td.metric-col { text-align: right; font-weight: 600; color: var(--blue); white-space: nowrap; }
+  /* 寬表格保底：內容擠不下時在容器內橫向捲動，不讓整頁跟著左右移動 */
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+  /* === Badges === */
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+
+  /* === Notes === */
+  .note { margin-top: 12px; padding: 10px 14px; background: var(--amber-light); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; font-size: 13px; color: #92400e; }
+  .note-blue { background: var(--blue-light); border-left-color: var(--blue); color: #1e40af; }
+  .note-red { background: var(--red-light); border-left-color: var(--red); color: #991b1b; }
+  .note-green { background: var(--green-light); border-left-color: var(--green); color: #15803d; }
+
+  /* === Lists === */
+  .check-list { list-style: none; padding: 0; margin: 8px 0; font-size: 14px; }
+  .check-list li { padding: 6px 0 6px 28px; position: relative; line-height: 1.7; }
+  .check-list li::before { content: "✓"; position: absolute; left: 4px; top: 6px; color: var(--green); font-weight: 700; }
+  .check-list li.todo::before { content: "○"; color: var(--gray); }
+  .check-list li.warn::before { content: "⚠"; color: var(--amber); }
+
+  .issue-list { list-style: none; padding: 0; margin: 0; }
+  .issue-list li {
+    padding: 10px 14px 10px 32px; position: relative;
+    border-left: 3px solid var(--amber); background: var(--amber-light);
+    border-radius: 0 8px 8px 0; margin-bottom: 8px; font-size: 13px; line-height: 1.7;
+    color: #92400e;
+  }
+  .issue-list li::before { content: "✓"; position: absolute; left: 10px; top: 10px; color: #15803d; font-weight: 700; }
+
+  .diff-list { list-style: none; padding: 0; margin: 0; counter-reset: diff; }
+  .diff-list li {
+    padding: 12px 16px 12px 50px; position: relative; margin-bottom: 8px;
+    background: var(--bg); border-radius: 8px; font-size: 14px; line-height: 1.7;
+  }
+  .diff-list li::before {
+    counter-increment: diff; content: counter(diff);
+    position: absolute; left: 12px; top: 12px;
+    width: 26px; height: 26px;
+    background: var(--blue); color: #fff;
+    border-radius: 50%; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* === Stat grid === */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-top: 8px; }
+  .stat-cell { padding: 14px; border-radius: 8px; background: var(--blue-light); border: 1px solid var(--blue); }
+  .stat-cell.green { background: var(--green-light); border-color: var(--green); }
+  .stat-cell.amber { background: var(--amber-light); border-color: var(--amber); }
+  .stat-cell.purple { background: var(--purple-light); border-color: var(--purple); }
+  .stat-cell .stat-num { font-size: 22px; font-weight: 800; color: var(--blue); line-height: 1; }
+  .stat-cell.green .stat-num { color: #15803d; }
+  .stat-cell.amber .stat-num { color: #b45309; }
+  .stat-cell.purple .stat-num { color: #7c3aed; }
+  .stat-cell .stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+
+  /* === Phase block (for timeline-style sections) === */
+  .phase { border-left: 3px solid var(--blue); padding: 12px 16px; margin-bottom: 12px; background: var(--blue-light); border-radius: 0 8px 8px 0; }
+  .phase.green { border-left-color: var(--green); background: var(--green-light); }
+  .phase.amber { border-left-color: var(--amber); background: var(--amber-light); }
+  .phase .phase-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .phase .phase-body { font-size: 13px; line-height: 1.7; color: var(--text); }
+  .phase .phase-body ul { margin: 4px 0 0 20px; }
+
+  /* === Progress entry (cumulative report only) === */
+  .progress-entry { margin-bottom: 40px; scroll-margin-top: 16px; }
+  .progress-entry-title {
+    font-size: 22px; font-weight: 800; margin-bottom: 8px; padding: 16px 20px;
+    border-radius: var(--radius);
+    background: linear-gradient(135deg, var(--blue-light), #fff);
+    border: 1px solid var(--border); border-left: 4px solid var(--blue);
+    color: #1e3a5f;
+  }
+  .progress-entry-title .num { display: inline-block; background: var(--blue); color: #fff; padding: 2px 12px; border-radius: 14px; font-size: 13px; font-weight: 700; vertical-align: middle; margin-right: 10px; }
+  .progress-entry-title .date { color: var(--text-secondary); font-size: 14px; font-weight: 500; margin-left: 8px; }
+
+  .one-liner {
+    background: linear-gradient(135deg, var(--green-light), #fff);
+    border: 1px solid var(--green); border-left: 4px solid var(--green);
+    border-radius: var(--radius); padding: 14px 18px; margin-bottom: 14px;
+    font-size: 15px; line-height: 1.7;
+  }
+
+  /* === Misc === */
+  .link { color: var(--blue); text-decoration: none; font-weight: 600; }
+  .link:hover { text-decoration: underline; }
+  code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: "JetBrains Mono", "SF Mono", Consolas, monospace; }
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+
+  [id^="progress-"] { scroll-margin-top: 16px; }
+
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 22px; }
+    .meta-box { grid-template-columns: 1fr; }
+    .progress-entry-title { font-size: 18px; }
+    .card { padding: 16px 14px; }
+    table { font-size: 13px; }
+    th { padding: 8px 10px; }
+    td { padding: 8px 10px; }
+    td.num-col { width: 34px; }
+    .hide-sm { display: none; }
+    .badge { white-space: normal; }
+    /* 手機上允許長英數型號斷行，否則單一儲存格的最小寬度會撐寬整張表 */
+    th, td { overflow-wrap: anywhere; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <h1>🔧 EMS DoseSync Pro — V1 硬體與晶片規格</h1>
+  <div class="subtitle">Prototype V1 實機在用的硬體、晶片關鍵規格與完整腳位對照</div>
+  <div class="version">v1.0 ｜ 資料截止 2026-09-07</div>
+</div>
+
+<!-- ========== META BOX ========== -->
+<div class="meta-box">
+  <div><span class="meta-label">文件範圍：</span><span class="meta-value">V1 實際接線的硬體</span></div>
+  <div><span class="meta-label">主控平台：</span><span class="meta-value">ESP32-S3 N16R8</span></div>
+  <div><span class="meta-label">腳位真相來源：</span><span class="meta-value">gpio-allocation.md</span></div>
+  <div><span class="meta-label">電量計現況：</span><span class="meta-value">MAX17043 已故障待換</span></div>
+  <div><span class="meta-label">換裝方案：</span><span class="meta-value">MAX17048（未驗證）</span></div>
+  <div><span class="meta-label">建立日期：</span><span class="meta-value">2026-09-07</span></div>
+</div>
+
+<!-- ========== TOC ========== -->
+<div class="toc">
+  <div class="toc-title">章節導覽</div>
+  <div class="toc-list inline">
+    <a href="#sec-1">1. 硬體總覽</a>
+    <a href="#sec-2">2. 主控與顯示</a>
+    <a href="#sec-3">3. 電源鏈</a>
+    <a href="#sec-4">4. 電量計（MAX17043 → MAX17048）</a>
+    <a href="#sec-5">5. 時間與 I2C 周邊</a>
+    <a href="#sec-6">6. 輸入與提示</a>
+    <a href="#sec-7">7. 腳位對照總表</a>
+    <a href="#sec-8">8. 互斥約束與硬體踩坑</a>
+    <a href="#sec-9">9. 非 V1 備料</a>
+    <a href="#sec-10">10. 功耗預算</a>
+  </div>
+</div>
+
+<!-- ========== 1. 硬體總覽 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-1"><span class="num">1</span>V1 硬體總覽</div>
+
+  <div class="card">
+    <div class="stat-grid">
+      <div class="stat-cell green">
+        <div class="stat-num">8</div>
+        <div class="stat-label">實體按鍵（全部接線）</div>
+      </div>
+      <div class="stat-cell green">
+        <div class="stat-num">2</div>
+        <div class="stat-label">I2C 裝置在線（另 1 顆故障）</div>
+      </div>
+      <div class="stat-cell">
+        <div class="stat-num">16</div>
+        <div class="stat-label">韌體驅動中的 GPIO</div>
+      </div>
+      <div class="stat-cell amber">
+        <div class="stat-num">1</div>
+        <div class="stat-label">故障待換（電量計）</div>
+      </div>
+    </div>
+
+    <div class="sub-title">V1 硬體一覽</div>
+    <div class="table-wrap">
+<table>
+      <thead>
+        <tr><th class="hide-sm" style="width:50px">#</th><th>硬體</th><th>核心晶片 / 介面</th><th>V1 狀態</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="num-col hide-sm">1</td><td><strong>主控板</strong>　GOOUUU ESP32-S3 開發板</td><td>ESP32-S3（N16R8 模組）</td><td><span class="badge badge-green">運作中</span></td></tr>
+        <tr><td class="num-col hide-sm">2</td><td><strong>顯示器</strong>　2.8" TFT LCD</td><td>ST7789<br><span style="color:#64748b">SPI</span></td><td><span class="badge badge-green">運作中</span></td></tr>
+        <tr><td class="num-col hide-sm">3</td><td><strong>按鍵 ×8</strong>　無段自復位輕觸開關</td><td><span style="color:#64748b">GPIO 數位輸入</span></td><td><span class="badge badge-green">運作中</span></td></tr>
+        <tr><td class="num-col hide-sm">4</td><td><strong>蜂鳴器</strong>　主動式</td><td><span style="color:#64748b">GPIO 直驅</span></td><td><span class="badge badge-green">運作中</span></td></tr>
+        <tr><td class="num-col hide-sm">5</td><td><strong>電池</strong>　523450 LiPo 1000mAh</td><td>DW01A + 8205A（電池自帶保護板）<br><span style="color:#64748b">JST PH2.0</span></td><td><span class="badge badge-green">供電中</span></td></tr>
+        <tr><td class="num-col hide-sm">6</td><td><strong>充電升壓模組</strong>　聯騰 MTARDTP4056S</td><td>TP4056 + DW01 + 8205A + SX1308<br><span style="color:#64748b">Type-C 輸入 / 5V 輸出</span></td><td><span class="badge badge-green">運作中</span></td></tr>
+        <tr><td class="num-col hide-sm">7</td><td><strong>即時時鐘</strong>　DS3231 模組</td><td>DS3231 + AT24C32<br><span style="color:#64748b">I2C（0x68 / 0x57）</span></td><td><span class="badge badge-green">運作中</span></td></tr>
+        <tr><td class="num-col hide-sm">8</td><td><strong>電量計</strong>　MAX17043 模組</td><td>MAX17043<br><span style="color:#64748b">I2C（0x36）</span></td><td><span class="badge badge-red">已判定故障</span></td></tr>
+        <tr><td class="num-col hide-sm">9</td><td><strong>電量計（換裝方案）</strong>　MAX17048 模組</td><td>MAX17048<br><span style="color:#64748b">I2C（0x36）</span></td><td><span class="badge badge-red">未到貨・未驗證</span></td></tr>
+        <tr><td class="num-col hide-sm">10</td><td><strong>板載 RGB LED</strong>　WS2812（開發板出廠自帶）</td><td>WS2812<br><span style="color:#64748b">單線</span></td><td><span class="badge badge-amber">韌體只用來關閉</span></td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="note note-blue">
+      📌 <strong>規格來源圖例</strong>（下文各表「來源」欄）：<br>
+      🔬 <strong>本專案實機量測／驗收過</strong>的數字，出處在專案文件裡有紀錄　｜
+      📄 <strong>廠商 datasheet／賣場標稱值</strong>，本專案未自行量測　｜
+      ⚠️ <strong>推定或未驗證</strong>，不可當事實引用
+    </div>
+  </div>
+</div>
+
+<!-- ========== 2. 主控與顯示 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-2"><span class="num">2</span>主控與顯示</div>
+
+  <div class="card">
+    <div class="sub-title">2.1　ESP32-S3（GOOUUU 開發板 / N16R8 模組）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>CPU</td><td>Xtensa LX7 32-bit 雙核，最高 240MHz</td><td>📄</td></tr>
+        <tr><td>內建 SRAM</td><td>512KB</td><td>📄</td></tr>
+        <tr><td>Flash</td><td><strong>16MB</strong>（模組型號 N16R8 的「16」）</td><td>📄</td></tr>
+        <tr><td>PSRAM</td><td><strong>8MB octal（八線）</strong>——本專案最重要的一條硬體限制，見下方警告</td><td>🔬</td></tr>
+        <tr><td>無線</td><td>Wi-Fi 2.4GHz b/g/n + Bluetooth 5（LE）；<strong>本專案只用 BLE，不開 Wi-Fi</strong></td><td>📄</td></tr>
+        <tr><td>USB</td><td>晶片內建 USB-Serial/JTAG（走 GPIO 19/20）。韌體 <code>Serial</code> 走 USB-CDC，<strong>不佔用 UART0 的 GPIO 43/44</strong></td><td>🔬</td></tr>
+        <tr><td>板載 RGB LED</td><td>GPIO 48 出廠接 WS2812</td><td>🔬</td></tr>
+        <tr><td>電源輸入</td><td>板上絲印為 <code>V5IN</code>，即一般開發板的 <code>VIN</code>（同一條 5V 軌）</td><td>🔬</td></tr>
+        <tr><td>韌體佔用</td><td>Flash 使用率約 71%（Impl-Phase H 完成時快照）</td><td>🔬</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="note note-red">
+      🔴 <strong>GPIO 35 / 36 / 37 不可當一般 I/O</strong>（2026-05-08 實機踩雷確認）：採購到的板子實際是 <strong>N16R8 octal PSRAM 模組</strong>（金屬遮蔽罩上印 <code>ESP32-S3-N16R8</code>），這三支腳內部給 PSRAM 用，一旦當 I/O 驅動就會 <code>Guru Meditation StoreProhibited</code> 當機。<br>
+      → 顯示器的 SPI MOSI／SCK 因此改用 GPIO 2／3，代價是 <strong>ADC1 三支腳（GPIO 1/2/3）全部用完</strong>。<br>
+      → 未來若能採購到標準 N8 模組，GPIO 35/36/37 才會釋出。<strong>下單時務必確認模組型號。</strong>
+    </div>
+
+    <div class="note">
+      ⚠️ <strong>不可作 I/O 的腳位</strong>：GPIO 0 / 45 / 46（strapping，開機行為敏感）、GPIO 8~13（內建 SPI Flash）、GPIO 19 / 20（USB D-／D+）、GPIO 26~32（Flash bonding pad，保守禁用）、GPIO 35 / 36 / 37（本模組的 octal PSRAM）。
+    </div>
+
+    <div class="sub-title">2.2　2.8 吋 TFT 顯示器（ST7789）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>驅動 IC</td><td>ST7789（此類模組常見為 ST7789V，本專案未拆殼核對版本）</td><td>📄</td></tr>
+        <tr><td>面板</td><td>2.8 吋 LCD，解析度 <strong>240×320</strong>（韌體橫置使用 = <strong>320×240</strong>）</td><td>🔬</td></tr>
+        <tr><td>色深</td><td>16-bit RGB565</td><td>📄</td></tr>
+        <tr><td>介面</td><td>SPI 四線（CS / DC / RST / MOSI / SCK）；<strong>MISO 不接</strong>，韌體只寫不讀</td><td>🔬</td></tr>
+        <tr><td>模組供電</td><td><strong>VCC 必須接 5V（V5IN）</strong>——模組板上自帶 LDO 與電平轉換，餵 3.3V 會 brown out</td><td>🔬</td></tr>
+        <tr><td>訊號準位</td><td>3.3V 邏輯直連即可，<strong>不需外加電平轉換</strong>（模組自帶）</td><td>🔬</td></tr>
+        <tr><td>背光</td><td>LED 腳接 3.3V <strong>常亮，無 PWM 調光</strong>——原本要走 GPIO 1 的背光 PWM，該腳已改派給 TFT DC</td><td>🔬</td></tr>
+        <tr><td>顯示極性</td><td>此批紅板出廠 polarity 與函式庫預設相反，韌體必須呼叫 <code>invertDisplay(false)</code></td><td>🔬</td></tr>
+        <tr><td>繪圖函式庫</td><td>LovyanGFX 1.2.x（sprite + DMA 整頁推送），全頁切換約 4ms</td><td>🔬</td></tr>
+        <tr><td>外殼開孔</td><td>顯示窗約 <strong>60×45mm</strong>（顯示區 50×38mm + PCB 外框餘裕）</td><td>📄</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="note">
+      ⚠️ <strong>函式庫踩雷紀錄</strong>：TFT_eSPI 2.5.43 對 ESP32-S3 SPI controller 做暫存器級存取，在此 N16R8 模組 <code>init()</code> 當下即 StoreProhibited 當機，換腳位無解。中途改用 Adafruit_ST7789 可跑但 CPU byte-swap 太慢，最終定案 <strong>LovyanGFX</strong>。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 3. 電源鏈 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-3"><span class="num">3</span>電源鏈</div>
+
+  <div class="card">
+    <div class="note note-blue">
+      🔋 <strong>電源拓樸</strong>：<br>
+      <code>Type-C 充電輸入 → TP4056 充電 → 電池（3.0~4.2V） → SX1308 升壓 5V → ESP32 V5IN ＋ TFT VCC</code><br>
+      電量計掛在<strong>電池節點</strong>量電壓，不在升壓後量。
+    </div>
+
+    <div class="sub-title">3.1　鋰電池（523450 LiPo 1000mAh）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>化學／電壓</td><td>單節鋰聚合物 3.7V 標稱（工作區間約 3.0~4.2V）</td><td>📄</td></tr>
+        <tr><td>容量</td><td>1000mAh</td><td>📄</td></tr>
+        <tr><td>尺寸</td><td>5.2mm × 34mm × 50mm（外殼設計依此預留）</td><td>🔬</td></tr>
+        <tr><td>保護板</td><td>電池自帶（黃色 Kapton 膠帶下可見 DW01／8205A 小 PCB）：過充／過放／過流／短路</td><td>🔬</td></tr>
+        <tr><td>接頭</td><td>JST PH2.0 公頭，實測極性「左紅右黑」（接頭正面、卡榫朝上）</td><td>🔬</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note note-red">
+      🚨 <strong>PH2.0 接頭極性沒有業界標準</strong>，賣家文案不能信。每次接新電池／新模組前，一律先用電表量極性（紅棒讀正值那端才是 +）。
+    </div>
+
+    <div class="sub-title">3.2　充電升壓一體模組（聯騰 MTARDTP4056S）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>充電 IC</td><td><strong>TP4056</strong>——單節鋰電池線性充電，4.2V 恆流／恆壓，本模組預設充電電流 1A（= 1C）</td><td>📄</td></tr>
+        <tr><td>保護 IC</td><td><strong>DW01</strong>（過充／過放／過流偵測）＋ <strong>8205A</strong>（雙 N-MOSFET 開關）</td><td>📄</td></tr>
+        <tr><td>升壓 IC</td><td><strong>SX1308</strong>——DC-DC 升壓，電感 + 可調電位器輸出 5V</td><td>📄</td></tr>
+        <tr><td>輸入</td><td>USB Type-C</td><td>🔬</td></tr>
+        <tr><td>輸出</td><td>OUT+ / OUT- 焊盤，校壓到 <strong>5.00V ± 0.05V</strong>；帶 TFT 負載後不可掉到 4.7V 以下（否則 ESP32 brown-out 反覆重開）</td><td>🔬</td></tr>
+        <tr><td>輸出電流上限</td><td><strong>規格頁未標示</strong>，推測約 1A，以實測為準</td><td>⚠️</td></tr>
+        <tr><td>電池接點</td><td>板上<strong>無 JST 座</strong>，B+／B- 為焊盤（需自行焊 PH2.0 母座）</td><td>🔬</td></tr>
+        <tr><td>已知缺項</td><td>無真正的 load-sharing（邊充邊用時電流路徑未分離）</td><td>🔬</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="note note-red">
+      🚨 <strong>兩條會燒晶片／燒三週的規則</strong>：<br>
+      <strong>① OUT+ 只能接 V5IN，絕不可接 3V3</strong>——接錯直接燒 ESP32。接線前用電表確認該腳對 GND 是 ~5V。<br>
+      <strong>② OUT-（GND）這個接點必須焊死</strong>，不可用杜邦線／排針可拔插方式。此接點的接觸電阻會造成約 0.5V 的 GND 回流壓降（ground bounce），症狀是<strong>螢幕白屏而不是不開機</strong>，極易誤判成螢幕或韌體問題——這個坑 2026-06-14 定位、2026-07-04 才修復，花了近三週。焊死後實測通過。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 4. 電量計 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-4"><span class="num">4</span>電量計：MAX17043（故障）→ MAX17048（未驗證）</div>
+
+  <div class="card">
+    <div class="note note-red">
+      🔴 <strong>本章是全份文件唯一「規格尚未成立」的部分。</strong>
+      MAX17048 是 2026-09-06 選定的換裝方案，<strong>模組尚未到貨、未上機、韌體換算常數還停在 MAX17043 的值、相關文件也還沒改</strong>。
+      下表的 MAX17048 欄位全部來自晶片與模組的公開規格，<strong>沒有任何一項經過本專案實測</strong>，不可當作已驗證事實引用。
+    </div>
+
+    <div class="sub-title">4.1　兩顆晶片規格對照</div>
+    <div class="table-wrap">
+<table>
+      <thead>
+        <tr><th style="width:170px">項目</th><th>MAX17043（現役・已故障）</th><th>MAX17048（換裝方案）</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>演算法</td><td colspan="2">Maxim ModelGauge — 純電壓推估電量，<strong>不需要串聯電流檢測電阻</strong>，也不需要學習週期</td></tr>
+        <tr><td>I2C 位址</td><td><code>0x36</code> 🔬</td><td><code>0x36</code>（相同，韌體不用改位址）📄</td></tr>
+        <tr><td>電壓解析度</td><td>12-bit A/D，<strong>1.25mV / LSB</strong>（資料在 bits 15:4）🔬</td><td>16-bit，<strong>78.125µV / LSB</strong> 📄</td></tr>
+        <tr><td>電壓換算式</td><td><code>mV = (raw &gt;&gt; 4) × 1.25</code> 🔬</td><td><code>mV = raw × 0.078125</code> ⚠️</td></tr>
+        <tr><td>電量（SOC）格式</td><td colspan="2">高位元組 = 整數 %，低位元組 = 1/256 %（<strong>兩顆相同，韌體這段不用改</strong>）</td></tr>
+        <tr><td>充放電速率暫存器</td><td>❌ 無</td><td>✅ 有（CRATE，本專案暫不使用）📄</td></tr>
+        <tr><td>晶片 VDD 上限</td><td>4.5V 📄</td><td>4.5V——<strong>模組 VIN 絕不可接 5V</strong> 📄</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="note note-red">
+      🚨 <strong>換型號一定要改的韌體常數</strong>：兩顆的電壓解析度差 <strong>16 倍</strong>。沿用 MAX17043 的 1.25mV/LSB 去讀 MAX17048，電壓會直接錯 16 倍。目前韌體 <code>VCELL_SHIFT_BITS</code> / <code>VCELL_LSB_MV</code> 兩個常數仍是 MAX17043 的值，<strong>尚未修改</strong>。
+    </div>
+
+    <div class="sub-title">4.2　現役 MAX17043 的處置紀錄</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:110px">日期</th><th>事件</th><th style="width:120px">結果</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>2026-08-22</td>
+          <td>上機驗收：I2C <code>0x36</code> 連掃 5 輪無掉線；讀出 <strong>3.844V / 54.4%</strong>，對比電表 3.88V <strong>差 36mV</strong>（在手持電表誤差帶內），確認量到的是真實電池電壓</td>
+          <td><span class="badge badge-green">通過</span></td>
+        </tr>
+        <tr>
+          <td>2026-09-06</td>
+          <td>發現模組是 <strong>V1.1 佈局</strong>：板上 2.2kΩ 上拉接的是<strong>電池電壓</strong>而非 3.3V，實測 I2C 兩線閒置電位約 <strong>4V</strong>，超過 ESP32-S3 輸入高準位上限 3.6V →「08-22 能跑」其實是超規狀態下的能跑</td>
+          <td><span class="badge badge-amber">超規</span></td>
+        </tr>
+        <tr>
+          <td>2026-09-06</td>
+          <td>先修好麵包板地線（同一條 GND 插遠處讀 4~20Ω、插緊鄰 ESP32 GND 孔讀 0.4Ω），排除地線偏移假說後重測：每次讀 VCELL 都回 <code>Error 263</code>（逾時，晶片有回應自己的位址、之後抓住資料線不放），同一條 I2C 上的 DS3231 全程正常</td>
+          <td><span class="badge badge-red">判定故障</span></td>
+        </tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note">
+      ⚠️ <strong>故障根因不明</strong>。焊接方式在 08-22 驗收前就存在故排除；候選只剩拔插時的 ESD 或瞬間反接，都無法證實。決策不依賴根因——逾時證據已足以判定更換。
+    </div>
+
+    <div class="sub-title">4.3　MAX17048 模組規格與預定接線（<span style="color:#ef4444">全部未驗證</span>）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>內容</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>模組</td><td>Adafruit 5580 設計的複刻版，背面料號 <code>MRS182A</code></td><td>📄</td></tr>
+        <tr><td>I2C 上拉</td><td><strong>10kΩ 接 VIN（不是接電池）</strong>——這正是換它的主因，可解掉 MAX17043 那顆的超規問題</td><td>📄</td></tr>
+        <tr><td>晶片供電</td><td>背面 <code>Vin–VDD–Bat</code> 跳線可選，<strong>本專案要橋在 Vin 側</strong>：ESP32 有電晶片就有電，電池拔掉時上拉仍在 3.3V，不會把 I2C 拖死</td><td>📄</td></tr>
+        <tr><td>電池接點</td><td>兩個 JST PH 座內部並聯（等於內建 Y 分接），一個接電池、另一個用 PH 對 PH 線接到 TP4056 的 B+／B-</td><td>📄</td></tr>
+        <tr><td>省電選項</td><td>背面 LED 跳線可割開（板上「on」指示燈吃 VIN）</td><td>📄</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">預定接線表</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:200px">MAX17048 模組腳</th><th style="width:160px">接到</th><th>說明</th></tr></thead>
+      <tbody>
+        <tr><td><strong>VIN</strong></td><td>ESP32 <strong>3V3</strong></td><td>🚨 <strong>不可接 5V</strong>：晶片 VDD 上限 4.5V</td></tr>
+        <tr><td><strong>GND</strong></td><td>ESP32 GND 腳<strong>緊鄰</strong>的孔</td><td>星狀接地，不要走麵包板電源軌（見 §8 地線教訓）</td></tr>
+        <tr><td><strong>SDA</strong></td><td>GPIO <strong>42</strong></td><td>與 DS3231 共用同一條 I2C</td></tr>
+        <tr><td><strong>SCL</strong></td><td>GPIO <strong>41</strong></td><td>同上</td></tr>
+        <tr><td>INT（ALRT）、QStart</td><td>不接</td><td>—</td></tr>
+        <tr><td>JST PH（其一）</td><td>電池</td><td>—</td></tr>
+        <tr><td>JST PH（另一）</td><td>TP4056 <strong>B+／B-</strong></td><td>PH 對 PH 線，取代原本的轉接器鏈</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="note note-blue">
+      📋 <strong>到貨後的驗收順序</strong>（一步都不要跳）：<br>
+      ① 電表 Ω 檔確認 <code>VIN ↔ 背面 Bat 焊盤</code> 為開路（證明上拉不在電池上）、<code>SDA ↔ VIN</code> 約 10kΩ →
+      ② 只接 VIN／GND，量 VIN 對地 3.3V →
+      ③ 插電池 →
+      ④ 最後才接 SDA／SCL →
+      ⑤ 掃 I2C 應看到 <code>0x36</code> 且逾時 0 →
+      ⑥ 讀數對電表誤差 &lt; 50mV →
+      ⑦ 改韌體換算常數 →
+      ⑧ 燒回主韌體確認電量列正常。
+    </div>
+
+    <div class="sub-title">未完成事項</div>
+    <ul class="check-list">
+      <li class="todo">MAX17048 模組<strong>尚未到貨</strong></li>
+      <li class="todo">韌體電壓換算常數仍是 MAX17043 的 1.25mV/LSB，<strong>未改</strong>（連同對應的單元測試預期值）</li>
+      <li class="todo">診斷工具與韌體訊息文字仍寫 MAX17043，<strong>未改</strong></li>
+      <li class="todo">三份硬體文件（腳位表、電源模組 SOP、採購清單）仍記載 MAX17043 接線，<strong>未改</strong></li>
+      <li class="todo">上機驗證（I2C 掃描 → 讀數對電表 → 主韌體電量顯示）<strong>全部未執行</strong></li>
+      <li class="warn">整個電量顯示功能（Impl-Phase H）<strong>一次都沒在實機跑過</strong>，目前結論全建立在單元測試與靜態推理上</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ========== 5. 時間與 I2C 周邊 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-5"><span class="num">5</span>時間與 I2C 周邊</div>
+
+  <div class="card">
+    <div class="sub-title">5.1　DS3231 即時時鐘模組</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>晶片</td><td>DS3231——<strong>內建溫度補償晶振（TCXO）</strong>的 I2C 即時時鐘</td><td>📄</td></tr>
+        <tr><td>走時精度</td><td>±2ppm（0~+40°C），約等於每月誤差 &lt; 1 分鐘——這是選它而非一般 RTC 的理由（醫療紀錄可信度）</td><td>📄</td></tr>
+        <tr><td>I2C 位址</td><td><code>0x68</code></td><td>🔬</td></tr>
+        <tr><td>附掛 EEPROM</td><td>模組板上另有 <strong>AT24C32</strong>（32Kbit ≈ 4KB）EEPROM，位址 <code>0x57</code>，本專案未使用但會出現在 I2C 掃描結果</td><td>🔬</td></tr>
+        <tr><td>備援電池</td><td>CR2032 紐扣電池座（主電源斷電時保持走時）</td><td>📄</td></tr>
+        <tr><td>韌體行為</td><td>開機時偵測 <code>0x68</code>：在線 → 用硬體 RTC 當時間來源；不在線 → 降級成無 RTC 模式，靠 BLE 對時</td><td>🔬</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note">
+      ⚠️ <strong>兩件尚未確認的事</strong>：<br>
+      ① <strong>CR2032 備援電池疑似沒電</strong>——2026-09-05 裸板測試時 RTC 回報的時間超出合理範圍而被韌體拒絕採用。換電池後需重測「對時 → 斷電 30 秒 → 重開仍記得時間」。<br>
+      ② <strong>模組 VCC 走 3V3 是推定</strong>，非逐條驗證過的紀錄——專案文件只留下資料線（GPIO 42/41）的明確記載，供電走線是依 I2C 模組慣例推定。
+    </div>
+
+    <div class="sub-title">5.2　I2C 匯流排位址表（GPIO 42 = SDA / GPIO 41 = SCL）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:110px">位址</th><th>裝置</th><th style="width:180px">狀態</th></tr></thead>
+      <tbody>
+        <tr><td><code>0x36</code></td><td>MAX17043 電量計（換裝後為 MAX17048，<strong>位址相同</strong>）</td><td><span class="badge badge-red">故障待換</span></td></tr>
+        <tr><td><code>0x57</code></td><td>AT24C32 EEPROM（DS3231 模組附掛，非獨立採購）</td><td><span class="badge badge-green">在線</span></td></tr>
+        <tr><td><code>0x68</code></td><td>DS3231 即時時鐘</td><td><span class="badge badge-green">在線</span></td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note note-blue">
+      📌 這條匯流排是專案<strong>實際在用</strong>的（GPIO 42/41）。另外兩份文件裡的 I2C 位址表屬於「SparkFun 開發板方案」的規劃推算，該方案<strong>未採用</strong>，不要拿來當現況。<br>
+      已移除：SH1106 OLED（<code>0x3C</code>）——顯示器改 SPI TFT 後整個 I2C 才釋放出來。尚未採購：MCP23017（<code>0x20</code>）按鍵擴充候選。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 6. 輸入與提示 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-6"><span class="num">6</span>輸入與提示</div>
+
+  <div class="card">
+    <div class="sub-title">6.1　按鍵 ×8</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>型式</td><td>無段自復位輕觸開關（single-action，按一下 = 一筆事件）</td><td>📄</td></tr>
+        <tr><td>接法</td><td>一端接 GPIO 走晶片<strong>內部上拉</strong>（<code>INPUT_PULLUP</code>），另一端共用 GND ——<strong>不需要外部電阻、不需要 VCC</strong></td><td>🔬</td></tr>
+        <tr><td>防彈跳</td><td>韌體 80ms，<strong>按下與放開共用同一門檻</strong>（只擋按下緣會讓慢速重繪期間的彈跳穿透，造成一按兩響）</td><td>🔬</td></tr>
+        <tr><td>擴充空間</td><td>目前 8 鍵全走主控本體 GPIO，未使用 I/O 擴充晶片</td><td>🔬</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">6.2　蜂鳴器</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>型式</td><td>主動式（內建振盪，給電即響，不需韌體產生頻率）</td><td>📄</td></tr>
+        <tr><td>驅動</td><td>GPIO 14 直接推（<code>digitalWrite</code>），<strong>GPIO 兼作供電，無獨立 VCC</strong>，另一端接 GND</td><td>🔬</td></tr>
+        <tr><td>電流</td><td>響起時峰值約 30mA（估算值，未實測）</td><td>⚠️</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">6.3　板載 WS2812 RGB LED</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:180px">項目</th><th>規格</th><th style="width:70px">來源</th></tr></thead>
+      <tbody>
+        <tr><td>來源</td><td>GOOUUU 開發板出廠自帶，接在 GPIO 48，<strong>非本專案採購</strong></td><td>🔬</td></tr>
+        <tr><td>目前用途</td><td>韌體開機時寫入全暗把它關掉，不作狀態指示</td><td>🔬</td></tr>
+        <tr><td>影響</td><td><strong>GPIO 48 因此不能當一般 I/O</strong>——訊號會被 LED 吃成色彩資料（TFT DC 原本規劃在此，實機發現 LED 狂亂閃後改到 GPIO 1）</td><td>🔬</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note note-blue">
+      📌 產品規格書列的「LED 狀態燈」目前<strong>由這顆板載 LED 佔位，尚未實作狀態指示邏輯</strong>；量產時應改為外接指示燈並重新分配腳位。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 7. 腳位對照總表 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-7"><span class="num">7</span>腳位對照總表</div>
+
+  <div class="card">
+    <div class="note note-blue">
+      📌 本表對齊 <code>docs/gpio-allocation.md</code>（腳位分配的唯一真相來源）與韌體 <code>app_globals.h</code> 的常數定義。兩者若與本表不一致，<strong>以 gpio-allocation.md 為準</strong>。
+    </div>
+
+    <div class="sub-title">7.1　電源與接地接點</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:150px">ESP32 接點</th><th>接到什麼</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td><strong>5V / V5IN</strong></td><td>TP4056 模組 <strong>OUT+</strong></td><td>板子唯一的電源輸入。🚨 誤接 3V3 會燒晶片</td></tr>
+        <tr><td><strong>5V / V5IN</strong></td><td>TFT <strong>VCC</strong></td><td>與 OUT+ 共用同一條 5V 軌，不需另拉線</td></tr>
+        <tr><td><strong>3V3</strong></td><td>TFT <strong>背光 LED</strong></td><td>常亮，無 PWM 調光</td></tr>
+        <tr><td><strong>3V3</strong></td><td>DS3231 <strong>VCC</strong></td><td>⚠️ 依 I2C 模組慣例推定，非逐條驗證紀錄</td></tr>
+        <tr><td><strong>3V3</strong></td><td>MAX17048 <strong>VIN</strong>（換裝後）</td><td>⚠️ 尚未接線。不可接 5V</td></tr>
+        <tr><td><strong>GND</strong></td><td>TP4056 <strong>OUT-</strong></td><td>🚨 <strong>必須焊死</strong>，可拔插接法會造成白屏</td></tr>
+        <tr><td><strong>GND</strong></td><td>8 顆按鍵共用回路</td><td>走晶片內部上拉，無需外部 VCC</td></tr>
+        <tr><td><strong>GND</strong></td><td>蜂鳴器 / TFT / DS3231 / 電量計</td><td>電量計的 GND 要插在<strong>緊鄰 ESP32 GND 腳</strong>的孔（見 §8 地線）</td></tr>
+        <tr><td><em>（不接 ESP32）</em></td><td>MAX17043 <strong>VCC</strong></td><td>現役模組是電池直供，<strong>刻意不接不是漏接</strong>；換 MAX17048 後改為 VIN 接 3V3</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">7.2　訊號腳位（依 GPIO 編號排序）</div>
+    <div class="table-wrap">
+<table>
+      <thead>
+        <tr><th style="width:80px">GPIO</th><th style="width:150px">用途</th><th style="width:150px">韌體常數</th><th>所屬模組 / 備註</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="num-col"><strong>1</strong></td><td>TFT DC（資料/指令）</td><td><code>TFT_DC_PIN</code></td><td>顯示器。原規劃 GPIO 48，因板載 RGB LED 衝突改此腳</td></tr>
+        <tr><td class="num-col"><strong>2</strong></td><td>TFT MOSI</td><td><code>TFT_MOSI_PIN</code></td><td>顯示器 SPI。原規劃 GPIO 35，因 octal PSRAM 改此腳（犧牲一支 ADC）</td></tr>
+        <tr><td class="num-col"><strong>3</strong></td><td>TFT SCK</td><td><code>TFT_SCLK_PIN</code></td><td>顯示器 SPI。原規劃 GPIO 36，同上</td></tr>
+        <tr><td class="num-col"><strong>4</strong></td><td>主按鍵（紅色大鍵）</td><td><code>BTN_PRIMARY</code></td><td>長按進入 OHCA 案件</td></tr>
+        <tr><td class="num-col"><strong>5</strong></td><td>上鍵</td><td><code>BTN_UP</code></td><td>選單上移 / 音量 +</td></tr>
+        <tr><td class="num-col"><strong>6</strong></td><td>下鍵</td><td><code>BTN_DOWN</code></td><td>選單下移 / 音量 -</td></tr>
+        <tr><td class="num-col"><strong>7</strong></td><td>Power 鍵</td><td><code>BTN_POWER</code></td><td>開關機</td></tr>
+        <tr><td class="num-col"><strong>14</strong></td><td>蜂鳴器</td><td><code>BUZZER_PIN</code></td><td>GPIO 直驅，兼作供電</td></tr>
+        <tr><td class="num-col"><strong>15</strong></td><td>錄音鍵</td><td><code>BTN_RECORD</code></td><td>⚠️ 實體已接線，<strong>韌體刻意留空</strong>（錄音非 V1 功能）</td></tr>
+        <tr><td class="num-col"><strong>16</strong></td><td>返回鍵</td><td><code>BTN_BACK</code></td><td>選單返回 / 各子畫面退出</td></tr>
+        <tr><td class="num-col"><strong>17</strong></td><td>EPI 鍵（針筒圖案）</td><td><code>BTN_EPI</code></td><td>兩段確認後記錄給藥</td></tr>
+        <tr><td class="num-col"><strong>18</strong></td><td>電擊鍵（閃電圖案）</td><td><code>BTN_SHOCK</code></td><td>兩段確認後記錄電擊</td></tr>
+        <tr><td class="num-col"><strong>21</strong></td><td>TFT CS（晶片選擇）</td><td><code>TFT_CS_PIN</code></td><td>⚠️ 與震動馬達同腳，震動目前停用</td></tr>
+        <tr><td class="num-col"><strong>41</strong></td><td>I2C SCL</td><td><code>I2C_SCL_PIN</code></td><td>DS3231 + 電量計共用</td></tr>
+        <tr><td class="num-col"><strong>42</strong></td><td>I2C SDA</td><td><code>I2C_SDA_PIN</code></td><td>同上</td></tr>
+        <tr><td class="num-col"><strong>47</strong></td><td>TFT RST（硬體重置）</td><td><code>TFT_RST_PIN</code></td><td>顯示器</td></tr>
+        <tr><td class="num-col">48</td><td><em>板載 RGB LED</em></td><td><code>WS2812_PIN</code></td><td>開發板出廠自帶，韌體只用來關閉它</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">7.3　尚未使用的腳位</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:150px">GPIO</th><th>狀態</th><th>可用途</th></tr></thead>
+      <tbody>
+        <tr><td><strong>38 / 39 / 40</strong></td><td><span class="badge badge-amber">已接線未啟用</span></td><td>INMP441 麥克風的 I2S 三線（資料 / 字元選擇 / 時脈），錄音非 V1 功能</td></tr>
+        <tr><td><strong>43 / 44</strong></td><td><span class="badge badge-blue">空閒</span></td><td>UART0 預設腳，與 USB 除錯無關。是記憶卡、CO 感測器（UART 型）、RTC 中斷三者的唯一候選，<strong>只能擇一</strong></td></tr>
+        <tr><td><strong>35 / 36 / 37</strong></td><td><span class="badge badge-red">不可用</span></td><td>本模組的 octal PSRAM 佔用</td></tr>
+        <tr><td>0 / 45 / 46　8~13　19 / 20　26~32</td><td><span class="badge badge-red">禁用</span></td><td>strapping 腳、內建 Flash、USB 差動對、Flash bonding pad</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note note-red">
+      🔴 <strong>ADC 已全部用完</strong>：GPIO 1／2／3 是本模組僅存的 ADC1 通道，2026-05-08 後全部給了顯示器。未來若要加類比感測器（例如 MEMS 型 CO 感測器），<strong>只能改走 I2C 或 UART</strong>，或重新盤點腳位。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 8. 互斥約束與踩坑 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-8"><span class="num">8</span>互斥約束與硬體踩坑</div>
+
+  <div class="card">
+    <div class="sub-title">8.1　同一支腳的互斥組合</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:230px">衝突</th><th>原因</th><th>目前處置</th></tr></thead>
+      <tbody>
+        <tr><td><strong>GPIO 21</strong>：TFT CS ↔ 震動馬達</td><td>同一支腳</td><td>TFT 優先，震動馬達停用。量產若要同時具備，震動需重新分配腳位</td></tr>
+        <tr><td><strong>GPIO 48</strong>：TFT DC ↔ 板載 RGB LED</td><td>開發板出廠即接 LED</td><td>TFT DC 已改到 GPIO 1；GPIO 48 留給 LED</td></tr>
+        <tr><td><strong>GPIO 35/36/37</strong>：SPI ↔ octal PSRAM</td><td>模組內部佔用</td><td>SPI 改用 GPIO 2/3</td></tr>
+        <tr><td><strong>GPIO 1/2/3</strong>：TFT ↔ 類比輸入</td><td>ADC1 三通道全給顯示器</td><td>類比感測器全部改走 I2C／UART</td></tr>
+        <tr><td><strong>GPIO 43/44</strong>：記憶卡 ↔ CO 感測器（UART）↔ RTC 中斷</td><td>三者的唯一候選腳重疊</td><td>三者擇一；要並用得加 I/O 擴充晶片</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">8.2　實機踩過的坑（都不會在編譯期報錯）</div>
+    <ul class="issue-list">
+      <li><strong>電池供電時螢幕白屏</strong> — 根因是電源模組負極接點的接觸電阻造成約 0.5V 接地壓降；正極與升壓輸出量起來全正常，只有這個接點有問題。<strong>焊死該接點後解決</strong>，前後花了近三週。</li>
+      <li><strong>麵包板接地本身就是誤差來源</strong> — 同一條地線插在遠處讀 4~20Ω，插在緊鄰主控 GND 腳的孔讀 0.4Ω。200mA 走 4Ω 就是 0.8V 偏移，足以讓 I2C 裝置把「低電位」判成「高電位」。<strong>所有周邊的 GND 一律星狀接到主控 GND 腳旁</strong>，不要串在電源軌上。</li>
+      <li><strong>MAX17043 模組的上拉接電池電壓</strong> — 該板型（V1.1）的 2.2kΩ 上拉接在電池節點，實測把 I2C 兩線閒置電位拉到約 4V，超過主控 3.6V 的輸入上限。「先前能跑」是超規下的能跑，不是設計正確。換用上拉接 VIN 的模組可解。</li>
+      <li><strong>顯示器函式庫對 ESP32-S3 做暫存器級存取會當機</strong> — TFT_eSPI 在此模組初始化即當，換腳位無解，只能換函式庫。</li>
+      <li><strong>開機前 1~2 秒的除錯訊息會被吃掉</strong> — USB 需要時間列舉完成，開機最前面印的訊息主機收不到；重要訊息要印在初始化結尾。</li>
+    </ul>
+
+    <div class="note note-red">
+      🚨 <strong>接線通則（每次動硬體都適用）</strong>：<br>
+      ① 接電池／模組前<strong>先量極性</strong>　② <strong>先接電源與地、再接訊號線</strong>　③ 每量一次電壓都要記錄<strong>黑棒接在哪裡</strong>（否則兩次量測互相矛盾時無從判斷）　④ 新模組先單獨供電量過再接上主控，把接錯的代價封頂在那顆晶片上。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 9. 非 V1 備料 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-9"><span class="num">9</span>非 V1 功能的備料（已買，未納入 V1）</div>
+
+  <div class="card">
+    <div class="table-wrap">
+<table>
+      <thead><tr><th>品項</th><th>晶片 / 規格</th><th>狀態</th><th>啟用條件</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>麥克風</strong></td>
+          <td>INMP441 數位 MEMS 麥克風，I2S 介面，工作電壓 1.62~3.6V（<strong>不可給 5V</strong>）</td>
+          <td><span class="badge badge-amber">已購・已接線未啟用</span></td>
+          <td>錄音功能開發（腳位 38/39/40 已預留）</td>
+        </tr>
+        <tr>
+          <td><strong>記憶卡模組</strong></td>
+          <td>MicroSD，SPI 介面</td>
+          <td><span class="badge badge-amber">已購・未接線</span></td>
+          <td>與麥克風一起做，需佔用 GPIO 43/44</td>
+        </tr>
+        <tr>
+          <td><strong>震動馬達</strong></td>
+          <td>3V 硬幣型，需 S8050 NPN 電晶體 + 1kΩ 基極電阻驅動</td>
+          <td><span class="badge badge-amber">已購・未接線</span></td>
+          <td>需先解決與顯示器搶 GPIO 21 的問題</td>
+        </tr>
+        <tr>
+          <td><strong>PowerBoost 1000C</strong></td>
+          <td>Adafruit 充放電模組，具真正 load-sharing</td>
+          <td><span class="badge badge-amber">已到貨・未採用</span></td>
+          <td>量產階段若需要真 load-sharing 才換裝</td>
+        </tr>
+        <tr>
+          <td><strong>I/O 擴充晶片</strong></td>
+          <td>MCP23017，16-bit I2C I/O 擴充，位址 <code>0x20</code></td>
+          <td><span class="badge badge-blue">未下單</span></td>
+          <td>只有換成 GPIO 較少的主控板時才需要</td>
+        </tr>
+        <tr>
+          <td><strong>CO 感測器</strong></td>
+          <td>未選型。<strong>電化學型</strong>（~10mA，推薦）／ MEMS 型（~30mA）／ <strong>加熱型 MQ-7、MQ-9 禁用</strong>（150mA+ 超出電源預算）</td>
+          <td><span class="badge badge-blue">未採購</span></td>
+          <td>擴充規格設計時才選型，介面只能走 I2C 或 UART</td>
+        </tr>
+      </tbody>
+    </table>
+</div>
+  </div>
+</div>
+
+<!-- ========== 10. 功耗預算 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-10"><span class="num">10</span>功耗預算</div>
+
+  <div class="card">
+    <div class="note">
+      ⚠️ <strong>下表全部是規格書估算值，本專案尚未做過實測校正</strong>（連續使用時數同樣未實測）。做外殼與電池容量決策前應先實測。
+    </div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th>模組</th><th style="width:120px">典型電流</th><th style="width:120px">峰值電流</th><th>觸發場景</th></tr></thead>
+      <tbody>
+        <tr><td>ESP32-S3（BLE 連線中）</td><td class="metric-col">80mA</td><td class="metric-col">240mA</td><td>藍牙傳送瞬間</td></tr>
+        <tr><td>2.8" TFT（含背光）</td><td class="metric-col">80mA</td><td class="metric-col">120mA</td><td>背光佔絕大部分</td></tr>
+        <tr><td>蜂鳴器</td><td class="metric-col">0</td><td class="metric-col">30mA</td><td>警報響起</td></tr>
+        <tr><td>震動馬達（非 V1）</td><td class="metric-col">0</td><td class="metric-col">80mA</td><td>震動瞬間</td></tr>
+        <tr><td>狀態指示燈</td><td class="metric-col">5mA</td><td class="metric-col">10mA</td><td>雙色全亮</td></tr>
+        <tr><td><strong>V1 小計</strong></td><td class="metric-col"><strong>~110mA</strong></td><td class="metric-col"><strong>~400mA</strong></td><td>—</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">1000mAh 電池續航估算（未實測）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th>使用情境</th><th style="width:200px">預估時數</th></tr></thead>
+      <tbody>
+        <tr><td>純待機（暗屏）</td><td class="metric-col">~30 小時</td></tr>
+        <tr><td>案件進行中（亮屏 + 藍牙 + 不時警報）</td><td class="metric-col">~8~10 小時</td></tr>
+        <tr><td>邊充邊用</td><td class="metric-col">不限時</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">韌體低電量門檻</div>
+    <ul class="check-list">
+      <li>電量 <strong>低於 20%</strong> → 進入低電量狀態（提示 + 電量圖示閃爍）</li>
+      <li>電量 <strong>回到 25% 以上</strong> 才解除（保留 5% 遲滯，避免在門檻上下反覆跳動）</li>
+      <li class="warn">此邏輯目前只通過單元測試，<strong>尚未在實機驗證過</strong></li>
+    </ul>
+  </div>
+</div>
+
+<!-- ========== FOOTER ========== -->
+<div class="footer">
+  EMS DoseSync Pro — V1 硬體與晶片規格 v1.0<br>
+  資料截止 2026-09-07　｜　腳位以 <code>docs/gpio-allocation.md</code> 為單一真相來源<br>
+  標示 ⚠️ 與紅框的項目為未驗證內容，引用前請先確認
+</div>
+
+</body>
+</html>

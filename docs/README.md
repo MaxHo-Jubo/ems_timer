@@ -26,6 +26,7 @@
 | 狀態 | 文件 | 用途 | 最後動 |
 |:---:|---|---|---|
 | 🟢 | [`gpio-allocation.md`](gpio-allocation.md) / [`.html`](gpio-allocation.html) | **GPIO 分配單一真相來源**：速查表、按鍵、顯示、I2C bus 位址表、互斥約束、變更歷程 | 2026-09-05 |
+| 🟢 | [`v1-hardware-spec.html`](v1-hardware-spec.html) | V1 硬體與晶片規格彙整（僅 HTML）：各晶片關鍵規格＋規格來源標記（實測／標稱／未驗證）、腳位對照總表、互斥約束與踩坑、非 V1 備料、功耗預算。**MAX17048 換裝方案全章標記未驗證**。腳位以 `gpio-allocation.md` 為準，本檔為彙整視圖 | 2026-09-07 |
 | 🟢 | [`hardware-procurement-v2.md`](hardware-procurement-v2.md) / [`.html`](hardware-procurement-v2.html) | 硬體採購清單 v2：13 項品項與採購／接線狀態快照、升級路徑、給 PM 下單參考 | 2026-09-05 |
 | 🟡 | [`power-module-purchase.md`](power-module-purchase.md) / [`.html`](power-module-purchase.html) | 電源模組採購與組裝 SOP、TP4056 校壓、MAX17043 接線與驗收（§10.7／§10.8）。**§10.7 待依 MAX17048 換裝更新**，見 `tasks/todo.md` T9／T10 | 2026-09-05 |
 | 🟢 | [`pcb-outsourcing-guide.md`](pcb-outsourcing-guide.md) | 量產 PCB 外包指南：外包範圍、管道、7 項準備清單、預算、報價基準、**§11 量產零件對映與設計規則** | 2026-09-06 |
