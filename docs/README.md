@@ -27,6 +27,7 @@
 |:---:|---|---|---|
 | 🟢 | [`gpio-allocation.md`](gpio-allocation.md) / [`.html`](gpio-allocation.html) | **GPIO 分配單一真相來源**：速查表、按鍵、顯示、I2C bus 位址表、互斥約束、變更歷程 | 2026-09-05 |
 | 🟢 | [`v1-hardware-spec.html`](v1-hardware-spec.html) | V1 硬體與晶片規格彙整（僅 HTML）：各晶片關鍵規格＋規格來源標記（實測／標稱／未驗證）、腳位對照總表、互斥約束與踩坑、非 V1 備料、功耗預算。**MAX17048 換裝方案全章標記未驗證**。腳位以 `gpio-allocation.md` 為準，本檔為彙整視圖 | 2026-09-07 |
+| 🟢 | [`vendor-assembly-brief.html`](vendor-assembly-brief.html) | **給焊接廠商的交付說明**（僅 HTML，自足、可列印）：零件清單、電源／接地與訊號接線表、電量計「留 5-pin 排針不焊」決策、必讀注意事項、產測韌體判讀表與 FAIL 對照、交付檢核表。已部署 Cloudflare Pages（不掛連結，僅直接 URL）；腳位以 `gpio-allocation.md` 為準，判讀字串與 `firmware/lib/ems_factory_test/` 一致 | 2026-09-09 |
 | 🟢 | [`hardware-procurement-v2.md`](hardware-procurement-v2.md) / [`.html`](hardware-procurement-v2.html) | 硬體採購清單 v2：13 項品項與採購／接線狀態快照、升級路徑、給 PM 下單參考 | 2026-09-05 |
 | 🟡 | [`power-module-purchase.md`](power-module-purchase.md) / [`.html`](power-module-purchase.html) | 電源模組採購與組裝 SOP、TP4056 校壓、MAX17043 接線與驗收（§10.7／§10.8）。**§10.7 待依 MAX17048 換裝更新**，見 `tasks/todo.md` T9／T10 | 2026-09-05 |
 | 🟢 | [`pcb-outsourcing-guide.md`](pcb-outsourcing-guide.md) | 量產 PCB 外包指南：外包範圍、管道、7 項準備清單、預算、報價基準、**§11 量產零件對映與設計規則** | 2026-09-06 |
@@ -60,8 +61,9 @@
 |:---:|---|---|
 | 🟢 | [`demo/index.html`](demo/index.html) | 手機互動 Demo 原始碼（single file），部署於 Cloudflare Pages `ems-dosesync-demo.pages.dev`；TFT UI 的美學藍本 |
 | 🟢 | [`ble-tester/index.html`](ble-tester/index.html) | Phase F web BLE 測試工具：連線、time_sync、案件 dump |
-| 🟢 | [`../firmware/release-template/`](../firmware/release-template/) | 韌體交付包模板：`README.txt`（對方燒錄說明）、`flash.sh`／`flash.bat`（一鍵燒錄）、`HOW_TO_BUILD_RELEASE.md`（**僅開發者**，打包 SOP） |
-| 🟢 | [`../tasks/todo.md`](../tasks/todo.md) | 跨 session 的待辦與上機驗收紀錄（目前 T6～T10） |
+| 🟢 | [`../firmware/release-template/`](../firmware/release-template/) | 韌體交付包模板：`README.txt`（對方燒錄說明）、`flash.sh`／`flash.bat`（一鍵燒錄）、`HOW_TO_BUILD_RELEASE.md`（**僅開發者**，打包 SOP，含產測包流程） |
+| 🟢 | [`../firmware/src_factory_test/main.cpp`](../firmware/src_factory_test/main.cpp) | 產測韌體 `pio run -e factory-test`：TFT 彩條、I2C 掃描（0x68／0x57／0x36）、RTC 走時、8 鍵、蜂鳴器，結果畫在 TFT；PASS／FAIL 判定在 `lib/ems_factory_test/`（native 可測）。廠商判讀說明見 `vendor-assembly-brief.html` §7 |
+| 🟢 | [`../tasks/todo.md`](../tasks/todo.md) | 跨 session 的待辦與上機驗收紀錄（目前 T6～T11） |
 
 ## 6. 歷史紀錄（不再更新，保留追溯）
 

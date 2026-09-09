@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>焊接組裝交付說明</title>
+<style>
+  :root {
+    --bg: #f8f9fa; --card: #ffffff; --border: #e2e8f0;
+    --text: #1a202c; --text-secondary: #64748b;
+    --blue: #3b82f6; --blue-light: #eff6ff;
+    --green: #22c55e; --green-light: #f0fdf4;
+    --amber: #f59e0b; --amber-light: #fffbeb;
+    --red: #ef4444; --red-light: #fef2f2;
+    --gray: #94a3b8; --radius: 10px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans TC", sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6;
+    padding: 24px; max-width: 1100px; margin: 0 auto;
+  }
+  .header { text-align: center; margin-bottom: 24px; padding: 32px 24px; background: linear-gradient(135deg, #1e3a5f, #2563eb); border-radius: 16px; color: #fff; }
+  .header h1 { font-size: 26px; font-weight: 700; letter-spacing: 1px; }
+  .toc { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; margin-bottom: 24px; box-shadow: var(--shadow); }
+  .toc-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); margin-bottom: 8px; letter-spacing: 1px; }
+  .toc-list { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; }
+  .toc-list a { color: var(--blue); text-decoration: none; padding: 4px 0; }
+  .toc-list a:hover { text-decoration: underline; }
+  .section { margin-bottom: 32px; }
+  .section-title { font-size: 18px; font-weight: 700; margin-bottom: 16px; padding-left: 12px; border-left: 4px solid var(--blue); display: flex; align-items: center; gap: 8px; scroll-margin-top: 16px; }
+  .section-title .num { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; background: var(--blue); color: #fff; border-radius: 50%; font-size: 14px; font-weight: 700; flex-shrink: 0; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); margin-bottom: 14px; }
+  .sub-title { font-size: 15px; font-weight: 700; margin: 24px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--border); }
+  .sub-title:first-child { margin-top: 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { background: var(--bg); font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 2px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  tr:last-child td { border-bottom: none; }
+  td.num-col { text-align: center; font-weight: 600; color: var(--text-secondary); width: 50px; }
+  td.gpio-col { text-align: center; font-weight: 700; font-family: "JetBrains Mono", "SF Mono", Consolas, monospace; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+  .badge-blue { background: var(--blue-light); color: var(--blue); }
+  .badge-green { background: var(--green-light); color: #15803d; }
+  .badge-amber { background: var(--amber-light); color: #b45309; }
+  .badge-red { background: var(--red-light); color: var(--red); }
+  .note { margin-top: 12px; padding: 10px 14px; background: var(--amber-light); border-left: 3px solid var(--amber); border-radius: 0 8px 8px 0; font-size: 13px; color: #92400e; }
+  .note-blue { background: var(--blue-light); border-left-color: var(--blue); color: #1e40af; }
+  .note-red { background: var(--red-light); border-left-color: var(--red); color: #991b1b; }
+  .note-green { background: var(--green-light); border-left-color: var(--green); color: #15803d; }
+  .rule-list { list-style: none; padding: 0; margin: 0; counter-reset: rule; }
+  .rule-list li {
+    padding: 12px 16px 12px 50px; position: relative; margin-bottom: 8px;
+    background: var(--bg); border-radius: 8px; font-size: 14px; line-height: 1.7;
+  }
+  .rule-list li::before {
+    counter-increment: rule; content: counter(rule);
+    position: absolute; left: 12px; top: 12px; width: 26px; height: 26px;
+    background: var(--blue); color: #fff; border-radius: 50%; font-size: 13px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .rule-list li.danger { background: var(--red-light); }
+  .rule-list li.danger::before { background: var(--red); }
+  .screen {
+    background: #000; color: #fff; font-family: "JetBrains Mono", "SF Mono", Consolas, monospace;
+    font-size: 13px; line-height: 1.5; padding: 14px 18px; border-radius: 8px; white-space: pre; overflow-x: auto;
+    border: 4px solid #333;
+  }
+  .screen .ok { color: #4ade80; } .screen .warn { color: #fbbf24; } .screen .bad { color: #f87171; } .screen .dim { color: #94a3b8; }
+  code { background: var(--bg); padding: 1px 6px; border-radius: 4px; font-size: 12px; font-family: "JetBrains Mono", "SF Mono", Consolas, monospace; }
+  .blank { display: inline-block; min-width: 90px; border-bottom: 1px solid var(--gray); }
+  .footer { text-align: center; padding: 24px 0; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); margin-top: 40px; }
+  @media (max-width: 640px) {
+    body { padding: 12px; }
+    .header h1 { font-size: 20px; }
+    .card { padding: 16px 14px; }
+    table { font-size: 13px; }
+    th { padding: 8px 10px; }
+    td { padding: 8px 10px; }
+    td.num-col { width: 34px; }
+    .blank { min-width: 56px; }
+    .hide-sm { display: none; }
+    .badge { white-space: normal; }
+    th, td { overflow-wrap: anywhere; }
+  }
+  @media print {
+    body { background: #fff; padding: 0; max-width: none; }
+    .header { background: #1e3a5f; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .card { box-shadow: none; break-inside: avoid; }
+    .toc { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== HEADER ========== -->
+<div class="header">
+  <h1>焊接組裝交付說明</h1>
+</div>
+
+<!-- ========== TOC ========== -->
+<div class="toc">
+  <div class="toc-title">章節導覽</div>
+  <div class="toc-list">
+    <a href="#sec-1">1. 交付範圍與驗收</a>
+    <a href="#sec-2">2. 零件清單</a>
+    <a href="#sec-3">3. 電源與接地</a>
+    <a href="#sec-4">4. 訊號接線</a>
+    <a href="#sec-5">5. 電量計（MAX17048）：只留排針</a>
+    <a href="#sec-6">6. 必讀注意事項</a>
+    <a href="#sec-7">7. 產測韌體與驗收步驟</a>
+    <a href="#sec-8">8. 交付物與檢核表</a>
+  </div>
+</div>
+
+<!-- ========== 1. 交付範圍 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-1"><span class="num">1</span>交付範圍與驗收</div>
+  <div class="card">
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:140px">項目</th><th>內容</th></tr></thead>
+      <tbody>
+        <tr><td><strong>要做的事</strong></td><td>依 §3、§4 的接線表，把 §2 的模組焊接成一台可開機的原型。載體（洞洞板／載板）不限，但 §6 的接地與固定要求必須符合。</td></tr>
+        <tr><td><strong>不在範圍</strong></td><td>外殼、韌體、任何電路改動（包含更換零件型號、加減電阻電容）。有疑問請先聯絡，不要自行變更。</td></tr>
+        <tr><td><strong>驗收標準</strong></td><td>燒入<strong>產測韌體</strong>（§7），螢幕最後一列顯示 <code>RESULT: PASS</code>，且 §8 檢核表全部打勾。</td></tr>
+      </tbody>
+    </table>
+</div>
+  </div>
+</div>
+
+<!-- ========== 2. 零件清單 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-2"><span class="num">2</span>零件清單</div>
+  <div class="card">
+    <div class="table-wrap">
+<table>
+      <thead>
+        <tr><th class="hide-sm" style="width:50px">#</th><th>硬體</th><th>核心晶片 / 介面</th><th>本次處理</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="num-col hide-sm">1</td><td><strong>主控板</strong>　GOOUUU ESP32-S3 開發板</td><td>ESP32-S3（N16R8 模組）</td><td><span class="badge badge-green">焊接</span> USB-C 口與板上 BOOT／RST 鍵必須保持可操作</td></tr>
+        <tr><td class="num-col hide-sm">2</td><td><strong>顯示器</strong>　2.8" TFT LCD 模組</td><td>ST7789，SPI，240×320</td><td><span class="badge badge-green">焊接</span> 只接 8 條線（§4.1），其餘腳不接</td></tr>
+        <tr><td class="num-col hide-sm">3</td><td><strong>按鍵 ×8</strong>　無段自復位輕觸開關</td><td>GPIO 數位輸入</td><td><span class="badge badge-green">焊接</span> 不加外部電阻（§4.3）</td></tr>
+        <tr><td class="num-col hide-sm">4</td><td><strong>蜂鳴器</strong>　主動式</td><td>GPIO 直驅</td><td><span class="badge badge-green">焊接</span> 注意極性（§4.4）</td></tr>
+        <tr><td class="num-col hide-sm">5</td><td><strong>電池</strong>　523450 LiPo 1000mAh</td><td>DW01A + 8205A（電池自帶保護板）<br><span style="color:#64748b">JST PH2.0</span></td><td><span class="badge badge-green">接到充電模組</span> B+／B−，注意極性</td></tr>
+        <tr><td class="num-col hide-sm">6</td><td><strong>充電升壓模組</strong>　聯騰 MTARDTP4056S</td><td>TP4056 + DW01 + 8205A + SX1308<br><span style="color:#64748b">Type-C 輸入 / 5V 輸出</span></td><td><span class="badge badge-green">焊接</span> OUT− 必須焊死（§3）</td></tr>
+        <tr><td class="num-col hide-sm">7</td><td><strong>即時時鐘</strong>　DS3231 模組</td><td>DS3231 + AT24C32<br><span style="color:#64748b">I2C（0x68 / 0x57）</span></td><td><span class="badge badge-green">焊接</span> 裝上 CR2032 鈕扣電池</td></tr>
+        <tr><td class="num-col hide-sm">8</td><td><strong>電量計</strong>　MAX17048 模組</td><td>MAX17048<br><span style="color:#64748b">I2C（0x36）</span></td><td><span class="badge badge-red">不焊</span> 只留 5-pin 排針，模組後續另行安裝，見 §5</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note note-blue">
+      📌 開發板上出廠自帶的 RGB LED 不在清單內，不需處理；產測韌體開機會把它關掉。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 3. 電源與接地 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-3"><span class="num">3</span>電源與接地</div>
+  <div class="card">
+    <div class="sub-title">3.1　電源接線</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:24%">從</th><th style="width:28%">到</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td>電池 JST PH2.0</td><td>充電模組 <strong>B+ / B−</strong></td><td>注意極性。電池自帶保護板，不需再加</td></tr>
+        <tr><td>充電模組 <strong>OUT+</strong>（5V）</td><td>ESP32 <strong>V5IN</strong>（板上絲印 V5IN，即 5V 軌）</td><td>🚨 系統唯一電源輸入。<strong>絕對不可接 3V3 腳</strong>，接錯直接燒晶片</td></tr>
+        <tr><td>充電模組 <strong>OUT−</strong></td><td>ESP32 <strong>GND</strong></td><td>🚨 <strong>必須焊死</strong>，不可用排針／杜邦線等可拔插方式。此接點接觸不良會造成螢幕白屏</td></tr>
+        <tr><td>TFT <strong>VCC</strong></td><td><strong>V5IN</strong>（5V 軌）</td><td>與 OUT+ 同一條軌。模組上有自己的穩壓，接 3V3 會 brown-out</td></tr>
+        <tr><td>TFT <strong>LED</strong>（背光）</td><td><strong>3V3</strong></td><td>常亮，不接 GPIO</td></tr>
+        <tr><td>DS3231 <strong>VCC</strong></td><td><strong>3V3</strong></td><td>不可接 5V</td></tr>
+        <tr><td>MAX17048 排針 <strong>3V3</strong> 腳</td><td><strong>3V3</strong></td><td>電量計電源，見 §5</td></tr>
+        <tr><td>MAX17048 排針 <strong>BAT+</strong> 腳</td><td>充電模組 <strong>B+</strong>（電池正極）</td><td>給 MAX17048 感測電池電壓用，見 §5</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">3.2　接地</div>
+    <p style="font-size:14px">下列所有 GND 全部<strong>焊接</strong>到同一個接地點（或同一條銅箔），不可鏈式串接、不可靠排針接觸：</p>
+    <ul style="font-size:14px; margin:8px 0 0 24px; line-height:1.9">
+      <li>充電模組 OUT−（見上表，焊死）</li>
+      <li>TFT GND</li>
+      <li>DS3231 GND</li>
+      <li>8 顆按鍵的共用回路</li>
+      <li>蜂鳴器 −</li>
+      <li>電量計（MAX17048）排針 GND 腳</li>
+    </ul>
+
+    <div class="sub-title">3.3　上電前的兩道檢查（跳過任一件可能燒晶片）</div>
+    <ol class="rule-list">
+      <li class="danger"><strong>校壓</strong>：充電模組先<strong>不要</strong>接到 ESP32。插上電池（或 Type-C），用電表量 OUT+ 對 OUT−，必須是 <strong>5.00V ± 0.05V</strong>。若不是，請用模組上的電位器調到 5.00V。</li>
+      <li class="danger"><strong>確認接的是 V5IN 不是 3V3</strong>：接好後再量一次 ESP32 的 V5IN 對 GND ≈ 5V、3V3 對 GND ≈ 3.3V。帶上 TFT 之後 V5IN 不可低於 4.7V，否則主控會反覆重開機。</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ========== 4. 訊號接線 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-4"><span class="num">4</span>訊號接線</div>
+  <div class="card">
+    <div class="note note-red">
+      🚨 GPIO 編號一支都不可以改。韌體已固定在這些腳位上，改了整台都要重新驗證。有疑問請先聯絡。
+    </div>
+
+    <div class="sub-title">4.1　TFT 顯示模組（SPI，共 8 條線）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:30%">TFT 模組腳</th><th style="width:24%">ESP32 接點</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td>VCC</td><td class="gpio-col">V5IN</td><td>5V 軌（§3.1）</td></tr>
+        <tr><td>GND</td><td class="gpio-col">GND</td><td>共同接地（§3.2）</td></tr>
+        <tr><td>CS</td><td class="gpio-col">GPIO 21</td><td>晶片選擇</td></tr>
+        <tr><td>RESET / RST</td><td class="gpio-col">GPIO 47</td><td>硬體重置</td></tr>
+        <tr><td>DC / RS</td><td class="gpio-col">GPIO 1</td><td>資料／指令</td></tr>
+        <tr><td>SDI / MOSI</td><td class="gpio-col">GPIO 2</td><td>SPI 資料</td></tr>
+        <tr><td>SCK / SCL</td><td class="gpio-col">GPIO 3</td><td>SPI 時脈</td></tr>
+        <tr><td>LED / BL</td><td class="gpio-col">3V3</td><td>背光常亮</td></tr>
+        <tr><td style="color:#64748b">SDO / MISO、T_IRQ、T_DO、T_DIN、T_CS、T_CLK</td><td class="gpio-col" style="color:#64748b">不接</td><td style="color:#64748b">純寫入、無觸控，這些腳全部空著</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note">
+      ⚠️ SPI 時脈 80 MHz。CS／RST／DC／MOSI／SCK 這五條線<strong>盡量短、盡量等長</strong>，不要跟電源線綑在一起。
+    </div>
+
+    <div class="sub-title">4.2　DS3231 即時時鐘模組（I2C）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:30%">DS3231 模組腳</th><th style="width:24%">ESP32 接點</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td>VCC</td><td class="gpio-col">3V3</td><td>不可接 5V</td></tr>
+        <tr><td>GND</td><td class="gpio-col">GND</td><td>共同接地</td></tr>
+        <tr><td>SDA</td><td class="gpio-col">GPIO 42</td><td>I2C 資料，與 §5 排針並聯</td></tr>
+        <tr><td>SCL</td><td class="gpio-col">GPIO 41</td><td>I2C 時脈，與 §5 排針並聯</td></tr>
+        <tr><td style="color:#64748b">32K、SQW</td><td class="gpio-col" style="color:#64748b">不接</td><td style="color:#64748b">空著</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note note-blue">
+      📌 I2C 線上<strong>不要另外加上拉電阻</strong>，DS3231 模組上已經有。
+    </div>
+
+    <div class="sub-title">4.3　按鍵 ×8</div>
+    <p style="font-size:14px; margin-bottom:10px">每顆按鍵一腳接對應 GPIO、另一腳接 GND。<strong>不加任何外部電阻</strong>（主控用內部上拉）。</p>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th class="hide-sm" style="width:50px">#</th><th>按鍵</th><th style="width:26%">ESP32 接點</th><th>產測畫面上的名稱</th></tr></thead>
+      <tbody>
+        <tr><td class="num-col hide-sm">1</td><td><strong>主按鍵</strong>（紅色大鍵）</td><td class="gpio-col">GPIO 4</td><td><code>PRIMARY</code></td></tr>
+        <tr><td class="num-col hide-sm">2</td><td>上鍵</td><td class="gpio-col">GPIO 5</td><td><code>UP</code></td></tr>
+        <tr><td class="num-col hide-sm">3</td><td>下鍵</td><td class="gpio-col">GPIO 6</td><td><code>DOWN</code></td></tr>
+        <tr><td class="num-col hide-sm">4</td><td>電源鍵</td><td class="gpio-col">GPIO 7</td><td><code>POWER</code></td></tr>
+        <tr><td class="num-col hide-sm">5</td><td>錄音鍵</td><td class="gpio-col">GPIO 15</td><td><code>RECORD</code></td></tr>
+        <tr><td class="num-col hide-sm">6</td><td>返回鍵</td><td class="gpio-col">GPIO 16</td><td><code>BACK</code></td></tr>
+        <tr><td class="num-col hide-sm">7</td><td>EPI 鍵（針筒圖案）</td><td class="gpio-col">GPIO 17</td><td><code>EPI</code></td></tr>
+        <tr><td class="num-col hide-sm">8</td><td>電擊鍵（閃電圖案）</td><td class="gpio-col">GPIO 18</td><td><code>SHOCK</code></td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">4.4　蜂鳴器（主動式）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:30%">蜂鳴器腳</th><th style="width:24%">ESP32 接點</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td><strong>+</strong>（長腳／標 + 側）</td><td class="gpio-col">GPIO 14</td><td>GPIO 直驅，不加電阻、不加電晶體</td></tr>
+        <tr><td><strong>−</strong></td><td class="gpio-col">GND</td><td>共同接地</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">4.5　接點總表（依 GPIO 排序，供對照）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:90px">GPIO</th><th>接到</th></tr></thead>
+      <tbody>
+        <tr><td class="gpio-col">1</td><td>TFT DC</td></tr>
+        <tr><td class="gpio-col">2</td><td>TFT SDI / MOSI</td></tr>
+        <tr><td class="gpio-col">3</td><td>TFT SCK</td></tr>
+        <tr><td class="gpio-col">4</td><td>主按鍵</td></tr>
+        <tr><td class="gpio-col">5</td><td>上鍵</td></tr>
+        <tr><td class="gpio-col">6</td><td>下鍵</td></tr>
+        <tr><td class="gpio-col">7</td><td>電源鍵</td></tr>
+        <tr><td class="gpio-col">14</td><td>蜂鳴器 +</td></tr>
+        <tr><td class="gpio-col">15</td><td>錄音鍵</td></tr>
+        <tr><td class="gpio-col">16</td><td>返回鍵</td></tr>
+        <tr><td class="gpio-col">17</td><td>EPI 鍵</td></tr>
+        <tr><td class="gpio-col">18</td><td>電擊鍵</td></tr>
+        <tr><td class="gpio-col">21</td><td>TFT CS</td></tr>
+        <tr><td class="gpio-col">41</td><td>I2C SCL（DS3231 + 電量計排針）</td></tr>
+        <tr><td class="gpio-col">42</td><td>I2C SDA（DS3231 + 電量計排針）</td></tr>
+        <tr><td class="gpio-col">47</td><td>TFT RST</td></tr>
+      </tbody>
+    </table>
+</div>
+  </div>
+</div>
+
+<!-- ========== 5. 電量計 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-5"><span class="num">5</span>電量計（MAX17048）：本次不焊，只留排針</div>
+  <div class="card">
+    <p style="font-size:14px; margin-bottom:12px">
+      電量計使用 <strong>MAX17048 模組</strong>（I2C 位址 0x36），模組後續另行安裝。請在板上焊一組 <strong>5-pin 2.54mm 母排針</strong>（焊死在板上，不是留線），接法如下：
+    </p>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:20%">排針腳</th><th style="width:26%">接到</th><th>備註</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1　SDA</strong></td><td><strong>GPIO 42</strong></td><td>與 DS3231 SDA 並聯，接 MAX17048 的 SDA</td></tr>
+        <tr><td><strong>2　SCL</strong></td><td><strong>GPIO 41</strong></td><td>與 DS3231 SCL 並聯，接 MAX17048 的 SCL</td></tr>
+        <tr><td><strong>3　3V3</strong></td><td><strong>ESP32 3V3</strong></td><td>MAX17048 模組的 VIN（晶片與上拉電源）。不可接 5V</td></tr>
+        <tr><td><strong>4　GND</strong></td><td><strong>GND</strong></td><td>共同接地</td></tr>
+        <tr><td><strong>5　BAT+</strong></td><td><strong>充電模組 B+</strong></td><td>電池正極，給 MAX17048 感測電池電壓用</td></tr>
+      </tbody>
+    </table>
+</div>
+    <div class="note note-red">
+      🚨 <strong>不要焊上任何電量計模組</strong>，排針空著即可。MAX17048 後續另行安裝；MAX17043 模組接法不同，不可代用。
+    </div>
+    <div class="note note-blue">
+      📌 產測韌體會掃描這組排針對應的位址 0x36。MAX17048 尚未插上、排針空著時畫面顯示 <code>GAUGE 0x36: NOT FITTED</code>，這是<strong>正確結果</strong>，不影響 PASS。
+    </div>
+  </div>
+</div>
+
+<!-- ========== 6. 必讀注意事項 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-6"><span class="num">6</span>必讀注意事項</div>
+  <div class="card">
+    <ol class="rule-list">
+      <li class="danger"><strong>充電模組 OUT+ 只能接 V5IN。</strong>接到 3V3 腳會直接燒掉主控晶片，且無法修復。</li>
+      <li class="danger"><strong>OUT− 與所有 GND 必須焊接到同一點。</strong>不可用排針、杜邦線、鏈式串接。這個接點接觸不良會造成螢幕白屏，且不易排查。</li>
+      <li class="danger"><strong>下列腳位絕對不可使用</strong>（即使佈線上不方便）：<br>
+        GPIO <strong>35 / 36 / 37</strong>（模組內部記憶體用，接上會當機）、<strong>48</strong>（板載 LED）、<strong>0 / 45 / 46</strong>（開機模式腳）、<strong>8～13</strong>（內建 Flash）、<strong>19 / 20</strong>（USB）、<strong>26～32</strong>。<br>
+        只用本文件列出的腳位，其他一律空著。</li>
+      <li><strong>先校壓再接主控</strong>（§3.3）。OUT+ 必須 5.00V ± 0.05V。校完之後不要再動電位器。</li>
+      <li><strong>按鍵不加外部電阻</strong>，蜂鳴器不加電阻與電晶體，I2C 不另加上拉。請依表格接線即可，額外加上的零件會改變韌體行為。</li>
+      <li><strong>TFT 的 SDO / MISO 與觸控腳全部不接</strong>。</li>
+      <li><strong>開發板的 USB-C 口、BOOT 鍵、RST 鍵必須保持可操作</strong>，燒錄與重開機都靠它們。固定開發板時不要擋住。</li>
+      <li><strong>USB 與電池可以同時接</strong>（燒錄時需要），但前提是第 4 條校壓已完成。OUT+ 與 USB 的 5V 在板上是同一條軌，OUT+ 校太高會回灌 USB。</li>
+      <li><strong>先焊接、再量測、最後才上電。</strong>順序：焊接完成 → 校壓（§3.3 第 1 條）→ 接 V5IN／GND → 量 V5IN 與 3V3（§3.3 第 2 條）→ 插 USB 燒產測韌體 → 看畫面。</li>
+    </ol>
+  </div>
+</div>
+
+<!-- ========== 7. 產測韌體 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-7"><span class="num">7</span>產測韌體與驗收步驟</div>
+  <div class="card">
+    <div class="sub-title">7.1　燒錄包內容</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:40%">檔案</th><th>用途</th></tr></thead>
+      <tbody>
+        <tr><td><code>firmware-merged.bin</code></td><td>產測韌體（bootloader + 分割表 + 程式三合一）</td></tr>
+        <tr><td><code>flash.sh</code> / <code>flash.bat</code></td><td>macOS／Linux 與 Windows 一鍵燒錄腳本</td></tr>
+        <tr><td><code>README.txt</code></td><td>燒錄前置安裝（Python 3 + esptool）與常見錯誤排除</td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">7.2　步驟</div>
+    <ol class="rule-list">
+      <li>完成 §3.3 兩道檢查。</li>
+      <li>用 USB-C 線接開發板到電腦，執行 <code>flash.sh</code>（或雙擊 <code>flash.bat</code>），依提示選擇 port。若卡在「Failed to connect」：按住 BOOT → 按一下 RST → 放開 BOOT → 重新執行燒錄腳本。</li>
+      <li>燒錄完成後按一下 RST。螢幕先顯示 <strong>紅／綠／藍／白四色彩條約 1.5 秒</strong>，蜂鳴器響一短聲，接著進入狀態畫面。</li>
+      <li>依 §4.3 的順序<strong>逐顆按下 8 顆按鍵</strong>。每按一顆，畫面上該鍵由 <code>[ ]</code> 變 <code>[x]</code>，同時蜂鳴一短聲。</li>
+      <li>8 顆全部打勾且其他項目正常時，最後一列變成 <code>RESULT: PASS</code>，蜂鳴器響兩長聲。</li>
+    </ol>
+
+    <div class="sub-title">7.3　狀態畫面範例（全部合格）</div>
+    <div class="screen">EMS FACTORY TEST          v1
+
+I2C  RTC   0x68  <span class="ok">OK</span>
+     EEPROM 0x57 <span class="ok">OK</span>
+     GAUGE  0x36 <span class="dim">NOT FITTED</span>
+RTC  2026-09-09 14:03:27  <span class="ok">TICK OK</span>
+
+BTN  <span class="ok">[x]</span>1 PRIMARY  <span class="ok">[x]</span>2 UP
+     <span class="ok">[x]</span>3 DOWN     <span class="ok">[x]</span>4 POWER
+     <span class="ok">[x]</span>5 RECORD   <span class="ok">[x]</span>6 BACK
+     <span class="ok">[x]</span>7 EPI      <span class="ok">[x]</span>8 SHOCK
+
+<span class="ok">RESULT: PASS</span></div>
+
+    <div class="sub-title">7.4　判讀表</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:26%">項目</th><th style="width:32%">畫面顯示</th><th>通過條件</th></tr></thead>
+      <tbody>
+        <tr><td><strong>開機彩條</strong></td><td>紅、綠、藍、白四色直條</td><td>四色正確、無雜訊、無白屏、無殘影</td></tr>
+        <tr><td><strong>RTC 0x68</strong></td><td><code>OK</code> / <code>MISSING</code></td><td>必須 <code>OK</code></td></tr>
+        <tr><td><strong>EEPROM 0x57</strong></td><td><code>OK</code> / <code>--</code></td><td>僅資訊，不影響結果</td></tr>
+        <tr><td><strong>GAUGE 0x36</strong></td><td><code>NOT FITTED</code> / <code>PRESENT</code></td><td>MAX17048 尚未插上、排針空著，應為 <code>NOT FITTED</code></td></tr>
+        <tr><td><strong>RTC 時間</strong></td><td>日期時間每秒跳動，<code>TICK OK</code></td><td>必須 <code>TICK OK</code>；時間值是否正確不列入判定</td></tr>
+        <tr><td><strong>BTN 1～8</strong></td><td>按下變 <code>[x]</code></td><td>8 顆全部 <code>[x]</code>，每次按下都有一短聲</td></tr>
+        <tr><td><strong>蜂鳴器</strong></td><td>（聽）</td><td>開機一短聲、每次按鍵一短聲、PASS 兩長聲</td></tr>
+        <tr><td><strong>RESULT</strong></td><td><code>PASS</code> / <code>WAITING n/8</code> / <code>FAIL: 原因</code></td><td>必須 <code>PASS</code></td></tr>
+      </tbody>
+    </table>
+</div>
+
+    <div class="sub-title">7.5　FAIL 原因對照</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th style="width:30%">畫面</th><th style="width:28%">意思</th><th>先檢查</th></tr></thead>
+      <tbody>
+        <tr><td><code>FAIL: I2C BUS STUCK</code></td><td>SDA 或 SCL 被拉住，整條 I2C 不通</td><td>GPIO 41／42 是否短路到 GND 或互接；DS3231 GND 是否接妥；是否多接了上拉電阻</td></tr>
+        <tr><td><code>FAIL: RTC MISSING</code></td><td>DS3231 沒有回應</td><td>VCC 是否接 3V3、SDA／SCL 是否接反（SDA=42、SCL=41）、模組焊點</td></tr>
+        <tr><td><code>FAIL: RTC NOT TICKING</code></td><td>DS3231 有回應但時間不走</td><td>模組上的 CR2032 是否已裝、VCC 是否穩定</td></tr>
+        <tr><td>螢幕全白或全黑</td><td>TFT 沒收到訊號或沒電</td><td>OUT− 是否焊死（§3）、VCC 是否在 V5IN、5 條 SPI 線對照 §4.1</td></tr>
+        <tr><td>某顆按鍵按了不打勾</td><td>該鍵沒接通</td><td>該鍵的 GPIO 與 GND 兩腳、按鍵本身導通</td></tr>
+        <tr><td>按了打勾但沒聲音</td><td>蜂鳴器沒接通或極性反</td><td>GPIO 14 與 GND、蜂鳴器 + / − 方向</td></tr>
+      </tbody>
+    </table>
+</div>
+  </div>
+</div>
+
+<!-- ========== 8. 交付物 ========== -->
+<div class="section">
+  <div class="section-title" id="sec-8"><span class="num">8</span>交付物與檢核表</div>
+  <div class="card">
+    <div class="sub-title">8.1　交付物</div>
+    <ul style="font-size:14px; margin:0 0 0 24px; line-height:1.9">
+      <li>組裝完成、產測 PASS 的整機</li>
+      <li>接線正反面照片各一張（焊接完成、上電前）</li>
+      <li>填妥的 8.2 檢核表</li>
+      <li>未使用的零件退回</li>
+    </ul>
+
+    <div class="sub-title">8.2　檢核表（請填寫後隨機器一併交付）</div>
+    <div class="table-wrap">
+<table>
+      <thead><tr><th class="hide-sm" style="width:50px">#</th><th>檢查項目</th><th style="width:26%">量測值 / 結果</th><th style="width:14%">通過</th></tr></thead>
+      <tbody>
+        <tr><td class="num-col hide-sm">1</td><td>充電模組 OUT+ 對 OUT−（未接主控，空載）</td><td><span class="blank"></span> V</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">2</td><td>ESP32 V5IN 對 GND（帶 TFT）</td><td><span class="blank"></span> V</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">3</td><td>ESP32 3V3 對 GND</td><td><span class="blank"></span> V</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">4</td><td>OUT− 與各模組 GND 皆焊接至同一點</td><td>目視</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">5</td><td>電量計 5-pin 排針已焊、空著、腳序正確</td><td>目視</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">6</td><td>開機彩條四色正確</td><td>目視</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">7</td><td>RTC 0x68 OK、TICK OK</td><td>畫面</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">8</td><td>GAUGE 0x36 顯示 NOT FITTED</td><td>畫面</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">9</td><td>8 顆按鍵全部打勾，每顆有聲</td><td>畫面 + 聽</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">10</td><td>RESULT: PASS，兩長聲</td><td>畫面 + 聽</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">11</td><td>USB-C 口、BOOT、RST 鍵可操作</td><td>目視</td><td>☐</td></tr>
+      </tbody>
+    </table>
+</div>
+  </div>
+</div>
+
+<div class="footer">
+  焊接組裝交付說明 ｜ 2026-09-09
+</div>
+
+</body>
+</html>

@@ -44,6 +44,9 @@ cp "$ROOT_DIR/docs/gpio-allocation.html"                     "$DIST_DIR/"
 # V1 硬體與晶片規格（含腳位對照）: 部署但不掛連結，僅透過直接 URL 訪問
 cp "$ROOT_DIR/docs/v1-hardware-spec.html"                    "$DIST_DIR/"
 
+# 焊接組裝交付說明（給廠商）: 部署但不掛連結，僅透過直接 URL 訪問
+cp "$ROOT_DIR/docs/vendor-assembly-brief.html"               "$DIST_DIR/"
+
 echo "▶ Files staged for deploy:"
 find "$DIST_DIR" -type f -print0 | xargs -0 -n1 | sed "s|$DIST_DIR/|  |"
 
