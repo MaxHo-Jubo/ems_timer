@@ -332,5 +332,39 @@ T6「系統音量設關但警報仍要響」那條被列為最關鍵的原因。
       並把 i2c-scan 的 `resetReasonName()` 抽成 `firmware/include/` 共用 header 給主韌體與五個 `src_*` 工具用——
       會重開的是主韌體，現在只有 smoke 工具印得出 BROWNOUT／PANIC
 
+### T11 — 廠商焊接交付包：廠商文件 + 產測韌體（2026-09-09 新增）
+
+背景：要請廠商把 V1 模組焊成一台；決策「電量計不焊、只留 5-pin I2C 排針（SDA/SCL/3V3/GND/BAT+）」，
+驗收以產測韌體 PASS 為準（對方只拿 merged .bin，不拿原始碼）。
+
+- [x] `docs/vendor-assembly-brief.html`：零件表（圖 6 去掉 WS2812、電量計改「留排針」）、電源／接地表、
+      訊號接線表（TFT／DS3231／按鍵／蜂鳴器）、電量計決策、必讀注意事項、產測判讀表、交付檢核表。
+      自足 HTML；2026-09-09 依使用者指示加進 Cloudflare 部署清單（不掛連結，直接 URL 給廠商）
+- [x] `firmware/lib/ems_factory_test/`：純邏輯（按鍵遮罩、RTC 走時分類、PASS／FAIL 判定）+
+      `test/test_factory_test_logic/` native test（RED → GREEN）
+- [x] `firmware/src_factory_test/main.cpp` + `platformio.ini [env:factory-test]`：開機彩條 → I2C 掃 0x68／0x57／0x36 →
+      RTC 走時 → 8 鍵逐顆打勾 + 蜂鳴 → TFT 顯示 RESULT；TFT 只用 ASCII（避開 vlw 字集重生的坑）
+- [x] `pio test -e native` 全綠、`pio run -e factory-test` 編譯過、產出 `firmware-merged-factory-test.bin`
+- [x] `docs/README.md` 登錄廠商文件與產測 env；`release-template/HOW_TO_BUILD_RELEASE.md` 補產測包打包步驟
+- [x] commit 後 codex Tier 3 review（6/6 面向）：3 個 CRITICAL 全部以設計修正——
+      (1) 按鍵改「依序驗收」，接反 → `FAIL: BUTTON ORDER`、同輪兩顆 → `FAIL: BUTTON SHORT`；
+      (2) 拿掉 RTClib，直接用 Wire 讀寫 DS3231 暫存器，每次讀寫驗回傳、讀值驗 BCD／範圍，失敗 → `FAIL: RTC I/O ERROR`；
+      (3) RTC 失憶不再靜默覆蓋：seed 後要求斷電再上電，OSF 再亮 → `FAIL: RTC BATTERY`（NVS 記已 seed、
+      RTC_NOINIT magic 分辨 RST 與真斷電）。所有 FAIL 黏性到 RST。native test 22 → 41 條。
+      補跑 code-review／silent-failure 兩面向又抓到 3 個 CRITICAL（`rtc_present` 與 `rtc_tick` 每輪重算，
+      虛焊短暫恢復可翻回 PASS）→ 加 `rtc_missing_seen` 黏性、`ft_apply_rtc_tick` 讓 Stuck 黏性、
+      失敗優先序改由 `FtFailKind` 單一定義、NVS begin/remove/putBool 回傳有查 → `FAIL: NVS ERROR`；test 44 條。
+      第三～五輪再修：OSF 優先於軟重置、斷電偵測改雙證據（RTC 離線秒數 ≥ 5 且 RTC_NOINIT magic 消失）、
+      ESP-IDF nvs API 分辨讀取失敗與 key 不存在、epoch 換算改 Hinnant days_from_civil、走時倒退／跳 >10 秒 → Invalid、
+      日期依月份天數與閏年驗證；test 49 條。五輪 codex 共 14 個 CRITICAL 全修完
+- [ ] 上機：燒 factory-test 到現有原型，8 鍵／RTC／蜂鳴／彩條走一遍，確認判讀表與實機一致（需硬體）。
+      特別要驗：(a) 斷電偵測用兩個證據：「RTC epoch − NVS 每 2 秒記的最後時間 − 開機秒數 ≥ 5 秒」且
+      「RTC_NOINIT magic 不在」（第三、四輪 codex 要求 fail-closed）：按一下 RST 應維持 WAITING POWER CYCLE、
+      真斷電 10 秒後轉 BACKUP OK、按住 RST 10 秒應仍維持 WAITING（若實測變 OK，代表 EN 重置清掉 RTC memory，
+      退化成只剩證據 1，記下來但不擋交付）；
+      (b) 故意把兩顆按鍵接反，應出 `FAIL: BUTTON ORDER exp N got M`；(c) Font4 的 `WAITING POWER CYCLE` 沒被切邊；
+      (d) 開機按住主按鍵能清 NVS `rtc_seeded`（開發板換 RTC 模組用）
+- [ ] MAX17048 到貨後：插上排針驗 `GAUGE 0x36: PRESENT`，再把換算常數接進 T10
+
 ## Review
 （完工後補：改了哪些檔、測試結果、commit）

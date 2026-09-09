@@ -69,6 +69,25 @@ zip 透過以下任一管道傳給對方：
 
 ---
 
+## 產測韌體包（給焊接廠商）
+
+廠商驗收用的是 `factory-test` env，不是主韌體。流程與上面相同，只差來源檔名：
+
+```bash
+cd firmware
+pio run -e factory-test
+# flash.sh / flash.bat 只認 firmware-merged.bin 這個檔名，所以要改名複製
+cp firmware-merged-factory-test.bin release-template/firmware-merged.bin
+```
+
+- `VERSION.txt` 第一行寫「EMS DoseSync Pro 產測韌體（factory-test）」，其餘欄位同 Step 3；打包同 Step 4，檔名建議 `ems-factory-test-YYYYMMDD.zip`
+- 交付時連同 `docs/vendor-assembly-brief.html` 一起給廠商，§7 是判讀表與 FAIL 對照
+- 產測畫面的字串（`PASS` / `RTC MISSING` 等）來自 `lib/ems_factory_test/factory_test_logic.cpp`，改字串要同步改 vendor-assembly-brief §7.4／§7.5
+
+> ⚠️ 打包完把 `release-template/firmware-merged.bin` 刪掉或換回主韌體，避免下次打包主韌體時誤用產測版。
+
+---
+
 ## release-template 檔案說明
 
 | 檔案 | 用途 | 給誰看 |

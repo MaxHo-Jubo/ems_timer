@@ -125,7 +125,7 @@
       <tbody>
         <tr><td><strong>要做的事</strong></td><td>依 §3、§4 的接線表，把 §2 的模組焊接成一台可開機的原型。載體（洞洞板／載板）不限，但 §6 的接地與固定要求必須符合。</td></tr>
         <tr><td><strong>不在範圍</strong></td><td>外殼、韌體、任何電路改動（包含更換零件型號、加減電阻電容）。有疑問請先聯絡，不要自行變更。</td></tr>
-        <tr><td><strong>驗收標準</strong></td><td>燒入<strong>產測韌體</strong>（§7），螢幕最後一列顯示 <code>RESULT: PASS</code>，且 §8 檢核表全部打勾。</td></tr>
+        <tr><td><strong>驗收標準</strong></td><td>燒入<strong>產測韌體</strong>（§7），螢幕最後一列顯示 <code>PASS</code>，且 §8 檢核表全部打勾。</td></tr>
       </tbody>
     </table>
 </div>
@@ -148,7 +148,7 @@
         <tr><td class="num-col hide-sm">4</td><td><strong>蜂鳴器</strong>　主動式</td><td>GPIO 直驅</td><td><span class="badge badge-green">焊接</span> 注意極性（§4.4）</td></tr>
         <tr><td class="num-col hide-sm">5</td><td><strong>電池</strong>　523450 LiPo 1000mAh</td><td>DW01A + 8205A（電池自帶保護板）<br><span style="color:#64748b">JST PH2.0</span></td><td><span class="badge badge-green">接到充電模組</span> B+／B−，注意極性</td></tr>
         <tr><td class="num-col hide-sm">6</td><td><strong>充電升壓模組</strong>　聯騰 MTARDTP4056S</td><td>TP4056 + DW01 + 8205A + SX1308<br><span style="color:#64748b">Type-C 輸入 / 5V 輸出</span></td><td><span class="badge badge-green">焊接</span> OUT− 必須焊死（§3）</td></tr>
-        <tr><td class="num-col hide-sm">7</td><td><strong>即時時鐘</strong>　DS3231 模組</td><td>DS3231 + AT24C32<br><span style="color:#64748b">I2C（0x68 / 0x57）</span></td><td><span class="badge badge-green">焊接</span> 裝上 CR2032 鈕扣電池</td></tr>
+        <tr><td class="num-col hide-sm">7</td><td><strong>即時時鐘</strong>　DS3231 模組</td><td>DS3231 + AT24C32<br><span style="color:#64748b">I2C（0x68 / 0x57）</span></td><td><span class="badge badge-green">焊接</span> 裝上 CR2032 鈕扣電池（產測會斷電驗證，§7.2 步驟 4）</td></tr>
         <tr><td class="num-col hide-sm">8</td><td><strong>電量計</strong>　MAX17048 模組</td><td>MAX17048<br><span style="color:#64748b">I2C（0x36）</span></td><td><span class="badge badge-red">不焊</span> 只留 5-pin 排針，模組後續另行安裝，見 §5</td></tr>
       </tbody>
     </table>
@@ -246,7 +246,7 @@
     </div>
 
     <div class="sub-title">4.3　按鍵 ×8</div>
-    <p style="font-size:14px; margin-bottom:10px">每顆按鍵一腳接對應 GPIO、另一腳接 GND。<strong>不加任何外部電阻</strong>（主控用內部上拉）。</p>
+    <p style="font-size:14px; margin-bottom:10px">每顆按鍵一腳接對應 GPIO、另一腳接 GND。<strong>不加任何外部電阻</strong>（主控用內部上拉）。產測時必須依下表 1→8 的順序按，接反或接錯 GPIO 會被判 FAIL（§7.2 步驟 5）。</p>
     <div class="table-wrap">
 <table>
       <thead><tr><th class="hide-sm" style="width:50px">#</th><th>按鍵</th><th style="width:26%">ESP32 接點</th><th>產測畫面上的名稱</th></tr></thead>
@@ -369,25 +369,30 @@
     <ol class="rule-list">
       <li>完成 §3.3 兩道檢查。</li>
       <li>用 USB-C 線接開發板到電腦，執行 <code>flash.sh</code>（或雙擊 <code>flash.bat</code>），依提示選擇 port。若卡在「Failed to connect」：按住 BOOT → 按一下 RST → 放開 BOOT → 重新執行燒錄腳本。</li>
-      <li>燒錄完成後按一下 RST。螢幕先顯示 <strong>紅／綠／藍／白四色彩條約 1.5 秒</strong>，蜂鳴器響一短聲，接著進入狀態畫面。</li>
-      <li>依 §4.3 的順序<strong>逐顆按下 8 顆按鍵</strong>。每按一顆，畫面上該鍵由 <code>[ ]</code> 變 <code>[x]</code>，同時蜂鳴一短聲。</li>
-      <li>8 顆全部打勾且其他項目正常時，最後一列變成 <code>RESULT: PASS</code>，蜂鳴器響兩長聲。</li>
+      <li>燒錄完成後按一下 RST。螢幕先顯示 <strong>紅／綠／藍／白四色彩條約 1.5 秒</strong>，蜂鳴器響一短聲，接著進入狀態畫面。第一次上電時最後一列通常是 <code>WAITING POWER CYCLE</code>，RTC 第二行顯示 <code>BACKUP: POWER CYCLE TO VERIFY</code>。</li>
+      <li><strong>斷電驗證鈕扣電池</strong>：拔掉 USB 線、拔掉電池 JST，讓板子完全沒電 <strong>10 秒</strong>，再接回電源開機。RTC 第二行應變成 <code>BACKUP OK</code>；若出現 <code>FAIL: RTC BATTERY</code>，代表 CR2032 沒裝或沒電。按 RST 不算斷電（斷電不到 5 秒），畫面會維持 <code>WAITING POWER CYCLE</code>。每台機器至少要做一次本步驟。</li>
+      <li>依 §4.3 的順序<strong>逐顆按下 8 顆按鍵，順序不可錯</strong>。每按一顆，畫面上該鍵由 <code>[ ]</code> 變 <code>[x]</code>，同時蜂鳴一短聲。按錯順序會直接 <code>FAIL: BUTTON ORDER</code>、兩顆同時觸發會 <code>FAIL: BUTTON SHORT</code>，按 RST 重新來過（RST 後不需再斷電）。</li>
+      <li>8 顆全部打勾且其他項目正常時，最後一列變成 <code>PASS</code>，蜂鳴器響兩長聲。</li>
     </ol>
+    <div class="note note-red">
+      🚨 任何 <code>FAIL</code> 都會鎖住畫面，修正接線後<strong>按 RST 重測</strong>。斷電驗證（步驟 4）只需做一次，RST 之後不用重做。
+    </div>
 
     <div class="sub-title">7.3　狀態畫面範例（全部合格）</div>
-    <div class="screen">EMS FACTORY TEST          v1
+    <div class="screen">EMS FACTORY TEST            v2
 
-I2C  RTC   0x68  <span class="ok">OK</span>
-     EEPROM 0x57 <span class="ok">OK</span>
-     GAUGE  0x36 <span class="dim">NOT FITTED</span>
-RTC  2026-09-09 14:03:27  <span class="ok">TICK OK</span>
+I2C  RTC    0x68  <span class="ok">OK</span>
+     EEPROM 0x57  <span class="ok">OK</span>
+     GAUGE  0x36  <span class="dim">NOT FITTED</span>
+RTC  2026-01-01 00:00:37  <span class="ok">TICK OK</span>
+     <span class="ok">BACKUP OK</span>
 
 BTN  <span class="ok">[x]</span>1 PRIMARY  <span class="ok">[x]</span>2 UP
      <span class="ok">[x]</span>3 DOWN     <span class="ok">[x]</span>4 POWER
      <span class="ok">[x]</span>5 RECORD   <span class="ok">[x]</span>6 BACK
      <span class="ok">[x]</span>7 EPI      <span class="ok">[x]</span>8 SHOCK
 
-<span class="ok">RESULT: PASS</span></div>
+<span class="ok">PASS</span></div>
 
     <div class="sub-title">7.4　判讀表</div>
     <div class="table-wrap">
@@ -398,10 +403,11 @@ BTN  <span class="ok">[x]</span>1 PRIMARY  <span class="ok">[x]</span>2 UP
         <tr><td><strong>RTC 0x68</strong></td><td><code>OK</code> / <code>MISSING</code></td><td>必須 <code>OK</code></td></tr>
         <tr><td><strong>EEPROM 0x57</strong></td><td><code>OK</code> / <code>--</code></td><td>僅資訊，不影響結果</td></tr>
         <tr><td><strong>GAUGE 0x36</strong></td><td><code>NOT FITTED</code> / <code>PRESENT</code></td><td>MAX17048 尚未插上、排針空著，應為 <code>NOT FITTED</code></td></tr>
-        <tr><td><strong>RTC 時間</strong></td><td>日期時間每秒跳動，<code>TICK OK</code></td><td>必須 <code>TICK OK</code>；時間值是否正確不列入判定</td></tr>
-        <tr><td><strong>BTN 1～8</strong></td><td>按下變 <code>[x]</code></td><td>8 顆全部 <code>[x]</code>，每次按下都有一短聲</td></tr>
+        <tr><td><strong>RTC 時間</strong></td><td>日期時間每秒跳動，<code>TICK OK</code></td><td>必須 <code>TICK OK</code>；時間值是否正確不列入判定（第一次上電會從 2026-01-01 起算）</td></tr>
+        <tr><td><strong>RTC 備援電池</strong></td><td><code>BACKUP OK</code> / <code>BACKUP: POWER CYCLE TO VERIFY</code> / <code>BACKUP LOST - CHECK CR2032</code></td><td>必須 <code>BACKUP OK</code>（步驟 4 斷電後）</td></tr>
+        <tr><td><strong>BTN 1～8</strong></td><td>依 1→8 順序按下變 <code>[x]</code>；按錯的那顆變紅 <code>[!]</code></td><td>8 顆全部 <code>[x]</code>，每次按下都有一短聲</td></tr>
         <tr><td><strong>蜂鳴器</strong></td><td>（聽）</td><td>開機一短聲、每次按鍵一短聲、PASS 兩長聲</td></tr>
-        <tr><td><strong>RESULT</strong></td><td><code>PASS</code> / <code>WAITING n/8</code> / <code>FAIL: 原因</code></td><td>必須 <code>PASS</code></td></tr>
+        <tr><td><strong>最後一列</strong></td><td><code>PASS</code> / <code>WAITING POWER CYCLE</code> / <code>WAITING n/8</code> / <code>FAIL: 原因</code></td><td>必須 <code>PASS</code></td></tr>
       </tbody>
     </table>
 </div>
@@ -412,8 +418,14 @@ BTN  <span class="ok">[x]</span>1 PRIMARY  <span class="ok">[x]</span>2 UP
       <thead><tr><th style="width:30%">畫面</th><th style="width:28%">意思</th><th>先檢查</th></tr></thead>
       <tbody>
         <tr><td><code>FAIL: I2C BUS STUCK</code></td><td>SDA 或 SCL 被拉住，整條 I2C 不通</td><td>GPIO 41／42 是否短路到 GND 或互接；DS3231 GND 是否接妥；是否多接了上拉電阻</td></tr>
-        <tr><td><code>FAIL: RTC MISSING</code></td><td>DS3231 沒有回應</td><td>VCC 是否接 3V3、SDA／SCL 是否接反（SDA=42、SCL=41）、模組焊點</td></tr>
-        <tr><td><code>FAIL: RTC NOT TICKING</code></td><td>DS3231 有回應但時間不走</td><td>模組上的 CR2032 是否已裝、VCC 是否穩定</td></tr>
+        <tr><td><code>FAIL: I2C BUS ERROR code N</code></td><td>I2C 回傳非預期的錯誤碼</td><td>SDA／SCL 焊點是否虛焊、線是否過長或與電源線綑在一起</td></tr>
+        <tr><td><code>FAIL: NVS ERROR</code></td><td>主控板內部儲存讀寫失敗</td><td>與焊接無關，換一片開發板再試；仍出現請聯絡</td></tr>
+        <tr><td><code>FAIL: RTC MISSING</code></td><td>DS3231 沒有回應（曾經有一次沒回應也算，虛焊會這樣）</td><td>VCC 是否接 3V3、SDA／SCL 是否接反（SDA=42、SCL=41）、模組焊點</td></tr>
+        <tr><td><code>FAIL: RTC I/O ERROR</code></td><td>DS3231 有回應但暫存器讀寫失敗或讀到亂資料</td><td>SDA／SCL 焊點、VCC 是否穩定在 3.3V、是否誤接 5V</td></tr>
+        <tr><td><code>FAIL: RTC NOT TICKING</code></td><td>DS3231 讀得到但時間不走</td><td>模組晶振是否受損、VCC 是否穩定</td></tr>
+        <tr><td><code>FAIL: RTC BATTERY</code></td><td>斷電再上電後 DS3231 失憶</td><td>CR2032 是否已裝、極性、電池座彈片是否接觸</td></tr>
+        <tr><td><code>FAIL: BUTTON ORDER exp N got M</code></td><td>預期第 N 顆卻按到第 M 顆</td><td>第 N、M 顆按鍵是否接反 GPIO（對照 §4.3）</td></tr>
+        <tr><td><code>FAIL: BUTTON SHORT N+M</code></td><td>兩顆按鍵同時觸發</td><td>第 N、M 顆的 GPIO 線是否短路</td></tr>
         <tr><td>螢幕全白或全黑</td><td>TFT 沒收到訊號或沒電</td><td>OUT− 是否焊死（§3）、VCC 是否在 V5IN、5 條 SPI 線對照 §4.1</td></tr>
         <tr><td>某顆按鍵按了不打勾</td><td>該鍵沒接通</td><td>該鍵的 GPIO 與 GND 兩腳、按鍵本身導通</td></tr>
         <tr><td>按了打勾但沒聲音</td><td>蜂鳴器沒接通或極性反</td><td>GPIO 14 與 GND、蜂鳴器 + / − 方向</td></tr>
@@ -447,10 +459,11 @@ BTN  <span class="ok">[x]</span>1 PRIMARY  <span class="ok">[x]</span>2 UP
         <tr><td class="num-col hide-sm">5</td><td>電量計 5-pin 排針已焊、空著、腳序正確</td><td>目視</td><td>☐</td></tr>
         <tr><td class="num-col hide-sm">6</td><td>開機彩條四色正確</td><td>目視</td><td>☐</td></tr>
         <tr><td class="num-col hide-sm">7</td><td>RTC 0x68 OK、TICK OK</td><td>畫面</td><td>☐</td></tr>
-        <tr><td class="num-col hide-sm">8</td><td>GAUGE 0x36 顯示 NOT FITTED</td><td>畫面</td><td>☐</td></tr>
-        <tr><td class="num-col hide-sm">9</td><td>8 顆按鍵全部打勾，每顆有聲</td><td>畫面 + 聽</td><td>☐</td></tr>
-        <tr><td class="num-col hide-sm">10</td><td>RESULT: PASS，兩長聲</td><td>畫面 + 聽</td><td>☐</td></tr>
-        <tr><td class="num-col hide-sm">11</td><td>USB-C 口、BOOT、RST 鍵可操作</td><td>目視</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">8</td><td>斷電 10 秒重新上電後 BACKUP OK</td><td>畫面</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">9</td><td>GAUGE 0x36 顯示 NOT FITTED</td><td>畫面</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">10</td><td>8 顆按鍵依 1→8 順序全部打勾，每顆有聲</td><td>畫面 + 聽</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">11</td><td>最後一列 PASS，兩長聲</td><td>畫面 + 聽</td><td>☐</td></tr>
+        <tr><td class="num-col hide-sm">12</td><td>USB-C 口、BOOT、RST 鍵可操作</td><td>目視</td><td>☐</td></tr>
       </tbody>
     </table>
 </div>
