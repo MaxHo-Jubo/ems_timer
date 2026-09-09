@@ -17,6 +17,11 @@ dist/
 firmware/firmware-merged.bin
 firmware/firmware-merged-*.bin
 
+# 打包流程的產物：CLAUDE.md「打包流程速查」會把 merged bin 複製進 release-template/
+# 再 zip 起來，兩者都是 build 產物不進版控（漏擋會讓每次打包留下 1.4MB binary）
+firmware/release-template/firmware-merged.bin
+firmware/ems-timer-firmware-*.zip
+
 # superpowers SDD 工作區（ledger / brief / review package 等 scratch，不進版控）
 .superpowers/
 
